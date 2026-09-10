@@ -15,3 +15,7 @@
 **Key seed:** [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md)
 
 **Index:** [../INDEX.md](../INDEX.md)
+
+## Key documents
+- **Original (verbatim CEO):** [CEO-ORIGINAL-BRIEF.md](CEO-ORIGINAL-BRIEF.md)
+- **Processed summary:** [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md)

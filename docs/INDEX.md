@@ -28,6 +28,9 @@
 
 ## Key seed docs
 
+- [product/CEO-ORIGINAL-BRIEF.md](product/CEO-ORIGINAL-BRIEF.md) — verbatim CEO original specification
+- [product/PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — processed Product summary
+
 - [product/PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — goals, domain model, claims lock, early platform additions, licensing (Apache 2.0 / public GitHub)
 - [ops/ORG-OPS.md](ops/ORG-OPS.md) — agent ops charter, pipeline, triads, doc ownership
 - [meta/DOC-FLOW.md](meta/DOC-FLOW.md) — all-team publish flow (naming, handoff, mirror map)
@@ -76,6 +79,9 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 ## ops/
 
 - [ORG-OPS.md](ops/ORG-OPS.md)
+- [2026-09-10__docs__ops__index-delta-tooling-proposal.md](ops/2026-09-10__docs__ops__index-delta-tooling-proposal.md) — INDEX delta shell helper (CEO APPROVED 2026-09-10; paid plugins blocked; state file off GitHub mirror)
+- [2026-09-10__devops__ops__index-delta-helper-brief.md](ops/2026-09-10__devops__ops__index-delta-helper-brief.md) — Chief DevOps implement brief (hold Doc hourly wire until DevOps QA PASS)
+- [DRAFT-INDEX-DELTA-TOOLING-PROPOSAL.md](ops/DRAFT-INDEX-DELTA-TOOLING-PROPOSAL.md) — stub → dated final above
 
 ---
 
