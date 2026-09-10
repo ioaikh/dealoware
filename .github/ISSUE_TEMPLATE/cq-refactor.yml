@@ -1,0 +1,38 @@
+name: CQ refactor
+description: CQ-driven refactor after SD task (opened via PM after CQ assess)
+title: "[CQ refactor]: "
+labels: ["type:cq-refactor", "status:cq-refactor", "cq:refactor-spec-ready"]
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Parent SD issue URL
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Refactor spec path
+      description: e.g. specs/YYYY-MM-DD__cq__spec__refactor-slug.md
+    validations:
+      required: true
+  - type: textarea
+    id: areas
+    attributes:
+      label: Affected areas
+    validations:
+      required: true
+  - type: textarea
+    id: qa
+    attributes:
+      label: QA coverage asks
+      description: Tests needed before/while refactor lands
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Release stage
+      options: [poc, mvp, v1, v2, v3, v4, v5]
+    validations:
+      required: true
