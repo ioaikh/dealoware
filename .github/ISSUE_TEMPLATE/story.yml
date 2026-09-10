@@ -1,0 +1,39 @@
+name: Story
+description: BA Story / feature work (CBA opens; do not invent requirements)
+title: "[Story]: "
+labels: ["type:story", "status:backlog"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Opened by **CBA** after intake. Align to Product. No MotorMarket. Do not invent requirements.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What outcome this Story delivers
+    validations:
+      required: true
+  - type: textarea
+    id: ac
+    attributes:
+      label: Acceptance criteria
+      description: Testable pass/fail criteria
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Release stage
+      options: [poc, mvp, v1, v2, v3, v4, v5]
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: KB paths, Product brief refs, related issues
+  - type: textarea
+    id: oos
+    attributes:
+      label: Out of scope

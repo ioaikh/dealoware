@@ -1,0 +1,33 @@
+name: Bug
+description: Defect report (one issue per distinct bug)
+title: "[Bug]: "
+labels: ["type:bug", "status:backlog"]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: API version, client, OS, etc.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Release stage (if known)
+      options: [poc, mvp, v1, v2, v3, v4, v5, unknown]
