@@ -112,8 +112,8 @@ backlog → ready-for-dev → in-dev → cq-pending
 
 - [x] Dealoware type/stage/status/cq labels created on `ioaikh/dealoware`
 - [x] Milestones PoC–V5 created
-- [ ] Issue templates PR merged (`.github/ISSUE_TEMPLATE/`)
-- [ ] This doc indexed (Doc Team) + mirrored to `docs/ops/` on GitHub
+- [x] Issue templates PR merged (`.github/ISSUE_TEMPLATE/`) — https://github.com/ioaikh/dealoware/pull/1
+- [x] Mirrored to `docs/ops/` on GitHub (PR #1); Doc Team index pending
 - [ ] CEO OK via Bot Manager before first PoC Story
 
 ---

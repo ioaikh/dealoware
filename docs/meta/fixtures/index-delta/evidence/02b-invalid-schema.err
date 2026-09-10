@@ -1,0 +1,1 @@
+ERROR: invalid state schema at /workspace/dealoware-kb/meta/fixtures/index-delta/scenarios/work/02b-invalid-schema/.doc-index-state.json: missing version

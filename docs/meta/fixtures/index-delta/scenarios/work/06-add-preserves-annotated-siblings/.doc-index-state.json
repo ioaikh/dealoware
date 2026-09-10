@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "updated_at": "2026-09-10T18:05:34Z",
+  "kb_root": "/workspace/dealoware-kb/meta/fixtures/index-delta/scenarios/work/06-add-preserves-annotated-siblings",
+  "files": {
+    "ops/2026-09-10__devops__ops__fixture-annotated-add.md": {
+      "sha256": "6b8d001875e5c335358d4d0633d3089040d567c5ef6a55f1a51974f9f6f38cc5",
+      "mtime": 1789063534
+    },
+    "INDEX.md": {
+      "sha256": "867875c406d7834ac2fc6acb12951013b065fc57883bd1269010e0a377d9db1a",
+      "mtime": 1789063534
+    },
+    "ORG-OPS.md": {
+      "sha256": "fc1e160268aa63bce311e4ac7a28055ce08e2fb2c0add598cb743cc1a6645ebb",
+      "mtime": 1789059794
+    },
+    "PRODUCT-BRIEF.md": {
+      "sha256": "2cd01082fc2246c6d2c70be8ae332e77bf90877fc56ccca9a0d299105493edbc",
+      "mtime": 1789059794
+    },
+    "README.md": {
+      "sha256": "49778b767c09c568762ca4b2e4e371d6577b78dbc62eec345bf30b93c1672acc",
+      "mtime": 1789059794
+    },
+    "architecture/README.md": {
+      "sha256": "d8dd03024a758c90fd40f7f3d5fe490736562901049d204fbe3fdab48addb5cf",
+      "mtime": 1789059794
+    },
+    "index/README.md": {
+      "sha256": "9e113f479999443d7d7bbc77938da91f36ac676c3d303dc531e89d80806bff3f",
+      "mtime": 1789059794
+    },
+    "meta/DOC-FLOW.md": {
+      "sha256": "2ef639641ed795d8f71df13fd99b9f9b27f8176fd721f837b423e3fa272cbb25",
+      "mtime": 1789059794
+    },
+    "meta/README.md": {
+      "sha256": "d7b2fe59ddf81657c7e2ca7d6aaad77be4535e0ec6e95c00b461dc281623a4cc",
+      "mtime": 1789059794
+    },
+    "ops/ORG-OPS.md": {
+      "sha256": "e1e2b5b7e29d0abd3b5b075406cafed9802c0e3fa7d6d0a5e51b6786ac3643d0",
+      "mtime": 1789059794
+    },
+    "ops/README.md": {
+      "sha256": "aee3db1838e31c3e5b49b827ed0d98b68da4a17bd5b12cfb37b89b93b965a7ac",
+      "mtime": 1789059794
+    },
+    "plans/README.md": {
+      "sha256": "8b8865c9a57512e11a191ebf211161f76a26f2dc3aeb8aeee7e6bea3773d4dd7",
+      "mtime": 1789059794
+    },
+    "product/PRODUCT-BRIEF.md": {
+      "sha256": "72d44b1fc93b5b51aada6bc04e42cd2f7c294805623c2048333e5d0b63560b99",
+      "mtime": 1789059794
+    },
+    "product/README.md": {
+      "sha256": "819ff1865ded7b8c8bf7bb6fb85bde06db6532b4670601410fd81fa613b5821b",
+      "mtime": 1789059794
+    },
+    "qa/README.md": {
+      "sha256": "c3422c803ac02b536a4b4f732a567f432b2ed0e34e4e1317d77a8b2d62edd42d",
+      "mtime": 1789059794
+    },
+    "specs/README.md": {
+      "sha256": "7472707108d861b69fde2f5f9d9c9802525c03fed16eea926a42fdf902141b9f",
+      "mtime": 1789059794
+    },
+    "verification/README.md": {
+      "sha256": "a1bd40096acbdbad23a7bf59f47aa5390d31028cd2effea440db213bf478f8c7",
+      "mtime": 1789059794
+    }
+  }
+}
