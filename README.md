@@ -50,20 +50,116 @@ curl http://localhost:5287/health
 dotnet test Dealoware.sln
 ```
 
+### Authentication (PoC)
+
+The API uses API key and/or JWT authentication. All protected endpoints require a valid credential in the `Authorization` header.
+
+#### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEALOWARE_JWT_SIGNING_KEY` | JWT signing key (min 32 chars) | Development placeholder |
+| `DEALOWARE_JWT_LIFETIME_MINUTES` | JWT token lifetime | 60 |
+
+> **Security:** Never commit real signing keys. Use environment variables for production.
+
+#### Register a Participant (Bootstrap)
+
+```bash
+curl -X POST http://localhost:5287/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": "My Participant"}'
+# Returns 201 with sub, apiKey (shown once only), apiKeyPrefix, createdAt
+```
+
+**Response:**
+```json
+{
+  "sub": "participant:550e8400-e29b-41d4-a716-446655440000",
+  "displayName": "My Participant",
+  "apiKey": "dlw_AbCdEfGh_...rest...",
+  "apiKeyPrefix": "AbCdEfGh",
+  "createdAt": "2026-09-11T10:00:00Z"
+}
+```
+
+> **Important:** Store the API key securely—it cannot be retrieved again.
+
+#### Issue JWT Token
+
+```bash
+curl -X POST http://localhost:5287/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey": "dlw_AbCdEfGh_..."}'
+# Returns 200 with accessToken, tokenType, expiresIn, sub
+```
+
+#### Using Authentication
+
+**Option 1: API Key**
+```bash
+curl http://localhost:5287/artifacts \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+```
+
+**Option 2: JWT Bearer Token**
+```bash
+curl http://localhost:5287/artifacts \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Option 3: API Key as Bearer**
+```bash
+curl http://localhost:5287/artifacts \
+  -H "Authorization: Bearer dlw_AbCdEfGh_..."
+```
+
+#### Rotate API Key
+
+```bash
+curl -X POST http://localhost:5287/auth/rotate-key \
+  -H "Authorization: ApiKey dlw_OldKey_..."
+# Returns 200 with new apiKey, apiKeyPrefix, revokedKeyPrefix
+```
+
+#### Revoke Credentials
+
+```bash
+# Revoke API key
+curl -X POST http://localhost:5287/auth/revoke \
+  -H "Authorization: ApiKey dlw_CurrentKey_..." \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey": "dlw_KeyToRevoke_..."}'
+
+# Revoke JWT by JTI
+curl -X POST http://localhost:5287/auth/revoke \
+  -H "Authorization: ApiKey dlw_CurrentKey_..." \
+  -H "Content-Type: application/json" \
+  -d '{"tokenJti": "jwt-id-from-token"}'
+```
+
+#### OIDC Principal Mapping
+
+The Participant `sub` claim is OIDC-shaped and maps directly to `Artifact.OwnerParticipantId`:
+
+| Claim | Source | Example |
+|-------|--------|---------|
+| `sub` | Participant registration | `participant:550e8400-e29b-41d4-a716-446655440000` |
+| `iss` | Always | `dealoware` |
+| `aud` | Always | `dealoware-api` |
+
 ### Artifact API (PoC)
 
 The Artifact API provides create/get/list-own operations for the core Artifact model (D1-D5).
 
-**Authentication (PoC interim):** Use the `X-PoC-Owner-Id` header to identify the participant. All artifact operations require this header.
-
-> **Future:** When #5 auth is implemented, the API will prefer a validated JWT `sub` claim if available, falling back to `X-PoC-Owner-Id` for backward compatibility.
+**Authentication:** All artifact endpoints require a valid `Authorization` header (fail-closed). The authenticated principal's `sub` claim becomes the artifact owner.
 
 #### Create Artifact
 
 ```bash
 curl -X POST http://localhost:5287/artifacts \
   -H "Content-Type: application/json" \
-  -H "X-PoC-Owner-Id: participant-123" \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..." \
   -d '{
     "entities": [
       {
@@ -86,13 +182,14 @@ curl -X POST http://localhost:5287/artifacts \
     ]
   }'
 # Returns 201 with artifact including server-generated id
+# OwnerParticipantId = authenticated principal's sub claim
 ```
 
 #### Get Artifact
 
 ```bash
 curl http://localhost:5287/artifacts/{artifact-id} \
-  -H "X-PoC-Owner-Id: participant-123"
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
 # Returns 200 if owned, 404 if not found or not owned (no cross-owner leak)
 ```
 
@@ -100,15 +197,22 @@ curl http://localhost:5287/artifacts/{artifact-id} \
 
 ```bash
 curl http://localhost:5287/artifacts \
-  -H "X-PoC-Owner-Id: participant-123"
-# Returns 200 with array of artifacts owned by this participant (empty array if none)
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+# Returns 200 with array of artifacts owned by authenticated principal (empty if none)
+```
+
+#### Health Check (No Auth Required)
+
+```bash
+curl http://localhost:5287/health
+# Returns 200 {"status":"ok"} — no authentication required
 ```
 
 #### Error Responses
 
-- **401 Unauthorized**: Missing `X-PoC-Owner-Id` header
+- **401 Unauthorized**: Missing or invalid `Authorization` header
 - **400 Bad Request**: Validation errors (e.g., missing entities, duplicate currency)
-- **404 Not Found**: Artifact not found or not owned by requester
+- **404 Not Found**: Artifact not found or not owned by requester (authn ≠ authz)
 
 ### Project Structure
 
