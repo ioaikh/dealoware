@@ -44,7 +44,7 @@
 - [x] Path/name DOC-FLOW: `verification/2026-09-11__security__verification__poc-artifact-doc-points-review.md`
 - [x] All 10 checklist points scored vs main README Artifact Doc surface
 - [x] Kept separate from #5
-- [ ] Security QA: confirm **PASS** to Chief Security **or** further instructions
+- [x] Security QA: **PASS** (`verification/2026-09-11__security__verification__poc-artifact-doc-qa-confirm.md`)
 
 ## Cost/critical
 

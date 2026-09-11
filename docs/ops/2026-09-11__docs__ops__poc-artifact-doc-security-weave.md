@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Index/weave complete — **overall Doc PASS HELD** pending Security QA confirm |
+| **Status** | **Overall Doc step #4 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-11 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #4 · Artifact D1–D5 + create/get/list-own |
@@ -29,12 +29,12 @@
 | 7 | Input / data | High-level validation bounds / currency uniqueness; no secret-smuggling field guidance. |
 | 8 | Zero MM/DC4 | No MM/DC4 steps or credentials in Doc/INDEX/qa report. |
 | 9 | DOC-FLOW / index | Security artifacts under `verification/` with DOC-FLOW names; INDEX lists them; `.doc-index-state.json` not published to GitHub `docs/`. |
-| 10 | Handshake close | **Docs QA must not overall-PASS** until Security QA confirms. Checklist indexed; points-review + doc-qa-confirm when landed. |
+| 10 | Handshake close | **Docs QA must not overall-PASS** until Security QA confirms. Handshake indexed: checklist + points-review + doc-qa-confirm. |
 
 ## Indexed Product QA Security close (Sec10 cleared for Product QA step)
 - `verification/2026-09-11__security__verification__poc-artifact-productqa-checklist.md`
 - `verification/2026-09-11__security__verification__poc-artifact-productqa-points-review.md`
 - `verification/2026-09-11__security__verification__poc-artifact-productqa-qa-confirm.md`
 
-## HOLD
-**Overall Doc-step #4 PASS = HELD** pending Security QA confirm on Doc checklist. Docs QA should verify index/weave completeness now.
+## PASS
+**Overall Doc-step #4 PASS** — Security QA confirm `verification/2026-09-11__security__verification__poc-artifact-doc-qa-confirm.md` (pts 1–10 MET). Mirror: https://github.com/ioaikh/dealoware/pull/12
