@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Dealoware.Domain\Dealoware.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

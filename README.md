@@ -50,18 +50,89 @@ curl http://localhost:5287/health
 dotnet test Dealoware.sln
 ```
 
+### Artifact API (PoC)
+
+The Artifact API provides create/get/list-own operations for the core Artifact model (D1-D5).
+
+**Authentication (PoC interim):** Use the `X-PoC-Owner-Id` header to identify the participant. All artifact operations require this header.
+
+> **Future:** When #5 auth is implemented, the API will prefer a validated JWT `sub` claim if available, falling back to `X-PoC-Owner-Id` for backward compatibility.
+
+#### Create Artifact
+
+```bash
+curl -X POST http://localhost:5287/artifacts \
+  -H "Content-Type: application/json" \
+  -H "X-PoC-Owner-Id: participant-123" \
+  -d '{
+    "entities": [
+      {
+        "name": "2020 Toyota Camry",
+        "description": "Well-maintained sedan",
+        "properties": [
+          {"name": "mileage", "type": "number", "value": "45000"},
+          {"name": "color", "type": "string", "value": "silver"}
+        ],
+        "facts": ["Single owner", "Clean title", "Regular maintenance"]
+      }
+    ],
+    "intent": "sell",
+    "values": [
+      {"amount": 22000.00, "currency": "USD"}
+    ],
+    "locations": ["Los Angeles, CA"],
+    "timePeriods": [
+      {"start": "2026-09-01T00:00:00Z", "end": "2026-12-31T23:59:59Z"}
+    ]
+  }'
+# Returns 201 with artifact including server-generated id
+```
+
+#### Get Artifact
+
+```bash
+curl http://localhost:5287/artifacts/{artifact-id} \
+  -H "X-PoC-Owner-Id: participant-123"
+# Returns 200 if owned, 404 if not found or not owned (no cross-owner leak)
+```
+
+#### List Own Artifacts
+
+```bash
+curl http://localhost:5287/artifacts \
+  -H "X-PoC-Owner-Id: participant-123"
+# Returns 200 with array of artifacts owned by this participant (empty array if none)
+```
+
+#### Error Responses
+
+- **401 Unauthorized**: Missing `X-PoC-Owner-Id` header
+- **400 Bad Request**: Validation errors (e.g., missing entities, duplicate currency)
+- **404 Not Found**: Artifact not found or not owned by requester
+
 ### Project Structure
 
 ```
 Dealoware.sln
 ├── src/
 │   ├── Dealoware.Api          # ASP.NET Core Minimal APIs (runnable host)
-│   ├── Dealoware.Domain       # Domain layer (placeholder)
-│   ├── Dealoware.Application  # Application layer (placeholder)
-│   └── Dealoware.Infrastructure # Infrastructure layer (placeholder)
+│   ├── Dealoware.Domain       # Domain layer (Artifact aggregate, D1-D5)
+│   ├── Dealoware.Application  # Application layer (DTOs, validation, mapping)
+│   └── Dealoware.Infrastructure # Infrastructure layer (EF Core + SQLite)
 └── tests/
     └── Dealoware.Api.Tests    # Integration tests
 ```
+
+### Database
+
+The PoC uses SQLite for local persistence. The database file (`dealoware.db`) is created automatically on first run.
+
+**Connection string precedence:**
+1. `ConnectionStrings:DefaultConnection` in appsettings.json
+2. `DEALOWARE_CONNECTION_STRING` environment variable
+3. Default: `Data Source=dealoware.db`
+
+> **Note:** Never commit real credentials. Use environment variables or secure configuration for production.
 
 ### AWS Host Shape (Callout Only)
 
