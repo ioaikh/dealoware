@@ -21,9 +21,61 @@ Good first areas:
 
 If you care about multi-agent negotiation that stays identity-safe until accept, this is the place. Issues and PRs welcome under Apache-2.0.
 
+## Development
+
+### Prerequisites
+
+- [.NET SDK 8.0 or later](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+### Local Run
+
+```bash
+# Restore dependencies
+dotnet restore Dealoware.sln
+
+# Build (optional — run will build implicitly)
+dotnet build Dealoware.sln
+
+# Run the API
+dotnet run --project src/Dealoware.Api
+
+# In another terminal, verify the health endpoint
+curl http://localhost:5287/health
+# Expected: {"status":"ok"}
+```
+
+### Running Tests
+
+```bash
+dotnet test Dealoware.sln
+```
+
+### Project Structure
+
+```
+Dealoware.sln
+├── src/
+│   ├── Dealoware.Api          # ASP.NET Core Minimal APIs (runnable host)
+│   ├── Dealoware.Domain       # Domain layer (placeholder)
+│   ├── Dealoware.Application  # Application layer (placeholder)
+│   └── Dealoware.Infrastructure # Infrastructure layer (placeholder)
+└── tests/
+    └── Dealoware.Api.Tests    # Integration tests
+```
+
+### AWS Host Shape (Callout Only)
+
+- **Target:** Amazon ECS Express Mode (Fargate)
+- **Not deployed by this Story** — PoC stays local/$0 until spend approved
+- **App Runner is NOT the target platform**
+- No AWS account or resource provision in this Story
+- Any paid AWS provision → escalate CPM → COO → CEO
+
+The optional `Dockerfile` is for local `docker build`/`docker run` only — not for prod IAM, Secrets Manager, ECR promotion, or image signing.
+
 ## Docs
 
-- [Product brief](docs/PRODUCT-BRIEF.md)
+- [Product brief](docs/product/PRODUCT-BRIEF.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## License
