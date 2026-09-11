@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Index/weave complete — **overall Doc PASS HELD** pending Security QA confirm |
+| **Status** | **Overall Doc step #3 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-10 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #3 · capability **O10** |
@@ -36,5 +36,5 @@
 - `verification/2026-09-10__security__verification__poc-o10-doc-points-review.md`
 - `verification/2026-09-10__security__verification__poc-o10-doc-qa-confirm.md`
 
-## HOLD
-**Overall Doc-step PASS = HELD** pending Security QA confirm on Doc checklist. Index/weave completeness is what Docs QA should verify now.
+## PASS
+**Overall Doc-step #3 PASS** — Security QA confirm `verification/2026-09-10__security__verification__poc-o10-doc-qa-confirm.md` (pts 1–10 MET). Mirror: https://github.com/ioaikh/dealoware/pull/10
