@@ -45,8 +45,25 @@
 - [x] Path/name DOC-FLOW: `verification/2026-09-10__security__verification__poc-o10-doc-points-review.md`
 - [x] All 10 checklist points scored vs provisional Doc surface (PR README + Dockerfile)
 - [x] README not judged clearly insufficient — no HOLD to Chief
-- [ ] Security QA: confirm **PASS** to Chief Security **or** further instructions
+- [x] Security QA: **PASS** (`verification/2026-09-10__security__verification__poc-o10-doc-qa-confirm.md`) — addendum aligns
 
 ## Cost/critical
 
 None. PoC $0. No escalate.
+
+## Addendum — Doc paths locked (Chief Security PRIORITY)
+
+Scored again against locked primary + index hygiene sources:
+
+| Source | Role | Result |
+|--------|------|--------|
+| PR #9 `README.md` | Primary Doc surface | Unchanged MET (pts 1–7, soft notes 2/7/9) |
+| PR #9 `Dockerfile` | Primary Doc surface | Unchanged MET (pts 4, 6) |
+| `qa/2026-09-10__qa__qa-report__poc-o10-scaffold.md` | Product QA evidence / handshake cite | **PASS** status; cites Product QA Security PASS; README ECS/Dockerfile local-only — supports pts 3, 6, 9–10 |
+| `INDEX.md` | Index hygiene (pts 8–9) | Lists O10 Security verification chain under `verification/` with DOC-FLOW names (SA→Spec→DevPlan→SD→ProductQA→Doc checklist + this points-review). No secrets at KB root. |
+| Senior Docs weave note | Optional when filed | **Not found** at score time — no separate `__docs__` O10 weave note. Provisional README+Dockerfile remain binding surface; addendum if weave note lands later. |
+
+**Pts 8–9 reinforced:** INDEX indexes Security artifacts correctly; QA report + Product QA Security PASS provide traceability. Soft note on README lacking explicit Auth:None remains non-blocking.
+
+**Security QA:** confirm already on file at `verification/2026-09-10__security__verification__poc-o10-doc-qa-confirm.md` — this addendum aligns; no gate reopen.
+
