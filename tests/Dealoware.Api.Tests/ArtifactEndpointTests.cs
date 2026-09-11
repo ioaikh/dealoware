@@ -2,18 +2,32 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Dealoware.Application.Artifacts.Dtos;
+using Dealoware.Application.Auth.Dtos;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
+/// <summary>
+/// Tests for Artifact endpoints (D1-D5 properties).
+/// All tests use proper Authorization header authentication.
+/// </summary>
 public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
-    private const string OwnerIdHeader = "X-PoC-Owner-Id";
 
     public ArtifactEndpointTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory;
+    }
+
+    private async Task<(HttpClient Client, string Sub)> CreateAuthenticatedClientAsync(string participantSuffix)
+    {
+        var client = _factory.CreateClient();
+        var registerResponse = await client.PostAsJsonAsync("/auth/register", 
+            new RegisterRequest { DisplayName = $"participant-{participantSuffix}" });
+        var participant = await registerResponse.Content.ReadFromJsonAsync<RegisterResponse>();
+        client.DefaultRequestHeaders.Add("Authorization", $"ApiKey {participant!.ApiKey}");
+        return (client, participant.Sub);
     }
 
     private static CreateArtifactRequest CreateValidRequest() => new()
@@ -46,10 +60,8 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_ValidRequest_Returns201WithArtifact()
     {
-        var client = _factory.CreateClient();
+        var (client, sub) = await CreateAuthenticatedClientAsync("1");
         var request = CreateValidRequest();
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-1");
         
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
@@ -58,7 +70,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
         var artifact = await response.Content.ReadFromJsonAsync<ArtifactResponse>();
         Assert.NotNull(artifact);
         Assert.NotEqual(Guid.Empty, artifact.Id);
-        Assert.Equal("participant-1", artifact.OwnerParticipantId);
+        Assert.Equal(sub, artifact.OwnerParticipantId);
         Assert.Equal("sell", artifact.Intent);
         Assert.Single(artifact.Entities);
         Assert.Equal("Test Entity", artifact.Entities[0].Name);
@@ -81,12 +93,12 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
-    public async Task CreateArtifact_EmptyOwnerId_Returns401()
+    public async Task CreateArtifact_InvalidAuth_Returns401()
     {
         var client = _factory.CreateClient();
         var request = CreateValidRequest();
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "");
+        client.DefaultRequestHeaders.Add("Authorization", "Bearer invalid");
         
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
@@ -96,14 +108,12 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_NoEntities_Returns400()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("no-entities");
         var request = new CreateArtifactRequest
         {
             Entities = new List<CreateSubjectEntityDto>(),
             Intent = "sell"
         };
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-1");
         
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
@@ -113,7 +123,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_MissingIntent_Returns400()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("missing-intent");
         var request = new CreateArtifactRequest
         {
             Entities = new List<CreateSubjectEntityDto>
@@ -123,8 +133,6 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
             Intent = null
         };
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-1");
-        
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -133,7 +141,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_DuplicateCurrency_Returns400()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("dup-currency");
         var request = new CreateArtifactRequest
         {
             Entities = new List<CreateSubjectEntityDto>
@@ -148,8 +156,6 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
             }
         };
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-1");
-        
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -160,10 +166,8 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task GetArtifact_OwnArtifact_Returns200()
     {
-        var client = _factory.CreateClient();
+        var (client, sub) = await CreateAuthenticatedClientAsync("get-test");
         var request = CreateValidRequest();
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-get-test");
         
         var createResponse = await client.PostAsJsonAsync("/artifacts", request);
         var created = await createResponse.Content.ReadFromJsonAsync<ArtifactResponse>();
@@ -179,18 +183,14 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task GetArtifact_OtherOwnerArtifact_Returns404()
     {
-        var client = _factory.CreateClient();
+        var (client1, _) = await CreateAuthenticatedClientAsync("owner");
+        var (client2, _) = await CreateAuthenticatedClientAsync("other");
         var request = CreateValidRequest();
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-owner");
-        
-        var createResponse = await client.PostAsJsonAsync("/artifacts", request);
+        var createResponse = await client1.PostAsJsonAsync("/artifacts", request);
         var created = await createResponse.Content.ReadFromJsonAsync<ArtifactResponse>();
         
-        client.DefaultRequestHeaders.Remove(OwnerIdHeader);
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-other");
-        
-        var response = await client.GetAsync($"/artifacts/{created!.Id}");
+        var response = await client2.GetAsync($"/artifacts/{created!.Id}");
         
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -198,9 +198,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task GetArtifact_NonExistent_Returns404()
     {
-        var client = _factory.CreateClient();
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-1");
+        var (client, _) = await CreateAuthenticatedClientAsync("nonexistent");
         
         var response = await client.GetAsync($"/artifacts/{Guid.NewGuid()}");
         
@@ -220,10 +218,8 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task ListOwnArtifacts_Returns200WithOwnArtifactsOnly()
     {
-        var client = _factory.CreateClient();
+        var (client, sub) = await CreateAuthenticatedClientAsync("list-test");
         var request = CreateValidRequest();
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-list-test");
         
         await client.PostAsJsonAsync("/artifacts", request);
         await client.PostAsJsonAsync("/artifacts", request);
@@ -234,15 +230,13 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
         var artifacts = await response.Content.ReadFromJsonAsync<List<ArtifactResponse>>();
         Assert.NotNull(artifacts);
         Assert.True(artifacts.Count >= 2);
-        Assert.All(artifacts, a => Assert.Equal("participant-list-test", a.OwnerParticipantId));
+        Assert.All(artifacts, a => Assert.Equal(sub, a.OwnerParticipantId));
     }
 
     [Fact]
     public async Task ListOwnArtifacts_NoArtifacts_Returns200WithEmptyList()
     {
-        var client = _factory.CreateClient();
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-no-artifacts-" + Guid.NewGuid());
+        var (client, _) = await CreateAuthenticatedClientAsync($"no-artifacts-{Guid.NewGuid()}");
         
         var response = await client.GetAsync("/artifacts");
         
@@ -265,28 +259,25 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task ListOwnArtifacts_FiltersOutOtherOwners()
     {
-        var client = _factory.CreateClient();
+        var (client1, sub1) = await CreateAuthenticatedClientAsync("filter-owner-1");
+        var (client2, sub2) = await CreateAuthenticatedClientAsync("filter-owner-2");
         var request = CreateValidRequest();
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-filter-owner-1");
-        await client.PostAsJsonAsync("/artifacts", request);
+        await client1.PostAsJsonAsync("/artifacts", request);
+        await client2.PostAsJsonAsync("/artifacts", request);
         
-        client.DefaultRequestHeaders.Remove(OwnerIdHeader);
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-filter-owner-2");
-        await client.PostAsJsonAsync("/artifacts", request);
-        
-        var response = await client.GetAsync("/artifacts");
+        var response = await client2.GetAsync("/artifacts");
         
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var artifacts = await response.Content.ReadFromJsonAsync<List<ArtifactResponse>>();
         Assert.NotNull(artifacts);
-        Assert.All(artifacts, a => Assert.Equal("participant-filter-owner-2", a.OwnerParticipantId));
+        Assert.All(artifacts, a => Assert.Equal(sub2, a.OwnerParticipantId));
     }
 
     [Fact]
     public async Task CreateArtifact_MultipleEntities_StoresAll()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("multi-entity");
         var request = new CreateArtifactRequest
         {
             Entities = new List<CreateSubjectEntityDto>
@@ -297,8 +288,6 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
             },
             Intent = "exchange"
         };
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-multi-entity");
         
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
@@ -311,7 +300,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_CurrencyNormalized_StoredUppercase()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("currency-test");
         var request = new CreateArtifactRequest
         {
             Entities = new List<CreateSubjectEntityDto>
@@ -325,8 +314,6 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
             }
         };
         
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-currency-test");
-        
         var response = await client.PostAsJsonAsync("/artifacts", request);
         
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -338,7 +325,7 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreateArtifact_WithAllD1ToD5Properties_PersistsCorrectly()
     {
-        var client = _factory.CreateClient();
+        var (client, _) = await CreateAuthenticatedClientAsync("full-d1-d5");
         var startDate = DateTimeOffset.UtcNow;
         var endDate = startDate.AddDays(7);
         
@@ -370,8 +357,6 @@ public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program
                 new() { Start = startDate, End = endDate }
             }
         };
-        
-        client.DefaultRequestHeaders.Add(OwnerIdHeader, "participant-full-d1-d5");
         
         var createResponse = await client.PostAsJsonAsync("/artifacts", request);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);

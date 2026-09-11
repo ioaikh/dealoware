@@ -9,8 +9,10 @@ public sealed class Artifact
     public Guid Id { get; private set; }
     
     /// <summary>
-    /// The participant who owns this artifact (from X-PoC-Owner-Id header).
-    /// Future: When #5 auth is implemented, prefer JWT sub claim if available.
+    /// The participant who owns this artifact.
+    /// Mapped from the authenticated principal's OIDC sub claim.
+    /// Format: "participant:{guid}" for self-registered participants.
+    /// See: Dealoware.Domain.Participants.Participant.Sub
     /// </summary>
     public string OwnerParticipantId { get; private set; } = string.Empty;
 

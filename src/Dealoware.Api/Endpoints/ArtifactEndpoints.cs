@@ -1,20 +1,32 @@
+using Dealoware.Api.Auth;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Artifacts.Mapping;
 using Dealoware.Application.Artifacts.Validation;
 using Dealoware.Domain.Artifacts;
+using Dealoware.Domain.Participants;
+using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Dealoware.Api.Endpoints;
 
+/// <summary>
+/// Artifact API endpoints with fail-closed authentication.
+/// 
+/// Authentication is REQUIRED for all artifact operations:
+/// - POST /artifacts - Create artifact (requires valid credential)
+/// - GET /artifacts/{id} - Get artifact (requires valid credential + owner-scope)
+/// - GET /artifacts - List own artifacts (requires valid credential)
+/// 
+/// All endpoints use the Authorization header only (no query string or body tokens).
+/// The authenticated principal's sub claim maps to Artifact.OwnerParticipantId.
+/// 
+/// Authorization formats:
+/// - Bearer {jwt_token}  - JWT Bearer token
+/// - ApiKey {api_key}    - API key authentication
+/// - Bearer {api_key}    - API key as bearer (also supported)
+/// </summary>
 public static class ArtifactEndpoints
 {
-    /// <summary>
-    /// Header for interim PoC principal identification.
-    /// Future: When #5 auth is implemented, prefer JWT sub claim if available.
-    /// The consume path will check for a validated JWT first, then fall back to this header.
-    /// </summary>
-    public const string OwnerIdHeader = "X-PoC-Owner-Id";
-
     public static void MapArtifactEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/artifacts");
@@ -40,11 +52,16 @@ public static class ArtifactEndpoints
     private static async Task<IResult> CreateArtifact(
         HttpContext context,
         CreateArtifactRequest request,
-        IArtifactRepository repository,
+        IArtifactRepository artifactRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
         CancellationToken cancellationToken)
     {
-        var ownerId = GetOwnerId(context);
-        if (string.IsNullOrWhiteSpace(ownerId))
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+        
+        if (string.IsNullOrWhiteSpace(sub))
         {
             return Results.Unauthorized();
         }
@@ -59,9 +76,9 @@ public static class ArtifactEndpoints
                 });
         }
 
-        var artifact = ArtifactMapper.ToDomain(request, ownerId);
-        await repository.AddAsync(artifact, cancellationToken);
-        await repository.SaveChangesAsync(cancellationToken);
+        var artifact = ArtifactMapper.ToDomain(request, sub);
+        await artifactRepository.AddAsync(artifact, cancellationToken);
+        await artifactRepository.SaveChangesAsync(cancellationToken);
 
         var response = ArtifactMapper.ToResponse(artifact);
         return Results.Created($"/artifacts/{artifact.Id}", response);
@@ -70,18 +87,23 @@ public static class ArtifactEndpoints
     private static async Task<IResult> GetArtifact(
         HttpContext context,
         Guid id,
-        IArtifactRepository repository,
+        IArtifactRepository artifactRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
         CancellationToken cancellationToken)
     {
-        var ownerId = GetOwnerId(context);
-        if (string.IsNullOrWhiteSpace(ownerId))
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+        
+        if (string.IsNullOrWhiteSpace(sub))
         {
             return Results.Unauthorized();
         }
 
-        var artifact = await repository.GetByIdAsync(id, cancellationToken);
+        var artifact = await artifactRepository.GetByIdAsync(id, cancellationToken);
         
-        if (artifact is null || artifact.OwnerParticipantId != ownerId)
+        if (artifact is null || artifact.OwnerParticipantId != sub)
         {
             return Results.NotFound();
         }
@@ -92,32 +114,22 @@ public static class ArtifactEndpoints
 
     private static async Task<IResult> ListOwnArtifacts(
         HttpContext context,
-        IArtifactRepository repository,
+        IArtifactRepository artifactRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
         CancellationToken cancellationToken)
     {
-        var ownerId = GetOwnerId(context);
-        if (string.IsNullOrWhiteSpace(ownerId))
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+        
+        if (string.IsNullOrWhiteSpace(sub))
         {
             return Results.Unauthorized();
         }
 
-        var artifacts = await repository.GetByOwnerAsync(ownerId, cancellationToken);
+        var artifacts = await artifactRepository.GetByOwnerAsync(sub, cancellationToken);
         var response = ArtifactMapper.ToResponseList(artifacts);
         return Results.Ok(response);
-    }
-
-    /// <summary>
-    /// Get owner ID from request headers.
-    /// Future: When #5 auth is implemented, check for validated JWT sub claim first,
-    /// then fall back to X-PoC-Owner-Id header. For now, only the header is used.
-    /// </summary>
-    private static string? GetOwnerId(HttpContext context)
-    {
-        if (context.Request.Headers.TryGetValue(OwnerIdHeader, out var ownerIdValues))
-        {
-            return ownerIdValues.FirstOrDefault();
-        }
-
-        return null;
     }
 }
