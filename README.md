@@ -63,22 +63,15 @@ Dealoware.sln
     └── Dealoware.Api.Tests    # Integration tests
 ```
 
-### AWS Deployment (PoC Sketch)
+### AWS Host Shape (Callout Only)
 
-Target: **Amazon ECS Express Mode (Fargate)** — serverless container orchestration with sub-second scaling.
+- **Target:** Amazon ECS Express Mode (Fargate)
+- **Not deployed by this Story** — PoC stays local/$0 until spend approved
+- **App Runner is NOT the target platform**
+- No AWS account or resource provision in this Story
+- Any paid AWS provision → escalate CPM → COO → CEO
 
-This PoC is local/$0 only. Production deployment to AWS is out of scope.
-
-**High-level steps (sketch only):**
-
-1. Build container image using the provided `Dockerfile`
-2. Push to Amazon ECR
-3. Create ECS cluster with Fargate launch type
-4. Define task definition with container port 8080
-5. Create ECS service with Application Load Balancer
-6. Configure health check path: `/health`
-
-**Note:** App Runner is NOT the target platform. ECS Express Mode (Fargate) provides more control over networking, scaling, and cost for production workloads.
+The optional `Dockerfile` is for local `docker build`/`docker run` only — not for prod IAM, Secrets Manager, ECR promotion, or image signing.
 
 ## Docs
 
