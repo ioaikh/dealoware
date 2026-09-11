@@ -1,6 +1,6 @@
 # Architecture options — PoC O10 .NET scaffold + minimal API host
 
-**Status:** Senior Architect options for Architecture QA (Story work — real, not dry-run).  
+**Status:** Senior Architect options for Architecture QA (Story work — real, not dry-run). **Amended 2026-09-10:** Security answers §7 (always-critical handshake).  
 **Date:** 2026-09-10  
 **Author:** Dealoware Senior Architect  
 **Brief:** Chief Architect — GitHub issue #3 · capability **O10** only  
@@ -17,6 +17,7 @@
 | Prior SA feasibility | `architecture/2026-09-10__sa__architecture__poc-feasibility-roadmap.md` | PoC .NET modular monolith **YES** |
 | Prior Architecture QA | `verification/2026-09-10__sa__verification__poc-feasibility-roadmap.md` | **PASS** |
 | Release roadmap (stage only) | `plans/2026-09-10__pm__plan__release-roadmap-poc-mvp-vn.md` | **O10** primary at PoC; continues all stages |
+| Security SA checklist (Chief Security) | `verification/2026-09-10__security__verification__poc-o10-sa-checklist.md` | Architecture always-critical handshake — points 1–8 |
 
 **Scope of this Story:** **O10 only** — solution scaffold + minimal API host + health/ping + local run docs + AWS-shape callout. Domain Stories (#4–#7 Artifact, auth, Negotiation, identity-seal) are **out** of this deliverable (issue: first PoC Story; unblocks them).
 
@@ -61,6 +62,7 @@ README.md                        # local run steps (AC)
 2. **No second host** (no worker, no BFF, no gateway) in O10.
 3. **No MotorMarket / DC4** project references, package names, connection strings, or shared libraries.
 4. Repo root may already be `ioaikh/dealoware` — place `src/` under repo root unless Spec/SD document an existing convention; do not scatter projects at unrelated paths.
+5. **Placeholder libs stay inert** — Domain/Application/Infrastructure must not add PackageReferences for auth, LLM, payment, or other secret/exfil-risk SDKs in O10 (Security §8).
 
 ### Tradeoffs — layout
 
@@ -80,10 +82,12 @@ README.md                        # local run steps (AC)
 | Style | **Minimal APIs** in `Program.cs` (or `Endpoints/` static classes if Spec prefers) | Smallest host; OpenAPI package not required for O10 |
 | Controllers | Not required for O10 | Thin controllers OK later if team prefers; do not mix both styles in scaffold |
 | DI | Built-in ASP.NET Core container | No extra IoC |
-| Config | `appsettings.json` + env vars; no secrets to MM/DC4 | Local-first |
+| Config | `appsettings.json` + env vars. **Binding (Security §5):** O10 artifacts (`appsettings*`, README, Dockerfile, launchSettings, comments) must contain **no** secrets, API keys, cloud credentials, or real connection strings; any illustrative config keys use **placeholders / env-only** patterns. Also no MM/DC4 connection strings. | Local-first |
 | HTTPS | `dotnet run` defaults / launchSettings — fine for local | Prod TLS = later / DevOps |
 
 **O10 endpoint surface:** health/ping **only** (plus implicit framework endpoints if any). No Artifact, auth, negotiate, search, Strategy, or admin routes.
+
+**Secrets hygiene (binding):** O10 artifacts (`appsettings*`, README, Dockerfile, launchSettings, comments) must contain **no** secrets, API keys, cloud credentials, or real connection strings; any illustrative config keys use **placeholders / env-only** patterns.
 
 ---
 
@@ -137,6 +141,8 @@ Aligns to issue AC, prior SA, DevOps consult ack in release roadmap (PoC AWS = s
 **PoC remains local** until spend is approved; O10 (and PoC Stories) must **not** provision AWS accounts or create AWS resources.
 
 **Cost/critical:** Any paid AWS provision → escalate Chief Architect → CPM → COO → CEO. O10 must not procure.
+**Dockerfile / local-run secrets hygiene (binding):** O10 artifacts (`appsettings*`, README, Dockerfile, launchSettings, comments) must contain **no** secrets, API keys, cloud credentials, or real connection strings; any illustrative config keys use **placeholders / env-only** patterns. Optional Dockerfile remains a local sketch only (no prod IAM/Secrets Manager/ECR/signing as delivered).
+
 
 ### Cloud hosting currency check (`ops/ORG-OPS.md` mandatory)
 
@@ -182,6 +188,27 @@ Also OUT for this Story (issue dependencies): Artifact CRUD, Participant auth be
 4. **AWS:** README callout = **ECS Express Mode** sketch + optional Dockerfile; PoC **local until spend**; **no** prod deploy / no AWS provision; **no** App Runner.
 5. **Prior feasibility:** Still valid; O10 is the host slice of that YES.
 
+---
+
+## 7. Security answers (Architecture always-critical handshake)
+
+**Checklist:** `verification/2026-09-10__security__verification__poc-o10-sa-checklist.md` (Chief Security).  
+**Rule:** Architecture QA asks Security QA to confirm each point before PASS to Chief Architect. No invented product requirements; no AWS spend.
+
+| # | Security point | Architecture answer | Cite |
+|---|----------------|---------------------|------|
+| 1 | Host trust boundary — local-only PoC; prod trust not delivered | O10 is a **local-only** runnable host (`dotnet run` / optional local Docker). Production trust (TLS termination, public exposure, identity) is **out of scope** and **must not** be implied as delivered by this Story. | §4 Local run; §4 AWS Out of O10; §5 OUT (Prod AWS deploy) |
+| 2 | Unauthenticated health — liveness-only; no other public routes; no smuggled identity | `GET /health` has **Auth: None** and is **liveness-only** (Option A). **O10 endpoint surface = health/ping only** — no Artifact, auth, negotiate, search, Strategy, or admin routes. Auth/identity deferred to later Stories (#5+); must not be smuggled into this scaffold. | §2 endpoint surface; §3 Health contract (Auth / Recommendation); §5 OUT auth |
+| 3 | Health has no external deps for 200 | Binding: health **must not** require DB, Redis, AWS, or outbound network to return 200. HealthChecks+DB and O5 dashboards are **Defer/Reject**. | §3 Dependencies row; §3 tradeoffs B/C |
+| 4 | Local-until-spend / no provision; ECS Express sketch; App Runner excluded | PoC **local until spend**; **no** AWS account provision / resources in O10. Target sketch = **Amazon ECS Express Mode** (Fargate) status `open`. **App Runner** `existing-customers-only` + `no-new-features` — **excluded** from greenfield. Any provision → escalate CA → CPM → COO → CEO. | §4 AWS table + currency check; §6 decision #4 |
+| 5 | Secrets hygiene | **Binding:** O10 artifacts (`appsettings*`, README, Dockerfile, launchSettings, comments) contain **no** secrets, API keys, cloud credentials, or real connection strings; any illustrative config keys use **placeholders / env-only**. Also no MM/DC4 connection strings. | §2 Config row; §1 layout rule 3; §5 MM/DC4; binding sentence below |
+| 6 | Zero MM/DC4 coupling | **No** project references, package names, config keys, schemas, feeds, SFTP, or shared DB pointers to MotorMarket/DC4. | §1 layout rule 3; §5 MotorMarket / DC4; issue AC |
+| 7 | Dockerfile sketch (if any) — local only | Optional `Dockerfile` is a **local** multi-stage build/run sketch only. **Out:** prod IAM roles, Secrets Manager wiring, ECR promo, image signing as delivered. | §1 Dockerfile comment; §4 AWS Out column |
+| 8 | Placeholder libs inert | Domain / Application / Infrastructure placeholders must **not** pull auth, LLM, payment, or other secret/exfil-risk third-party SDKs in O10. Empty/marker class libs only until later Stories. | §1 layout + rule 5; §5 OUT Strategy/AI/settlement; §0 defer wiring |
+
+
+**Binding (Security point 5):** O10 artifacts (`appsettings*`, README, Dockerfile, launchSettings, comments) must contain **no** secrets, API keys, cloud credentials, or real connection strings; any illustrative config keys use **placeholders / env-only** patterns.
+
 ## Done-list (Architecture QA)
 
 - [ ] Path/name DOC-FLOW: `architecture/2026-09-10__sa__architecture__poc-o10-scaffold.md`
@@ -191,5 +218,7 @@ Also OUT for this Story (issue dependencies): Artifact CRUD, Participant auth be
 - [ ] Confirms prior feasibility PASS still valid (or documented deltas)
 - [ ] O10-only — no invented domain/Strategy/AI/search requirements
 - [ ] Spec can consume layout + health contract without guessing
+- [ ] **§7 Security answers** map checklist points **1–8** with cites (source: `verification/2026-09-10__security__verification__poc-o10-sa-checklist.md`)
+- [ ] Ask **Security QA** to confirm points 1–8 with evidence **before** PASS to Chief Architect
 
-**Next:** Architecture QA verifies vs this brief + issue AC; confirm to Chief Architect only.
+**Next:** Architecture QA verifies vs CA amend brief + issue AC + Security checklist; ask Security QA confirm; then confirm to Chief Architect only (never skip Chief).
