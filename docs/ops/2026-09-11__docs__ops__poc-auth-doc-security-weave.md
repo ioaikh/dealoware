@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Index/weave complete — **overall Doc PASS HELD** pending Security QA confirm |
+| **Status** | **Overall Doc step #5 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-11 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #5 · Participant minimal register/auth (D6) |
@@ -29,11 +29,11 @@
 | 7 | Bootstrap/register | Docs bound seed/bootstrap/register; no platform-owner RBAC claims. |
 | 8 | Authn ≠ authz | Docs state valid token ≠ owns Artifact; owner checks remain (#4 owner-scope still applies). |
 | 9 | Local/$0 | No Cognito/IdP provision how-tos as delivered; ECS Express Mode sketch only; PoC local. |
-| 10 | Handshake close | **Docs QA must not overall-PASS** until Security QA confirms. Doc checklist indexed; points-review + doc-qa-confirm when Security lands. |
+| 10 | Handshake close | **Docs QA must not overall-PASS** until Security QA confirms. Handshake indexed: checklist + points-review + doc-qa-confirm. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step)
 - `verification/2026-09-11__security__verification__poc-auth-productqa-checklist.md`
 - `verification/2026-09-11__security__verification__poc-auth-productqa-qa-confirm.md`
 
-## HOLD
-**Overall Doc-step #5 PASS = HELD** pending Security QA confirm on Doc checklist. Docs QA should verify index/weave completeness now. Keep separate from #4.
+## PASS
+**Overall Doc-step #5 PASS** — Security QA confirm `verification/2026-09-11__security__verification__poc-auth-doc-qa-confirm.md` (pts 1–10 MET). Mirror: https://github.com/ioaikh/dealoware/pull/14. Keep separate from #4.
