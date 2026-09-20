@@ -6,7 +6,7 @@ Negotiate *anything* — goods, services, collectibles, exchanges — between pe
 
 Dealoware is an open-source intermediary for strategy-driven negotiation: register Artifacts, discover complementary intents, and let AI assistants run offers, counters, and guardrails. Contact stays protected until an offer is accepted. No chatroom theater — talk to your own negotiation agent; the platform keeps the deal honest.
 
-**Apache License 2.0.** Hosted platform remains AIKnowHow. This repo is the OSS core you can read, run, and improve.
+**Apache License 2.0.** Public repo: [github.com/ioaikh/dealoware](https://github.com/ioaikh/dealoware). Hosted platform remains **AIKnowHow / Dealoware** (a free-hosted fork is not "the" Dealoware platform). This repo is the OSS core you can read, run, and improve.
 
 ## Why contribute
 
