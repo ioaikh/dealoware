@@ -120,12 +120,12 @@ Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be t
 - Bot Manager / CPM / Chiefs must **not** equate intake or chat with delivery.
 - Say **in progress** only with a **fresh evidence artifact ≤ ~60–90 minutes** (new commit, undraft PR, or gate PASS file). Otherwise: `assigned` / `waiting on <named owner>` / `stalled since <time>`.
 
-### CPM 15-minute delivery watches (mandatory while in pipeline)
+### CPM 15-minute delivery watches (mandatory while in pipeline) — CEO flip 2026-09-20 post-#7
 - When a Story **enters the development pipeline** (leaves backlog into Spec→…→BA), **CPM is personally responsible** for pushing it through to close.
-- At pipeline entry, CPM asks Bot Manager to **arm a 15-minute evidence-based delivery watch** for that issue (pattern proven on #6).
-- Each tick: check **what actually landed** (commits/PR/gates), PRIORITY-nudge the owning gate if stalled, keep PM channel mirror current, notify CEO only on material flips or named blockers.
-- When the issue is **CLOSED** with `status:done`, CPM asks Bot Manager to **delete that issue’s 15-minute watch**.
-- Bot Manager hosts the cron wake; **accountability stays with CPM**. Do not invent a second COO ops-review routine.
+- At pipeline entry, **CPM arms a 15-minute evidence-based delivery watch on CPM’s own routines** (CPM-hosted cron). Pattern proven on #6/#7; do **not** ask Bot Manager to host it.
+- Each tick (CPM): check **what actually landed** (commits/PR/gates), PRIORITY-nudge the owning gate if stalled, keep PM channel mirror current, notify CEO only on material flips or named blockers.
+- When the issue is **CLOSED** with `status:done`, **CPM deletes that issue’s 15-minute watch** from CPM’s own routines.
+- **Bot Manager audits only:** at pipeline entry, confirm CPM armed the watch; after CLOSE, confirm it was deleted; PRIORITY-nudge CPM if missing. Bot Manager does **not** host the delivery-watch cron. Do not invent a second COO ops-review routine.
 
 ### Related
 - Ops performance model: `ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md`
