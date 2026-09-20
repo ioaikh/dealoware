@@ -4,7 +4,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
-public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class HealthEndpointTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 

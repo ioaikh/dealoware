@@ -18,7 +18,8 @@ namespace Dealoware.Api.Tests;
 /// Accept/Decline/Counter/Close responses return state only — no contact release.
 /// This is a PoC stub; contact exchange on accept is MVP (P7/A9).
 /// </summary>
-public class IdentitySealTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class IdentitySealTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 

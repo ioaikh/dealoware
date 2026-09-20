@@ -11,7 +11,8 @@ namespace Dealoware.Api.Tests;
 /// Tests for Artifact endpoints (D1-D5 properties).
 /// All tests use proper Authorization header authentication.
 /// </summary>
-public class ArtifactEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class ArtifactEndpointTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 

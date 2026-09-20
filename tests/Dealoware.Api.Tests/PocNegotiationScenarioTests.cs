@@ -29,8 +29,8 @@ namespace Dealoware.Api.Tests;
 /// 
 /// Intent pairs in this suite: buy↔sell and provide↔consume only.
 /// </summary>
-[Collection("PocScenarios")]
-public class PocNegotiationScenarioTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class PocNegotiationScenarioTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 

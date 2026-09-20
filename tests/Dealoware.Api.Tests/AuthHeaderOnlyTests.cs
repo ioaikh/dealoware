@@ -13,7 +13,8 @@ namespace Dealoware.Api.Tests;
 /// Tokens in query strings or request bodies must NOT work.
 /// This is a security requirement to prevent token leakage via logs/referrers.
 /// </summary>
-public class AuthHeaderOnlyTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class AuthHeaderOnlyTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 

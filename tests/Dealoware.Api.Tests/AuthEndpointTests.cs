@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
-public class AuthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class AuthEndpointTests
 {
     private readonly WebApplicationFactory<Program> _factory;
 
