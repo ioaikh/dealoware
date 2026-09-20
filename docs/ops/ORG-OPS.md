@@ -130,6 +130,32 @@ Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be t
 ### Related
 - Ops performance model: `ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md`
 
+## Post-milestone SA architecture review (CEO 2026-09-20)
+
+After any **significant delivery milestone** (examples: PoC complete, MVP slice complete, major epic closed, host/shape change shipped), **CPM must route an SA Team architecture review** before the next phase unlock. Spec citing old architecture ≠ SA ownership.
+
+### Trigger
+- CPM declares the milestone closed (evidence: all in-scope Stories `status:done`, or CEO names the milestone).
+- At that moment CPM opens an **SA post-milestone review** task to **Chief Architect** (via PM → SA Team) and arms a normal CPM delivery watch until the review closes.
+
+### SA Team must deliver (Chief Architect owns; Senior Architect executes; Architecture QA verifies)
+1. **Intent check** — Confirm delivered work matches the original SA architecture intent for that scope (cite binding SA docs). Explicit PASS / FAIL per major area.
+2. **Deviation analysis** — If anything differs from the original plan: document the deviation, why it changed (evidence from Spec/DevPlan/SD/PRs), root cause, and what else must be adjusted for the SD stage just delivered (code, docs, tests, follow-up Stories).
+3. **Fit to future architecture** — Compare actual implementation to the planned future architecture (MVP+ / Vn). Itemize:
+   - must **change**
+   - must **remove**
+   - must **add**
+   - keep-as-is
+4. **Plan update or escalate** — If collected facts are consistent and clear with overall product goals: **update future architecture / roadmap docs** (DOC-FLOW) and hand done-list to Architecture QA → Chief Architect → CPM. If anything is inconsistent, unclear, or SA has questions / suggestions / concerns: **stop and ask CEO** (via CPM → Bot Manager / COO). Do not silently guess.
+
+### Gate
+- Next phase / next epic unlock is **HOLD** until Chief Architect PASS (Architecture QA confirm) **or** CEO answers SA’s escalations.
+- Security handshake applies on this SA step (critical Architecture gate).
+- First instance: **PoC #3–#8 closed 2026-09-20** — SA review required before MVP unlock (#18 and later).
+
+### Related
+- Binding PoC SA baselines: `architecture/2026-09-10__sa__architecture__poc-feasibility-roadmap.md`, `architecture/2026-09-10__sa__architecture__poc-o10-scaffold.md`
+
 ## Marketing Team (CEO 2026-09-10)
 - Triad: Chief Marketing / Senior Marketing / Marketing QA.
 - Aligns GTM/public positioning to **Product** (claims lock via Chief Product before publish).
