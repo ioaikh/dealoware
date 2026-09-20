@@ -1,6 +1,6 @@
 # Dealoware Agent Ops Charter
 
-CEO: Ivan Onuchin. COO: Dealoware COO (Business Team). All cost-affecting or critical changes require CEO confirmation.
+CEO: Ivan Onuchin. COO: Dealoware COO (Ops Team Chief; also Business Team). All cost-affecting or critical changes require CEO confirmation.
 
 ## Goal alignment (mandatory)
 1. **Product Team** aligns product goals with **CEO** only.
@@ -21,7 +21,9 @@ Any team may request DevOps / Business / Doc / Security help **through PM Team**
 ## Staffed roster
 | Team | Chief | Senior | QA | Channel |
 |------|-------|--------|-----|---------|
-| Business | CEO (Ivan) | Marketing | — | Dealoware Business Team (+ COO, CPM) |
+| Business | CEO (Ivan) | — | — | Dealoware Business Team (+ COO, CPM, Chief Marketing) |
+| **Ops** | **COO (Chief)** | Ops Executive | Ops QA | Dealoware Ops Team |
+| **Marketing** | **Chief Marketing** | Senior Marketing | Marketing QA | Dealoware Marketing Team |
 | **Product** | **Chief Product** | Senior Product | Product QA | Dealoware Product Team |
 | BA Team | CBA | Senior BA | BAQA | Dealoware BA Team |
 | PM Team | CPM | Senior PM | PMQA | Dealoware PM Team |
@@ -38,7 +40,12 @@ Any team may request DevOps / Business / Doc / Security help **through PM Team**
 **Specialists:** Dealoware Core, Dealoware Agents — not yet mapped into triads; PM may pull them for deep .NET / agent-runtime work. No MotorMarket live systems.
 
 ## COO cadence
-Every 6 hours: review team channels; evidence → root cause → CEO proposal before critical/cost execute.
+Every 6 hours: Ops Team reviews team channels (COO briefs → Ops Executive samples/analyzes → Ops QA verifies → COO presents); evidence → root cause → CEO proposal before critical/cost execute.
+
+### Ops performance-check model (CEO 2026-09-20)
+- Locked rubric: `ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md`.
+- Every Ops review (each team, since last review): **read every message** — score internal (Productive / Efficient / Quality / Completeness / Functional) and external (Intake / During work / Handoff confirmation); then improvement proposals (within team / cross-team / specialty↔common roles). Plus gate/role/process checklists in that note.
+- Bot Manager owns `dealoware-coo-ops-review`; do **not** duplicate on COO. No spend/critical without CEO OK.
 
 ## Documentation (CEO 2026-09-10)
 - Doc Team owns documentation structure and the living index.
@@ -71,3 +78,45 @@ Every 6 hours: review team channels; evidence → root cause → CEO proposal be
 4. **Never** list a closed-to-new-customers or no-new-features service as a default/sketch option for greenfield Dealoware work.
 5. Architecture QA **bounces** if a cited service lacks a currency check or cites a closed/maintenance-mode service without labeling and excluding it from greenfield options.
 6. When unsure: consult DevOps via PM; still escalate spend before provision.
+
+## Security on critical pipeline steps (CEO 2026-09-10)
+Security is woven into **every critical step** below — not Chief-only review.
+
+### Critical steps (always)
+1. **Task formulation (BA)**
+2. **Architecture (SA)**
+3. **Specs**
+4. **Dev Plan**
+5. **Implementation (SD)**
+6. **QA (product verification)**
+7. **Refactoring (CQ)**
+8. **Documentation (Doc)**
+
+### Handshake (mandatory at each critical step)
+1. **Step Chief** asks **Chief Security** (via PM assist) for an **itemized checklist of points** for that Story/step.
+2. **Senior** of the step answers those points in their deliverable.
+3. **Step QA** asks **Security QA** whether all points were properly addressed (evidence).
+4. **Security QA** replies: **confirm PASS** or **further instructions** (bounce to Senior and/or Step Chief).
+5. Step QA **does not PASS** to their Chief until Security QA confirms (or Security marks N/A with evidence for truly empty scope — rare; default is real points).
+6. **PM owns** scheduling Security into the gate; teams do not silently skip.
+
+### Twice-daily Security research (CEO named times)
+- **Chief Security** runs (or assigns) research **daily at 02:00 and 12:00 America/New_York**.
+- Analyze recent feedback + **trusted-source web research** for relevant security issues; address findings the same day via briefs/guardrails/Story notes as appropriate.
+- Escalate cost/critical findings → COO → CEO.
+
+### PoC note
+Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be thin); they do **not** skip the handshake.
+
+
+## Marketing Team (CEO 2026-09-10)
+- Triad: Chief Marketing / Senior Marketing / Marketing QA.
+- Aligns GTM/public positioning to **Product** (claims lock via Chief Product before publish).
+- First standing work: research Dealoware from CEO-ORIGINAL-BRIEF / PRODUCT-BRIEF / KB+GitHub docs; marketing research for high-attention promotion; itemized recommendations. **No paid promo** without COO→CEO confirm.
+- Cost/critical → CEO via COO.
+
+### Marketing daily research cadence (CEO 2026-09-10)
+- **At least daily** market/attention research, with **different clock times by weekday** (America/New_York) so sources vary.
+- Standing schedule (Bot Manager routine “Dealoware Marketing daily research”): Mon 9:00 · Tue 14:00 · Wed 10:00 · Thu 15:00 · Fri 11:00 · Sat 13:00 · Sun 16:00.
+- Cycle: **Chief Marketing** owns → **Senior Marketing** executes → **Marketing QA** verifies → Chief presents via COO to CEO when actionable.
+- Product **claims lock** before any public claim; **no paid promo** without COO→CEO confirm.
