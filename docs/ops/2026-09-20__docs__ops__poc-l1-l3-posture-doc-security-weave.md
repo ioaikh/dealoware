@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **HOLD** — overall Doc step #8 PASS until Security QA doc-qa-confirm (points-review + qa-confirm indexed) |
+| **Status** | **Overall Doc step #8 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-20 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #8 · Standing L1–L3 chore (not a feature Story) |
@@ -33,17 +33,16 @@ Mapped strictly to `verification/2026-09-20__security__verification__poc-l1-l3-p
 | 7 | No inventing product features | #8 = standing chore only; PR files = `README.md` posture (+1/−1); Docs do not invent marketing-as-AC or new domain APIs under this chore. Weave restates. Product QA Sec confirm MET pt7. |
 | 8 | Cross-story non-merge | Weave + INDEX: L1–L3 kept separate from #3–#7 feature Docs except cross-refs; no merge of Artifact/auth/negotiation/identity-seal into this chore. Product QA Sec confirm MET pt8. |
 | 9 | Cost / spend | Docs affirm PoC **$0** / no IdP provision for this chore. Weave: PoC $0. Product QA Sec confirm MET pt9. |
-| 10 | Handshake close | **HOLD** — Docs QA must **not** overall-PASS until Security QA indexes doc points-review + doc-qa-confirm for this checklist. Product QA Sec10 is closed; Doc Sec handshake is not yet. |
+| 10 | Handshake close | Handshake indexed: checklist + points-review + doc-qa-confirm. Security QA PASS 10/10 — Docs QA may overall-PASS. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step — already closed)
 - `verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-checklist.md`
 - `verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-qa-confirm.md` (PASS; all 10 MET)
 - `verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-points-review.md` (present on disk; indexed — not invented)
 
-## Doc Security handshake (clears HOLD — not yet indexed)
-- `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-checklist.md` — issued (this weave binds to it)
-- `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md` — **awaiting** Senior Security
-- `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md` — **awaiting** Security QA (clears overall Doc HOLD when PASS)
+## Indexed Doc Security handshake (clears HOLD)
+- `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md` — Senior Security PASS 10/10
+- `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md` — Security QA PASS 10/10 (clears overall Doc HOLD)
 
-## HOLD
-**Overall Doc-step #8 HOLD** — do **not** claim overall Doc PASS until Security QA confirm (doc-qa-confirm) + Senior Security points-review are indexed. Chore only; separate from #4–#7; PoC $0; CQ no-refactor; no MotorMarket; no Cognito/SSO/hosted SaaS inventing; MM/DC4 out. Primary surfaces: PR #21 README L1–L3 posture + this weave.
+## PASS
+**Overall Doc-step #8 PASS** — Security QA confirm `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md` (pts 1–10 MET); Senior Security points-review `verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md` (PASS 10/10). Mirror: https://github.com/ioaikh/dealoware/pull/23. L1–L3 chore only; separate from #4–#7; PoC $0; CQ no-refactor; no MotorMarket; no Cognito/SSO/hosted SaaS inventing; MM/DC4 out. Primary surfaces: PR #21 README L1–L3 posture + this weave.
