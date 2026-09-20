@@ -92,11 +92,11 @@ npm run test:newman
 | S12 | Mutate After Close | `S12_MutationsAfterClose_*` | 05-Negative-Cases |
 | S13 | Expiration via EndsAt | `S13_ExpiredNegotiation_*` | 06-Optional-Expiration |
 | S14.1 | Provide ↔ Consume | `S14_1_ProvideConsume_*` | 07-Optional-Other-Intents |
-| S14.2 | Rent ↔ Rent | `S14_2_RentRent_*` | 07-Optional-Other-Intents |
+| S14 | Complementary pairs (buy↔sell, provide↔consume) | `S14_ComplementaryPairs_*` | Theory |
 
-## Intent Complementarity Rules
+## Intent Pairs in This Suite
 
-Tests validate the 1:1 exclusive intent pairs defined in `IntentComplement.cs`:
+Per QA brief (LOCKED), this suite covers **buy↔sell** and **provide↔consume** only:
 
 | Caller Intent | Counterparty Intent | Use Case |
 |---------------|---------------------|----------|
@@ -104,10 +104,9 @@ Tests validate the 1:1 exclusive intent pairs defined in `IntentComplement.cs`:
 | `sell` | `buy` | Product sale |
 | `provide` | `consume` | Service offering |
 | `consume` | `provide` | Service seeking |
-| `rent` | `rent` | Rental (bidirectional) |
 
 **Invalid pairs** (return 400):
-- Same intent on both sides (except `rent↔rent`)
+- Same intent on both sides (buy↔buy, sell↔sell, etc.)
 - Cross-category mismatches (e.g., `buy↔provide`, `sell↔consume`)
 
 ## CI Integration
@@ -148,6 +147,7 @@ The collection auto-captures API keys. Run folders in order starting with `01-Bo
 
 ## See Also
 
+- [Scenario Map](../../tests/ScenarioMap.md) — S* → test method mapping
 - [PoC Negotiation Scenarios](../product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
 - [Postman Collection](../../postman/Dealoware-PoC-Negotiations.postman_collection.json)
 - [IntentComplement.cs](../../src/Dealoware.Domain/Negotiations/IntentComplement.cs)

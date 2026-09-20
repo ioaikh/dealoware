@@ -13,6 +13,8 @@ namespace Dealoware.Api.Tests;
 /// Maps directly to scenario IDs from:
 /// docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md
 /// 
+/// See also: tests/ScenarioMap.md for S* → test method mapping.
+/// 
 /// Exercises the full negotiation flow including:
 /// - S1-S2: Bootstrap (register participants, create artifact)
 /// - S3-S6: Happy path deal flow (create negotiation → offer → counter → accept)
@@ -22,13 +24,10 @@ namespace Dealoware.Api.Tests;
 /// - S10: Negative — non-party access (404, no info leak)
 /// - S11: Negative — duplicate open offer same side
 /// - S12: Negative — mutations after close
-/// - S13: Optional — expiration via endsAt
-/// - S14: Optional — provide↔consume and rent↔rent intent pairs
+/// - S13: Optional — expiration via endsAt (P1)
+/// - S14: Optional — provide↔consume (P1)
 /// 
-/// Intent complementarity follows 1:1 exclusive pairs per IntentComplement:
-/// - buy ↔ sell
-/// - provide ↔ consume  
-/// - rent ↔ rent (bidirectional)
+/// Intent pairs in this suite: buy↔sell and provide↔consume only.
 /// </summary>
 [Collection("PocScenarios")]
 public class PocNegotiationScenarioTests : IClassFixture<WebApplicationFactory<Program>>
@@ -369,11 +368,13 @@ public class PocNegotiationScenarioTests : IClassFixture<WebApplicationFactory<P
     }
 
     /// <summary>
-    /// Complete happy path flow as single end-to-end test (S1-S6 combined).
+    /// Scenario_S1_to_S6_HappyPathDeal: Complete happy path flow as single end-to-end test.
+    /// S1: Register Seller + Buyer → S2: Create sell artifact → S3: Create negotiation (sell↔buy)
+    /// → S4: Seller places offer → S5: Buyer counters → S6: Seller accepts counter.
     /// Mirrors Postman collection 02-Happy-Path-Deal folder.
     /// </summary>
     [Fact]
-    public async Task HappyPath_FullDealFlow_S1toS6()
+    public async Task Scenario_S1_to_S6_HappyPathDeal()
     {
         var (sellerClient, sellerSub, _) = await RegisterParticipantAsync($"Seller-{Guid.NewGuid():N}");
         var (buyerClient, buyerSub, _) = await RegisterParticipantAsync($"Buyer-{Guid.NewGuid():N}");
@@ -536,15 +537,16 @@ public class PocNegotiationScenarioTests : IClassFixture<WebApplicationFactory<P
     }
 
     /// <summary>
-    /// Additional non-complementary pairs (buy/buy, provide/provide, etc.).
+    /// S9: Additional non-complementary pairs (buy/buy, provide/provide, cross-category).
+    /// Intent pairs in this suite: buy↔sell and provide↔consume only.
     /// </summary>
     [Theory]
     [InlineData("buy", "buy")]
+    [InlineData("sell", "sell")]
     [InlineData("provide", "provide")]
     [InlineData("consume", "consume")]
     [InlineData("buy", "provide")]
     [InlineData("sell", "consume")]
-    [InlineData("rent", "sell")]
     public async Task S9_NonComplementaryPairs_AllReturn400(string callerIntent, string counterpartyIntent)
     {
         var (clientA, _, _) = await RegisterParticipantAsync($"A-{Guid.NewGuid():N}");
@@ -762,49 +764,15 @@ public class PocNegotiationScenarioTests : IClassFixture<WebApplicationFactory<P
     }
 
     /// <summary>
-    /// S14.2: Rent ↔ Rent (bidirectional rental).
-    /// Expected: 201, intents are rent/rent.
-    /// </summary>
-    [Fact]
-    public async Task S14_2_RentRent_Returns201()
-    {
-        var (landlordClient, _, _) = await RegisterParticipantAsync($"Landlord-{Guid.NewGuid():N}");
-        var (_, tenantSub, _) = await RegisterParticipantAsync($"Tenant-{Guid.NewGuid():N}");
-
-        var artifactResponse = await landlordClient.PostAsJsonAsync("/artifacts", new CreateArtifactRequest
-        {
-            Entities = new List<CreateSubjectEntityDto>
-            {
-                new() { Name = "2BR Apartment", Description = "Downtown location" }
-            },
-            Intent = "rent"
-        });
-        var artifact = await artifactResponse.Content.ReadFromJsonAsync<ArtifactResponse>();
-
-        var response = await landlordClient.PostAsJsonAsync("/negotiations", new CreateNegotiationRequest
-        {
-            ArtifactId = artifact!.Id,
-            CounterpartyParticipantId = tenantSub,
-            CallerIntent = "rent",
-            CounterpartyIntent = "rent"
-        });
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var negotiation = await response.Content.ReadFromJsonAsync<NegotiationResponse>();
-        Assert.Equal("rent", negotiation!.PartyAIntent);
-        Assert.Equal("rent", negotiation.PartyBIntent);
-    }
-
-    /// <summary>
-    /// All valid complementary pairs succeed.
+    /// S14: Verify buy↔sell and provide↔consume complementary pairs succeed.
+    /// Intent pairs in this suite: buy↔sell and provide↔consume only.
     /// </summary>
     [Theory]
     [InlineData("buy", "sell")]
     [InlineData("sell", "buy")]
     [InlineData("provide", "consume")]
     [InlineData("consume", "provide")]
-    [InlineData("rent", "rent")]
-    public async Task S14_AllComplementaryPairs_Succeed(string callerIntent, string counterpartyIntent)
+    public async Task S14_ComplementaryPairs_BuySellProvideConsume_Succeed(string callerIntent, string counterpartyIntent)
     {
         var (clientA, _, _) = await RegisterParticipantAsync($"A-{Guid.NewGuid():N}");
         var (_, subB, _) = await RegisterParticipantAsync($"B-{Guid.NewGuid():N}");
