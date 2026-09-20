@@ -42,6 +42,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 
 - [CEO-ORIGINAL-BRIEF.md](product/CEO-ORIGINAL-BRIEF.md) — **original** (verbatim CEO; already mirrored to GitHub `docs/product/`)
 - [PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — **processed summary** (Product-owned refresh; GitHub `docs/product/PRODUCT-BRIEF.md`; must stay distinct from original)
+- [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
+- [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
 
 ---
 
@@ -61,6 +63,10 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-11__cq__assessment__poc-participant-d6-auth-no-refactor.md](specs/2026-09-11__cq__assessment__poc-participant-d6-auth-no-refactor.md)
 - [2026-09-20__cq__assessment__poc-negotiation-d7-d10-no-refactor.md](specs/2026-09-20__cq__assessment__poc-negotiation-d7-d10-no-refactor.md) — CQ no-refactor #6 Negotiation D7–D10
 - [2026-09-20__spec__spec__poc-negotiation-offers-d7-d10.md](specs/2026-09-20__spec__spec__poc-negotiation-offers-d7-d10.md) — Spec #6 Negotiation + Offers D7–D10/P4
+- [2026-09-20__cq__assessment__poc-identity-seal-stub-no-refactor.md](specs/2026-09-20__cq__assessment__poc-identity-seal-stub-no-refactor.md) — CQ no-refactor #7 Identity-seal stub
+- [2026-09-20__spec__spec__poc-identity-seal-stub.md](specs/2026-09-20__spec__spec__poc-identity-seal-stub.md) — Spec #7 Identity-seal stub (opaque ids; Accept=state-only)
+- [2026-09-20__cq__assessment__poc-standing-l1-l3-posture-no-refactor.md](specs/2026-09-20__cq__assessment__poc-standing-l1-l3-posture-no-refactor.md) — CQ no-refactor #8 Standing L1–L3 posture (chore)
+- [2026-09-20__spec__spec__poc-standing-l1-l3-posture.md](specs/2026-09-20__spec__spec__poc-standing-l1-l3-posture.md) — Spec #8 Standing L1–L3 posture (LICENSE / public repo / hosted non-goal)
 ---
 
 ## plans/
@@ -74,6 +80,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-11__devplan__plan__poc-participant-d6-auth.md](plans/2026-09-11__devplan__plan__poc-participant-d6-auth.md) — Dev Plan #5 Participant/Auth D6
 - [BRIEF-1-SENIOR-MARKETING-PACKAGE.md](plans/marketing/BRIEF-1-SENIOR-MARKETING-PACKAGE.md)
 - [2026-09-20__devplan__plan__poc-negotiation-offers-d7-d10.md](plans/2026-09-20__devplan__plan__poc-negotiation-offers-d7-d10.md) — Dev Plan #6 Negotiation + Offers D7–D10/P4
+- [2026-09-20__devplan__plan__poc-identity-seal-stub.md](plans/2026-09-20__devplan__plan__poc-identity-seal-stub.md) — Dev Plan #7 Identity-seal stub
+- [2026-09-20__devplan__plan__poc-standing-l1-l3-posture.md](plans/2026-09-20__devplan__plan__poc-standing-l1-l3-posture.md) — Dev Plan #8 Standing L1–L3 posture (chore)
 
 ## qa/
 
@@ -82,6 +90,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-11__qa__qa-report__poc-artifact-d1-d5.md](qa/2026-09-11__qa__qa-report__poc-artifact-d1-d5.md) — Product QA report for Artifact D1–D5 (**PASS**; Sec10 closed via productqa-qa-confirm)
 - [2026-09-11__qa__qa-report__poc-participant-d6-auth.md](qa/2026-09-11__qa__qa-report__poc-participant-d6-auth.md) — Product QA report for Participant D6 auth (**PASS**; Sec10 closed via productqa-qa-confirm)
 - [2026-09-20__qa__qa-report__poc-negotiation-offers-d7-d10.md](qa/2026-09-20__qa__qa-report__poc-negotiation-offers-d7-d10.md) — Product QA report for Negotiation D7–D10 (**PASS**; Sec10 closed via productqa-qa-confirm)
+- [2026-09-20__qa__qa-report__poc-identity-seal-stub.md](qa/2026-09-20__qa__qa-report__poc-identity-seal-stub.md) — Product QA report for Identity-seal stub (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc step #7 PASS after Security handshake)
+- [2026-09-20__qa__qa-report__poc-standing-l1-l3-posture.md](qa/2026-09-20__qa__qa-report__poc-standing-l1-l3-posture.md) — Product QA report for Standing L1–L3 posture (#8 chore) (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc step #8 PASS after Security handshake)
 ---
 
 ## verification/
@@ -184,6 +194,44 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__security__verification__poc-negotiation-doc-qa-confirm.md](verification/2026-09-20__security__verification__poc-negotiation-doc-qa-confirm.md) — Security QA Doc #6 — PASS 10/10 (clears overall Doc HOLD)
 - [2026-09-20__security__verification__poc-negotiation-productqa-points-review.md](verification/2026-09-20__security__verification__poc-negotiation-productqa-points-review.md) — Product QA Security points-review #6 — PASS (catch-up)
 - [2026-09-20__ba__verification__poc-negotiation-offers-d7-d10.md](verification/2026-09-20__ba__verification__poc-negotiation-offers-d7-d10.md) — BA business verification of Negotiation D7–D10 (#6) — PASS (BAQA/CBA closed; issue done)
+- [2026-09-20__devplan__verification__poc-identity-seal-stub.md](verification/2026-09-20__devplan__verification__poc-identity-seal-stub.md) — Dev Plan QA verify of Identity-seal stub #7
+- [2026-09-20__sd__verification__poc-identity-seal-stub.md](verification/2026-09-20__sd__verification__poc-identity-seal-stub.md) — SD verification of Identity-seal stub #7
+- [2026-09-20__security__verification__poc-identity-seal-devplan-checklist.md](verification/2026-09-20__security__verification__poc-identity-seal-devplan-checklist.md) — Security checklist on Dev Plan #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-devplan-points-review.md](verification/2026-09-20__security__verification__poc-identity-seal-devplan-points-review.md) — Security points review on Dev Plan #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-devplan-qa-confirm.md](verification/2026-09-20__security__verification__poc-identity-seal-devplan-qa-confirm.md) — Security QA confirm on Dev Plan #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-doc-checklist.md](verification/2026-09-20__security__verification__poc-identity-seal-doc-checklist.md) — Security checklist on Doc #7 Identity-seal (**overall Doc step #7 PASS**; Security QA cleared via doc-qa-confirm)
+- [2026-09-20__security__verification__poc-identity-seal-productqa-checklist.md](verification/2026-09-20__security__verification__poc-identity-seal-productqa-checklist.md) — Security checklist on Product QA #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-productqa-points-review.md](verification/2026-09-20__security__verification__poc-identity-seal-productqa-points-review.md) — Product QA Security points-review #7 — present on disk (indexed; not invented)
+- [2026-09-20__security__verification__poc-identity-seal-productqa-qa-confirm.md](verification/2026-09-20__security__verification__poc-identity-seal-productqa-qa-confirm.md) — Security QA confirm on Product QA #7 Identity-seal (PASS; Sec10 closed)
+- [2026-09-20__security__verification__poc-identity-seal-sd-checklist.md](verification/2026-09-20__security__verification__poc-identity-seal-sd-checklist.md) — Security checklist on SD #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-sd-points-review.md](verification/2026-09-20__security__verification__poc-identity-seal-sd-points-review.md) — Security points review on SD #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-sd-qa-confirm.md](verification/2026-09-20__security__verification__poc-identity-seal-sd-qa-confirm.md) — Security QA confirm on SD #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-spec-checklist.md](verification/2026-09-20__security__verification__poc-identity-seal-spec-checklist.md) — Security checklist on Spec #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-spec-points-review.md](verification/2026-09-20__security__verification__poc-identity-seal-spec-points-review.md) — Security points review on Spec #7 Identity-seal
+- [2026-09-20__security__verification__poc-identity-seal-spec-qa-confirm.md](verification/2026-09-20__security__verification__poc-identity-seal-spec-qa-confirm.md) — Security QA confirm on Spec #7 Identity-seal
+- [2026-09-20__security__verification__research-12-00-et.md](verification/2026-09-20__security__verification__research-12-00-et.md)
+- [2026-09-20__spec__verification__poc-identity-seal-stub.md](verification/2026-09-20__spec__verification__poc-identity-seal-stub.md) — Spec verification of Identity-seal stub #7
+- [2026-09-20__security__verification__poc-identity-seal-doc-points-review.md](verification/2026-09-20__security__verification__poc-identity-seal-doc-points-review.md) — Security points-review Doc #7 — PASS 10/10
+- [2026-09-20__security__verification__poc-identity-seal-doc-qa-confirm.md](verification/2026-09-20__security__verification__poc-identity-seal-doc-qa-confirm.md) — Security QA Doc #7 — PASS 10/10 (clears overall Doc HOLD)
+- [2026-09-20__ba__verification__poc-identity-seal-stub.md](verification/2026-09-20__ba__verification__poc-identity-seal-stub.md)
+- [2026-09-20__devplan__verification__poc-standing-l1-l3-posture.md](verification/2026-09-20__devplan__verification__poc-standing-l1-l3-posture.md) — Dev Plan QA verify of Standing L1–L3 posture #8
+- [2026-09-20__sd__verification__poc-standing-l1-l3-posture.md](verification/2026-09-20__sd__verification__poc-standing-l1-l3-posture.md) — SD verification of Standing L1–L3 posture #8
+- [2026-09-20__security__verification__poc-l1-l3-posture-devplan-checklist.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-devplan-checklist.md) — Security checklist on Dev Plan #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-devplan-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-devplan-points-review.md) — Security points review on Dev Plan #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-devplan-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-devplan-qa-confirm.md) — Security QA confirm on Dev Plan #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-doc-checklist.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-checklist.md) — Security checklist on Doc #8 Standing L1–L3 (**overall Doc step #8 PASS**; Security QA cleared via doc-qa-confirm)
+- [2026-09-20__security__verification__poc-l1-l3-posture-productqa-checklist.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-checklist.md) — Security checklist on Product QA #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-productqa-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-points-review.md) — Product QA Security points-review #8 — present on disk (indexed; not invented)
+- [2026-09-20__security__verification__poc-l1-l3-posture-productqa-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-productqa-qa-confirm.md) — Security QA confirm on Product QA #8 Standing L1–L3 (PASS; Sec10 closed)
+- [2026-09-20__security__verification__poc-l1-l3-posture-sd-checklist.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-sd-checklist.md) — Security checklist on SD #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-sd-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-sd-points-review.md) — Security points review on SD #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-sd-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-sd-qa-confirm.md) — Security QA confirm on SD #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-spec-checklist.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-spec-checklist.md) — Security checklist on Spec #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-spec-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-spec-points-review.md) — Security points review on Spec #8 Standing L1–L3
+- [2026-09-20__security__verification__poc-l1-l3-posture-spec-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-spec-qa-confirm.md) — Security QA confirm on Spec #8 Standing L1–L3
+- [2026-09-20__spec__verification__poc-standing-l1-l3-posture.md](verification/2026-09-20__spec__verification__poc-standing-l1-l3-posture.md) — Spec verification of Standing L1–L3 posture #8
+- [2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md) — Security points-review Doc #8 — PASS 10/10
+- [2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md) — Security QA Doc #8 — PASS 10/10 (clears overall Doc HOLD)
 
 ## ops/
 
@@ -203,6 +251,15 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-19__ops__done-list__brief-1-baseline.md](ops/reports/2026-09-19__ops__done-list__brief-1-baseline.md)
 - [2026-09-19__ops__ops-report__brief-1-baseline.md](ops/reports/2026-09-19__ops__ops-report__brief-1-baseline.md)
 - [2026-09-19__ops__verification__brief-1-baseline.md](ops/reports/2026-09-19__ops__verification__brief-1-baseline.md)
+- [2026-09-20__ops__done-list__brief-2-performance.md](ops/reports/2026-09-20__ops__done-list__brief-2-performance.md)
+- [2026-09-20__ops__done-list__brief-3-6h-noon.md](ops/reports/2026-09-20__ops__done-list__brief-3-6h-noon.md)
+- [2026-09-20__ops__ops-note__pm-pipeline-visibility-and-cpm-15m-watch.md](ops/reports/2026-09-20__ops__ops-note__pm-pipeline-visibility-and-cpm-15m-watch.md)
+- [2026-09-20__ops__ops-note__team-performance-check-model.md](ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md)
+- [2026-09-20__ops__ops-report__brief-2-performance.md](ops/reports/2026-09-20__ops__ops-report__brief-2-performance.md)
+- [2026-09-20__ops__ops-report__brief-3-6h-noon.md](ops/reports/2026-09-20__ops__ops-report__brief-3-6h-noon.md)
+- [2026-09-20__ops__verification__brief-2-performance.md](ops/reports/2026-09-20__ops__verification__brief-2-performance.md)
+- [2026-09-20__docs__ops__poc-identity-seal-doc-security-weave.md](ops/2026-09-20__docs__ops__poc-identity-seal-doc-security-weave.md) — Doc Security weave pts 1–10 for Identity-seal #7 (**overall Doc step #7 PASS**; Security QA cleared HOLD)
+- [2026-09-20__docs__ops__poc-l1-l3-posture-doc-security-weave.md](ops/2026-09-20__docs__ops__poc-l1-l3-posture-doc-security-weave.md) — Doc Security weave pts 1–10 for Standing L1–L3 #8 (**overall Doc step #8 PASS**; Security QA cleared HOLD)
 
 
 ## meta/
