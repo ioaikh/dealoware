@@ -75,7 +75,24 @@ public class NegotiationEndpointTests : IClassFixture<WebApplicationFactory<Prog
     [InlineData("sell", "buy")]
     [InlineData("provide", "consume")]
     [InlineData("consume", "provide")]
-    [InlineData("rent", "rent")]
+    [InlineData("rent", "rent out")]
+    [InlineData("rent out", "rent")]
+    [InlineData("lease", "lease out")]
+    [InlineData("lease out", "lease")]
+    [InlineData("borrow", "lend")]
+    [InlineData("lend", "borrow")]
+    [InlineData("see", "show")]
+    [InlineData("show", "see")]
+    [InlineData("visit", "host")]
+    [InlineData("host", "visit")]
+    [InlineData("attend", "present")]
+    [InlineData("present", "attend")]
+    [InlineData("access", "grant")]
+    [InlineData("grant", "access")]
+    [InlineData("subscribe", "publish")]
+    [InlineData("publish", "subscribe")]
+    [InlineData("seek", "offer")]
+    [InlineData("offer", "seek")]
     public async Task CreateNegotiation_AllComplementaryPairs_Succeed(string callerIntent, string counterpartyIntent)
     {
         var (clientA, _, _) = await CreateAuthenticatedClientAsync($"neg-pair-a-{Guid.NewGuid()}");
@@ -103,6 +120,9 @@ public class NegotiationEndpointTests : IClassFixture<WebApplicationFactory<Prog
     [InlineData("buy", "provide")]
     [InlineData("sell", "consume")]
     [InlineData("provide", "provide")]
+    [InlineData("rent", "rent")]
+    [InlineData("lease", "lease")]
+    [InlineData("see", "visit")]
     public async Task CreateNegotiation_NonComplementaryIntents_Returns400(string callerIntent, string counterpartyIntent)
     {
         var (clientA, _, _) = await CreateAuthenticatedClientAsync($"neg-noncomp-a-{Guid.NewGuid()}");

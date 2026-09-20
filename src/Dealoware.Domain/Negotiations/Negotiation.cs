@@ -115,7 +115,7 @@ public sealed class Negotiation
         if (!string.IsNullOrWhiteSpace(partyAIntent) && 
             !string.IsNullOrWhiteSpace(partyBIntent) &&
             !IntentComplement.AreComplementary(partyAIntent, partyBIntent))
-            errors.Add($"Intents are not complementary: '{partyAIntent}' and '{partyBIntent}'. Valid pairs: buy↔sell, provide↔consume, rent↔rent");
+            errors.Add($"Intents are not complementary: '{partyAIntent}' and '{partyBIntent}'. See Complementary Intent Pairs in product documentation.");
 
         if (startsAt.HasValue && endsAt.HasValue && startsAt.Value >= endsAt.Value)
             errors.Add("EndsAt must be after StartsAt");
