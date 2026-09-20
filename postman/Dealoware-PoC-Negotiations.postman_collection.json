@@ -1433,7 +1433,7 @@
 					"response": []
 				},
 				{
-					"name": "S14.2 Rent ↔ Rent Negotiation",
+					"name": "S14.2 Rent ↔ Rent Out Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1443,13 +1443,13 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
-									"pm.test(\"Intents are rent/rent\", function () {",
+									"pm.test(\"Intents are rent out/rent\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData.partyAIntent).to.eql('rent');",
+									"    pm.expect(jsonData.partyAIntent).to.eql('rent out');",
 									"    pm.expect(jsonData.partyBIntent).to.eql('rent');",
 									"});",
 									"",
-									"console.log(\"Rent/Rent negotiation created\");"
+									"console.log(\"Rent Out/Rent negotiation created\");"
 								],
 								"type": "text/javascript"
 							}
@@ -1469,19 +1469,19 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"rent\",\n  \"counterpartyIntent\": \"rent\"\n}"
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"rent out\",\n  \"counterpartyIntent\": \"rent\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/negotiations",
 							"host": ["{{baseUrl}}"],
 							"path": ["negotiations"]
 						},
-						"description": "Create negotiation with rent ↔ rent intents (bidirectional rental)."
+						"description": "Create negotiation with rent out ↔ rent intents (landlord offering, tenant seeking)."
 					},
 					"response": []
 				}
 			],
-			"description": "**S14:** Alternative complementary intent pairs.\n\n- Provide ↔ Consume (service)\n- Rent ↔ Rent (bidirectional)\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "**S14:** Alternative complementary intent pairs.\n\n- Provide ↔ Consume (service)\n- Rent Out ↔ Rent (landlord ↔ tenant)\n\nSee product docs for full catalog of ~40 intent tokens across 20 directional pairs.\n\n**Prerequisite:** Run 01-Bootstrap first."
 		}
 	]
 }

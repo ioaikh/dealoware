@@ -32,15 +32,90 @@ This document catalogs all negotiation scenarios for the Dealoware PoC, mapping 
 
 ## Complementary Intent Pairs
 
-Negotiations require complementary intents between the two parties:
+Negotiations require complementary intents between the two parties. All pairs are **directional**: one party expresses a seeker/acquirer intent, and the counterparty expresses the complementary provider/offerer intent.
 
-| Caller Intent | Counterparty Intent | Use Case |
-|---------------|---------------------|----------|
+For example:
+- A buyer (`buy`) negotiates with a seller (`sell`)
+- A tenant seeking to rent (`rent`) negotiates with a landlord offering to rent out (`rent out`)
+- A visitor (`visit`) negotiates with a host (`host`)
+
+**PoC Implementation Note:** Complementarity is a case-insensitive string match. The catalog below documents the recognized PoC pairs; this is not a closed enum but a documented catalog for the PoC phase.
+
+### Directional Pairs Catalog (~40 Intent Tokens)
+
+#### Commerce/Goods
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
 | `buy` | `sell` | Product purchase |
-| `sell` | `buy` | Product sale |
-| `provide` | `consume` | Service offering |
-| `consume` | `provide` | Service seeking |
-| `rent` | `rent` | Rental (bidirectional) |
+| `order` | `fulfill` | E-commerce / fulfillment |
+| `acquire` | `dispose` | Asset transfer |
+| `import` | `export` | International trade |
+
+#### Services
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `consume` | `provide` | Service consumption (e.g., consulting) |
+| `receive` | `deliver` | Delivery services (packages, food) |
+| `commission` | `perform` | Creative/professional work (art, gigs) |
+
+#### Rentals & Temporary Use
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `rent` | `rent out` | Short-term rental (apartment, car) |
+| `lease` | `lease out` | Long-term lease (commercial space, equipment) |
+| `borrow` | `lend` | Temporary possession (tools, books) |
+| `hire` | `hire out` | Equipment/vehicle hire (crane, boat) |
+
+#### Hospitality & Space
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `visit` | `host` | Hospitality (guest ↔ host) |
+| `stay` | `accommodate` | Lodging (traveler ↔ property) |
+| `book` | `list` | Reservations (booker ↔ listing owner) |
+
+#### Attention & Visibility
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `see` | `show` | Demos, showings, viewings |
+| `watch` | `stream` | Video/live streaming content |
+| `attend` | `present` | Events, presentations, conferences |
+
+#### Access & Permissions
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `access` | `grant` | Permission-based access (API, facility) |
+| `subscribe` | `publish` | Content subscriptions (newsletters, feeds) |
+
+#### General
+
+| Seeker Intent | Provider Intent | Use Case |
+|---------------|-----------------|----------|
+| `seek` | `offer` | General-purpose negotiation fallback |
+
+### Summary
+
+The catalog contains **40 unique intent tokens** across **20 directional pairs**. Both directions of each pair are valid:
+- `buy` ↔ `sell` works as either `callerIntent: "buy", counterpartyIntent: "sell"` or vice versa.
+- Intents like `rent` and `rent out` are distinct tokens — `rent` ↔ `rent` is **not** valid; use `rent` ↔ `rent out`.
+
+### MVP+ (Future — Document Only)
+
+**Not implemented in PoC.** In MVP+, an intent may have multiple valid complements to support richer matching scenarios:
+
+| Intent | Potential Complements | Scenario |
+|--------|----------------------|----------|
+| `visit` | `host`, `transport`, `show` | A visitor might negotiate with a host (lodging), a transport provider, or someone offering a tour/showing |
+| `attend` | `present`, `host`, `stream` | An attendee might negotiate with a presenter, event host, or streaming provider |
+
+**Future matching concern:** Weighted complement ranking `{intent, complementary-intent, weight}` may be needed to prioritize matches when multiple complements are valid. This is out of scope for PoC.
+
+**PoC constraint:** Each intent has exactly **one** complement (1:1 exclusive pairs). The runtime enforces this; multi-complement matching is deferred to MVP+.
 
 ---
 
@@ -310,7 +385,7 @@ Negotiations require complementary intents between the two parties:
   "title": "One or more validation errors occurred.",
   "status": 400,
   "errors": {
-    "errors": ["Intents are not complementary: 'sell' and 'sell'. Valid pairs: buy↔sell, provide↔consume, rent↔rent"]
+    "errors": ["Intents are not complementary: 'sell' and 'sell'. See Complementary Intent Pairs in product documentation."]
   }
 }
 ```
@@ -414,23 +489,43 @@ Negotiations require complementary intents between the two parties:
 
 ---
 
-### S14: Optional — Provide ↔ Consume and Rent ↔ Rent
+### S14: Optional — Alternative Intent Pairs
 
-**Goal:** Verify alternative complementary intent pairs work.
+**Goal:** Verify various complementary intent pairs work beyond buy/sell.
 
-**Actors:** Provider, Consumer
+**Actors:** Various (see each sub-scenario)
 
-#### Provide ↔ Consume (Service)
+#### S14.1: Provide ↔ Consume (Service)
 
 | Step | Method | Endpoint | Auth | Body | Expected |
 |------|--------|----------|------|------|----------|
 | 14.1 | POST | `/negotiations` | Provider | `callerIntent: "provide"`, `counterpartyIntent: "consume"` | 201 |
 
-#### Rent ↔ Rent (Bidirectional)
+#### S14.2: Rent ↔ Rent Out (Rental)
 
 | Step | Method | Endpoint | Auth | Body | Expected |
 |------|--------|----------|------|------|----------|
-| 14.2 | POST | `/negotiations` | Landlord | `callerIntent: "rent"`, `counterpartyIntent: "rent"` | 201 |
+| 14.2 | POST | `/negotiations` | Landlord | `callerIntent: "rent out"`, `counterpartyIntent: "rent"` | 201 |
+
+**Note:** `rent` ↔ `rent` is NOT valid. Use `rent` (tenant seeking) ↔ `rent out` (landlord offering).
+
+#### S14.3: See ↔ Show (Viewing/Demo)
+
+| Step | Method | Endpoint | Auth | Body | Expected |
+|------|--------|----------|------|------|----------|
+| 14.3 | POST | `/negotiations` | Viewer | `callerIntent: "see"`, `counterpartyIntent: "show"` | 201 |
+
+#### S14.4: Lease ↔ Lease Out (Long-term)
+
+| Step | Method | Endpoint | Auth | Body | Expected |
+|------|--------|----------|------|------|----------|
+| 14.4 | POST | `/negotiations` | Tenant | `callerIntent: "lease"`, `counterpartyIntent: "lease out"` | 201 |
+
+#### S14.5: Visit ↔ Host (Hospitality)
+
+| Step | Method | Endpoint | Auth | Body | Expected |
+|------|--------|----------|------|------|----------|
+| 14.5 | POST | `/negotiations` | Guest | `callerIntent: "visit"`, `counterpartyIntent: "host"` | 201 |
 
 ---
 

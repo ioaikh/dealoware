@@ -245,13 +245,25 @@ curl -X POST http://localhost:5287/negotiations \
 ```
 
 **Complementary Intent Pairs (PoC):**
-| Caller Intent | Counterparty Intent | Use Case |
-|--------------|---------------------|----------|
+
+The PoC supports ~40 intent tokens across 20 directional pairs. Common examples:
+
+| Seeker Intent | Provider Intent | Use Case |
+|--------------|-----------------|----------|
 | buy | sell | Product purchase |
-| sell | buy | Product sale |
-| provide | consume | Service offering |
-| consume | provide | Service seeking |
-| rent | rent | Rental (bidirectional) |
+| order | fulfill | E-commerce |
+| consume | provide | Service consumption |
+| rent | rent out | Short-term rental |
+| lease | lease out | Long-term lease |
+| borrow | lend | Temporary possession |
+| visit | host | Hospitality |
+| see | show | Demos/viewings |
+| attend | present | Events |
+| access | grant | Permissions |
+| subscribe | publish | Content subscriptions |
+| seek | offer | General fallback |
+
+See [Complementary Intent Pairs](docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md#complementary-intent-pairs) for the full catalog.
 
 #### Get Negotiation
 
