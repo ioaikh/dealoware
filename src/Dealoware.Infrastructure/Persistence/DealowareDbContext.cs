@@ -1,4 +1,5 @@
 using Dealoware.Domain.Artifacts;
+using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,9 @@ public class DealowareDbContext : DbContext
     public DbSet<Participant> Participants => Set<Participant>();
     public DbSet<ApiKeyCredential> ApiKeyCredentials => Set<ApiKeyCredential>();
     public DbSet<RevokedToken> RevokedTokens => Set<RevokedToken>();
+
+    public DbSet<Negotiation> Negotiations => Set<Negotiation>();
+    public DbSet<Offer> Offers => Set<Offer>();
 
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
@@ -33,5 +37,8 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ParticipantEntityConfiguration());
         modelBuilder.ApplyConfiguration(new ApiKeyCredentialEntityConfiguration());
         modelBuilder.ApplyConfiguration(new RevokedTokenEntityConfiguration());
+
+        modelBuilder.ApplyConfiguration(new NegotiationEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new OfferEntityConfiguration());
     }
 }
