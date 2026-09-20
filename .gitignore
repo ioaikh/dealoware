@@ -55,3 +55,7 @@ TestResult.xml
 # Windows
 Thumbs.db
 ehthumbs.db
+
+# Node.js (Newman/Postman tests)
+node_modules/
+package-lock.json

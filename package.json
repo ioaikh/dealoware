@@ -1,0 +1,17 @@
+{
+  "name": "dealoware-tests",
+  "version": "1.0.0",
+  "description": "Dealoware PoC test dependencies (Newman for Postman collection)",
+  "private": true,
+  "scripts": {
+    "test:newman": "./scripts/run-newman.sh",
+    "test:newman:bail": "./scripts/run-newman.sh --bail"
+  },
+  "devDependencies": {
+    "newman": "^6.0.0",
+    "newman-reporter-htmlextra": "^1.23.1"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
