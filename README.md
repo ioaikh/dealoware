@@ -410,6 +410,18 @@ curl http://localhost:5287/negotiations/$NEGOTIATION_ID \
   -H "Authorization: ApiKey $API_KEY_A" | jq
 ```
 
+#### PoC Playbook
+
+For comprehensive scenario coverage and interactive testing:
+
+- **[PoC Negotiation Scenarios](docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md)** — Full catalog of happy paths, error cases, and edge cases with expected outcomes
+- **[Postman Collection](postman/Dealoware-PoC-Negotiations.postman_collection.json)** — Import into Postman to run scenarios interactively
+
+**Quick Postman Setup:**
+1. Import: File → Import → `postman/Dealoware-PoC-Negotiations.postman_collection.json`
+2. Set `baseUrl` variable if not `http://localhost:5287`
+3. Run folders in order: `01-Bootstrap` → `02-Happy-Path-Deal` → etc.
+
 #### Negotiation Error Responses
 
 - **401 Unauthorized**: Missing or invalid `Authorization` header
@@ -515,6 +527,8 @@ The optional `Dockerfile` is for local `docker build`/`docker run` only — not 
 ## Docs
 
 - [Product brief](docs/product/PRODUCT-BRIEF.md)
+- [PoC Negotiation Scenarios](docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
+- [Postman Collection](postman/Dealoware-PoC-Negotiations.postman_collection.json)
 - [Contributing](CONTRIBUTING.md)
 
 ## License
