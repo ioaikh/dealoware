@@ -9,3 +9,5 @@
 **Naming:** `YYYY-MM-DD__sa__architecture__{slug}.md`
 
 **Index:** [../INDEX.md](../INDEX.md) · Flow: [../meta/DOC-FLOW.md](../meta/DOC-FLOW.md)
+
+- [2026-09-20 PoC post-delivery review](2026-09-20__sa__architecture__poc-post-delivery-review.md) — Chief Architect PASS (post-milestone gate)
