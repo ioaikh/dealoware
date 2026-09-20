@@ -130,7 +130,7 @@ Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be t
 ### Related
 - Ops performance model: `ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md`
 
-## Post-milestone SA architecture review (CEO 2026-09-20)
+## SA architecture reviews (CEO 2026-09-20; gaps locked 2026-09-20)
 
 After any **significant delivery milestone** (examples: PoC complete, MVP slice complete, major epic closed, host/shape change shipped), **CPM must route an SA Team architecture review** before the next phase unlock. Spec citing old architecture ≠ SA ownership.
 
@@ -151,10 +151,29 @@ After any **significant delivery milestone** (examples: PoC complete, MVP slice 
 ### Gate
 - Next phase / next epic unlock is **HOLD** until Chief Architect PASS (Architecture QA confirm) **or** CEO answers SA’s escalations.
 - Security handshake applies on this SA step (critical Architecture gate).
-- First instance: **PoC #3–#8 closed 2026-09-20** — SA review required before MVP unlock (#18 and later).
+- First instance: **PoC #3–#8 closed 2026-09-20** — SA review **PASS** 2026-09-20 (CEO escalations none). **#18 / MVP unlock remains CEO gate** (not unlocked by this section).
+
+### Proposed review moments (SA-owned timing)
+- During the **SA architecture phase** for a Story/epic/phase, **Chief Architect must propose named review moments** (milestones/stages) in the architecture options / stage plan and hand them to **CPM** for scheduling.
+- Post-milestone review remains **mandatory** when a significant milestone closes (CPM declares or CEO names) — that is the floor; SA-proposed moments are additive.
+
+### GitHub issue = system of record
+- **PM** files **one GitHub issue per SA architecture-review**, linked to the milestone/phase (parent Stories / milestone).
+- Labels include `gate:sa-arch-review` (plus stage/milestone and normal status labels).
+- PM Team channel mirror on every status flip; when the review issue enters the pipeline, **CPM arms a 15-minute delivery watch** (CPM-hosted) and deletes it on CLOSE — Bot Manager audits arm/delete only.
+
+### CPM end-of-day miss-check
+- Daily (America/New_York), **CPM** verifies: (i) any new SA-proposed review moments since last EOD; (ii) each has a GitHub issue with `gate:sa-arch-review`.
+- If a moment exists without an issue: PRIORITY-nudge SA/PM to file it the same day.
+- Ops 6h sample may flag missing review issues as secondary evidence only — does **not** replace CPM EOD ownership.
+
+### Stage-split for large/long work
+- **SA must split** long/large architecture work into **stages**; each stage gets its own architecture review (same deliverable shape: intent / deviations / fit / plan-or-escalate) so corrections apply to remaining stages.
+- Next-stage unlock is **HOLD** until Chief Architect PASS (Architecture QA + Security handshake) or CEO answers escalations.
 
 ### Related
 - Binding PoC SA baselines: `architecture/2026-09-10__sa__architecture__poc-feasibility-roadmap.md`, `architecture/2026-09-10__sa__architecture__poc-o10-scaffold.md`
+- COO lock note: `ops/reports/2026-09-20__ops__ops-note__sa-arch-review-process-gaps-lock.md`
 
 ## Marketing Team (CEO 2026-09-10)
 - Triad: Chief Marketing / Senior Marketing / Marketing QA.
