@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **HOLD** — overall Doc step #6 PASS deferred until Security QA doc-qa-confirm (points-review + qa-confirm indexed) |
+| **Status** | **Overall Doc step #6 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-20 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #6 · 1:1 Negotiation + Offers (D7–D9, P4 + D10) |
@@ -33,11 +33,11 @@ Mapped strictly to `verification/2026-09-20__security__verification__poc-negotia
 | 7 | D10 expiration | README D10: `endsAt` → Expired; open offers Cancelled; post-expiry writes → 409; GET still works for party. Weave restates. Product QA Sec confirm MET pt7. |
 | 8 | No contact/PII on Accept | README Accept returns offer status **Accepted** (state only). Docs explicitly defer contact exchange / identity reveal to **#7 backlog**; no contact-on-Accept as delivered. #8 backlog. Product QA Sec confirm MET pt8. |
 | 9 | Secrets / host / OUT | README uses placeholder ApiKey examples (`dlw_AbCdEfGh_...`); `Authorization` header only (not query/body); localhost PoC; no Cognito/SSO/settlement/MM how-tos as delivered. ECS Express = host sketch only. Product QA Sec confirm MET pt9. |
-| 10 | Handshake close | **Docs QA must not overall-PASS** until Security QA confirms these points. Handshake not yet indexed for Doc step (await points-review + doc-qa-confirm). Overall Doc step #6 remains **HOLD**. |
+| 10 | Handshake close | Handshake indexed: checklist + points-review + doc-qa-confirm. Security QA PASS 10/10 — Docs QA may overall-PASS. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step — already closed)
 - `verification/2026-09-20__security__verification__poc-negotiation-productqa-checklist.md`
 - `verification/2026-09-20__security__verification__poc-negotiation-productqa-qa-confirm.md` (PASS; all 10 MET)
 
-## HOLD (do not claim overall PASS)
-**Overall Doc-step #6 PASS = HOLD** until Security QA indexes Doc handshake (`…poc-negotiation-doc-points-review.md` + `…poc-negotiation-doc-qa-confirm.md`). Keep separate from #4 Artifact and #5 auth. #7–#8 backlog.
+## PASS
+**Overall Doc-step #6 PASS** — Security QA confirm `verification/2026-09-20__security__verification__poc-negotiation-doc-qa-confirm.md` (pts 1–10 MET); Senior Security points-review `verification/2026-09-20__security__verification__poc-negotiation-doc-points-review.md` (PASS 10/10). Mirror: https://github.com/ioaikh/dealoware/pull/16. Keep separate from #4 Artifact and #5 auth. No contact-on-Accept; #7–#8 backlog; PoC $0.
