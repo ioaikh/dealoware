@@ -214,6 +214,209 @@ curl http://localhost:5287/health
 - **400 Bad Request**: Validation errors (e.g., missing entities, duplicate currency)
 - **404 Not Found**: Artifact not found or not owned by requester (authn ≠ authz)
 
+### Negotiation API (PoC - D7-D10)
+
+The Negotiation API enables 1:1 negotiations between two participants around an Artifact.
+
+**Key Concepts:**
+- **1:1 Negotiations**: Exactly two parties (partyA and partyB) negotiate around exactly one Artifact
+- **Complementary Intents**: Parties must have complementary intents (buy↔sell, provide↔consume, rent↔rent)
+- **Offers**: Each party can place offers; one open offer per side at a time
+- **Accept/Decline/Counter**: Only the offer recipient (toParticipantId) can accept, decline, or counter
+
+**Authentication:** All negotiation/offer endpoints require a valid `Authorization` header (fail-closed). Non-party requests return 404 (no information leak).
+
+#### Create Negotiation (D7)
+
+```bash
+curl -X POST http://localhost:5287/negotiations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..." \
+  -d '{
+    "artifactId": "artifact-uuid-here",
+    "counterpartyParticipantId": "participant:other-uuid",
+    "callerIntent": "sell",
+    "counterpartyIntent": "buy",
+    "startsAt": "2026-09-20T00:00:00Z",
+    "endsAt": "2026-09-30T23:59:59Z"
+  }'
+# Returns 201 with negotiation including status "Open"
+# Caller = partyA (from principal sub), counterparty = partyB
+```
+
+**Complementary Intent Pairs (PoC):**
+| Caller Intent | Counterparty Intent | Use Case |
+|--------------|---------------------|----------|
+| buy | sell | Product purchase |
+| sell | buy | Product sale |
+| provide | consume | Service offering |
+| consume | provide | Service seeking |
+| rent | rent | Rental (bidirectional) |
+
+#### Get Negotiation
+
+```bash
+curl http://localhost:5287/negotiations/{negotiation-id} \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+# Returns 200 with negotiation + embedded offers (if party)
+# Returns 404 if not found or not a party (no leak)
+```
+
+#### Place Offer (D8 - P4)
+
+```bash
+curl -X POST http://localhost:5287/negotiations/{negotiation-id}/offers \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..." \
+  -d '{
+    "amount": 1500.00,
+    "currency": "USD",
+    "terms": "Payment within 30 days"
+  }'
+# Returns 201 with offer status "Open"
+# Caller = fromParticipantId, other party = toParticipantId
+# 400 if caller already has an open offer (one-open-per-side)
+# 409 if negotiation is Closed or Expired
+```
+
+#### Accept Offer (D8)
+
+```bash
+curl -X POST http://localhost:5287/offers/{offer-id}/accept \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+# Returns 200 with offer status "Accepted"
+# All other open offers in negotiation → Cancelled
+# Caller must be offer's toParticipantId (recipient)
+# NO contact/PII in response — see #7 for contact exchange
+```
+
+#### Decline Offer (D8)
+
+```bash
+curl -X POST http://localhost:5287/offers/{offer-id}/decline \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+# Returns 200 with offer status "Declined"
+# Caller must be offer's toParticipantId (recipient)
+```
+
+#### Counter Offer (D8)
+
+```bash
+curl -X POST http://localhost:5287/offers/{offer-id}/counter \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..." \
+  -d '{
+    "amount": 1300.00,
+    "currency": "USD",
+    "terms": "Revised terms"
+  }'
+# Returns 201 with new counter-offer status "Open"
+# Prior offer → "Superseded"
+# Caller must be offer's toParticipantId (recipient)
+# 400 if caller already has another open offer
+```
+
+#### Close Negotiation (D9)
+
+```bash
+curl -X POST http://localhost:5287/negotiations/{negotiation-id}/close \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..."
+# Returns 200 with negotiation status "Closed"
+# ALL open offers → Cancelled
+# Post-close mutations → 409 Conflict
+```
+
+#### Negotiation Expiration (D10)
+
+If `endsAt` is set on a negotiation and the current time exceeds it, the negotiation automatically becomes **Expired** on any mutating operation (or GET):
+
+- **Expired negotiations**: All open offers → Cancelled
+- **Post-expiry mutations**: place/accept/decline/counter/close → 409 Conflict
+- **GET still works**: Party can still view the expired negotiation
+
+```bash
+# Creating a negotiation with expiration
+curl -X POST http://localhost:5287/negotiations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey dlw_AbCdEfGh_..." \
+  -d '{
+    "artifactId": "artifact-uuid",
+    "counterpartyParticipantId": "participant:uuid",
+    "callerIntent": "sell",
+    "counterpartyIntent": "buy",
+    "endsAt": "2026-09-25T23:59:59Z"
+  }'
+```
+
+#### Exercise Full Negotiation Flow
+
+```bash
+# 1. Register two participants
+PARTICIPANT_A=$(curl -s -X POST http://localhost:5287/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": "Seller"}')
+API_KEY_A=$(echo $PARTICIPANT_A | jq -r '.apiKey')
+SUB_A=$(echo $PARTICIPANT_A | jq -r '.sub')
+
+PARTICIPANT_B=$(curl -s -X POST http://localhost:5287/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": "Buyer"}')
+API_KEY_B=$(echo $PARTICIPANT_B | jq -r '.apiKey')
+SUB_B=$(echo $PARTICIPANT_B | jq -r '.sub')
+
+# 2. Create an artifact (seller)
+ARTIFACT=$(curl -s -X POST http://localhost:5287/artifacts \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey $API_KEY_A" \
+  -d '{
+    "entities": [{"name": "Used Car", "description": "2020 Toyota Camry"}],
+    "intent": "sell",
+    "values": [{"amount": 22000, "currency": "USD"}]
+  }')
+ARTIFACT_ID=$(echo $ARTIFACT | jq -r '.id')
+
+# 3. Create a negotiation (seller initiates)
+NEGOTIATION=$(curl -s -X POST http://localhost:5287/negotiations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey $API_KEY_A" \
+  -d "{
+    \"artifactId\": \"$ARTIFACT_ID\",
+    \"counterpartyParticipantId\": \"$SUB_B\",
+    \"callerIntent\": \"sell\",
+    \"counterpartyIntent\": \"buy\"
+  }")
+NEGOTIATION_ID=$(echo $NEGOTIATION | jq -r '.id')
+
+# 4. Seller places first offer
+OFFER_A=$(curl -s -X POST http://localhost:5287/negotiations/$NEGOTIATION_ID/offers \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey $API_KEY_A" \
+  -d '{"amount": 22000, "currency": "USD", "terms": "Cash only"}')
+OFFER_A_ID=$(echo $OFFER_A | jq -r '.id')
+
+# 5. Buyer counters
+COUNTER=$(curl -s -X POST http://localhost:5287/offers/$OFFER_A_ID/counter \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey $API_KEY_B" \
+  -d '{"amount": 18000, "currency": "USD", "terms": "Financing available"}')
+COUNTER_ID=$(echo $COUNTER | jq -r '.id')
+
+# 6. Seller accepts the counter
+curl -X POST http://localhost:5287/offers/$COUNTER_ID/accept \
+  -H "Authorization: ApiKey $API_KEY_A"
+
+# 7. View final negotiation state
+curl http://localhost:5287/negotiations/$NEGOTIATION_ID \
+  -H "Authorization: ApiKey $API_KEY_A" | jq
+```
+
+#### Negotiation Error Responses
+
+- **401 Unauthorized**: Missing or invalid `Authorization` header
+- **400 Bad Request**: Non-complementary intents, same party A and B, already has open offer
+- **404 Not Found**: Negotiation/Offer not found OR caller is not a party (no information leak)
+- **409 Conflict**: Negotiation Closed/Expired, offer not Open, illegal state transition
+
 ### Project Structure
 
 ```
