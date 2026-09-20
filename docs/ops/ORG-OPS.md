@@ -109,6 +109,27 @@ Security is woven into **every critical step** below — not Chief-only review.
 Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be thin); they do **not** skip the handshake.
 
 
+## PM pipeline ownership + visibility (CEO 2026-09-20)
+
+### Channel mirror (closes Ops Brief #2 gap)
+- All Story pipeline routing remains **through PM** (CPM owns).
+- For every Story status flip (`in-dev` / `cq-pending` / `ready-for-ba-verify` / `done` / Spec·DevPlan·SD·QA·CQ·Doc unlock/close), **CPM or Senior PM** posts a short pointer in the **PM Team channel**: issue link + label + next triad + **evidence pointer** (PR URL, commit SHA, or DOC-FLOW path).
+- GitHub remains system of record; the PM channel is the Ops-auditable twin. No “working on it” without evidence.
+
+### Evidence-gated status language
+- Bot Manager / CPM / Chiefs must **not** equate intake or chat with delivery.
+- Say **in progress** only with a **fresh evidence artifact ≤ ~60–90 minutes** (new commit, undraft PR, or gate PASS file). Otherwise: `assigned` / `waiting on <named owner>` / `stalled since <time>`.
+
+### CPM 15-minute delivery watches (mandatory while in pipeline)
+- When a Story **enters the development pipeline** (leaves backlog into Spec→…→BA), **CPM is personally responsible** for pushing it through to close.
+- At pipeline entry, CPM asks Bot Manager to **arm a 15-minute evidence-based delivery watch** for that issue (pattern proven on #6).
+- Each tick: check **what actually landed** (commits/PR/gates), PRIORITY-nudge the owning gate if stalled, keep PM channel mirror current, notify CEO only on material flips or named blockers.
+- When the issue is **CLOSED** with `status:done`, CPM asks Bot Manager to **delete that issue’s 15-minute watch**.
+- Bot Manager hosts the cron wake; **accountability stays with CPM**. Do not invent a second COO ops-review routine.
+
+### Related
+- Ops performance model: `ops/reports/2026-09-20__ops__ops-note__team-performance-check-model.md`
+
 ## Marketing Team (CEO 2026-09-10)
 - Triad: Chief Marketing / Senior Marketing / Marketing QA.
 - Aligns GTM/public positioning to **Product** (claims lock via Chief Product before publish).
