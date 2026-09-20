@@ -1,0 +1,1487 @@
+{
+	"info": {
+		"_postman_id": "dealoware-poc-negotiations",
+		"name": "Dealoware PoC — Negotiations",
+		"description": "End-to-end negotiation scenarios for the Dealoware PoC.\n\nSee companion documentation: [docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md](../docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md)\n\n## Quick Start\n\n1. Ensure API is running: `dotnet run --project src/Dealoware.Api`\n2. Verify: GET `{{baseUrl}}/health` → `{\"status\":\"ok\"}`\n3. Run folders in order: 01-Bootstrap → 02-Happy-Path-Deal → etc.\n\n## Variables\n\nThe collection auto-captures credentials and IDs via Tests scripts. If running individual requests, ensure prerequisite variables are set.\n\n## Authentication\n\nAll protected endpoints use `Authorization: ApiKey {{...ApiKey}}`",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5287",
+			"type": "string"
+		},
+		{
+			"key": "sellerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "buyerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "sellerSub",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "buyerSub",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "observerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "observerSub",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "artifactId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "negotiationId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "offerId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "counterOfferId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "00-Health-Check",
+			"item": [
+				{
+					"name": "Health Check (No Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has status ok\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql(\"ok\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Verify the API is running. No authentication required."
+					},
+					"response": []
+				}
+			],
+			"description": "Verify the API is running before starting scenarios."
+		},
+		{
+			"name": "01-Bootstrap",
+			"item": [
+				{
+					"name": "S1.1 Register Seller",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has required fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"    pm.expect(jsonData).to.have.property('displayName');",
+									"});",
+									"",
+									"// Save credentials to collection variables",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"sellerApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"sellerSub\", jsonData.sub);",
+									"",
+									"console.log(\"Seller registered - Sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Seller\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register the Seller participant. Captures `sellerApiKey` and `sellerSub`."
+					},
+					"response": []
+				},
+				{
+					"name": "S1.2 Register Buyer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has required fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"});",
+									"",
+									"// Save credentials to collection variables",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"buyerApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"buyerSub\", jsonData.sub);",
+									"",
+									"console.log(\"Buyer registered - Sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Buyer\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register the Buyer participant. Captures `buyerApiKey` and `buyerSub`."
+					},
+					"response": []
+				},
+				{
+					"name": "S2.1 Create Sell Artifact (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has artifact id\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData.intent).to.eql('sell');",
+									"});",
+									"",
+									"// Save artifact ID",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"artifactId\", jsonData.id);",
+									"",
+									"console.log(\"Artifact created - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"entities\": [\n    {\n      \"name\": \"2020 Toyota Camry\",\n      \"description\": \"Well-maintained sedan, single owner\",\n      \"properties\": [\n        {\"name\": \"mileage\", \"type\": \"number\", \"value\": \"45000\"},\n        {\"name\": \"color\", \"type\": \"string\", \"value\": \"silver\"}\n      ],\n      \"facts\": [\"Clean title\", \"Regular maintenance\"]\n    }\n  ],\n  \"intent\": \"sell\",\n  \"values\": [{\"amount\": 22000.00, \"currency\": \"USD\"}],\n  \"locations\": [\"Los Angeles, CA\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/artifacts",
+							"host": ["{{baseUrl}}"],
+							"path": ["artifacts"]
+						},
+						"description": "Seller creates an artifact representing a car for sale. Captures `artifactId`."
+					},
+					"response": []
+				}
+			],
+			"description": "**S1-S2:** Register Seller and Buyer participants, create a sell artifact.\n\nRun this folder first to populate credentials and artifact ID."
+		},
+		{
+			"name": "02-Happy-Path-Deal",
+			"item": [
+				{
+					"name": "S3.1 Create Negotiation (Seller initiates)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Negotiation is Open with complementary intents\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"    pm.expect(jsonData.partyAIntent).to.eql('sell');",
+									"    pm.expect(jsonData.partyBIntent).to.eql('buy');",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
+									"});",
+									"",
+									"// Save negotiation ID",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
+									"",
+									"console.log(\"Negotiation created - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Seller initiates negotiation with Buyer (sell ↔ buy). Captures `negotiationId`."
+					},
+					"response": []
+				},
+				{
+					"name": "S4.1 Seller Places Offer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Offer is Open with correct details\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"    pm.expect(jsonData.amount).to.eql(22000);",
+									"    pm.expect(jsonData.currency).to.eql('USD');",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
+									"});",
+									"",
+									"// Save offer ID",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"offerId\", jsonData.id);",
+									"",
+									"console.log(\"Offer placed - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 22000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Cash only, as-is condition\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						},
+						"description": "Seller places first offer ($22,000). Captures `offerId`."
+					},
+					"response": []
+				},
+				{
+					"name": "S5.1 Buyer Counters",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Counter-offer is Open with new amount\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"    pm.expect(jsonData.amount).to.eql(18000);",
+									"    pm.expect(jsonData.currency).to.eql('USD');",
+									"});",
+									"",
+									"// Save counter-offer ID",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"counterOfferId\", jsonData.id);",
+									"",
+									"console.log(\"Counter-offer created - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 18000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Financing available, inspection required\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/offers/{{offerId}}/counter",
+							"host": ["{{baseUrl}}"],
+							"path": ["offers", "{{offerId}}", "counter"]
+						},
+						"description": "Buyer counters with $18,000. Original offer → Superseded. Captures `counterOfferId`."
+					},
+					"response": []
+				},
+				{
+					"name": "S6.1 Seller Accepts Counter",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Offer is Accepted\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Accepted');",
+									"});",
+									"",
+									"pm.test(\"No contact PII in response (identity sealed)\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
+									"    pm.expect(jsonData).to.not.have.property('email');",
+									"    pm.expect(jsonData).to.not.have.property('phone');",
+									"    pm.expect(jsonData).to.not.have.property('contact');",
+									"});",
+									"",
+									"console.log(\"Deal completed - Offer accepted!\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/offers/{{counterOfferId}}/accept",
+							"host": ["{{baseUrl}}"],
+							"path": ["offers", "{{counterOfferId}}", "accept"]
+						},
+						"description": "Seller accepts Buyer's counter-offer. Deal complete! No contact PII released (PoC stub)."
+					},
+					"response": []
+				},
+				{
+					"name": "S6.2 View Final Negotiation State",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Negotiation contains accepted offer\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.offers).to.be.an('array');",
+									"    var acceptedOffer = jsonData.offers.find(o => o.status === 'Accepted');",
+									"    pm.expect(acceptedOffer).to.not.be.undefined;",
+									"});",
+									"",
+									"console.log(\"Final negotiation state retrieved\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}"]
+						},
+						"description": "View the negotiation with all offers after deal completion."
+					},
+					"response": []
+				}
+			],
+			"description": "**S3-S6:** Complete happy-path negotiation flow.\n\nSeller creates negotiation → places offer → Buyer counters → Seller accepts.\n\n**Prerequisite:** Run 01-Bootstrap first."
+		},
+		{
+			"name": "03-Alternate-Decline",
+			"item": [
+				{
+					"name": "Setup: Create Fresh Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
+									"console.log(\"Fresh negotiation for decline test - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Setup: Seller Places Offer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 25000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Firm price\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S7.1 Buyer Declines Offer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Offer is Declined\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Declined');",
+									"});",
+									"",
+									"console.log(\"Offer declined by Buyer\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/offers/{{offerId}}/decline",
+							"host": ["{{baseUrl}}"],
+							"path": ["offers", "{{offerId}}", "decline"]
+						},
+						"description": "Buyer declines Seller's offer. Negotiation remains Open for new offers."
+					},
+					"response": []
+				}
+			],
+			"description": "**S7:** Buyer declines an offer without countering.\n\n**Prerequisite:** Run 01-Bootstrap first."
+		},
+		{
+			"name": "04-Alternate-Close",
+			"item": [
+				{
+					"name": "Setup: Create Fresh Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Setup: Place Offer (to be cancelled)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 20000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Open offer\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S8.1 Close Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Negotiation is Closed\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Closed');",
+									"});",
+									"",
+									"pm.test(\"Open offers are Cancelled\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.offers && jsonData.offers.length > 0) {",
+									"        jsonData.offers.forEach(function(offer) {",
+									"            if (offer.status !== 'Cancelled') {",
+									"                pm.expect(offer.status).to.be.oneOf(['Accepted', 'Declined', 'Superseded', 'Cancelled']);",
+									"            }",
+									"        });",
+									"    }",
+									"});",
+									"",
+									"console.log(\"Negotiation closed\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "close"]
+						},
+						"description": "Seller closes the negotiation. All open offers → Cancelled."
+					},
+					"response": []
+				}
+			],
+			"description": "**S8:** Close negotiation (cancels all open offers).\n\n**Prerequisite:** Run 01-Bootstrap first."
+		},
+		{
+			"name": "05-Negative-Cases",
+			"item": [
+				{
+					"name": "S9.1 Non-Complementary Intents → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error mentions non-complementary intents\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var errorText = JSON.stringify(jsonData);",
+									"    pm.expect(errorText.toLowerCase()).to.include('complementary');",
+									"});",
+									"",
+									"console.log(\"Correctly rejected non-complementary intents\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"sell\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Both parties want to sell → 400 (intents not complementary)."
+					},
+					"response": []
+				},
+				{
+					"name": "S10.1 Register Observer (Third Party)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"observerApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"observerSub\", jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Observer\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register a third party who is not part of any negotiation."
+					},
+					"response": []
+				},
+				{
+					"name": "S10.2 Setup: Create Negotiation for Non-Party Test",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S10.3 Non-Party GET → 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 (not 403)\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"console.log(\"Correctly returned 404 for non-party (no information leak)\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{observerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}"]
+						},
+						"description": "Third party (Observer) attempts to view negotiation → 404 (not 403, no info leak)."
+					},
+					"response": []
+				},
+				{
+					"name": "S11.1 Setup: Create Negotiation for Duplicate Offer Test",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S11.2 First Offer (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 21000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"First offer\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S11.3 Second Offer Same Side → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error mentions already have open offer\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var errorText = JSON.stringify(jsonData);",
+									"    pm.expect(errorText.toLowerCase()).to.include('open offer');",
+									"});",
+									"",
+									"console.log(\"Correctly rejected second open offer from same side\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 20000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Second offer attempt\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						},
+						"description": "Seller tries to place second offer while first is still open → 400."
+					},
+					"response": []
+				},
+				{
+					"name": "S12.1 Setup: Create Negotiation for Close Test",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S12.2 Close Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Negotiation is Closed\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Closed');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "close"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "S12.3 Place Offer After Close → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Error mentions Closed status\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('Closed');",
+									"});",
+									"",
+									"console.log(\"Correctly rejected mutation after close\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 19000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Offer after close\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						},
+						"description": "Attempt to place offer on closed negotiation → 409 Conflict."
+					},
+					"response": []
+				},
+				{
+					"name": "S12.4 Close Again → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"console.log(\"Correctly rejected double-close\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "close"]
+						},
+						"description": "Attempt to close already-closed negotiation → 409 Conflict."
+					},
+					"response": []
+				}
+			],
+			"description": "**S9-S12:** Negative test cases.\n\n- S9: Non-complementary intents\n- S10: Non-party access\n- S11: Duplicate open offer\n- S12: Mutations after close\n\n**Prerequisite:** Run 01-Bootstrap first."
+		},
+		{
+			"name": "06-Optional-Expiration",
+			"item": [
+				{
+					"name": "S13.1 Create Expired Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
+									"",
+									"console.log(\"Created negotiation with past endsAt - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\",\n  \"endsAt\": \"2020-01-01T00:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Create negotiation with endsAt in the past (already expired)."
+					},
+					"response": []
+				},
+				{
+					"name": "S13.2 Place Offer on Expired → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Error mentions expired\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.toLowerCase()).to.include('expired');",
+									"});",
+									"",
+									"console.log(\"Correctly rejected offer on expired negotiation\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 15000.00,\n  \"currency\": \"USD\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}", "offers"]
+						},
+						"description": "Attempt to place offer on expired negotiation → 409."
+					},
+					"response": []
+				},
+				{
+					"name": "S13.3 GET Expired (Still Works)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Status is Expired\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Expired');",
+									"});",
+									"",
+									"console.log(\"GET still works on expired negotiation\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}"]
+						},
+						"description": "GET still works on expired negotiation - parties can view history."
+					},
+					"response": []
+				}
+			],
+			"description": "**S13:** Expiration via endsAt.\n\nVerify that expired negotiations reject mutations but allow GET.\n\n**Prerequisite:** Run 01-Bootstrap first."
+		},
+		{
+			"name": "07-Optional-Other-Intents",
+			"item": [
+				{
+					"name": "S14.1 Provide ↔ Consume Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Intents are provide/consume\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.partyAIntent).to.eql('provide');",
+									"    pm.expect(jsonData.partyBIntent).to.eql('consume');",
+									"});",
+									"",
+									"console.log(\"Provide/Consume negotiation created\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"provide\",\n  \"counterpartyIntent\": \"consume\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Create negotiation with provide ↔ consume intents (service offering)."
+					},
+					"response": []
+				},
+				{
+					"name": "S14.2 Rent ↔ Rent Negotiation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Intents are rent/rent\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.partyAIntent).to.eql('rent');",
+									"    pm.expect(jsonData.partyBIntent).to.eql('rent');",
+									"});",
+									"",
+									"console.log(\"Rent/Rent negotiation created\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"rent\",\n  \"counterpartyIntent\": \"rent\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Create negotiation with rent ↔ rent intents (bidirectional rental)."
+					},
+					"response": []
+				}
+			],
+			"description": "**S14:** Alternative complementary intent pairs.\n\n- Provide ↔ Consume (service)\n- Rent ↔ Rent (bidirectional)\n\n**Prerequisite:** Run 01-Bootstrap first."
+		}
+	]
+}
