@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
 using Dealoware.Application.Negotiations.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -32,9 +31,9 @@ namespace Dealoware.Api.Tests;
 [Collection("WebAppTests")]
 public class PocNegotiationScenarioTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
-    public PocNegotiationScenarioTests(WebApplicationFactory<Program> factory)
+    public PocNegotiationScenarioTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }

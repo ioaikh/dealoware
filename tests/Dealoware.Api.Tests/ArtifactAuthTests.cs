@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -13,9 +12,9 @@ namespace Dealoware.Api.Tests;
 [Collection("WebAppTests")]
 public class ArtifactAuthTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
-    public ArtifactAuthTests(WebApplicationFactory<Program> factory)
+    public ArtifactAuthTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }
