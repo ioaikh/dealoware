@@ -21,7 +21,8 @@ public static class NegotiationMapper
             Status = negotiation.Status.ToString(),
             StartsAt = negotiation.StartsAt,
             EndsAt = negotiation.EndsAt,
-            CreatedAt = negotiation.CreatedAt
+            CreatedAt = negotiation.CreatedAt,
+            IdentitySealed = true
         };
 
         if (includeOffers && negotiation.Offers.Count > 0)
@@ -47,7 +48,8 @@ public static class NegotiationMapper
             Amount = offer.Amount,
             Currency = offer.Currency,
             Terms = offer.Terms,
-            CreatedAt = offer.CreatedAt
+            CreatedAt = offer.CreatedAt,
+            IdentitySealed = true
         };
     }
 }

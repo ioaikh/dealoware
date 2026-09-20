@@ -417,6 +417,67 @@ curl http://localhost:5287/negotiations/$NEGOTIATION_ID \
 - **404 Not Found**: Negotiation/Offer not found OR caller is not a party (no information leak)
 - **409 Conflict**: Negotiation Closed/Expired, offer not Open, illegal state transition
 
+### Identity Seal (PoC Stub)
+
+The identity-seal feature protects counterparty contact information until a deal is accepted. In PoC, this is implemented as a **stub** — the foundation for MVP contact-on-accept (P7/A9).
+
+#### Current Behavior (PoC)
+
+- **Opaque IDs only**: All Negotiation/Offer responses expose participant identifiers in opaque format (`participant:{uuid}`) — no email, phone, address, or other contact PII
+- **`identitySealed: true`**: All Negotiation and Offer responses include this flag, indicating contact is protected
+- **State-only responses**: Accept/Decline/Counter/Close return offer/negotiation state only — no contact release event, no PII enrichment
+- **Leak-proof design**: DTOs are designed without contact fields; tests verify no PII leaks on any happy-path flow
+
+#### Example Response
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "artifactId": "660e8400-e29b-41d4-a716-446655440001",
+  "partyAParticipantId": "participant:770e8400-e29b-41d4-a716-446655440002",
+  "partyBParticipantId": "participant:880e8400-e29b-41d4-a716-446655440003",
+  "partyAIntent": "sell",
+  "partyBIntent": "buy",
+  "status": "Open",
+  "identitySealed": true,
+  "createdAt": "2026-09-20T10:00:00Z"
+}
+```
+
+#### MVP Roadmap (P7/A9)
+
+The PoC stub prepares for MVP contact-on-accept:
+
+| Feature | PoC (Current) | MVP (P7/A9) |
+|---------|---------------|-------------|
+| Identity protection | Stub: opaque IDs, `identitySealed: true` | Real: encrypted contact vault |
+| Contact on accept | Not implemented | Contact released to both parties |
+| PII vault | Not implemented | Secure storage with retention/erasure |
+| Audit trail | Not implemented | Contact access logging |
+
+#### Out of Scope (PoC)
+
+- Real contact release on accept
+- Mature PII vault (retention/erasure → post-MVP)
+- Strategy/AI features
+- Cognito/SSO integration
+- MotorMarket/DC4 integration
+- AWS resource provisioning
+
+#### Verification
+
+Run identity-seal leak-proof tests:
+
+```bash
+dotnet test --filter "FullyQualifiedName~IdentitySealTests"
+```
+
+These tests verify:
+- No contact PII field names in any response JSON
+- No email/phone patterns in response content
+- `identitySealed: true` present on all Negotiation/Offer responses
+- Accept/Decline/Counter/Close return state only
+
 ### Project Structure
 
 ```
