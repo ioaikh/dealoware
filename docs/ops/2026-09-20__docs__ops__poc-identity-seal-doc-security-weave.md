@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **Overall Doc step #7 HOLD** — deferred until Security QA doc-qa-confirm (points-review + qa-confirm handshake) |
+| **Status** | **Overall Doc step #7 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-20 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #7 · Identity-seal stub (no contact exchange) |
@@ -16,7 +16,7 @@
 1. Merged PR #19 README — **### Identity Seal (PoC Stub)** (opaque IDs; `identitySealed: true`; Accept/Decline/Counter/Close = state-only; leak-proof DTO design; MVP P7/A9 roadmap table; Out of Scope: real contact release / vault / Cognito/SSO / MM/DC4 / AWS provision)
 2. This Doc weave (`ops/2026-09-20__docs__ops__poc-identity-seal-doc-security-weave.md`) + living `INDEX.md` annotations
 
-Supporting (not primary score surface): KB `qa/2026-09-20__qa__qa-report__poc-identity-seal-stub.md` (Product QA **PASS**; Sec10 closed via productqa-qa-confirm); Product QA Security PASS `verification/2026-09-20__security__verification__poc-identity-seal-productqa-qa-confirm.md`; Product QA points-review present on disk `verification/2026-09-20__security__verification__poc-identity-seal-productqa-points-review.md` (indexed; not invented).
+Supporting (not primary score surface): KB `qa/2026-09-20__qa__qa-report__poc-identity-seal-stub.md` (Product QA **PASS**; Sec10 closed via productqa-qa-confirm); Product QA Security PASS `verification/2026-09-20__security__verification__poc-identity-seal-productqa-qa-confirm.md`; Product QA points-review `verification/2026-09-20__security__verification__poc-identity-seal-productqa-points-review.md` (indexed; not invented).
 
 ## Point → how Doc artifacts satisfy
 
@@ -33,12 +33,16 @@ Mapped strictly to `verification/2026-09-20__security__verification__poc-identit
 | 7 | No-leak evidence cited | README Verification: `dotnet test --filter FullyQualifiedName~IdentitySealTests` (no PII field names; no email/phone patterns; `identitySealed: true`; Accept state-only). Product QA report cites 13 Facts. Weave cites. Product QA Sec confirm MET pt7. |
 | 8 | No inventing OUT | README Out of Scope + Weave: no Strategy/AI, mature vault, settlement, Cognito/SSO/IdP, MM/DC4 as delivered; **#8** stays backlog; **#18** stays out of PoC. Separate from #4/#5/#6. Product QA Sec confirm MET pt8. |
 | 9 | Secrets / host / OUT | README uses placeholder examples; Authorization-header hygiene; local/$0 PoC; ECS Express = host sketch only; no Cognito/SSO/IdP how-tos as delivered. Product QA Sec confirm MET pt9. |
-| 10 | Handshake close | **HOLD** — Docs QA must **not** overall-PASS until Security QA indexes doc-points-review + doc-qa-confirm against this checklist. Weave Status = HOLD until that handshake. |
+| 10 | Handshake close | Handshake indexed: checklist + points-review + doc-qa-confirm. Security QA PASS 10/10 — Docs QA may overall-PASS. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step — already closed)
 - `verification/2026-09-20__security__verification__poc-identity-seal-productqa-checklist.md`
 - `verification/2026-09-20__security__verification__poc-identity-seal-productqa-qa-confirm.md` (PASS; all 10 MET)
 - `verification/2026-09-20__security__verification__poc-identity-seal-productqa-points-review.md` (present on disk; indexed — not invented)
 
-## HOLD (overall Doc step)
-**Overall Doc-step #7 HOLD** — awaiting Senior Security / Security QA handshake on Doc checklist pts 1–10 (`…poc-identity-seal-doc-checklist.md`). Do **not** claim overall Doc PASS. No contact-on-Accept; #8 backlog; #18 not PoC; keep separate from #4 Artifact / #5 auth / #6 negotiation; PoC $0; CQ no-refactor; no MotorMarket.
+## Indexed Doc Security handshake (clears HOLD)
+- `verification/2026-09-20__security__verification__poc-identity-seal-doc-points-review.md` — Senior Security PASS 10/10
+- `verification/2026-09-20__security__verification__poc-identity-seal-doc-qa-confirm.md` — Security QA PASS 10/10 (clears overall Doc HOLD)
+
+## PASS
+**Overall Doc-step #7 PASS** — Security QA confirm `verification/2026-09-20__security__verification__poc-identity-seal-doc-qa-confirm.md` (pts 1–10 MET); Senior Security points-review `verification/2026-09-20__security__verification__poc-identity-seal-doc-points-review.md` (PASS 10/10). Mirror: https://github.com/ioaikh/dealoware/pull/20. Keep separate from #4 Artifact / #5 auth / #6 negotiation. No contact-on-Accept; opaque ids; Accept = state-only; no contact-exchange; #8 backlog; #18 out of PoC; PoC $0; CQ no-refactor; no MotorMarket.
