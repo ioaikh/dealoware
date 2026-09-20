@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -10,11 +9,12 @@ namespace Dealoware.Api.Tests;
 /// Tests for Artifact endpoints with authentication (fail-closed).
 /// Verifies authn ≠ authz: valid token doesn't mean access to all artifacts.
 /// </summary>
-public class ArtifactAuthTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class ArtifactAuthTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
-    public ArtifactAuthTests(WebApplicationFactory<Program> factory)
+    public ArtifactAuthTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }

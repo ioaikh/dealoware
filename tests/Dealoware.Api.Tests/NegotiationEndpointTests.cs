@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
 using Dealoware.Application.Negotiations.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -11,11 +10,12 @@ namespace Dealoware.Api.Tests;
 /// Tests for Negotiation endpoints (D7-D10).
 /// Covers create, get, place offers, accept/decline/counter, close, and expiration.
 /// </summary>
-public class NegotiationEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class NegotiationEndpointTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
-    public NegotiationEndpointTests(WebApplicationFactory<Program> factory)
+    public NegotiationEndpointTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }

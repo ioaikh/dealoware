@@ -47,8 +47,30 @@ curl http://localhost:5287/health
 ### Running Tests
 
 ```bash
+# Run all tests (xUnit integration tests)
 dotnet test Dealoware.sln
+
+# Run only PoC negotiation scenario tests (S1-S14)
+dotnet test --filter "FullyQualifiedName~PocNegotiationScenarioTests"
+
+# Run specific scenario (e.g., S9 non-complementary intents)
+dotnet test --filter "FullyQualifiedName~S9_"
 ```
+
+#### Newman/Postman Tests (Optional)
+
+```bash
+# Install Newman (first time only)
+npm install
+
+# Start API in one terminal
+dotnet run --project src/Dealoware.Api
+
+# Run Newman tests in another terminal
+./scripts/run-newman.sh
+```
+
+See [docs/qa/2026-09-20__qa__guide__poc-test-suite.md](docs/qa/2026-09-20__qa__guide__poc-test-suite.md) for full test documentation.
 
 ### Authentication (PoC)
 

@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -13,11 +12,12 @@ namespace Dealoware.Api.Tests;
 /// Tokens in query strings or request bodies must NOT work.
 /// This is a security requirement to prevent token leakage via logs/referrers.
 /// </summary>
-public class AuthHeaderOnlyTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class AuthHeaderOnlyTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
-    public AuthHeaderOnlyTests(WebApplicationFactory<Program> factory)
+    public AuthHeaderOnlyTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }

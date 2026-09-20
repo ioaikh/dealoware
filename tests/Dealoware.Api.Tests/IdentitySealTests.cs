@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using Dealoware.Application.Artifacts.Dtos;
 using Dealoware.Application.Auth.Dtos;
 using Dealoware.Application.Negotiations.Dtos;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dealoware.Api.Tests;
 
@@ -18,9 +17,10 @@ namespace Dealoware.Api.Tests;
 /// Accept/Decline/Counter/Close responses return state only — no contact release.
 /// This is a PoC stub; contact exchange on accept is MVP (P7/A9).
 /// </summary>
-public class IdentitySealTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("WebAppTests")]
+public class IdentitySealTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IsolatedWebApplicationFactory _factory;
 
     private static readonly string[] ForbiddenFieldNames = new[]
     {
@@ -43,7 +43,7 @@ public class IdentitySealTests : IClassFixture<WebApplicationFactory<Program>>
         @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
         RegexOptions.Compiled);
 
-    public IdentitySealTests(WebApplicationFactory<Program> factory)
+    public IdentitySealTests(IsolatedWebApplicationFactory factory)
     {
         _factory = factory;
     }
