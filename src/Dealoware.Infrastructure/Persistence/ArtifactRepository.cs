@@ -22,6 +22,16 @@ public class ArtifactRepository : IArtifactRepository
             .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
     }
 
+    public async Task<Artifact?> GetByIdForOwnerAsync(Guid id, string ownerParticipantId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Artifacts
+            .Include(a => a.Entities)
+                .ThenInclude(e => e.Properties)
+            .Include(a => a.Values)
+            .Include(a => a.TimePeriods)
+            .FirstOrDefaultAsync(a => a.Id == id && a.OwnerParticipantId == ownerParticipantId, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Artifact>> GetByOwnerAsync(string ownerParticipantId, CancellationToken cancellationToken = default)
     {
         var artifacts = await _context.Artifacts

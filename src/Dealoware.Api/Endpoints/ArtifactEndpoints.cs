@@ -101,9 +101,9 @@ public static class ArtifactEndpoints
             return Results.Unauthorized();
         }
 
-        var artifact = await artifactRepository.GetByIdAsync(id, cancellationToken);
+        var artifact = await artifactRepository.GetByIdForOwnerAsync(id, sub, cancellationToken);
         
-        if (artifact is null || artifact.OwnerParticipantId != sub)
+        if (artifact is null)
         {
             return Results.NotFound();
         }

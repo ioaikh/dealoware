@@ -28,6 +28,17 @@ public static class OfferEndpoints
     {
         var group = app.MapGroup("/offers");
 
+        group.MapGet("/", ListOffers)
+            .WithName("ListOffers")
+            .Produces<List<OfferResponse>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/{id:guid}", GetOffer)
+            .WithName("GetOffer")
+            .Produces<OfferResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapPost("/{id:guid}/accept", AcceptOffer)
             .WithName("AcceptOffer")
             .Produces<OfferResponse>(StatusCodes.Status200OK)
@@ -51,6 +62,48 @@ public static class OfferEndpoints
             .Produces(StatusCodes.Status409Conflict);
     }
 
+    private static async Task<IResult> ListOffers(
+        HttpContext context,
+        IOfferRepository offerRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
+        CancellationToken cancellationToken)
+    {
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(sub))
+            return Results.Unauthorized();
+
+        var offers = await offerRepository.GetByParticipantAsync(sub, cancellationToken);
+        var response = offers.Select(NegotiationMapper.ToOfferResponse).ToList();
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetOffer(
+        HttpContext context,
+        Guid id,
+        IOfferRepository offerRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
+        CancellationToken cancellationToken)
+    {
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(sub))
+            return Results.Unauthorized();
+
+        var offer = await offerRepository.GetByIdForPartyAsync(id, sub, cancellationToken);
+        if (offer is null)
+            return Results.NotFound();
+
+        var response = NegotiationMapper.ToOfferResponse(offer);
+        return Results.Ok(response);
+    }
+
     private static async Task<IResult> AcceptOffer(
         HttpContext context,
         Guid id,
@@ -67,7 +120,7 @@ public static class OfferEndpoints
         if (string.IsNullOrWhiteSpace(sub))
             return Results.Unauthorized();
 
-        var offer = await offerRepository.GetByIdAsync(id, cancellationToken);
+        var offer = await offerRepository.GetByIdForPartyAsync(id, sub, cancellationToken);
         if (offer is null)
             return Results.NotFound();
 
@@ -123,7 +176,7 @@ public static class OfferEndpoints
         if (string.IsNullOrWhiteSpace(sub))
             return Results.Unauthorized();
 
-        var offer = await offerRepository.GetByIdAsync(id, cancellationToken);
+        var offer = await offerRepository.GetByIdForPartyAsync(id, sub, cancellationToken);
         if (offer is null)
             return Results.NotFound();
 
@@ -173,7 +226,7 @@ public static class OfferEndpoints
         if (string.IsNullOrWhiteSpace(sub))
             return Results.Unauthorized();
 
-        var offer = await offerRepository.GetByIdAsync(id, cancellationToken);
+        var offer = await offerRepository.GetByIdForPartyAsync(id, sub, cancellationToken);
         if (offer is null)
             return Results.NotFound();
 
