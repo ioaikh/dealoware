@@ -120,6 +120,13 @@ Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be t
 - Bot Manager / CPM / Chiefs must **not** equate intake or chat with delivery.
 - Say **in progress** only with a **fresh evidence artifact ≤ ~60–90 minutes** (new commit, undraft PR, or gate PASS file). Otherwise: `assigned` / `waiting on <named owner>` / `stalled since <time>`.
 
+### Unlock evidence = GitHub SoR (DOC-FLOW) — CEO/BM/COO 2026-09-21 post-#31
+- **GitHub (`ioaikh/dealoware`) is the system of record** for Spec / Dev Plan / SD unlock evidence.
+- KB paths under dealoware-kb (box) may be working drafts; they **do not alone** clear a Spec→Dev Plan or Dev Plan→SD unlock.
+- Required unlock evidence: files on `main` under DOC-FLOW mirror (`docs/plans/`, `docs/verification/`, `docs/specs/`, …) **or** an open/merged PR that lands those paths, cited in the issue + PM mirror.
+- **One-time exceptions** (KB triad only) require: (1) linked `docs/` catch-up PR or main land, and (2) **PMQA explicit accept** of a one-time exception. Never treat KB=SoR as standing policy.
+- Root cause locked after #31: Dev Plan triad existed on KB while GitHub `docs/` 404 — SD unlock paused until PR #33 MERGED + PMQA exception.
+
 ### CPM 15-minute delivery watches (mandatory while in pipeline) — CEO flip 2026-09-20 post-#7
 - When a Story **enters the development pipeline** (leaves backlog into Spec→…→BA), **CPM is personally responsible** for pushing it through to close.
 - At pipeline entry, **CPM arms a 15-minute evidence-based delivery watch on CPM’s own routines** (CPM-hosted cron). Pattern proven on #6/#7; do **not** ask Bot Manager to host it.
