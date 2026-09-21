@@ -27,7 +27,7 @@ Supporting (not primary score surface): KB Product QA report `qa/2026-09-21__qa_
 
 ## Point → how Doc artifacts satisfy
 
-Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-checklist.md` (pts 1–10). **No invented doc-points-review / doc-qa-confirm.**
+Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-checklist.md` (pts 1–10). Handshake files indexed after Security PASS (not invented).
 
 | # | Security point | Doc satisfaction (cites) |
 |---|----------------|--------------------------|
@@ -40,16 +40,17 @@ Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a
 | 7 | No Stage B/C inventing | Weave Constraints + Spec/DevPlan: no Strategy list ACL, agent hard-wall, Cognito/SSO, or MM/DC4 as #32 delivered. Stage B/C HOLD. Product QA Sec confirm MET pt7. |
 | 8 | Cross-story non-merge | Weave + INDEX: #32 Doc track separate from #31; harden/consume cross-refs to #4–#7 only; #7 stub unchanged; no rewrite of #31 deliverables under this weave. Product QA Sec confirm MET pt8. |
 | 9 | Cost / spend | Docs affirm PoC **$0**; no IdP/vault provision as delivered. Weave: PoC $0. Product QA Sec confirm MET pt9. |
-| 10 | Handshake close | **HOLD.** Docs QA must **not** overall-PASS until Security QA confirms pts 1–10 via future `doc-qa-confirm` (and Senior Security `doc-points-review` when issued). **Chief Docs: do not invent those files.** Checklist ISSUED at binding path. |
+| 10 | Handshake close | **PASS.** Security QA `doc-qa-confirm` + Senior Security `doc-points-review` landed — all 10 MET. Docs QA may overall-PASS. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step — already closed; not overall Doc PASS)
 - `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-checklist.md`
 - `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-points-review.md` (present on disk; indexed — not invented)
 - `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-qa-confirm.md` (**PASS**; all 10 MET — Sec10 for Product QA only)
 
-## Doc Security handshake (pending — clears HOLD when landed)
+## Indexed Doc Security handshake (clears HOLD)
 - Binding checklist (ISSUED): `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-checklist.md`
-- **Awaiting (do not invent):** Senior Security `…list-failclosed-doc-points-review.md` + Security QA `…list-failclosed-doc-qa-confirm.md`
+- Senior Security points-review: `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-points-review.md` — **PASS** 10/10
+- Security QA confirm: `verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-qa-confirm.md` — **PASS** 10/10 (clears overall Doc HOLD)
 
-## HOLD (not PASS)
-**Overall Doc-step #32 = HOLD** until Security QA doc-qa-confirm clears checklist pts 1–10. Primary surfaces: PR #34 README/API list fail-closed + this weave. Separate from #31; Stage B/C HOLD; #24 HOLD; PoC $0; CQ no-refactor; no MotorMarket; #7 stub unchanged. Parent → Chief Docs → escalate weave path to Chief Security.
+## PASS
+**Overall Doc-step #32 PASS** — Security QA confirm cleared HOLD (pts 1–10 MET). Primary surfaces: PR #34 README/API list fail-closed + this weave. Mirror: https://github.com/ioaikh/dealoware/pull/36. Separate from #31; Stage B/C HOLD; #24 HOLD; PoC $0; CQ no-refactor; no MotorMarket; #7 stub unchanged.
