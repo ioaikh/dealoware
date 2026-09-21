@@ -1,4 +1,5 @@
 using Dealoware.Domain.Artifacts;
+using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Auth;
@@ -26,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
         services.AddScoped<INegotiationRepository, NegotiationRepository>();
         services.AddScoped<IOfferRepository, OfferRepository>();
+        
+        services.AddSingleton<IFieldPolicy, FieldPolicy>();
 
         return services;
     }

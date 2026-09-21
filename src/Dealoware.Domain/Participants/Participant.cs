@@ -28,9 +28,21 @@ public sealed class Participant
 
     /// <summary>
     /// Display name for the participant (minimal bootstrap metadata).
-    /// No PII - just a friendly name for API responses.
+    /// FieldClass: DisplayName - soft/illustrative.
     /// </summary>
     public string? DisplayName { get; private set; }
+
+    /// <summary>
+    /// Login credential email (highly sensitive).
+    /// FieldClass: LoginEmail - User R/W; OwnAgent Deny all; counterparty/stranger Deny.
+    /// </summary>
+    public string? LoginEmail { get; private set; }
+
+    /// <summary>
+    /// Contact email for business communication.
+    /// FieldClass: ContactEmail - User R/W; OwnAgent Read; counterparty Deny; ShareOutbound Deny.
+    /// </summary>
+    public string? ContactEmail { get; private set; }
 
     /// <summary>
     /// When this participant was registered.
@@ -66,5 +78,29 @@ public sealed class Participant
     public void Deactivate()
     {
         IsActive = false;
+    }
+
+    /// <summary>
+    /// Updates the login email (owner-only operation).
+    /// </summary>
+    public void UpdateLoginEmail(string? loginEmail)
+    {
+        LoginEmail = loginEmail;
+    }
+
+    /// <summary>
+    /// Updates the contact email (owner-only operation).
+    /// </summary>
+    public void UpdateContactEmail(string? contactEmail)
+    {
+        ContactEmail = contactEmail;
+    }
+
+    /// <summary>
+    /// Updates the display name.
+    /// </summary>
+    public void UpdateDisplayName(string? displayName)
+    {
+        DisplayName = displayName;
     }
 }
