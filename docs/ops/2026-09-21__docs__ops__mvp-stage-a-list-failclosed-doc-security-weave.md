@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **HOLD — Overall Doc step #32 PASS deferred** until Security QA `doc-qa-confirm` (pts 1–10 MET) against this weave + checklist. **Do not invent** `doc-points-review` / `doc-qa-confirm`. |
+| **Status** | **Overall Doc step #32 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-21 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #32 · Account list fail-closed (negotiations / offers / artifacts) |
