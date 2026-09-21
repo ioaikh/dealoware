@@ -193,3 +193,13 @@ After any **significant delivery milestone** (examples: PoC complete, MVP slice 
 - Standing schedule (Bot Manager routine “Dealoware Marketing daily research”): Mon 9:00 · Tue 14:00 · Wed 10:00 · Thu 15:00 · Fri 11:00 · Sat 13:00 · Sun 16:00.
 - Cycle: **Chief Marketing** owns → **Senior Marketing** executes → **Marketing QA** verifies → Chief presents via COO to CEO when actionable.
 - Product **claims lock** before any public claim; **no paid promo** without COO→CEO confirm.
+
+## PoC nightly auto-tests (CEO 2026-09-20; until MVP)
+
+QA Team owns. Initial suite maps to `docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md`.
+
+**Nightly — Chief QA:** inventory suite → prior results → code deltas since last run → propose add/adjust set to Senior Product QA → ask Security/Product/cost-as-needed/other Chiefs for gaps → **filter rigorously** (valuable+easy or critical for safe/efficient/reliable platform only).
+
+**Senior Product QA:** implement approved set; keep suite aligned. **QAQA:** verify suite↔guide + filter applied.
+
+Bot Manager hosts cron (time TBD). Detail: `ops/reports/2026-09-20__ops__ops-note__poc-nightly-autotest-chief-loop.md`. #18 still CEO unlock.
