@@ -27,6 +27,11 @@ public static class NegotiationEndpoints
     {
         var group = app.MapGroup("/negotiations");
 
+        group.MapGet("/", ListNegotiations)
+            .WithName("ListNegotiations")
+            .Produces<List<NegotiationResponse>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         group.MapPost("/", CreateNegotiation)
             .WithName("CreateNegotiation")
             .Produces<NegotiationResponse>(StatusCodes.Status201Created)
@@ -54,6 +59,32 @@ public static class NegotiationEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict);
+    }
+
+    private static async Task<IResult> ListNegotiations(
+        HttpContext context,
+        INegotiationRepository negotiationRepository,
+        IParticipantRepository participantRepository,
+        IApiKeyRepository apiKeyRepository,
+        JwtService jwtService,
+        CancellationToken cancellationToken)
+    {
+        var (sub, _) = await AuthHelper.GetAuthenticatedSub(
+            context, participantRepository, apiKeyRepository, jwtService, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(sub))
+            return Results.Unauthorized();
+
+        var negotiations = await negotiationRepository.GetByParticipantAsync(sub, cancellationToken);
+        
+        foreach (var negotiation in negotiations)
+        {
+            negotiation.CheckAndApplyExpiration();
+        }
+        await negotiationRepository.SaveChangesAsync(cancellationToken);
+
+        var response = negotiations.Select(n => NegotiationMapper.ToResponse(n, includeOffers: false)).ToList();
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> CreateNegotiation(

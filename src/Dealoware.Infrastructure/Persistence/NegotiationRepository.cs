@@ -33,10 +33,9 @@ public class NegotiationRepository : INegotiationRepository
         var negotiations = await _context.Negotiations
             .Include(n => n.Offers)
             .Where(n => n.PartyAParticipantId == participantId || n.PartyBParticipantId == participantId)
-            .OrderByDescending(n => n.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        return negotiations;
+        return negotiations.OrderByDescending(n => n.CreatedAt).ToList();
     }
 
     public async Task AddAsync(Negotiation negotiation, CancellationToken cancellationToken = default)
