@@ -3,6 +3,8 @@ namespace Dealoware.Domain.FieldAcl;
 /// <summary>
 /// Context for field policy evaluation.
 /// Carries ownership and relationship signals needed for access decisions.
+/// 
+/// Stage B (#42): HasAcceptGrant enables ShareOutbound(ContactEmail) after Accept.
 /// </summary>
 public sealed class FieldResourceContext
 {
@@ -17,9 +19,11 @@ public sealed class FieldResourceContext
     public string? CounterpartySub { get; init; }
     
     /// <summary>
-    /// Whether there is an accepted share grant (Stage B - currently always false).
+    /// Whether there is an Accept grant for ShareOutbound.
+    /// Stage B (#42): True when Accept is recorded on the offer/negotiation,
+    /// enabling ShareOutbound(ContactEmail) to the authorized counterparty.
     /// </summary>
-    public bool HasAcceptedShareGrant { get; init; }
+    public bool HasAcceptGrant { get; init; }
     
     /// <summary>
     /// Creates context for self-profile access (owner accessing own data).
@@ -30,14 +34,29 @@ public sealed class FieldResourceContext
     }
     
     /// <summary>
-    /// Creates context for negotiation-related access.
+    /// Creates context for negotiation-related access (pre-Accept, no grant).
     /// </summary>
     public static FieldResourceContext ForNegotiation(string ownerSub, string? counterpartySub)
     {
         return new FieldResourceContext
         {
             ResourceOwnerSub = ownerSub,
-            CounterpartySub = counterpartySub
+            CounterpartySub = counterpartySub,
+            HasAcceptGrant = false
+        };
+    }
+    
+    /// <summary>
+    /// Creates context for post-Accept access with ShareOutbound grant.
+    /// Stage B (#42): After Accept, counterparty receives ContactEmail via ShareOutbound.
+    /// </summary>
+    public static FieldResourceContext ForAcceptedNegotiation(string ownerSub, string counterpartySub)
+    {
+        return new FieldResourceContext
+        {
+            ResourceOwnerSub = ownerSub,
+            CounterpartySub = counterpartySub,
+            HasAcceptGrant = true
         };
     }
 }

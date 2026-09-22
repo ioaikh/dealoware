@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
         services.AddScoped<INegotiationRepository, NegotiationRepository>();
         services.AddScoped<IOfferRepository, OfferRepository>();
+        services.AddScoped<IAcceptGrantRepository, AcceptGrantRepository>();
         services.AddScoped<IStrategyRepository, StrategyRepository>();
         
         services.AddSingleton<IFieldPolicy, FieldPolicy>();

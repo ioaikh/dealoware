@@ -4,14 +4,19 @@ namespace Dealoware.Domain.FieldAcl;
 /// Default implementation of IFieldPolicy.
 /// Implements deny-by-default and Stage A/B policy rows.
 /// 
-/// Policy Matrix (Stage A + B):
-/// | FieldClass    | User | OwnAgent      | Counterparty | Stranger | ShareOutbound |
-/// |---------------|------|---------------|--------------|----------|---------------|
-/// | LoginEmail    | R/W  | Deny all      | Deny         | Deny     | Deny          |
-/// | ContactEmail  | R/W  | Read only     | Deny         | Deny     | Deny          |
-/// | DisplayName   | R/W  | R/W (soft)    | Read (soft)  | Deny     | N/A           |
-/// | StrategyBody  | R/W  | R/W (owner)   | Deny         | Deny     | Deny          |
-/// | Unknown       | Deny | Deny          | Deny         | Deny     | Deny          |
+/// Policy Matrix (Stage A + Stage B #41/#42):
+/// | FieldClass    | User | OwnAgent      | Counterparty          | Stranger | ShareOutbound              |
+/// |---------------|------|---------------|-----------------------|----------|----------------------------|
+/// | LoginEmail    | R/W  | Deny all      | Deny                  | Deny     | Deny (never shared)        |
+/// | ContactEmail  | R/W  | Read only     | Deny until grant      | Deny     | Allow with HasAcceptGrant  |
+/// | DisplayName   | R/W  | R/W (soft)    | Read (soft)           | Deny     | N/A                        |
+/// | StrategyBody  | R/W  | R/W (owner)   | Deny                  | Deny     | Deny                       |
+/// | Unknown       | Deny | Deny          | Deny                  | Deny     | Deny                       |
+/// 
+/// Stage B (#42): ShareOutbound(ContactEmail) allowed only when:
+/// - HasAcceptGrant is true in resourceContext
+/// - Principal is the authorized counterparty
+/// - LoginEmail never shared via ShareOutbound
 /// </summary>
 public sealed class FieldPolicy : IFieldPolicy
 {
@@ -42,9 +47,27 @@ public sealed class FieldPolicy : IFieldPolicy
             return false;
 
         if (action == FieldAction.ShareOutbound)
-            return false;
+            return EvaluateShareOutbound(effectiveType, fieldClass, resourceContext);
 
         return EvaluateRegisteredField(effectiveType, fieldClass, action);
+    }
+    
+    /// <summary>
+    /// Evaluates ShareOutbound action for Stage B contact-on-accept.
+    /// ContactEmail: allowed only to counterparty when HasAcceptGrant.
+    /// LoginEmail: never shared via ShareOutbound.
+    /// </summary>
+    private static bool EvaluateShareOutbound(PrincipalType principalType, FieldClass fieldClass, FieldResourceContext resourceContext)
+    {
+        if (fieldClass == FieldClass.LoginEmail)
+            return false;
+        
+        if (fieldClass == FieldClass.ContactEmail)
+        {
+            return resourceContext.HasAcceptGrant && principalType == PrincipalType.Counterparty;
+        }
+        
+        return false;
     }
 
     private static bool EvaluateRegisteredField(PrincipalType principalType, FieldClass fieldClass, FieldAction action)

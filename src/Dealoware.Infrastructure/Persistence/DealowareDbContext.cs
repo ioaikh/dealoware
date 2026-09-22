@@ -20,6 +20,7 @@ public class DealowareDbContext : DbContext
 
     public DbSet<Negotiation> Negotiations => Set<Negotiation>();
     public DbSet<Offer> Offers => Set<Offer>();
+    public DbSet<AcceptGrant> AcceptGrants => Set<AcceptGrant>();
 
     public DbSet<Strategy> Strategies => Set<Strategy>();
 
@@ -43,6 +44,7 @@ public class DealowareDbContext : DbContext
 
         modelBuilder.ApplyConfiguration(new NegotiationEntityConfiguration());
         modelBuilder.ApplyConfiguration(new OfferEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AcceptGrantEntityConfiguration());
         
         modelBuilder.ApplyConfiguration(new StrategyEntityConfiguration());
     }

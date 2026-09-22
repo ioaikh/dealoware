@@ -1,6 +1,7 @@
 using Dealoware.Api.Auth;
 using Dealoware.Application.Negotiations.Dtos;
 using Dealoware.Application.Negotiations.Mapping;
+using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Auth;
@@ -41,7 +42,7 @@ public static class OfferEndpoints
 
         group.MapPost("/{id:guid}/accept", AcceptOffer)
             .WithName("AcceptOffer")
-            .Produces<OfferResponse>(StatusCodes.Status200OK)
+            .Produces<AcceptOfferResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict);
@@ -104,13 +105,19 @@ public static class OfferEndpoints
         return Results.Ok(response);
     }
 
+    /// <summary>
+    /// Accepts an offer and creates Accept grants for contact sharing.
+    /// Stage B (#42): Contact on accept - counterparty ContactEmail revealed.
+    /// </summary>
     private static async Task<IResult> AcceptOffer(
         HttpContext context,
         Guid id,
         IOfferRepository offerRepository,
         INegotiationRepository negotiationRepository,
+        IAcceptGrantRepository acceptGrantRepository,
         IParticipantRepository participantRepository,
         IApiKeyRepository apiKeyRepository,
+        IFieldPolicy fieldPolicy,
         JwtService jwtService,
         CancellationToken cancellationToken)
     {
@@ -154,9 +161,29 @@ public static class OfferEndpoints
         offerRepository.UpdateRange(openOffers);
         offerRepository.Update(offer);
 
+        var (acceptorToOfferor, offerorToAcceptor) = AcceptGrant.CreatePair(
+            offer.Id,
+            negotiation.Id,
+            sub,
+            offer.FromParticipantId);
+        
+        await acceptGrantRepository.AddRangeAsync(new[] { acceptorToOfferor, offerorToAcceptor }, cancellationToken);
+
         await offerRepository.SaveChangesAsync(cancellationToken);
 
-        var response = NegotiationMapper.ToOfferResponse(offer);
+        var counterparty = await participantRepository.GetBySubAsync(offer.FromParticipantId, cancellationToken);
+        if (counterparty is null)
+        {
+            var fallbackResponse = NegotiationMapper.ToOfferResponse(offer);
+            return Results.Ok(fallbackResponse);
+        }
+
+        var response = NegotiationMapper.ToAcceptOfferResponse(
+            offer, 
+            counterparty, 
+            fieldPolicy, 
+            hasAcceptGrant: true);
+        
         return Results.Ok(response);
     }
 
