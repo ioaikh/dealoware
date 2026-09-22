@@ -22,6 +22,12 @@ public class ParticipantEntityConfiguration : IEntityTypeConfiguration<Participa
         builder.Property(p => p.DisplayName)
             .HasMaxLength(256);
         
+        builder.Property(p => p.LoginEmail)
+            .HasMaxLength(256);
+        
+        builder.Property(p => p.ContactEmail)
+            .HasMaxLength(256);
+        
         builder.Property(p => p.CreatedAt)
             .IsRequired();
         

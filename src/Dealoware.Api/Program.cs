@@ -39,6 +39,7 @@ app.MapAuthEndpoints();
 app.MapArtifactEndpoints();
 app.MapNegotiationEndpoints();
 app.MapOfferEndpoints();
+app.MapProfileEndpoints();
 
 app.Run();
 
