@@ -40,6 +40,7 @@ app.MapArtifactEndpoints();
 app.MapNegotiationEndpoints();
 app.MapOfferEndpoints();
 app.MapProfileEndpoints();
+app.MapStrategyEndpoints();
 
 app.Run();
 
