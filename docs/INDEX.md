@@ -44,6 +44,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — **processed summary** (Product-owned refresh; GitHub `docs/product/PRODUCT-BRIEF.md`; must stay distinct from original)
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
+- [2026-09-21__product__note__brief-4-status-reply.md](product/2026-09-21__product__note__brief-4-status-reply.md)
 
 ---
 
@@ -299,12 +300,15 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-qa-confirm.md) — Security QA Doc #32 qa-confirm — PASS 10/10 (clears overall Doc HOLD)
 - [2026-09-21__ba__verification__mvp-stage-a-account-list-fail-closed.md](verification/2026-09-21__ba__verification__mvp-stage-a-account-list-fail-closed.md) — BA verify Account list fail-closed #32 (additive INDEX; #32 CLOSED — not #31 Doc weave)
 - [2026-09-21__sd__verification__mvp-stage-a-field-acl-registry.md](verification/2026-09-21__sd__verification__mvp-stage-a-field-acl-registry.md) — SD / Dev Code QA verify Field ACL #31 (PASS @ PR #37 HEAD; Sec SD closed)
-- [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md) — Doc Security checklist #31 Field ACL — **ISSUED**; HOLD until doc-qa-confirm (overall Doc HOLD)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md) — Doc Security checklist #31 — ISSUED; cleared by doc-qa-confirm (overall Doc PASS)
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-checklist.md) — Security checklist Product QA #31 Field ACL
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-points-review.md) — Security points-review Product QA #31 (PASS 10/10; present on disk — not invented)
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-qa-confirm.md) — Security QA confirm Product QA #31 (PASS; Sec10 closed — not overall Doc PASS)
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-sd-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-points-review.md) — Security points-review SD #31 Field ACL (PASS 10/10; present on disk — not invented)
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-sd-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-qa-confirm.md) — Security QA confirm SD #31 (PASS 10/10 — SD Sec only)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md) — Senior Security Doc #31 points-review — PASS 10/10
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md) — Security QA Doc #31 qa-confirm — PASS 10/10 (clears overall Doc HOLD)
+
 ## ops/
 
 - [ORG-OPS.md](ops/ORG-OPS.md) — agent ops charter (stable; do not replace with dated notes)
@@ -345,7 +349,13 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__ops__verification__brief-5-6h-overnight.md](ops/reports/2026-09-21__ops__verification__brief-5-6h-overnight.md)
 - [2026-09-21__ops__verification__brief-6-6h-dawn.md](ops/reports/2026-09-21__ops__verification__brief-6-6h-dawn.md)
 - [2026-09-21__docs__ops__mvp-stage-a-list-failclosed-doc-security-weave.md](ops/2026-09-21__docs__ops__mvp-stage-a-list-failclosed-doc-security-weave.md) — Doc Security weave #32 — Overall Doc step #32 PASS (Security QA cleared HOLD)
-- [2026-09-21__docs__ops__mvp-stage-a-field-acl-doc-security-weave.md](ops/2026-09-21__docs__ops__mvp-stage-a-field-acl-doc-security-weave.md) — Doc Security weave #31 Field ACL — **HOLD** overall Doc PASS until Security QA doc-qa-confirm (#32 OUT)
+- [2026-09-21__docs__ops__mvp-stage-a-field-acl-doc-security-weave.md](ops/2026-09-21__docs__ops__mvp-stage-a-field-acl-doc-security-weave.md) — Doc Security weave #31 — Overall Doc step #31 PASS (Security QA cleared HOLD)
+- [2026-09-21__ops__done-list__brief-4-product-activity.md](ops/reports/2026-09-21__ops__done-list__brief-4-product-activity.md)
+- [2026-09-21__ops__evidence__brief-4-chief-product-reply.md](ops/reports/2026-09-21__ops__evidence__brief-4-chief-product-reply.md)
+- [2026-09-21__ops__ops-report__brief-4-product-activity.md](ops/reports/2026-09-21__ops__ops-report__brief-4-product-activity.md)
+- [2026-09-21__ops__verification__brief-4-product-activity.md](ops/reports/2026-09-21__ops__verification__brief-4-product-activity.md)
+- [2026-09-21__product__note__brief-4-status-reply.md](ops/reports/2026-09-21__product__note__brief-4-status-reply.md)
+
 ## meta/
 
 - [DOC-FLOW.md](meta/DOC-FLOW.md)

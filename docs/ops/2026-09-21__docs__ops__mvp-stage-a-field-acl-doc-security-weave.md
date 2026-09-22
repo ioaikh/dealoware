@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **HOLD** — Overall Doc step #31 PASS deferred until Security QA `doc-qa-confirm` (checklist ISSUED; handshake not invented) |
+| **Status** | **Overall Doc step #31 PASS** — Security QA cleared HOLD (doc-qa-confirm; all 10 MET) |
 | **Date** | 2026-09-21 |
 | **Author** | Dealoware Senior Docs |
 | **Story** | GitHub issue #31 · Field ACL registry + API projection (FieldClass / IFieldPolicy) |
@@ -28,7 +28,7 @@ Supporting (not primary score surface): KB Product QA report `qa/2026-09-21__qa_
 
 ## Point → how Doc artifacts satisfy
 
-Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md` (pts 1–10). Handshake files (`doc-points-review` / `doc-qa-confirm`) **not invented** — indexed only after Security PASS.
+Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md` (pts 1–10). Handshake files indexed after Security PASS (not invented).
 
 | # | Security point | Doc satisfaction (cites) |
 |---|----------------|--------------------------|
@@ -41,7 +41,7 @@ Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a
 | 7 | No Stage B/C inventing | Weave Constraints + Spec/DevPlan: no Strategy ACL, agent hard-wall, Cognito/SSO, or MM/DC4 as #31 delivered. Stage B/C HOLD. Product QA Sec confirm MET pt7. |
 | 8 | Cross-story non-merge | Weave + INDEX: **#32 OUT**; harden/consume cross-refs to #4–#7 only; #7 stub unchanged; no rewrite of #32 deliverables under this weave. Product QA Sec confirm MET pt8. |
 | 9 | Cost / spend | Docs affirm PoC **$0**; no IdP/vault provision as delivered. Weave: PoC $0. Product QA Sec confirm MET pt9. |
-| 10 | Handshake close | **HOLD.** Docs QA must **not** overall-PASS until Security QA `doc-qa-confirm` + Senior Security `doc-points-review` land against this ISSUED checklist. **Not invented.** |
+| 10 | Handshake close | **PASS.** Security QA `doc-qa-confirm` + Senior Security `doc-points-review` landed — all 10 MET. Docs QA may overall-PASS. |
 
 ## Indexed Product QA Security (Sec10 for Product QA step — already closed; not overall Doc PASS)
 - `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-productqa-checklist.md`
@@ -53,10 +53,10 @@ Mapped strictly to `verification/2026-09-21__security__verification__mvp-stage-a
 - `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-points-review.md` (present on disk; indexed — not invented)
 - `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-qa-confirm.md` (**PASS**; all 10 MET — SD Sec only)
 
-## Doc Security handshake (awaiting — clears HOLD when landed)
+## Indexed Doc Security handshake (clears HOLD)
 - Binding checklist (**ISSUED**): `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-checklist.md`
-- Senior Security points-review: `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md` — **not present; do not invent**
-- Security QA confirm: `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md` — **not present; do not invent**
+- Senior Security points-review: `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md` — **PASS** 10/10
+- Security QA confirm: `verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md` — **PASS** 10/10 (clears overall Doc HOLD)
 
-## HOLD
-**Overall Doc-step #31 HOLD** — checklist ISSUED; weave ready for Chief Docs → Chief Security escalation. Primary surfaces: PR #37 Field ACL API projection + this weave. **#32 OUT** (cross-ref only); Soft DisplayName non-blocking; Stage B/C HOLD; #24 HOLD; PoC $0; CQ no-refactor; no MotorMarket; #7 stub unchanged. Docs QA must not claim overall PASS until Security QA `doc-qa-confirm`.
+## PASS
+**Overall Doc-step #31 PASS** — Security QA confirm cleared HOLD (pts 1–10 MET). Primary surfaces: PR #37 Field ACL API projection + this weave. Mirror: https://github.com/ioaikh/dealoware/pull/39. **#32 OUT** (cross-ref only); Soft DisplayName non-blocking; Stage B/C HOLD; #24 HOLD; PoC $0; CQ no-refactor; no MotorMarket; #7 stub unchanged.
