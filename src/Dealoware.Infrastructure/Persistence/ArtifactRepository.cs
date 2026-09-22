@@ -54,4 +54,52 @@ public class ArtifactRepository : IArtifactRepository
     {
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Artifact>> SearchDiscoverableAsync(
+        string query, 
+        string callerParticipantId,
+        int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Array.Empty<Artifact>();
+        }
+
+        var normalizedQuery = query.Trim().ToLowerInvariant();
+        
+        var matchingArtifactIds = await _context.Artifacts
+            .Where(a => 
+                EF.Functions.Like(a.Intent.ToLower(), $"%{normalizedQuery}%") ||
+                a.Entities.Any(e => 
+                    EF.Functions.Like(e.Name.ToLower(), $"%{normalizedQuery}%") ||
+                    EF.Functions.Like(e.Description.ToLower(), $"%{normalizedQuery}%")
+                ) ||
+                a.Entities.Any(e =>
+                    e.Properties.Any(p =>
+                        EF.Functions.Like(p.Name.ToLower(), $"%{normalizedQuery}%") ||
+                        EF.Functions.Like(p.Value.ToLower(), $"%{normalizedQuery}%")
+                    )
+                )
+            )
+            .OrderByDescending(a => a.Id)
+            .Take(limit)
+            .Select(a => a.Id)
+            .ToListAsync(cancellationToken);
+
+        if (matchingArtifactIds.Count == 0)
+        {
+            return Array.Empty<Artifact>();
+        }
+
+        var artifacts = await _context.Artifacts
+            .Include(a => a.Entities)
+                .ThenInclude(e => e.Properties)
+            .Include(a => a.Values)
+            .Include(a => a.TimePeriods)
+            .Where(a => matchingArtifactIds.Contains(a.Id))
+            .ToListAsync(cancellationToken);
+
+        return artifacts.OrderByDescending(a => a.CreatedAt).ToList();
+    }
 }

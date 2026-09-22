@@ -78,4 +78,50 @@ public static class ArtifactMapper
     {
         return artifacts.Select(ToResponse).ToList();
     }
+
+    /// <summary>
+    /// Maps an Artifact to a discovery-safe response.
+    /// SECURITY: Intentionally omits OwnerParticipantId, entity IDs, value IDs, etc.
+    /// to prevent inventory enumeration and ownership correlation.
+    /// </summary>
+    public static DiscoverableArtifactResponse ToDiscoverableResponse(Artifact artifact)
+    {
+        return new DiscoverableArtifactResponse
+        {
+            Id = artifact.Id,
+            Entities = artifact.Entities.Select(e => new DiscoverableSubjectEntityDto
+            {
+                Name = e.Name,
+                Description = e.Description,
+                Properties = e.Properties.Select(p => new DiscoverablePropertyDto
+                {
+                    Name = p.Name,
+                    Type = p.Type,
+                    Value = p.Value
+                }).ToList(),
+                Facts = e.Facts.ToList()
+            }).ToList(),
+            Intent = artifact.Intent,
+            Values = artifact.Values.Select(v => new DiscoverableValueDto
+            {
+                Amount = v.Amount,
+                Currency = v.Currency
+            }).ToList(),
+            Locations = artifact.Locations.ToList(),
+            TimePeriods = artifact.TimePeriods.Select(t => new DiscoverableTimePeriodDto
+            {
+                Start = t.Start,
+                End = t.End
+            }).ToList(),
+            CreatedAt = artifact.CreatedAt
+        };
+    }
+
+    /// <summary>
+    /// Maps a list of Artifacts to discovery-safe responses.
+    /// </summary>
+    public static List<DiscoverableArtifactResponse> ToDiscoverableResponseList(IEnumerable<Artifact> artifacts)
+    {
+        return artifacts.Select(ToDiscoverableResponse).ToList();
+    }
 }
