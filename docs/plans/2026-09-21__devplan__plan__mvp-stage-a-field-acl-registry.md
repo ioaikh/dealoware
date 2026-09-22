@@ -134,7 +134,7 @@ Per Spec §2 example policy rows + Locked #6/#7:
 **LoginEmail locks:**
 
 - User Read/Write allowed on API projection for owner/User principal
-- **OwnAgent Deny all** on API/DB projection (even before Stage C tools exist — so later tools cannot "forget")
+- **OwnAgent Deny all** on API/DB projection (even before Stage C tools exist — so later tools cannot “forget”)
 - Counterparty / Stranger / Unauth Deny
 
 **ContactEmail locks:**
