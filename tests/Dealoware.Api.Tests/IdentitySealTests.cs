@@ -9,13 +9,16 @@ using Dealoware.Application.Negotiations.Dtos;
 namespace Dealoware.Api.Tests;
 
 /// <summary>
-/// Identity-seal leak-proof tests (Issue #7).
+/// Identity-seal leak-proof tests (Issue #7 + Stage B #42).
 /// 
 /// Verifies that Negotiation/Offer/public Participant responses expose opaque IDs only
-/// and contain no contact PII (email, phone, address, etc.).
+/// and contain no contact PII (email, phone, address, etc.) BEFORE Accept.
 /// 
-/// Accept/Decline/Counter/Close responses return state only — no contact release.
-/// This is a PoC stub; contact exchange on accept is MVP (P7/A9).
+/// Stage B (#42): After Accept, ContactEmail is shared to counterparty via
+/// ShareOutbound grant. LoginEmail is NEVER shared.
+/// 
+/// Pre-Accept: No contact PII; IdentitySealed = true
+/// Post-Accept: ContactEmail shared; IdentitySealed = false; LoginEmail never shared
 /// </summary>
 [Collection("WebAppTests")]
 public class IdentitySealTests
@@ -227,10 +230,15 @@ public class IdentitySealTests
 
     #endregion
 
-    #region Accept Offer - Leak-Proof Tests (Critical: No Contact Release)
+    #region Accept Offer - Stage B Contact on Accept (#42)
 
+    /// <summary>
+    /// Stage B (#42): Accept response includes counterparty ContactEmail.
+    /// IdentitySealed becomes false when contact is shared.
+    /// LoginEmail is NEVER included.
+    /// </summary>
     [Fact]
-    public async Task AcceptOffer_Response_NoContactPii_StateOnly_IdentitySealed()
+    public async Task AcceptOffer_Response_ContactEmailShared_IdentitySealedFalse_Stage42()
     {
         var (clientA, _, _) = await CreateAuthenticatedClientAsync($"seal-accept-a-{Guid.NewGuid()}");
         var (clientB, subB, _) = await CreateAuthenticatedClientAsync($"seal-accept-b-{Guid.NewGuid()}");
@@ -255,17 +263,26 @@ public class IdentitySealTests
         Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
 
         var json = await acceptResponse.Content.ReadAsStringAsync();
-        AssertNoContactPiiInJson(json, "AcceptOffer response");
-        AssertIdentitySealedFlag(json, "AcceptOffer response");
+        
+        Assert.Contains("\"identitySealed\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"identitySealed\":false", json.Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"includesContactEmail\"", json, StringComparison.OrdinalIgnoreCase);
+        
+        Assert.DoesNotContain("loginEmail", json, StringComparison.OrdinalIgnoreCase);
 
-        var accepted = JsonSerializer.Deserialize<OfferResponse>(json,
+        var accepted = JsonSerializer.Deserialize<AcceptOfferResponse>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         Assert.Equal("Accepted", accepted!.Status);
-        Assert.True(accepted.IdentitySealed);
+        Assert.False(accepted.IdentitySealed);
+        Assert.True(accepted.IncludesContactEmail);
     }
 
+    /// <summary>
+    /// Stage B (#42): Subsequent GET after Accept still seals identity in OfferResponse.
+    /// Accept response (AcceptOfferResponse) is the only place contact is shared.
+    /// </summary>
     [Fact]
-    public async Task AcceptOffer_SubsequentGet_NoContactPii_IdentitySealed()
+    public async Task AcceptOffer_SubsequentGet_StillSealed_NormalOfferResponse()
     {
         var (clientA, _, _) = await CreateAuthenticatedClientAsync($"seal-accept-get-a-{Guid.NewGuid()}");
         var (clientB, subB, _) = await CreateAuthenticatedClientAsync($"seal-accept-get-b-{Guid.NewGuid()}");
@@ -422,10 +439,16 @@ public class IdentitySealTests
 
     #endregion
 
-    #region Full Negotiation Flow - End-to-End Leak-Proof Test
+    #region Full Negotiation Flow - End-to-End Leak-Proof Test (Stage B #42)
 
+    /// <summary>
+    /// Stage B (#42): Full negotiation flow with contact on accept.
+    /// Pre-Accept: No contact PII; IdentitySealed = true
+    /// Accept response: ContactEmail shared; IdentitySealed = false; LoginEmail never
+    /// Post-Accept GET: Still sealed (normal OfferResponse)
+    /// </summary>
     [Fact]
-    public async Task FullNegotiationFlow_NoContactPiiAtAnyStep()
+    public async Task FullNegotiationFlow_ContactOnAccept_Stage42()
     {
         var (clientA, subA, _) = await CreateAuthenticatedClientAsync($"seal-e2e-a-{Guid.NewGuid()}");
         var (clientB, subB, _) = await CreateAuthenticatedClientAsync($"seal-e2e-b-{Guid.NewGuid()}");
@@ -464,8 +487,13 @@ public class IdentitySealTests
 
         var acceptResponse = await clientA.PostAsync($"/offers/{counter!.Id}/accept", null);
         var json4 = await acceptResponse.Content.ReadAsStringAsync();
-        AssertNoContactPiiInJson(json4, "Step 4: Accept counter offer");
-        AssertIdentitySealedFlag(json4, "Step 4: Accept counter offer");
+        
+        Assert.Contains("\"identitySealed\":false", json4.Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("loginEmail", json4, StringComparison.OrdinalIgnoreCase);
+        var acceptResult = JsonSerializer.Deserialize<AcceptOfferResponse>(json4,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.False(acceptResult!.IdentitySealed);
+        Assert.Equal("Accepted", acceptResult.Status);
 
         var finalGetA = await clientA.GetAsync($"/negotiations/{negotiation.Id}");
         var json5a = await finalGetA.Content.ReadAsStringAsync();

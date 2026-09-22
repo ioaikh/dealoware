@@ -317,11 +317,11 @@ public class PocNegotiationScenarioTests
         var response = await sellerClient.PostAsync($"/offers/{counterOffer!.Id}/accept", null);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var accepted = await response.Content.ReadFromJsonAsync<OfferResponse>();
+        var accepted = await response.Content.ReadFromJsonAsync<AcceptOfferResponse>();
         
         Assert.NotNull(accepted);
         Assert.Equal("Accepted", accepted.Status);
-        Assert.True(accepted.IdentitySealed);
+        Assert.False(accepted.IdentitySealed);
     }
 
     /// <summary>
@@ -412,9 +412,9 @@ public class PocNegotiationScenarioTests
 
         var acceptResponse = await sellerClient.PostAsync($"/offers/{counter.Id}/accept", null);
         Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
-        var accepted = await acceptResponse.Content.ReadFromJsonAsync<OfferResponse>();
+        var accepted = await acceptResponse.Content.ReadFromJsonAsync<AcceptOfferResponse>();
         Assert.Equal("Accepted", accepted!.Status);
-        Assert.True(accepted.IdentitySealed);
+        Assert.False(accepted.IdentitySealed);
 
         var finalGetResponse = await sellerClient.GetAsync($"/negotiations/{negotiation.Id}");
         Assert.Equal(HttpStatusCode.OK, finalGetResponse.StatusCode);
