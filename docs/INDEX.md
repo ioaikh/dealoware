@@ -51,6 +51,13 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 
 - [2026-09-10__sa__architecture__poc-feasibility-roadmap.md](architecture/2026-09-10__sa__architecture__poc-feasibility-roadmap.md) — PoC feasibility roadmap (SA)
 - [2026-09-10__sa__architecture__poc-o10-scaffold.md](architecture/2026-09-10__sa__architecture__poc-o10-scaffold.md) — PoC O10 scaffold (SA)
+- [2026-09-20__sa__architecture__poc-post-delivery-review-brief.md](architecture/2026-09-20__sa__architecture__poc-post-delivery-review-brief.md)
+- [2026-09-20__sa__architecture__poc-post-delivery-review.md](architecture/2026-09-20__sa__architecture__poc-post-delivery-review.md) — SA post-PoC delivery review — PASS
+- [2026-09-20__sa__architecture__mvp-proposed-arch-review-moments.md](architecture/2026-09-20__sa__architecture__mvp-proposed-arch-review-moments.md)
+- [2026-09-21__sa__architecture__mvp-participant-secrets-acl-integration.md](architecture/2026-09-21__sa__architecture__mvp-participant-secrets-acl-integration.md)
+- [2026-09-21__sa__architecture__mvp-stage-a-field-acl-list-failclosed.md](architecture/2026-09-21__sa__architecture__mvp-stage-a-field-acl-list-failclosed.md) — SA architecture Stage A Field ACL (#31) + account list fail-closed (#32) options (cross-ref; separate Doc tracks)
+- [sa-architecture-options-brief-template.md](architecture/templates/sa-architecture-options-brief-template.md)
+- [sa-architecture-stage-review-template.md](architecture/templates/sa-architecture-stage-review-template.md)
 
 ## specs/
 
@@ -67,6 +74,9 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__spec__spec__poc-identity-seal-stub.md](specs/2026-09-20__spec__spec__poc-identity-seal-stub.md) — Spec #7 Identity-seal stub (opaque ids; Accept=state-only)
 - [2026-09-20__cq__assessment__poc-standing-l1-l3-posture-no-refactor.md](specs/2026-09-20__cq__assessment__poc-standing-l1-l3-posture-no-refactor.md) — CQ no-refactor #8 Standing L1–L3 posture (chore)
 - [2026-09-20__spec__spec__poc-standing-l1-l3-posture.md](specs/2026-09-20__spec__spec__poc-standing-l1-l3-posture.md) — Spec #8 Standing L1–L3 posture (LICENSE / public repo / hosted non-goal)
+- [2026-09-21__cq__assessment__mvp-stage-a-account-list-fail-closed-no-refactor.md](specs/2026-09-21__cq__assessment__mvp-stage-a-account-list-fail-closed-no-refactor.md) — CQ no-refactor assessment Account list fail-closed #32
+- [2026-09-21__spec__spec__mvp-stage-a-account-list-fail-closed.md](specs/2026-09-21__spec__spec__mvp-stage-a-account-list-fail-closed.md) — Spec Account list fail-closed #32 (Stage A Neg/Offer/Artifact list+get)
+- [2026-09-21__spec__spec__mvp-stage-a-field-acl-registry.md](specs/2026-09-21__spec__spec__mvp-stage-a-field-acl-registry.md) — Spec Field ACL registry #31 (soft INDEX; separate from #32 Doc weave)
 ---
 
 ## plans/
@@ -82,6 +92,10 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__devplan__plan__poc-negotiation-offers-d7-d10.md](plans/2026-09-20__devplan__plan__poc-negotiation-offers-d7-d10.md) — Dev Plan #6 Negotiation + Offers D7–D10/P4
 - [2026-09-20__devplan__plan__poc-identity-seal-stub.md](plans/2026-09-20__devplan__plan__poc-identity-seal-stub.md) — Dev Plan #7 Identity-seal stub
 - [2026-09-20__devplan__plan__poc-standing-l1-l3-posture.md](plans/2026-09-20__devplan__plan__poc-standing-l1-l3-posture.md) — Dev Plan #8 Standing L1–L3 posture (chore)
+- [2026-09-21__ba__note__story-31-field-acl-registry-api-projection.md](plans/2026-09-21__ba__note__story-31-field-acl-registry-api-projection.md) — BA note Story #31 Field ACL (soft INDEX)
+- [2026-09-21__ba__note__story-32-account-list-failclosed.md](plans/2026-09-21__ba__note__story-32-account-list-failclosed.md) — BA note Story #32 Account list fail-closed
+- [2026-09-21__devplan__plan__mvp-stage-a-account-list-fail-closed.md](plans/2026-09-21__devplan__plan__mvp-stage-a-account-list-fail-closed.md) — Dev Plan Account list fail-closed #32
+- [2026-09-21__devplan__plan__mvp-stage-a-field-acl-registry.md](plans/2026-09-21__devplan__plan__mvp-stage-a-field-acl-registry.md) — Dev Plan Field ACL registry #31 (on main docs/; soft INDEX only — no #31 re-push)
 
 ## qa/
 
@@ -92,6 +106,13 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__qa__qa-report__poc-negotiation-offers-d7-d10.md](qa/2026-09-20__qa__qa-report__poc-negotiation-offers-d7-d10.md) — Product QA report for Negotiation D7–D10 (**PASS**; Sec10 closed via productqa-qa-confirm)
 - [2026-09-20__qa__qa-report__poc-identity-seal-stub.md](qa/2026-09-20__qa__qa-report__poc-identity-seal-stub.md) — Product QA report for Identity-seal stub (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc step #7 PASS after Security handshake)
 - [2026-09-20__qa__qa-report__poc-standing-l1-l3-posture.md](qa/2026-09-20__qa__qa-report__poc-standing-l1-l3-posture.md) — Product QA report for Standing L1–L3 posture (#8 chore) (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc step #8 PASS after Security handshake)
+- [2026-09-20__qa__qa-report__poc-nightly-autotest-inventory-plan.md](qa/2026-09-20__qa__qa-report__poc-nightly-autotest-inventory-plan.md)
+- [2026-09-20__qa__qa-report__poc-scenario-autotest-suite.md](qa/2026-09-20__qa__qa-report__poc-scenario-autotest-suite.md)
+- [2026-09-21__qa__qa-report__mvp-stage-a-account-list-fail-closed.md](qa/2026-09-21__qa__qa-report__mvp-stage-a-account-list-fail-closed.md) — Product QA report Account list fail-closed #32 (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc HOLD — not Doc PASS)
+- [2026-09-21__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-21__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-21__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-21__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-21__qa__qa-report__poc-security-hygiene-soft-tests.md](qa/2026-09-21__qa__qa-report__poc-security-hygiene-soft-tests.md)
+- [2026-09-21__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-21__qa__trx__poc-nightly-autotest.trx)
 ---
 
 ## verification/
@@ -232,6 +253,49 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__spec__verification__poc-standing-l1-l3-posture.md](verification/2026-09-20__spec__verification__poc-standing-l1-l3-posture.md) — Spec verification of Standing L1–L3 posture #8
 - [2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-points-review.md) — Security points-review Doc #8 — PASS 10/10
 - [2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md](verification/2026-09-20__security__verification__poc-l1-l3-posture-doc-qa-confirm.md) — Security QA Doc #8 — PASS 10/10 (clears overall Doc HOLD)
+- [2026-09-20__ba__verification__poc-standing-l1-l3-posture.md](verification/2026-09-20__ba__verification__poc-standing-l1-l3-posture.md)
+- [2026-09-20__sa__verification__poc-post-delivery-review.md](verification/2026-09-20__sa__verification__poc-post-delivery-review.md) — SA verify post-PoC delivery review — PASS
+- [2026-09-20__security__verification__poc-post-delivery-sa-checklist.md](verification/2026-09-20__security__verification__poc-post-delivery-sa-checklist.md) — Security checklist for SA post-PoC review
+- [2026-09-20__security__verification__poc-post-delivery-sa-qa-confirm.md](verification/2026-09-20__security__verification__poc-post-delivery-sa-qa-confirm.md) — Security QA confirm SA post-PoC review — PASS
+- [2026-09-20__security__verification__poc-post-delivery-sa-points-review.md](verification/2026-09-20__security__verification__poc-post-delivery-sa-points-review.md)
+- [2026-09-21__devplan__verification__mvp-stage-a-account-list-fail-closed.md](verification/2026-09-21__devplan__verification__mvp-stage-a-account-list-fail-closed.md) — Dev Plan verify Account list fail-closed #32
+- [2026-09-21__devplan__verification__mvp-stage-a-field-acl-registry.md](verification/2026-09-21__devplan__verification__mvp-stage-a-field-acl-registry.md) — Dev Plan verify Field ACL #31 (soft INDEX)
+- [2026-09-21__sa__verification__mvp-participant-secrets-acl-integration-ceo-option-a-accept.md](verification/2026-09-21__sa__verification__mvp-participant-secrets-acl-integration-ceo-option-a-accept.md)
+- [2026-09-21__sa__verification__mvp-participant-secrets-acl-integration.md](verification/2026-09-21__sa__verification__mvp-participant-secrets-acl-integration.md)
+- [2026-09-21__sa__verification__mvp-stage-a-field-acl-list-failclosed.md](verification/2026-09-21__sa__verification__mvp-stage-a-field-acl-list-failclosed.md) — SA/Arch QA verify Field ACL + list-failclosed (#31+#32 cross-ref; PASS)
+- [2026-09-21__sd__verification__mvp-stage-a-account-list-fail-closed.md](verification/2026-09-21__sd__verification__mvp-stage-a-account-list-fail-closed.md) — SD verify Account list fail-closed #32 (PR #34 MERGED)
+- [2026-09-21__security__verification__mvp-participant-secrets-acl-sa-checklist.md](verification/2026-09-21__security__verification__mvp-participant-secrets-acl-sa-checklist.md)
+- [2026-09-21__security__verification__mvp-participant-secrets-acl-sa-points-review.md](verification/2026-09-21__security__verification__mvp-participant-secrets-acl-sa-points-review.md)
+- [2026-09-21__security__verification__mvp-participant-secrets-acl-sa-qa-confirm.md](verification/2026-09-21__security__verification__mvp-participant-secrets-acl-sa-qa-confirm.md)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-checklist.md) — Security checklist Dev Plan #31 Field ACL (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-points-review.md) — Security points-review Dev Plan #31 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-devplan-qa-confirm.md) — Security QA confirm Dev Plan #31 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-checklist.md) — Security checklist SA #31+#32 Stage A (soft INDEX / cross-ref)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-points-review.md) — Security points-review SA #31+#32 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-list-sa-qa-confirm.md) — Security QA confirm SA #31+#32 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-sd-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-checklist.md) — Security checklist SD #31 Field ACL (soft INDEX; #31 SD track separate)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-spec-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-spec-checklist.md) — Security checklist Spec #31 Field ACL (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-spec-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-spec-points-review.md) — Security points-review Spec #31 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-field-acl-spec-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-spec-qa-confirm.md) — Security QA confirm Spec #31 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-checklist.md) — Security checklist Dev Plan #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-points-review.md) — Security points-review Dev Plan #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-devplan-qa-confirm.md) — Security QA confirm Dev Plan #32 (PASS 10/10)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-checklist.md) — Doc Security checklist #32 — ISSUED; cleared by doc-qa-confirm (overall Doc PASS)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-checklist.md) — Security checklist Product QA #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-points-review.md) — Security points-review Product QA #32 (PASS 10/10; present on disk — not invented)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-productqa-qa-confirm.md) — Security QA confirm Product QA #32 (PASS; Sec10 closed)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-checklist.md) — Security checklist SD #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-points-review.md) — Security points-review SD #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-sd-qa-confirm.md) — Security QA confirm SD #32 (PASS 10/10)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-checklist.md) — Security checklist Spec #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-points-review.md) — Security points-review Spec #32 list-failclosed
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-spec-qa-confirm.md) — Security QA confirm Spec #32 (PASS 10/10)
+- [2026-09-21__security__verification__research-02-00-et.md](verification/2026-09-21__security__verification__research-02-00-et.md)
+- [2026-09-21__security__verification__research-12-00-et.md](verification/2026-09-21__security__verification__research-12-00-et.md)
+- [2026-09-21__spec__verification__mvp-stage-a-account-list-fail-closed.md](verification/2026-09-21__spec__verification__mvp-stage-a-account-list-fail-closed.md) — Spec verify Account list fail-closed #32
+- [2026-09-21__spec__verification__mvp-stage-a-field-acl-registry.md](verification/2026-09-21__spec__verification__mvp-stage-a-field-acl-registry.md) — Spec verify Field ACL registry #31 (soft INDEX)
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-points-review.md) — Senior Security Doc #32 points-review — PASS 10/10
+- [2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-list-failclosed-doc-qa-confirm.md) — Security QA Doc #32 qa-confirm — PASS 10/10 (clears overall Doc HOLD)
 
 ## ops/
 
@@ -260,6 +324,19 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__ops__verification__brief-2-performance.md](ops/reports/2026-09-20__ops__verification__brief-2-performance.md)
 - [2026-09-20__docs__ops__poc-identity-seal-doc-security-weave.md](ops/2026-09-20__docs__ops__poc-identity-seal-doc-security-weave.md) — Doc Security weave pts 1–10 for Identity-seal #7 (**overall Doc step #7 PASS**; Security QA cleared HOLD)
 - [2026-09-20__docs__ops__poc-l1-l3-posture-doc-security-weave.md](ops/2026-09-20__docs__ops__poc-l1-l3-posture-doc-security-weave.md) — Doc Security weave pts 1–10 for Standing L1–L3 #8 (**overall Doc step #8 PASS**; Security QA cleared HOLD)
+- [2026-09-20__ops__ops-note__post-milestone-sa-review-gate.md](ops/reports/2026-09-20__ops__ops-note__post-milestone-sa-review-gate.md)
+- [2026-09-20__ops__done-list__brief-4-6h-evening.md](ops/reports/2026-09-20__ops__done-list__brief-4-6h-evening.md)
+- [2026-09-20__ops__ops-note__poc-nightly-autotest-chief-loop.md](ops/reports/2026-09-20__ops__ops-note__poc-nightly-autotest-chief-loop.md)
+- [2026-09-20__ops__ops-note__sa-arch-review-process-gaps-lock.md](ops/reports/2026-09-20__ops__ops-note__sa-arch-review-process-gaps-lock.md)
+- [2026-09-20__ops__ops-report__brief-4-6h-evening.md](ops/reports/2026-09-20__ops__ops-report__brief-4-6h-evening.md)
+- [2026-09-20__ops__verification__brief-4-6h-evening.md](ops/reports/2026-09-20__ops__verification__brief-4-6h-evening.md)
+- [2026-09-21__ops__done-list__brief-5-6h-overnight.md](ops/reports/2026-09-21__ops__done-list__brief-5-6h-overnight.md)
+- [2026-09-21__ops__done-list__brief-6-6h-dawn.md](ops/reports/2026-09-21__ops__done-list__brief-6-6h-dawn.md)
+- [2026-09-21__ops__ops-report__brief-5-6h-overnight.md](ops/reports/2026-09-21__ops__ops-report__brief-5-6h-overnight.md)
+- [2026-09-21__ops__ops-report__brief-6-6h-dawn.md](ops/reports/2026-09-21__ops__ops-report__brief-6-6h-dawn.md)
+- [2026-09-21__ops__verification__brief-5-6h-overnight.md](ops/reports/2026-09-21__ops__verification__brief-5-6h-overnight.md)
+- [2026-09-21__ops__verification__brief-6-6h-dawn.md](ops/reports/2026-09-21__ops__verification__brief-6-6h-dawn.md)
+- [2026-09-21__docs__ops__mvp-stage-a-list-failclosed-doc-security-weave.md](ops/2026-09-21__docs__ops__mvp-stage-a-list-failclosed-doc-security-weave.md) — Doc Security weave #32 — Overall Doc step #32 PASS (Security QA cleared HOLD)
 
 
 ## meta/
