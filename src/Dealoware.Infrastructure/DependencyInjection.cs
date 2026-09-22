@@ -2,6 +2,7 @@ using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
+using Dealoware.Domain.Strategies;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
         services.AddScoped<INegotiationRepository, NegotiationRepository>();
         services.AddScoped<IOfferRepository, OfferRepository>();
+        services.AddScoped<IStrategyRepository, StrategyRepository>();
         
         services.AddSingleton<IFieldPolicy, FieldPolicy>();
 

@@ -2,14 +2,15 @@ namespace Dealoware.Domain.FieldAcl;
 
 /// <summary>
 /// Default implementation of IFieldPolicy.
-/// Implements deny-by-default and Stage A policy rows.
+/// Implements deny-by-default and Stage A/B policy rows.
 /// 
-/// Policy Matrix (Stage A):
+/// Policy Matrix (Stage A + B):
 /// | FieldClass    | User | OwnAgent      | Counterparty | Stranger | ShareOutbound |
 /// |---------------|------|---------------|--------------|----------|---------------|
 /// | LoginEmail    | R/W  | Deny all      | Deny         | Deny     | Deny          |
 /// | ContactEmail  | R/W  | Read only     | Deny         | Deny     | Deny          |
 /// | DisplayName   | R/W  | R/W (soft)    | Read (soft)  | Deny     | N/A           |
+/// | StrategyBody  | R/W  | R/W (owner)   | Deny         | Deny     | Deny          |
 /// | Unknown       | Deny | Deny          | Deny         | Deny     | Deny          |
 /// </summary>
 public sealed class FieldPolicy : IFieldPolicy
@@ -18,7 +19,8 @@ public sealed class FieldPolicy : IFieldPolicy
     {
         FieldClass.LoginEmail.Name,
         FieldClass.ContactEmail.Name,
-        FieldClass.DisplayName.Name
+        FieldClass.DisplayName.Name,
+        FieldClass.StrategyBody.Name
     };
 
     public bool IsRegistered(FieldClass fieldClass)
@@ -55,6 +57,9 @@ public sealed class FieldPolicy : IFieldPolicy
         
         if (fieldClass == FieldClass.DisplayName)
             return EvaluateDisplayName(principalType, action);
+        
+        if (fieldClass == FieldClass.StrategyBody)
+            return EvaluateStrategyBody(principalType, action);
         
         return false;
     }
@@ -102,6 +107,23 @@ public sealed class FieldPolicy : IFieldPolicy
             PrincipalType.User => action is FieldAction.Read or FieldAction.Write or FieldAction.List,
             PrincipalType.OwnAgent => action is FieldAction.Read or FieldAction.Write or FieldAction.List,
             PrincipalType.Counterparty => action == FieldAction.Read,
+            PrincipalType.Stranger => false,
+            PrincipalType.Unauthenticated => false,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// StrategyBody: User R/W; OwnAgent R/W (for owner); Counterparty Deny; Stranger/Unauth Deny.
+    /// MVP Stage B - never exposed to counterparty via Negotiation DTOs.
+    /// </summary>
+    private static bool EvaluateStrategyBody(PrincipalType principalType, FieldAction action)
+    {
+        return principalType switch
+        {
+            PrincipalType.User => action is FieldAction.Read or FieldAction.Write or FieldAction.List,
+            PrincipalType.OwnAgent => action is FieldAction.Read or FieldAction.Write or FieldAction.List,
+            PrincipalType.Counterparty => false,
             PrincipalType.Stranger => false,
             PrincipalType.Unauthenticated => false,
             _ => false

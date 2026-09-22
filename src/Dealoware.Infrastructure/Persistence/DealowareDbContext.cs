@@ -1,6 +1,7 @@
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
+using Dealoware.Domain.Strategies;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dealoware.Infrastructure.Persistence;
@@ -19,6 +20,8 @@ public class DealowareDbContext : DbContext
 
     public DbSet<Negotiation> Negotiations => Set<Negotiation>();
     public DbSet<Offer> Offers => Set<Offer>();
+
+    public DbSet<Strategy> Strategies => Set<Strategy>();
 
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
@@ -40,5 +43,7 @@ public class DealowareDbContext : DbContext
 
         modelBuilder.ApplyConfiguration(new NegotiationEntityConfiguration());
         modelBuilder.ApplyConfiguration(new OfferEntityConfiguration());
+        
+        modelBuilder.ApplyConfiguration(new StrategyEntityConfiguration());
     }
 }

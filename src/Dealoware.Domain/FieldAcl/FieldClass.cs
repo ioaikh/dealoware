@@ -35,6 +35,13 @@ public sealed class FieldClass
     public static readonly FieldClass DisplayName = new("DisplayName");
     
     /// <summary>
+    /// Strategy body - negotiation strategy content (MVP Stage B).
+    /// User R/W; OwnAgent R/W (for owner); Counterparty Deny; Stranger/Unauth Deny.
+    /// Never exposed to counterparty via Negotiation DTOs.
+    /// </summary>
+    public static readonly FieldClass StrategyBody = new("StrategyBody");
+    
+    /// <summary>
     /// Creates a custom FieldClass for extension.
     /// Unknown/unregistered classes default to deny.
     /// </summary>
