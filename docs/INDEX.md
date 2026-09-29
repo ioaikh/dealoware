@@ -441,6 +441,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-22__sa__verification__mvp-stage-b-sa-rev-mvp-b-review.md](verification/2026-09-22__sa__verification__mvp-stage-b-sa-rev-mvp-b-review.md) — SA verification — Gate #25 SA-REV MVP-B review (INDEX catch-up; Soft Soft CLOSE Soft HOLD handshake SoR separate)
 - [2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-points-review.md) — Security points-review — Gate #25 SA-REV MVP-B PASS 10/10; Soft Soft CLOSE Soft HOLD handshake SoR
 - [2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-qa-confirm.md) — Security QA confirm — Gate #25 SA-REV MVP-B PASS 10/10; Soft Soft CLOSE Soft HOLD handshake SoR; Soft #41 Assistant OUT
+- [2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-checklist.md)
 - [2026-09-23__security__verification__research-02-00-et.md](verification/2026-09-23__security__verification__research-02-00-et.md)
 - [2026-09-23__security__verification__research-12-00-et.md](verification/2026-09-23__security__verification__research-12-00-et.md)
 - [2026-09-24__security__verification__research-02-00-et.md](verification/2026-09-24__security__verification__research-02-00-et.md)
