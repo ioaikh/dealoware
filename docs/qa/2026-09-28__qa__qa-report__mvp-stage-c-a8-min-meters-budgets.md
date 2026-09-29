@@ -90,5 +90,5 @@
 - [x] QAQA confirm to Chief — **PASS** (meta after Security QA)
 - [x] Senior Security → `verification/2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-points-review.md` — **PASS 10/10**
 - [x] Security QA → `verification/2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-qa-confirm.md` — **PASS 10/10**
-- [x] SoR publish under `docs/qa/` — PR **#103** OPEN; awaiting merge
+- [x] SoR publish under `docs/qa/` — PR **#103** MERGED @ `961b81594a41afe4a1657360347cda586c3b19f7`
 - [x] Soft Soft CLOSE Soft HOLD SoR Product QA checklist twin under `docs/verification/` — PR **#101** MERGED merge `2762b95` / docs SHA `cc203fef`

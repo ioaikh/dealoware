@@ -176,6 +176,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-28__qa__trx__poc-nightly-autotest.trx)
 - [2026-09-28__qa__qa-report__mvp-stage-c-agent-tool-hardwall-scrubber.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-agent-tool-hardwall-scrubber.md)
 - [2026-09-28__qa__qa-report__mvp-stage-c-thin-assistant-runtime-x1.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__qa__qa-report__mvp-stage-c-a8-min-meters-budgets.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-a8-min-meters-budgets.md)
 ---
 
 ## verification/
