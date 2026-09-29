@@ -512,6 +512,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-points-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-qa-confirm.md)
 - [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-productqa-qa-confirm.md)
 - [2026-09-28__sd__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__sd__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-points-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-qa-confirm.md)
