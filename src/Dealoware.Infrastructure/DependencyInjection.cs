@@ -1,8 +1,10 @@
+using Dealoware.Domain.AgentGateway;
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
+using Dealoware.Infrastructure.AgentGateway;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +34,11 @@ public static class DependencyInjection
         services.AddScoped<IStrategyRepository, StrategyRepository>();
         
         services.AddSingleton<IFieldPolicy, FieldPolicy>();
+        
+        services.AddSingleton<IToolAllowlist, ToolAllowlist>();
+        services.AddScoped<IAgentContextScrubber, AgentContextScrubber>();
+        services.AddScoped<IToolExecutor, StubToolExecutor>();
+        services.AddScoped<IAgentGateway, Dealoware.Domain.AgentGateway.AgentGateway>();
 
         return services;
     }
