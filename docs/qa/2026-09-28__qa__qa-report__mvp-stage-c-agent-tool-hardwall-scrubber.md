@@ -77,7 +77,7 @@ Binding: `verification/2026-09-28__security__verification__mvp-stage-c-hardwall-
 
 **PASS** — Security QA `…hardwall-productqa-qa-confirm.md` PASS (pts 1–10 MET); soft gaps accepted.  
 QAQA confirmed Product QA PASS to Chief (no bounce).  
-Do not set GitHub `status:done` from this step alone (CBA BA-verify). Scope #67 only.
+**Chief Product QA PASS locked 2026-09-28** by Dealoware QA (Chief QA). Soft Soft CLOSE Soft HOLD Doc may clear on this PASS. Soft Soft CLOSE Soft HOLD `status:done` until CBA BA-verify. Soft #41 OUT until #66 under wall. Scope #67 only. Do not set GitHub `status:done` from this step alone.
 
 ### Done-list
 
@@ -86,4 +86,4 @@ Do not set GitHub `status:done` from this step alone (CBA BA-verify). Scope #67 
 - [x] Product QA Security checklist woven (pts 1–9)
 - [x] Security QA confirm PASS (pt 10)
 - [x] QAQA confirm to Chief
-- [ ] SoR publish under `docs/qa/` (in flight after PASS; learn from #31)
+- [x] SoR publish under `docs/qa/` — PR **#84** OPEN (learn from #31/#38/#59); awaiting merge
