@@ -511,6 +511,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-points-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-qa-confirm.md)
 - [2026-09-28__ba__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__ba__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__ba__verification__mvp-stage-c-thin-assistant-runtime-x1.md](verification/2026-09-28__ba__verification__mvp-stage-c-thin-assistant-runtime-x1.md)
 - [2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-a8-min-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-sd-points-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-doc-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-doc-checklist.md)
