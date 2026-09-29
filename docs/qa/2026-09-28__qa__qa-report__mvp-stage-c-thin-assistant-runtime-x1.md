@@ -81,15 +81,15 @@ Binding: `verification/2026-09-28__security__verification__mvp-stage-c-thin-assi
 ## Disposition
 
 **PASS** — AC 1–7 **MET**; Security pts 1–10 **PASS** (Security QA productqa-qa-confirm + Senior Security points-review). Soft gaps accepted (no live `dotnet`). Checklist SoR twin CLEAR (PR #88).  
-Soft Soft CLOSE Soft HOLD Doc clearing via SoR `docs/qa/` publish. Soft Soft CLOSE Soft HOLD `status:done` until CBA (not Product QA). Soft **#41** Assistant OUT closes with **#66+#67** under wall. Scope #66 only under #67 wall. Do not set GitHub `status:done` from this step alone. PoC **$0**.
+**Chief Product QA PASS locked 2026-09-28** by Dealoware QA (Chief QA) after QAQA PASS. Soft Soft CLOSE Soft HOLD Doc may clear on this PASS (SoR `docs/qa/` publish). Soft Soft CLOSE Soft HOLD `status:done` until CBA BA-verify. Soft **#41** Assistant OUT closes with **#66+#67** under wall (not Stage B). Scope #66 only under #67 wall. Do not set GitHub `status:done` from this step alone. PoC **$0**.
 
 ### Done-list
 
 - [x] Evidence at impl `199125a…` + tip `7043314…` (CI SUCCESS both: 36505175931 / 36505260417)
 - [x] AC 1–7 woven (Spec §8 / issue #66)
-- [x] Product QA Security checklist woven (pts 1–9 EVIDENCED; pt 10 HOLD)
+- [x] Product QA Security checklist woven (pts 1–10 PASS)
 - [x] QAQA confirm to Chief — **PASS** (meta after Security QA)
 - [x] Senior Security → `verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-points-review.md` — **PASS 10/10**
 - [x] Security QA → `verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-qa-confirm.md` — **PASS 10/10**
-- [ ] SoR publish under `docs/qa/` after PASS (learn from #31/#38/#59/#84) — in flight
+- [x] SoR publish under `docs/qa/` — PR **#89** OPEN (learn from #31/#38/#59/#84); awaiting merge
 - [x] Soft Soft CLOSE Soft HOLD SoR Product QA checklist twin under `docs/verification/` — PR **#88** MERGED @ `bccdd6e`
