@@ -27,6 +27,9 @@ builder.Services.AddAuthServices(jwtSettings);
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();

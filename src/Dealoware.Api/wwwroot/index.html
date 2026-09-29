@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dealoware - MVP Stage C Basic UI</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header id="app-header">
+        <h1>Dealoware</h1>
+        <div id="auth-status"></div>
+    </header>
+
+    <main id="app-main">
+        <!-- Auth Section (shown when not authenticated) -->
+        <section id="auth-section" class="section">
+            <h2>Authentication</h2>
+            <div class="auth-forms">
+                <div class="form-group">
+                    <h3>Register</h3>
+                    <form id="register-form">
+                        <input type="text" id="register-display-name" placeholder="Display Name (optional)">
+                        <button type="submit">Register</button>
+                    </form>
+                    <div id="register-result" class="result-box"></div>
+                </div>
+                <div class="form-group">
+                    <h3>Login with API Key</h3>
+                    <form id="login-form">
+                        <input type="text" id="login-api-key" placeholder="API Key (dlw_...)" required>
+                        <button type="submit">Login</button>
+                    </form>
+                    <div id="login-result" class="result-box"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Protected Sections (shown when authenticated) -->
+        <div id="protected-sections" style="display: none;">
+            <!-- Navigation -->
+            <nav id="app-nav">
+                <button class="nav-btn active" data-section="profile">Profile</button>
+                <button class="nav-btn" data-section="artifacts">Artifacts</button>
+                <button class="nav-btn" data-section="search">Discovery</button>
+                <button class="nav-btn" data-section="negotiations">Negotiations</button>
+                <button class="nav-btn" data-section="strategies">Strategies</button>
+                <button class="nav-btn" data-section="assistant">Assistant</button>
+                <button class="nav-btn" data-section="budget">Budget</button>
+            </nav>
+
+            <!-- Profile Section -->
+            <section id="profile-section" class="section protected">
+                <h2>My Profile</h2>
+                <div id="profile-display" class="data-display"></div>
+                <form id="profile-form" class="edit-form">
+                    <h3>Update Profile</h3>
+                    <input type="text" id="profile-display-name" placeholder="Display Name">
+                    <input type="email" id="profile-contact-email" placeholder="Contact Email">
+                    <button type="submit">Update</button>
+                </form>
+            </section>
+
+            <!-- Artifacts Section -->
+            <section id="artifacts-section" class="section protected" style="display: none;">
+                <h2>My Artifacts</h2>
+                <div id="artifacts-list" class="data-list"></div>
+                <form id="artifact-form" class="edit-form">
+                    <h3>Create Artifact</h3>
+                    <input type="text" id="artifact-name" placeholder="Subject Name" required>
+                    <input type="text" id="artifact-description" placeholder="Description">
+                    <select id="artifact-intent">
+                        <option value="Sell">Sell</option>
+                        <option value="Buy">Buy</option>
+                        <option value="Exchange">Exchange</option>
+                    </select>
+                    <input type="text" id="artifact-locations" placeholder="Locations (comma-separated)">
+                    <button type="submit">Create</button>
+                </form>
+            </section>
+
+            <!-- Discovery Search Section -->
+            <section id="search-section" class="section protected" style="display: none;">
+                <h2>Discovery Search</h2>
+                <form id="search-form">
+                    <input type="text" id="search-query" placeholder="Search artifacts..." required>
+                    <button type="submit">Search</button>
+                </form>
+                <div id="search-results" class="data-list"></div>
+            </section>
+
+            <!-- Negotiations Section -->
+            <section id="negotiations-section" class="section protected" style="display: none;">
+                <h2>My Negotiations</h2>
+                <div id="negotiations-list" class="data-list"></div>
+                <div id="negotiation-detail" class="detail-view" style="display: none;"></div>
+            </section>
+
+            <!-- Strategies Section -->
+            <section id="strategies-section" class="section protected" style="display: none;">
+                <h2>My Strategies</h2>
+                <div id="strategies-list" class="data-list"></div>
+                <form id="strategy-form" class="edit-form">
+                    <h3>Create Strategy</h3>
+                    <input type="text" id="strategy-name" placeholder="Strategy Name" required>
+                    <textarea id="strategy-body" placeholder="Strategy Body (rules/conditions)" required></textarea>
+                    <button type="submit">Create</button>
+                </form>
+            </section>
+
+            <!-- Assistant Section (binds #66 which uses #67 hard wall) -->
+            <section id="assistant-section" class="section protected" style="display: none;">
+                <h2>AI Assistant</h2>
+                <p class="note">OwnAgent-only 1:1 assistant. All tool invocations go through server-side gateway (#67 hard wall).</p>
+                <div id="assistant-capabilities" class="data-display"></div>
+                <form id="assistant-form" class="edit-form">
+                    <h3>Invoke Assistant</h3>
+                    <select id="assistant-strategy">
+                        <option value="">No Strategy</option>
+                    </select>
+                    <select id="assistant-tool">
+                        <option value="">No Tool</option>
+                    </select>
+                    <input type="text" id="assistant-input" placeholder="Input (optional)">
+                    <button type="submit">Invoke</button>
+                </form>
+                <div id="assistant-result" class="result-box"></div>
+            </section>
+
+            <!-- Budget Section (minimal cutoff display per #68) -->
+            <section id="budget-section" class="section protected" style="display: none;">
+                <h2>Budget Status</h2>
+                <p class="note">Minimal budget status display for cutoff respect only.</p>
+                <div id="budget-display" class="data-display"></div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>Dealoware MVP Stage C Basic UI (X2 partial) - Issue #69</p>
+    </footer>
+
+    <script src="/app.js"></script>
+</body>
+</html>
