@@ -43,6 +43,7 @@ app.MapOfferEndpoints();
 app.MapProfileEndpoints();
 app.MapStrategyEndpoints();
 app.MapAssistantEndpoints();
+app.MapBudgetEndpoints();
 
 app.Run();
 

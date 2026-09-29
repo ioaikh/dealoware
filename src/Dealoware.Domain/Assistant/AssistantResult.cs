@@ -95,6 +95,27 @@ public sealed class AssistantResult
     {
         return new AssistantResult(false, code, message, null, null, null);
     }
+
+    /// <summary>
+    /// Budget exhausted — hard cutoff; further metered invocations DENIED.
+    /// Stage C #68: A8-minimum hard cutoff (fail-closed).
+    /// Message is safe to return to client (no private data).
+    /// </summary>
+    public static AssistantResult BudgetExhausted()
+    {
+        return new AssistantResult(false, "BUDGET_EXHAUSTED", 
+            "Budget exhausted. Further metered invocations are denied.", null, null, null);
+    }
+
+    /// <summary>
+    /// No budget configured — fail-closed; must have budget.
+    /// Stage C #68: Fail-closed on meter path.
+    /// </summary>
+    public static AssistantResult NoBudget()
+    {
+        return new AssistantResult(false, "NO_BUDGET",
+            "No budget configured. Metered invocations are denied.", null, null, null);
+    }
 }
 
 /// <summary>

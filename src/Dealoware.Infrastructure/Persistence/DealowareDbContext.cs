@@ -1,4 +1,5 @@
 using Dealoware.Domain.Artifacts;
+using Dealoware.Domain.Budget;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
@@ -24,6 +25,11 @@ public class DealowareDbContext : DbContext
 
     public DbSet<Strategy> Strategies => Set<Strategy>();
 
+    /// <summary>
+    /// Stage C #68: Per-Participant budgets for metered Assistant/LLM usage.
+    /// </summary>
+    public DbSet<ParticipantBudget> ParticipantBudgets => Set<ParticipantBudget>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -47,5 +53,8 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AcceptGrantEntityConfiguration());
         
         modelBuilder.ApplyConfiguration(new StrategyEntityConfiguration());
+        
+        // Stage C #68: Per-Participant budgets
+        modelBuilder.ApplyConfiguration(new ParticipantBudgetEntityConfiguration());
     }
 }

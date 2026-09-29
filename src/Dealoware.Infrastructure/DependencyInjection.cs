@@ -1,6 +1,7 @@
 using Dealoware.Domain.AgentGateway;
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Assistant;
+using Dealoware.Domain.Budget;
 using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
@@ -44,6 +45,12 @@ public static class DependencyInjection
         // Stage C #66: Thin OwnAgent-only Strategy-driven AI Assistant
         // Mandatory bind to #67 gateway; OwnAgent 1:1 only; no LoginEmail
         services.AddScoped<IAssistantService, AssistantService>();
+        
+        // Stage C #68: Per-Participant meters + hard budgets (cutoff)
+        // A8-minimum: hard cutoff fail-closed; cross-tenant isolation
+        // Primary consumer: #66; metered path wall-bound (#67)
+        services.AddScoped<IBudgetRepository, BudgetRepository>();
+        services.AddScoped<IBudgetService, BudgetService>();
 
         return services;
     }
