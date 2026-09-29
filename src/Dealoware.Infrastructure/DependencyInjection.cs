@@ -1,5 +1,6 @@
 using Dealoware.Domain.AgentGateway;
 using Dealoware.Domain.Artifacts;
+using Dealoware.Domain.Assistant;
 using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
@@ -39,6 +40,10 @@ public static class DependencyInjection
         services.AddScoped<IAgentContextScrubber, AgentContextScrubber>();
         services.AddScoped<IToolExecutor, StubToolExecutor>();
         services.AddScoped<IAgentGateway, Dealoware.Domain.AgentGateway.AgentGateway>();
+        
+        // Stage C #66: Thin OwnAgent-only Strategy-driven AI Assistant
+        // Mandatory bind to #67 gateway; OwnAgent 1:1 only; no LoginEmail
+        services.AddScoped<IAssistantService, AssistantService>();
 
         return services;
     }
