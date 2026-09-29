@@ -498,6 +498,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-qa-confirm.md)
 - [2026-09-28__security__verification__mvp-stage-c-a8-min-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-sd-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-productqa-qa-confirm.md)
 - [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-parent-18-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-sd-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md)
