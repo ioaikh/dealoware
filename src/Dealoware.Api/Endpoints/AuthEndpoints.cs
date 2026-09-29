@@ -1,5 +1,6 @@
 using Dealoware.Api.Auth;
 using Dealoware.Application.Auth.Dtos;
+using Dealoware.Domain.Budget;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Mvc;
@@ -48,6 +49,7 @@ public static class AuthEndpoints
     /// <summary>
     /// Register a new participant and issue initial API key.
     /// This is a bootstrap endpoint - creates principal + credential in one call.
+    /// Stage C #68: Also provisions initial budget for metered invocations.
     /// 
     /// ABUSE NOTE (PoC): No rate limiting in this PoC. Production requires:
     /// - Rate limit registration per IP
@@ -57,6 +59,7 @@ public static class AuthEndpoints
         RegisterRequest? request,
         IParticipantRepository participantRepository,
         IApiKeyRepository apiKeyRepository,
+        IBudgetService budgetService,
         CancellationToken cancellationToken)
     {
         var participant = Participant.Create(request?.DisplayName);
@@ -65,6 +68,10 @@ public static class AuthEndpoints
         await participantRepository.AddAsync(participant, cancellationToken);
         await apiKeyRepository.AddAsync(credential, cancellationToken);
         await participantRepository.SaveChangesAsync(cancellationToken);
+
+        // Stage C #68: Provision initial budget for the new participant
+        // A8-minimum default limit; mature analytics → V3
+        await budgetService.EnsureBudgetExistsAsync(participant.Sub, 1000, cancellationToken);
 
         var response = new RegisterResponse
         {
