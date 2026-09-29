@@ -45,6 +45,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
 - [2026-09-21__product__note__brief-4-status-reply.md](product/2026-09-21__product__note__brief-4-status-reply.md)
+- [2026-09-21__product__proposal__grok-bot-internal-test-connector.md](product/2026-09-21__product__proposal__grok-bot-internal-test-connector.md)
 
 ---
 
@@ -59,6 +60,9 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__sa__architecture__mvp-stage-a-field-acl-list-failclosed.md](architecture/2026-09-21__sa__architecture__mvp-stage-a-field-acl-list-failclosed.md) — SA architecture Stage A Field ACL (#31) + account list fail-closed (#32) options (cross-ref; #32 OUT of #31 Doc weave)
 - [sa-architecture-options-brief-template.md](architecture/templates/sa-architecture-options-brief-template.md)
 - [sa-architecture-stage-review-template.md](architecture/templates/sa-architecture-stage-review-template.md)
+- [2026-09-21__sa__architecture__mvp-stage-a-sa-rev-mvp-a-review.md](architecture/2026-09-21__sa__architecture__mvp-stage-a-sa-rev-mvp-a-review.md)
+- [2026-09-22__sa__architecture__mvp-stage-b-sa-rev-mvp-b-review.md](architecture/2026-09-22__sa__architecture__mvp-stage-b-sa-rev-mvp-b-review.md) — SA architecture review — Gate #25 SA-REV MVP-B (INDEX catch-up; Soft Soft CLOSE Soft HOLD checklist SoR separate)
+- [2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md](architecture/2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md)
 
 ## specs/
 
@@ -79,6 +83,20 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__spec__spec__mvp-stage-a-account-list-fail-closed.md](specs/2026-09-21__spec__spec__mvp-stage-a-account-list-fail-closed.md) — Spec Account list fail-closed #32 (Stage A Neg/Offer/Artifact list+get)
 - [2026-09-21__spec__spec__mvp-stage-a-field-acl-registry.md](specs/2026-09-21__spec__spec__mvp-stage-a-field-acl-registry.md) — Spec Field ACL registry #31 (Doc catch-up INDEX; separate from #32; overall Doc HOLD)
 - [2026-09-21__cq__assessment__mvp-stage-a-field-acl-registry-no-refactor.md](specs/2026-09-21__cq__assessment__mvp-stage-a-field-acl-registry-no-refactor.md) — CQ no-refactor assessment Field ACL registry #31 (cq:no-refactor)
+- [2026-09-22__spec__spec__mvp-stage-b-instant-search-discovery.md](specs/2026-09-22__spec__spec__mvp-stage-b-instant-search-discovery.md) — Spec — Stage B Instant Search Discovery (#40) — separate track
+- [2026-09-22__spec__spec__mvp-stage-b-minimal-strategy-crud.md](specs/2026-09-22__spec__spec__mvp-stage-b-minimal-strategy-crud.md) — Spec — Stage B Minimal Strategy CRUD (#41) — separate track
+- [2026-09-22__spec__spec__mvp-stage-b-contact-on-accept.md](specs/2026-09-22__spec__spec__mvp-stage-b-contact-on-accept.md) — Spec — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__cq__assessment__mvp-stage-b-instant-search-no-refactor.md](specs/2026-09-22__cq__assessment__mvp-stage-b-instant-search-no-refactor.md) — CQ assessment — Stage B Instant Search (#40) — no-refactor — separate track
+- [2026-09-22__cq__assessment__mvp-stage-b-contact-on-accept-no-refactor.md](specs/2026-09-22__cq__assessment__mvp-stage-b-contact-on-accept-no-refactor.md) — CQ assessment — Stage B Contact-on-Accept (#42) — no-refactor — separate track
+- [2026-09-22__cq__assessment__mvp-stage-b-minimal-strategy-no-refactor.md](specs/2026-09-22__cq__assessment__mvp-stage-b-minimal-strategy-no-refactor.md) — CQ assessment — Stage B Minimal Strategy (#41) — no-refactor — separate track
+- [2026-09-28__spec__spec__mvp-stage-c-a8-minimum-meters-budgets.md](specs/2026-09-28__spec__spec__mvp-stage-c-a8-minimum-meters-budgets.md)
+- [2026-09-28__spec__spec__mvp-stage-c-agent-tool-hardwall-scrubber.md](specs/2026-09-28__spec__spec__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__spec__spec__mvp-stage-c-basic-ui-first-party-bot-x2.md](specs/2026-09-28__spec__spec__mvp-stage-c-basic-ui-first-party-bot-x2.md)
+- [2026-09-28__spec__spec__mvp-stage-c-participant-isolation-option-a-remainder.md](specs/2026-09-28__spec__spec__mvp-stage-c-participant-isolation-option-a-remainder.md)
+- [2026-09-28__spec__spec__mvp-stage-c-thin-assistant-runtime-x1.md](specs/2026-09-28__spec__spec__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__cq__assessment__mvp-stage-c-agent-tool-hardwall-scrubber-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-agent-tool-hardwall-scrubber-no-refactor.md)
+- [2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md)
+- [2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md)
 ---
 
 ## plans/
@@ -98,6 +116,23 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__ba__note__story-32-account-list-failclosed.md](plans/2026-09-21__ba__note__story-32-account-list-failclosed.md) — BA note Story #32 Account list fail-closed
 - [2026-09-21__devplan__plan__mvp-stage-a-account-list-fail-closed.md](plans/2026-09-21__devplan__plan__mvp-stage-a-account-list-fail-closed.md) — Dev Plan Account list fail-closed #32
 - [2026-09-21__devplan__plan__mvp-stage-a-field-acl-registry.md](plans/2026-09-21__devplan__plan__mvp-stage-a-field-acl-registry.md) — Dev Plan Field ACL registry #31 (on main docs/; Doc catch-up INDEX — overall Doc HOLD)
+- [2026-09-22__ba__note__story-40-instant-search-discovery.md](plans/2026-09-22__ba__note__story-40-instant-search-discovery.md)
+- [2026-09-22__ba__note__story-41-minimal-strategy-crud.md](plans/2026-09-22__ba__note__story-41-minimal-strategy-crud.md)
+- [2026-09-22__ba__note__story-42-contact-on-accept.md](plans/2026-09-22__ba__note__story-42-contact-on-accept.md)
+- [2026-09-22__devplan__plan__mvp-stage-b-contact-on-accept.md](plans/2026-09-22__devplan__plan__mvp-stage-b-contact-on-accept.md) — Dev Plan — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__devplan__plan__mvp-stage-b-instant-search-discovery.md](plans/2026-09-22__devplan__plan__mvp-stage-b-instant-search-discovery.md) — Dev Plan — Stage B Instant Search Discovery (#40) — separate track
+- [2026-09-22__devplan__plan__mvp-stage-b-minimal-strategy-crud.md](plans/2026-09-22__devplan__plan__mvp-stage-b-minimal-strategy-crud.md) — Dev Plan — Stage B Minimal Strategy CRUD (#41) — separate track
+- [2026-09-28__ba__note__story-66-thin-assistant-runtime.md](plans/2026-09-28__ba__note__story-66-thin-assistant-runtime.md)
+- [2026-09-28__ba__note__story-67-agent-tool-hardwall-scrubber.md](plans/2026-09-28__ba__note__story-67-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__ba__note__story-68-a8-minimum-meters-budgets.md](plans/2026-09-28__ba__note__story-68-a8-minimum-meters-budgets.md)
+- [2026-09-28__ba__note__story-69-basic-ui-first-party-bot.md](plans/2026-09-28__ba__note__story-69-basic-ui-first-party-bot.md)
+- [2026-09-28__marketing__research__daily-us-morning.md](plans/marketing/2026-09-28__marketing__research__daily-us-morning.md)
+- [2026-09-28__devplan__plan__mvp-stage-c-a8-minimum-meters-budgets.md](plans/2026-09-28__devplan__plan__mvp-stage-c-a8-minimum-meters-budgets.md)
+- [2026-09-28__devplan__plan__mvp-stage-c-agent-tool-hardwall-scrubber.md](plans/2026-09-28__devplan__plan__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__devplan__plan__mvp-stage-c-basic-ui-first-party-bot-x2.md](plans/2026-09-28__devplan__plan__mvp-stage-c-basic-ui-first-party-bot-x2.md)
+- [2026-09-28__devplan__plan__mvp-stage-c-thin-assistant-runtime-x1.md](plans/2026-09-28__devplan__plan__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__devplan__plan__mvp-stage-c-participant-isolation-option-a-remainder.md](plans/2026-09-28__devplan__plan__mvp-stage-c-participant-isolation-option-a-remainder.md)
+
 ## qa/
 
 
@@ -115,6 +150,32 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__qa__qa-report__poc-security-hygiene-soft-tests.md](qa/2026-09-21__qa__qa-report__poc-security-hygiene-soft-tests.md)
 - [2026-09-21__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-21__qa__trx__poc-nightly-autotest.trx)
 - [2026-09-21__qa__qa-report__mvp-stage-a-field-acl-registry.md](qa/2026-09-21__qa__qa-report__mvp-stage-a-field-acl-registry.md) — Product QA report Field ACL registry #31 (**PASS**; Sec10 closed via productqa-qa-confirm; overall Doc HOLD — not Doc PASS)
+- [2026-09-22__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-22__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-22__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-22__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-22__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-22__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-22__qa__qa-report__mvp-stage-b-contact-on-accept.md](qa/2026-09-22__qa__qa-report__mvp-stage-b-contact-on-accept.md) — Product QA PASS report — Stage B Contact-on-Accept (#42) Soft CLOSE SoR; Soft Soft CLOSE mirror docs/qa/
+- [2026-09-22__qa__qa-report__mvp-stage-b-instant-search-discovery.md](qa/2026-09-22__qa__qa-report__mvp-stage-b-instant-search-discovery.md) — Product QA PASS report — Stage B Discovery (#40) Soft CLOSE SoR; Soft Soft CLOSE mirror docs/qa/
+- [2026-09-22__qa__qa-report__mvp-stage-b-minimal-strategy-crud.md](qa/2026-09-22__qa__qa-report__mvp-stage-b-minimal-strategy-crud.md) — Product QA PASS report — Stage B Strategy (#41) Soft CLOSE SoR; Soft Assistant OUT; Soft Soft CLOSE mirror docs/qa/
+- [2026-09-23__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-23__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-23__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-23__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-24__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-24__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-24__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-24__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-25__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-25__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-25__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-25__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-26__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-26__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-26__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-26__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-27__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-27__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-27__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-27__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-28__qa__qa-report__poc-nightly-autotest-run.md](qa/2026-09-28__qa__qa-report__poc-nightly-autotest-run.md)
+- [2026-09-28__qa__qa-report__poc-nightly-chief-analysis.md](qa/2026-09-28__qa__qa-report__poc-nightly-chief-analysis.md)
+- [2026-09-23__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-23__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-24__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-24__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-25__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-25__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-26__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-26__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-27__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-27__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-28__qa__trx__poc-nightly-autotest.trx](qa/results/2026-09-28__qa__trx__poc-nightly-autotest.trx)
+- [2026-09-28__qa__qa-report__mvp-stage-c-agent-tool-hardwall-scrubber.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__qa__qa-report__mvp-stage-c-thin-assistant-runtime-x1.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-thin-assistant-runtime-x1.md)
 ---
 
 ## verification/
@@ -308,6 +369,159 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-sd-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-sd-qa-confirm.md) — Security QA confirm SD #31 (PASS 10/10 — SD Sec only)
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-points-review.md) — Senior Security Doc #31 points-review — PASS 10/10
 - [2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-field-acl-doc-qa-confirm.md) — Security QA Doc #31 qa-confirm — PASS 10/10 (clears overall Doc HOLD)
+- [2026-09-21__ba__verification__mvp-stage-a-field-acl-registry.md](verification/2026-09-21__ba__verification__mvp-stage-a-field-acl-registry.md)
+- [2026-09-21__product__verification__grok-bot-internal-test-connector-proposal.md](verification/2026-09-21__product__verification__grok-bot-internal-test-connector-proposal.md)
+- [2026-09-21__sa__verification__mvp-stage-a-sa-rev-mvp-a-review.md](verification/2026-09-21__sa__verification__mvp-stage-a-sa-rev-mvp-a-review.md)
+- [2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-checklist.md](verification/2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-checklist.md)
+- [2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-points-review.md](verification/2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-points-review.md)
+- [2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-qa-confirm.md](verification/2026-09-21__security__verification__mvp-stage-a-sa-rev-mvp-a-qa-confirm.md)
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-checklist.md) — Spec Security checklist — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-spec-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-spec-checklist.md) — Spec Security checklist — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-spec-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-spec-checklist.md) — Spec Security checklist — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__research-02-00-et.md](verification/2026-09-22__security__verification__research-02-00-et.md)
+- [2026-09-22__security__verification__research-12-00-et.md](verification/2026-09-22__security__verification__research-12-00-et.md)
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-points-review.md) — Spec Security points-review — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-spec-qa-confirm.md) — Spec Security qa-confirm — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-spec-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-spec-points-review.md) — Spec Security points-review — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-spec-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-spec-qa-confirm.md) — Spec Security qa-confirm — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-spec-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-spec-points-review.md) — Spec Security points-review — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-spec-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-spec-qa-confirm.md) — Spec Security qa-confirm — Stage B Strategy (#41) — separate track
+- [2026-09-22__spec__verification__mvp-stage-b-contact-on-accept.md](verification/2026-09-22__spec__verification__mvp-stage-b-contact-on-accept.md) — Spec verify — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__spec__verification__mvp-stage-b-instant-search-discovery.md](verification/2026-09-22__spec__verification__mvp-stage-b-instant-search-discovery.md) — Spec verify — Stage B Instant Search Discovery (#40) — separate track
+- [2026-09-22__spec__verification__mvp-stage-b-minimal-strategy-crud.md](verification/2026-09-22__spec__verification__mvp-stage-b-minimal-strategy-crud.md) — Spec verify — Stage B Minimal Strategy CRUD (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-checklist.md) — Dev Plan Security checklist — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-devplan-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-devplan-checklist.md) — Dev Plan Security checklist — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-devplan-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-devplan-checklist.md) — Dev Plan Security checklist — Stage B Strategy (#41) — separate track
+- [2026-09-22__devplan__verification__mvp-stage-b-contact-on-accept.md](verification/2026-09-22__devplan__verification__mvp-stage-b-contact-on-accept.md) — Dev Plan verify — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__devplan__verification__mvp-stage-b-instant-search-discovery.md](verification/2026-09-22__devplan__verification__mvp-stage-b-instant-search-discovery.md) — Dev Plan verify — Stage B Instant Search Discovery (#40) — separate track
+- [2026-09-22__devplan__verification__mvp-stage-b-minimal-strategy-crud.md](verification/2026-09-22__devplan__verification__mvp-stage-b-minimal-strategy-crud.md) — Dev Plan verify — Stage B Minimal Strategy CRUD (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-points-review.md) — Dev Plan Sec points-review — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-devplan-qa-confirm.md) — Dev Plan Sec qa-confirm — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-devplan-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-devplan-points-review.md) — Dev Plan Sec points-review — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-devplan-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-devplan-qa-confirm.md) — Dev Plan Sec qa-confirm — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-devplan-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-devplan-points-review.md) — Dev Plan Sec points-review — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-devplan-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-devplan-qa-confirm.md) — Dev Plan Sec qa-confirm — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-checklist.md) — SD Security checklist — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-sd-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-sd-checklist.md) — SD Security checklist — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-sd-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-sd-checklist.md) — SD Security checklist — Stage B Strategy (#41) — separate track
+- [2026-09-22__sd__verification__mvp-stage-b-contact-on-accept.md](verification/2026-09-22__sd__verification__mvp-stage-b-contact-on-accept.md) — SD Code QA verify — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__sd__verification__mvp-stage-b-minimal-strategy-crud.md](verification/2026-09-22__sd__verification__mvp-stage-b-minimal-strategy-crud.md) — SD Code QA verify — Stage B Minimal Strategy CRUD (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-points-review.md) — SD Sec points-review — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-sd-qa-confirm.md) — SD Sec qa-confirm — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-sd-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-sd-points-review.md) — SD Sec points-review — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-sd-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-sd-qa-confirm.md) — SD Sec qa-confirm — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-sd-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-sd-points-review.md) — SD Sec points-review — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-sd-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-sd-qa-confirm.md) — SD Sec qa-confirm — Stage B Strategy (#41) — separate track
+- [2026-09-22__sd__verification__mvp-stage-b-instant-search-discovery.md](verification/2026-09-22__sd__verification__mvp-stage-b-instant-search-discovery.md) — SD Code QA verify — Stage B Instant Search Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-checklist.md) — Product QA Security checklist — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-productqa-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-productqa-checklist.md) — Product QA Security checklist — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-productqa-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-productqa-checklist.md) — Product QA Security checklist — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-points-review.md) — Product QA Sec points-review — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-productqa-qa-confirm.md) — Product QA Sec qa-confirm — Stage B Contact-on-Accept (#42) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-productqa-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-productqa-points-review.md) — Product QA Sec points-review — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-discovery-productqa-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-productqa-qa-confirm.md) — Product QA Sec qa-confirm — Stage B Discovery (#40) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-productqa-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-productqa-points-review.md) — Product QA Sec points-review — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-strategy-productqa-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-productqa-qa-confirm.md) — Product QA Sec qa-confirm — Stage B Strategy (#41) — separate track
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-checklist.md) — Doc Security checklist — Stage B Contact-on-Accept (#42) — ISSUED; handshake PASS; overall Doc PASS pending Docs QA
+- [2026-09-22__security__verification__mvp-stage-b-discovery-doc-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-doc-checklist.md) — Doc Security checklist — Stage B Discovery (#40) — ISSUED; handshake PASS; overall Doc PASS pending Docs QA
+- [2026-09-22__security__verification__mvp-stage-b-strategy-doc-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-doc-checklist.md) — Doc Security checklist — Stage B Strategy (#41) — ISSUED; Soft Assistant OUT; handshake PASS; overall Doc PASS pending Docs QA
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-points-review.md) — Doc Security points-review — Stage B Contact-on-Accept (#42) — PASS 10/10; overall Doc handshake
+- [2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-contact-on-accept-doc-qa-confirm.md) — Doc Security QA confirm — Stage B Contact-on-Accept (#42) — PASS; clears overall Doc HOLD
+- [2026-09-22__security__verification__mvp-stage-b-discovery-doc-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-doc-points-review.md) — Doc Security points-review — Stage B Discovery (#40) — PASS 10/10; overall Doc handshake
+- [2026-09-22__security__verification__mvp-stage-b-discovery-doc-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-discovery-doc-qa-confirm.md) — Doc Security QA confirm — Stage B Discovery (#40) — PASS; clears overall Doc HOLD
+- [2026-09-22__security__verification__mvp-stage-b-strategy-doc-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-doc-points-review.md) — Doc Security points-review — Stage B Strategy (#41) — PASS 10/10; Soft Assistant OUT; overall Doc handshake
+- [2026-09-22__security__verification__mvp-stage-b-strategy-doc-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-strategy-doc-qa-confirm.md) — Doc Security QA confirm — Stage B Strategy (#41) — PASS; Soft Assistant OUT; clears overall Doc HOLD
+- [2026-09-22__ba__verification__mvp-stage-b-contact-on-accept.md](verification/2026-09-22__ba__verification__mvp-stage-b-contact-on-accept.md) — BA verify PASS — Stage B Contact-on-Accept (#42); Soft Soft CLOSE SoR; status:done
+- [2026-09-22__ba__verification__mvp-stage-b-instant-search-discovery.md](verification/2026-09-22__ba__verification__mvp-stage-b-instant-search-discovery.md) — BA verify PASS — Stage B Discovery (#40); Soft Soft CLOSE SoR docs/verification/; status:done
+- [2026-09-22__ba__verification__mvp-stage-b-minimal-strategy-crud.md](verification/2026-09-22__ba__verification__mvp-stage-b-minimal-strategy-crud.md) — BA verify PASS — Stage B Strategy (#41); Soft Assistant OUT; Soft Soft CLOSE SoR; status:done
+- [2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-checklist.md](verification/2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-checklist.md) — Security checklist — Gate #25 SA-REV MVP-B Soft Soft CLOSE Soft HOLD SoR; Stage C/#18 HOLD; Soft #41 Assistant OUT
+- [2026-09-22__sa__verification__mvp-stage-b-sa-rev-mvp-b-review.md](verification/2026-09-22__sa__verification__mvp-stage-b-sa-rev-mvp-b-review.md) — SA verification — Gate #25 SA-REV MVP-B review (INDEX catch-up; Soft Soft CLOSE Soft HOLD handshake SoR separate)
+- [2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-points-review.md](verification/2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-points-review.md) — Security points-review — Gate #25 SA-REV MVP-B PASS 10/10; Soft Soft CLOSE Soft HOLD handshake SoR
+- [2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-qa-confirm.md](verification/2026-09-22__security__verification__mvp-stage-b-sa-rev-mvp-b-qa-confirm.md) — Security QA confirm — Gate #25 SA-REV MVP-B PASS 10/10; Soft Soft CLOSE Soft HOLD handshake SoR; Soft #41 Assistant OUT
+- [2026-09-23__security__verification__research-02-00-et.md](verification/2026-09-23__security__verification__research-02-00-et.md)
+- [2026-09-23__security__verification__research-12-00-et.md](verification/2026-09-23__security__verification__research-12-00-et.md)
+- [2026-09-24__security__verification__research-02-00-et.md](verification/2026-09-24__security__verification__research-02-00-et.md)
+- [2026-09-24__security__verification__research-12-00-et.md](verification/2026-09-24__security__verification__research-12-00-et.md)
+- [2026-09-25__security__verification__research-02-00-et.md](verification/2026-09-25__security__verification__research-02-00-et.md)
+- [2026-09-25__security__verification__research-12-00-et.md](verification/2026-09-25__security__verification__research-12-00-et.md)
+- [2026-09-26__security__verification__research-02-00-et.md](verification/2026-09-26__security__verification__research-02-00-et.md)
+- [2026-09-26__security__verification__research-12-00-et.md](verification/2026-09-26__security__verification__research-12-00-et.md)
+- [2026-09-27__security__verification__research-02-00-et.md](verification/2026-09-27__security__verification__research-02-00-et.md)
+- [2026-09-27__security__verification__research-12-00-et.md](verification/2026-09-27__security__verification__research-12-00-et.md)
+- [2026-09-28__marketing__verification__daily-us-morning.md](verification/2026-09-28__marketing__verification__daily-us-morning.md)
+- [2026-09-28__sa__verification__mvp-stage-c-assistant-hardwall-budgets-ui.md](verification/2026-09-28__sa__verification__mvp-stage-c-assistant-hardwall-budgets-ui.md)
+- [2026-09-28__security__verification__mvp-stage-c-sa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-sa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-sa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-qa-confirm.md)
+- [2026-09-28__security__verification__research-02-00-et.md](verification/2026-09-28__security__verification__research-02-00-et.md)
+- [2026-09-28__security__verification__research-12-00-et.md](verification/2026-09-28__security__verification__research-12-00-et.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-spec-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-spec-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-spec-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-spec-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-spec-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-spec-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-spec-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-spec-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-spec-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-spec-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-spec-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-spec-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-spec-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-spec-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-spec-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-spec-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-spec-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-spec-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-spec-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-spec-qa-confirm.md)
+- [2026-09-28__spec__verification__mvp-stage-c-a8-minimum-meters-budgets.md](verification/2026-09-28__spec__verification__mvp-stage-c-a8-minimum-meters-budgets.md)
+- [2026-09-28__spec__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__spec__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__spec__verification__mvp-stage-c-basic-ui-first-party-bot-x2.md](verification/2026-09-28__spec__verification__mvp-stage-c-basic-ui-first-party-bot-x2.md)
+- [2026-09-28__spec__verification__mvp-stage-c-participant-isolation-option-a-remainder.md](verification/2026-09-28__spec__verification__mvp-stage-c-participant-isolation-option-a-remainder.md)
+- [2026-09-28__spec__verification__mvp-stage-c-thin-assistant-runtime-x1.md](verification/2026-09-28__spec__verification__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-checklist.md)
+- [2026-09-28__devplan__verification__mvp-stage-c-a8-minimum-meters-budgets.md](verification/2026-09-28__devplan__verification__mvp-stage-c-a8-minimum-meters-budgets.md)
+- [2026-09-28__devplan__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__devplan__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__devplan__verification__mvp-stage-c-basic-ui-first-party-bot-x2.md](verification/2026-09-28__devplan__verification__mvp-stage-c-basic-ui-first-party-bot-x2.md)
+- [2026-09-28__devplan__verification__mvp-stage-c-participant-isolation-option-a-remainder.md](verification/2026-09-28__devplan__verification__mvp-stage-c-participant-isolation-option-a-remainder.md)
+- [2026-09-28__devplan__verification__mvp-stage-c-thin-assistant-runtime-x1.md](verification/2026-09-28__devplan__verification__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-devplan-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-devplan-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-devplan-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-devplan-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-devplan-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-sd-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-sd-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-checklist.md)
+- [2026-09-28__sd__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__sd__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-sd-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-sd-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-qa-confirm.md)
+- [2026-09-28__sd__verification__mvp-stage-c-thin-assistant-runtime-x1.md](verification/2026-09-28__sd__verification__mvp-stage-c-thin-assistant-runtime-x1.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-productqa-qa-confirm.md)
+- [2026-09-28__ba__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md](verification/2026-09-28__ba__verification__mvp-stage-c-agent-tool-hardwall-scrubber.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-sd-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-sd-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-doc-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-doc-checklist.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-productqa-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-a8-min-sd-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-a8-min-sd-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-checklist.md)
+- [2026-09-28__sd__verification__mvp-stage-c-a8-minimum-meters-budgets.md](verification/2026-09-28__sd__verification__mvp-stage-c-a8-minimum-meters-budgets.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-doc-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-doc-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-hardwall-doc-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-hardwall-doc-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-points-review.md)
+- [2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-qa-confirm.md)
 
 ## ops/
 
@@ -355,6 +569,92 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-21__ops__ops-report__brief-4-product-activity.md](ops/reports/2026-09-21__ops__ops-report__brief-4-product-activity.md)
 - [2026-09-21__ops__verification__brief-4-product-activity.md](ops/reports/2026-09-21__ops__verification__brief-4-product-activity.md)
 - [2026-09-21__product__note__brief-4-status-reply.md](ops/reports/2026-09-21__product__note__brief-4-status-reply.md)
+- [2026-09-22__ops__done-list__brief-7-6h-midnight.md](ops/reports/2026-09-22__ops__done-list__brief-7-6h-midnight.md)
+- [2026-09-22__ops__done-list__brief-8-6h-dawn.md](ops/reports/2026-09-22__ops__done-list__brief-8-6h-dawn.md)
+- [2026-09-22__ops__done-list__brief-9-6h-noon.md](ops/reports/2026-09-22__ops__done-list__brief-9-6h-noon.md)
+- [2026-09-22__ops__ops-report__brief-7-6h-midnight.md](ops/reports/2026-09-22__ops__ops-report__brief-7-6h-midnight.md)
+- [2026-09-22__ops__ops-report__brief-8-6h-dawn.md](ops/reports/2026-09-22__ops__ops-report__brief-8-6h-dawn.md)
+- [2026-09-22__ops__ops-report__brief-9-6h-noon.md](ops/reports/2026-09-22__ops__ops-report__brief-9-6h-noon.md)
+- [2026-09-22__ops__verification__brief-7-6h-midnight.md](ops/reports/2026-09-22__ops__verification__brief-7-6h-midnight.md)
+- [2026-09-22__ops__verification__brief-8-6h-dawn.md](ops/reports/2026-09-22__ops__verification__brief-8-6h-dawn.md)
+- [2026-09-22__ops__verification__brief-9-6h-noon.md](ops/reports/2026-09-22__ops__verification__brief-9-6h-noon.md)
+- [2026-09-22__docs__ops__mvp-stage-b-contact-on-accept-doc-security-weave.md](ops/2026-09-22__docs__ops__mvp-stage-b-contact-on-accept-doc-security-weave.md) — Doc Security weave #42 Contact-on-Accept — Overall Doc PASS; Soft Soft CLOSE Soft HOLD LIFT → docs/ops/
+- [2026-09-22__docs__ops__mvp-stage-b-discovery-doc-security-weave.md](ops/2026-09-22__docs__ops__mvp-stage-b-discovery-doc-security-weave.md) — Doc Security weave #40 Discovery — Overall Doc PASS; Soft Soft CLOSE Soft HOLD LIFT → docs/ops/
+- [2026-09-22__docs__ops__mvp-stage-b-strategy-doc-security-weave.md](ops/2026-09-22__docs__ops__mvp-stage-b-strategy-doc-security-weave.md) — Doc Security weave #41 Strategy — Overall Doc PASS; Soft Assistant OUT; Soft Soft CLOSE Soft HOLD LIFT → docs/ops/
+- [2026-09-28__docs__ops__mvp-stage-c-hardwall-doc-security-weave.md](ops/2026-09-28__docs__ops__mvp-stage-c-hardwall-doc-security-weave.md) — Doc Security weave #67 hard wall — **Overall Doc PASS**; handshake Soft Soft CLOSE Soft HOLD SoR #97 @ `af5f71f` (Product QA SoR ≠ Doc); Soft Soft CLOSE Soft HOLD status:done stays
+- [2026-09-28__docs__ops__mvp-stage-c-thin-assistant-doc-security-weave.md](ops/2026-09-28__docs__ops__mvp-stage-c-thin-assistant-doc-security-weave.md) — Doc Security weave #66 thin Assistant — **Overall Doc PASS**; handshake Soft Soft CLOSE Soft HOLD SoR #98 @ `46ad387` (Product QA SoR ≠ Doc); Soft Soft CLOSE Soft HOLD status:done until CBA
+- [2026-09-22__ops__done-list__brief-10-6h-evening.md](ops/reports/2026-09-22__ops__done-list__brief-10-6h-evening.md)
+- [2026-09-22__ops__ops-report__brief-10-6h-evening.md](ops/reports/2026-09-22__ops__ops-report__brief-10-6h-evening.md)
+- [2026-09-22__ops__verification__brief-10-6h-evening.md](ops/reports/2026-09-22__ops__verification__brief-10-6h-evening.md)
+- [2026-09-23__ops__done-list__brief-11-6h-midnight.md](ops/reports/2026-09-23__ops__done-list__brief-11-6h-midnight.md)
+- [2026-09-23__ops__done-list__brief-12-6h-dawn.md](ops/reports/2026-09-23__ops__done-list__brief-12-6h-dawn.md)
+- [2026-09-23__ops__done-list__brief-13-6h-noon.md](ops/reports/2026-09-23__ops__done-list__brief-13-6h-noon.md)
+- [2026-09-23__ops__done-list__brief-14-6h-evening.md](ops/reports/2026-09-23__ops__done-list__brief-14-6h-evening.md)
+- [2026-09-23__ops__ops-report__brief-11-6h-midnight.md](ops/reports/2026-09-23__ops__ops-report__brief-11-6h-midnight.md)
+- [2026-09-23__ops__ops-report__brief-12-6h-dawn.md](ops/reports/2026-09-23__ops__ops-report__brief-12-6h-dawn.md)
+- [2026-09-23__ops__ops-report__brief-13-6h-noon.md](ops/reports/2026-09-23__ops__ops-report__brief-13-6h-noon.md)
+- [2026-09-23__ops__ops-report__brief-14-6h-evening.md](ops/reports/2026-09-23__ops__ops-report__brief-14-6h-evening.md)
+- [2026-09-23__ops__verification__brief-11-6h-midnight.md](ops/reports/2026-09-23__ops__verification__brief-11-6h-midnight.md)
+- [2026-09-23__ops__verification__brief-12-6h-dawn.md](ops/reports/2026-09-23__ops__verification__brief-12-6h-dawn.md)
+- [2026-09-23__ops__verification__brief-13-6h-noon.md](ops/reports/2026-09-23__ops__verification__brief-13-6h-noon.md)
+- [2026-09-23__ops__verification__brief-14-6h-evening.md](ops/reports/2026-09-23__ops__verification__brief-14-6h-evening.md)
+- [2026-09-24__ops__done-list__brief-15-6h-midnight.md](ops/reports/2026-09-24__ops__done-list__brief-15-6h-midnight.md)
+- [2026-09-24__ops__done-list__brief-16-6h-dawn.md](ops/reports/2026-09-24__ops__done-list__brief-16-6h-dawn.md)
+- [2026-09-24__ops__done-list__brief-17-6h-noon.md](ops/reports/2026-09-24__ops__done-list__brief-17-6h-noon.md)
+- [2026-09-24__ops__done-list__brief-18-6h-evening.md](ops/reports/2026-09-24__ops__done-list__brief-18-6h-evening.md)
+- [2026-09-24__ops__ops-report__brief-15-6h-midnight.md](ops/reports/2026-09-24__ops__ops-report__brief-15-6h-midnight.md)
+- [2026-09-24__ops__ops-report__brief-16-6h-dawn.md](ops/reports/2026-09-24__ops__ops-report__brief-16-6h-dawn.md)
+- [2026-09-24__ops__ops-report__brief-17-6h-noon.md](ops/reports/2026-09-24__ops__ops-report__brief-17-6h-noon.md)
+- [2026-09-24__ops__ops-report__brief-18-6h-evening.md](ops/reports/2026-09-24__ops__ops-report__brief-18-6h-evening.md)
+- [2026-09-24__ops__verification__brief-15-6h-midnight.md](ops/reports/2026-09-24__ops__verification__brief-15-6h-midnight.md)
+- [2026-09-24__ops__verification__brief-16-6h-dawn.md](ops/reports/2026-09-24__ops__verification__brief-16-6h-dawn.md)
+- [2026-09-24__ops__verification__brief-17-6h-noon.md](ops/reports/2026-09-24__ops__verification__brief-17-6h-noon.md)
+- [2026-09-24__ops__verification__brief-18-6h-evening.md](ops/reports/2026-09-24__ops__verification__brief-18-6h-evening.md)
+- [2026-09-25__ops__done-list__brief-19-6h-midnight.md](ops/reports/2026-09-25__ops__done-list__brief-19-6h-midnight.md)
+- [2026-09-25__ops__done-list__brief-20-6h-dawn.md](ops/reports/2026-09-25__ops__done-list__brief-20-6h-dawn.md)
+- [2026-09-25__ops__done-list__brief-21-6h-noon.md](ops/reports/2026-09-25__ops__done-list__brief-21-6h-noon.md)
+- [2026-09-25__ops__done-list__brief-22-6h-evening.md](ops/reports/2026-09-25__ops__done-list__brief-22-6h-evening.md)
+- [2026-09-25__ops__ops-report__brief-19-6h-midnight.md](ops/reports/2026-09-25__ops__ops-report__brief-19-6h-midnight.md)
+- [2026-09-25__ops__ops-report__brief-20-6h-dawn.md](ops/reports/2026-09-25__ops__ops-report__brief-20-6h-dawn.md)
+- [2026-09-25__ops__ops-report__brief-21-6h-noon.md](ops/reports/2026-09-25__ops__ops-report__brief-21-6h-noon.md)
+- [2026-09-25__ops__ops-report__brief-22-6h-evening.md](ops/reports/2026-09-25__ops__ops-report__brief-22-6h-evening.md)
+- [2026-09-25__ops__verification__brief-19-6h-midnight.md](ops/reports/2026-09-25__ops__verification__brief-19-6h-midnight.md)
+- [2026-09-25__ops__verification__brief-20-6h-dawn.md](ops/reports/2026-09-25__ops__verification__brief-20-6h-dawn.md)
+- [2026-09-25__ops__verification__brief-21-6h-noon.md](ops/reports/2026-09-25__ops__verification__brief-21-6h-noon.md)
+- [2026-09-25__ops__verification__brief-22-6h-evening.md](ops/reports/2026-09-25__ops__verification__brief-22-6h-evening.md)
+- [2026-09-26__ops__done-list__brief-23-6h-midnight.md](ops/reports/2026-09-26__ops__done-list__brief-23-6h-midnight.md)
+- [2026-09-26__ops__done-list__brief-24-6h-dawn.md](ops/reports/2026-09-26__ops__done-list__brief-24-6h-dawn.md)
+- [2026-09-26__ops__done-list__brief-25-6h-noon.md](ops/reports/2026-09-26__ops__done-list__brief-25-6h-noon.md)
+- [2026-09-26__ops__ops-report__brief-23-6h-midnight.md](ops/reports/2026-09-26__ops__ops-report__brief-23-6h-midnight.md)
+- [2026-09-26__ops__ops-report__brief-24-6h-dawn.md](ops/reports/2026-09-26__ops__ops-report__brief-24-6h-dawn.md)
+- [2026-09-26__ops__ops-report__brief-25-6h-noon.md](ops/reports/2026-09-26__ops__ops-report__brief-25-6h-noon.md)
+- [2026-09-26__ops__verification__brief-23-6h-midnight.md](ops/reports/2026-09-26__ops__verification__brief-23-6h-midnight.md)
+- [2026-09-26__ops__verification__brief-24-6h-dawn.md](ops/reports/2026-09-26__ops__verification__brief-24-6h-dawn.md)
+- [2026-09-26__ops__verification__brief-25-6h-noon.md](ops/reports/2026-09-26__ops__verification__brief-25-6h-noon.md)
+- [2026-09-27__ops__done-list__brief-27-6h-midnight.md](ops/reports/2026-09-27__ops__done-list__brief-27-6h-midnight.md)
+- [2026-09-27__ops__done-list__brief-28-6h-dawn.md](ops/reports/2026-09-27__ops__done-list__brief-28-6h-dawn.md)
+- [2026-09-27__ops__done-list__brief-29-6h-noon.md](ops/reports/2026-09-27__ops__done-list__brief-29-6h-noon.md)
+- [2026-09-27__ops__done-list__brief-30-6h-evening.md](ops/reports/2026-09-27__ops__done-list__brief-30-6h-evening.md)
+- [2026-09-27__ops__ops-report__brief-27-6h-midnight.md](ops/reports/2026-09-27__ops__ops-report__brief-27-6h-midnight.md)
+- [2026-09-27__ops__ops-report__brief-28-6h-dawn.md](ops/reports/2026-09-27__ops__ops-report__brief-28-6h-dawn.md)
+- [2026-09-27__ops__ops-report__brief-29-6h-noon.md](ops/reports/2026-09-27__ops__ops-report__brief-29-6h-noon.md)
+- [2026-09-27__ops__ops-report__brief-30-6h-evening.md](ops/reports/2026-09-27__ops__ops-report__brief-30-6h-evening.md)
+- [2026-09-27__ops__verification__brief-27-6h-midnight.md](ops/reports/2026-09-27__ops__verification__brief-27-6h-midnight.md)
+- [2026-09-27__ops__verification__brief-28-6h-dawn.md](ops/reports/2026-09-27__ops__verification__brief-28-6h-dawn.md)
+- [2026-09-27__ops__verification__brief-29-6h-noon.md](ops/reports/2026-09-27__ops__verification__brief-29-6h-noon.md)
+- [2026-09-27__ops__verification__brief-30-6h-evening.md](ops/reports/2026-09-27__ops__verification__brief-30-6h-evening.md)
+- [2026-09-28__ops__done-list__brief-31-6h-midnight.md](ops/reports/2026-09-28__ops__done-list__brief-31-6h-midnight.md)
+- [2026-09-28__ops__done-list__brief-32-6h-dawn.md](ops/reports/2026-09-28__ops__done-list__brief-32-6h-dawn.md)
+- [2026-09-28__ops__done-list__brief-33-6h-noon.md](ops/reports/2026-09-28__ops__done-list__brief-33-6h-noon.md)
+- [2026-09-28__ops__done-list__brief-34-6h-evening.md](ops/reports/2026-09-28__ops__done-list__brief-34-6h-evening.md)
+- [2026-09-28__ops__ops-report__brief-31-6h-midnight.md](ops/reports/2026-09-28__ops__ops-report__brief-31-6h-midnight.md)
+- [2026-09-28__ops__ops-report__brief-32-6h-dawn.md](ops/reports/2026-09-28__ops__ops-report__brief-32-6h-dawn.md)
+- [2026-09-28__ops__ops-report__brief-33-6h-noon.md](ops/reports/2026-09-28__ops__ops-report__brief-33-6h-noon.md)
+- [2026-09-28__ops__ops-report__brief-34-6h-evening.md](ops/reports/2026-09-28__ops__ops-report__brief-34-6h-evening.md)
+- [2026-09-28__ops__verification__brief-31-6h-midnight.md](ops/reports/2026-09-28__ops__verification__brief-31-6h-midnight.md)
+- [2026-09-28__ops__verification__brief-32-6h-dawn.md](ops/reports/2026-09-28__ops__verification__brief-32-6h-dawn.md)
+- [2026-09-28__ops__verification__brief-33-6h-noon.md](ops/reports/2026-09-28__ops__verification__brief-33-6h-noon.md)
+- [2026-09-28__ops__verification__brief-34-6h-evening.md](ops/reports/2026-09-28__ops__verification__brief-34-6h-evening.md)
 
 ## meta/
 
