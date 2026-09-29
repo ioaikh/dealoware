@@ -512,6 +512,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-points-review.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-points-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-productqa-qa-confirm.md)
+- [2026-09-28__security__verification__mvp-stage-c-parent-18-doc-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-parent-18-doc-checklist.md)
 - [2026-09-28__sd__verification__mvp-stage-c-parent-18-framing.md](verification/2026-09-28__sd__verification__mvp-stage-c-parent-18-framing.md) — SD framing evidence #18 parent — **Steps 1–9 PASS**; framing/map only (no product code); evidence table 1–10 MET
 - [2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-sd-checklist.md)
 - [2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-x2-ui-bot-sd-checklist.md)
