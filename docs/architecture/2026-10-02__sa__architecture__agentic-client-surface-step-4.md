@@ -7,7 +7,7 @@
 **Issue:** https://github.com/ioaikh/dealoware/issues/155
 **Moment IDs:** **SA-REV-STEP4-CLIENT** (this deliverable) · HOLD next until CA design grounding PASS + Arch QA + Security SoR CLEAR
 **DOC-FLOW:** `architecture/2026-10-02__sa__architecture__agentic-client-surface-step-4.md`
-**Security checklist:** AWAIT ISSUED (`verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md` expected) · **do not invent** § Security 1–10 MET
+**Security checklist:** ISSUED (`verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md`) · § Security 1–10 MET (§6 answers cite existing Option A design)
 **Expected Security QA SoR:** `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (handshake SoR = **qa-confirm only**)
 
 | Field | Value |
@@ -18,10 +18,10 @@
 | Host shape | Amazon **ECS Express Mode (Fargate)** HOLD provision — inherit AWS Step 2 Option A SoR; **App Runner OUT** |
 | Cost | PoC **$0** · HOLD provision · HOLD spend · HOLD build |
 | Tip context | Step 3 #148 CLOSED tip `ff707ae` · AWS SoR #142 tip `c28361f` |
-| Status | Senior Architect proposal SoR · § Security AWAIT checklist |
+| Status | Senior Architect proposal SoR · § Security 1–10 MET |
 | Author | Dealoware Senior Architect |
 | Brief from | CA |
-| Security | Architecture always Security-critical · checklist AWAIT · HOLD Arch QA PASS until Security QA qa-confirm SoR only |
+| Security | Architecture always Security-critical · checklist ISSUED · § Security 1–10 MET · HOLD Arch QA PASS until Security QA qa-confirm SoR only |
 
 ## Sources
 
@@ -132,7 +132,7 @@ The path is a **design narrative for Spec**. It is not a built client, not a liv
 - Fail-closed for every client class. A first-party bot is not a trusted bypass.
 - HOLD dump denied FieldClasses into webhooks, logs, metrics, or traces.
 - Gate **#27 CLOSED** / Soft **#41 CLOSED** via **#66+#67** — do not reopen. This SoR uses that API; it does not reopen the provider question.
-- § Security answers stay **AWAIT** until Chief Security issues the checklist. Handshake SoR is qa-confirm only.
+- § Security answers 1–10 **MET** (checklist ISSUED; see §6). Handshake SoR is qa-confirm only.
 
 ---
 
@@ -200,22 +200,24 @@ The path is a **design narrative for Spec**. It is not a built client, not a liv
 
 ## 6. Security (Architecture always-critical handshake)
 
-**Checklist:** AWAIT ISSUED. Do **not** invent points-review SoR and do **not** mark 1–10 MET before the checklist exists.
+**Checklist:** ISSUED (`verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md`).
 
 **HOLD Architecture QA PASS until Security QA confirms** via expected SoR `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (**qa-confirm only**).
 
-Design commitments Security can checklist against (not a substitute for the issued checklist):
+### § Security answers 1–10 MET
 
-1. Same API for first-party and external clients — no Grok-only bypass.
-2. Participant principal on every client; PlatformOwner admin (#148) stays off this surface.
-3. Option A §3b dual wall on **all** clients; no parallel client ACL.
-4. Identity seal equal on the bot path (LoginEmail / ContactEmail / ShareOutbound / denied FieldClasses).
-5. Reference path is design only; build and connector auth/rate limits stay HOLD.
-6. V1 OpenAPI/webhooks only; MCP and multi-LLM/BYO out.
-7. HOLD AWS provision; inherit Step 2 @ `c28361f` as constraints.
-8. No PII in logs, webhooks, or traces beyond FieldPolicy allow.
-9. OUT pack in §4 locked.
-10. Traceability to strategy Step 4, #66+#67, #69, #148 @ `ff707ae`, #142 @ `c28361f`, #27 CLOSED, Soft #41 CLOSED.
+| # | Point | Status | Cite |
+|---|-------|--------|------|
+| 1 | Provider-neutral same-API first-class clients HOLD Grok-only | **MET** | §2 Option A pick; §3.1 same API, two client classes, Participant principal |
+| 2 | Written client-surface contract HOLD invent connector auth / rate limits | **MET** | §3.2 contract clauses (auth boundary, Participant principal, FieldPolicy/hard wall, identity seal); auth mechanism Soft HOLD TBD |
+| 3 | Fail-closed dual-wall on all clients (Option A §3a/§3b) | **MET** | §3.2 FieldPolicy/hard wall clause; §3.6 cite Option A §3a/§3b; fail-closed all client classes |
+| 4 | Identity seal equal on the bot path HOLD invent identity shortcuts | **MET** | §3.2 identity seal clause; §3.3 step 5 reference path; LoginEmail never in agent/model context; ContactEmail Accept-gated server-side |
+| 5 | One reference client path designed HOLD invent build | **MET** | §3.3 reference path designed not built; HOLD build until separately named CEO unlock |
+| 6 | V1 OpenAPI/webhooks HOLD invent V4/V5 | **MET** | §3.2 delivery framing V1 OpenAPI/webhooks; §4 OUT MCP (V5) / multi-LLM/BYO (V4) |
+| 7 | External systems = example client classes only HOLD invent live partners | **MET** | §3.1 example classes row; §4 OUT live partner integrations |
+| 8 | HOLD AWS provision; inherit Step 2 design constraints only | **MET** | §3.5 host inherit cites #142 @ `c28361f` constraints only; HOLD provision |
+| 9 | OUT / HOLD locked pack | **MET** | §4 explicit IN/OUT/HOLD; OUT list matches checklist pack |
+| 10 | Traceability + handshake SoR pattern | **MET** | Sources table; §5 review moments; §6 handshake; cites strategy Step 4, #66+#67, #69, #148 @ `ff707ae`, #142 @ `c28361f`, #27 CLOSED, Soft #41 CLOSED |
 
 ---
 
@@ -227,7 +229,7 @@ Design commitments Security can checklist against (not a substitute for the issu
 - [x] Host inherit cites AWS SoR #142 @ `c28361f` (HOLD provision; App Runner OUT)
 - [x] Explicit IN / OUT / HOLD match strategy What + CA brief
 - [x] Review moments table present for CA → CPM (`gate:sa-arch-review`)
-- [ ] § Security answers 1–10 MET — **AWAIT checklist** (do not invent)
+- [x] § Security answers 1–10 MET — checklist ISSUED; answers cite existing Option A design (§6)
 - [ ] HOLD Architecture QA PASS until SoR CLEAR + Security QA qa-confirm SoR only
 - [ ] HOLD Spec content until CA design grounding PASS
 - [ ] Confirm to Chief only after that path — HOLD invent Stories · HOLD build
