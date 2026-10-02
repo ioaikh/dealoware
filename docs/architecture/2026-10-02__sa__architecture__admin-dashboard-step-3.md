@@ -1,14 +1,14 @@
 # Architecture options Soft HOLD SoR — Spec #148 / Product Step 3 platform-owner admin dashboard
 
-**Status:** Senior Architect **proposal Soft HOLD SoR** for Spec #148 / Product Step 3. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Chief Security checklist ISSUED + § Security answers amended + Security QA confirms via **qa-confirm Soft HOLD SoR only** (**no** invent points-review Soft HOLD SoR). Soft Soft CLOSE Soft HOLD invent Stories. Soft HOLD provision / Soft HOLD spend. Quiet. PoC **$0**.  
+**Status:** Senior Architect **proposal Soft HOLD SoR** for Spec #148 / Product Step 3. **Amended:** § Security answers points 1–10 MET. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA confirms 1–10 via qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR). Soft Soft CLOSE Soft HOLD invent Stories. Soft HOLD provision / Soft HOLD spend. Quiet. PoC **$0**.  
 **Date:** 2026-10-02  
 **Author:** Dealoware Senior Architect  
 **Brief from:** Chief Architect → Senior Architect → Architecture QA (Architecture always Security-critical)  
 **Issue:** https://github.com/ioaikh/dealoware/issues/148  
 **Moment IDs:** **SA-REV-STEP3-ADMIN** (this deliverable) · Soft Soft CLOSE Soft HOLD next until CA PASS + Arch QA + Security Soft HOLD SoR CLEAR  
 **DOC-FLOW:** `architecture/2026-10-02__sa__architecture__admin-dashboard-step-3.md`  
-**Security checklist:** Soft Soft CLOSE Soft HOLD **AWAIT** Chief Security ISSUED (do **not** invent checklist points)  
-**Expected Security QA Soft HOLD SoR:** Soft HOLD path until checklist ISSUED — handshake Soft HOLD SoR = **qa-confirm only** (no invent points-review Soft HOLD SoR)
+**Security checklist:** `verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md` · **Amended:** § Security answers points 1–10 MET (ISSUED)  
+**Expected Security QA Soft HOLD SoR:** `verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md` (handshake Soft HOLD SoR = **qa-confirm only**)
 
 | Field | Value |
 |-------|-------|
@@ -18,10 +18,10 @@
 | Host shape | Amazon **ECS Express Mode (Fargate)** Soft HOLD provision — inherit AWS Step 2 Option A Soft HOLD SoR; **App Runner OUT** |
 | Cost | PoC **$0** · Soft HOLD provision · Soft HOLD spend |
 | Tip | Soft Soft CLOSE Soft HOLD `c28361f` (AWS Soft HOLD SoR #142 tip context) |
-| Status | Senior Architect proposal Soft HOLD SoR · § Security **AWAIT** checklist |
+| Status | Senior Architect proposal Soft HOLD SoR · Security answers 1–10 MET |
 | Author | Dealoware Senior Architect |
 | Brief from | CA |
-| Security | Architecture always Security-critical · Soft Soft CLOSE Soft HOLD Arch QA PASS until checklist + answers + Security QA qa-confirm Soft HOLD SoR only |
+| Security | Architecture always Security-critical · checklist ISSUED · answers 1–10 MET · Soft Soft CLOSE Soft HOLD Arch QA PASS until Security QA qa-confirm Soft HOLD SoR only |
 
 ## Sources
 
@@ -45,7 +45,7 @@
 
 Architecture options Soft HOLD SoR for Spec #148 / Product Step 3 handshake: platform-owner **admin dashboard** covering **O1–O3** (registered users; Artifacts owner; negotiations/offers) plus **narrow related platform ops** that directly support (1)–(3) on existing MVP fabric entities — fail-closed.
 
-This deliverable is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD invent AC beyond Product scope. Soft HOLD provision. Soft HOLD spend. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Chief Security checklist ISSUED, § Security answers amended, and Security QA confirms via **qa-confirm Soft HOLD SoR only** (**no** invent points-review Soft HOLD SoR).
+This deliverable is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD invent AC beyond Product scope. Soft HOLD provision. Soft HOLD spend. **Amended:** § Security answers points 1–10 MET. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA confirms 1–10 via **qa-confirm Soft HOLD SoR only** (**no** invent points-review Soft HOLD SoR).
 
 Role boundary (binding Product): **platform-owner admin ≠ Participant UI (#69)**. Soft HOLD invent Participant Strategy/Assistant surfaces in this Spec.
 
@@ -136,7 +136,7 @@ Role boundary (binding Product): **platform-owner admin ≠ Participant UI (#69)
 - Host inherit: AWS Step 2 Option A Soft HOLD SoR #142 @ tip Soft Soft CLOSE Soft HOLD `c28361f` (ECS Express Mode Soft HOLD provision; App Runner OUT; Option A §3b dual wall)
 - Binding cites: Product Spec scope lock + Product Step 3 strategy + roadmap O1–O3 cite + Option A §3a/§3b
 - Proposed SA-REV-STEP3-ADMIN moment for CA → CPM
-- § Security **AWAIT** Chief Security checklist (placeholder Soft HOLD SoR path note)
+- § Security answers 1–10 MET against ISSUED checklist
 
 ### OUT
 
@@ -156,6 +156,7 @@ Role boundary (binding Product): **platform-owner admin ≠ Participant UI (#69)
 - App Runner
 - reuse Participant UI (#69) as admin
 - Cognito / SSO as Step 3 delivered
+- MCP marketplace
 - multi-account admin / separate admin microservice mesh Soft HOLD invent
 - PoC **$0** claim as provisioned spend
 
@@ -169,7 +170,7 @@ Role boundary (binding Product): **platform-owner admin ≠ Participant UI (#69)
 - Soft HOLD A8 mature UI Soft HOLD · Soft HOLD A9 mature vault Soft HOLD
 - Soft HOLD invent admin agents Soft HOLD
 - Soft HOLD invent full RBAC matrix as Story invent Soft HOLD (design shape only)
-- Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security checklist ISSUED + answers + Security QA **qa-confirm Soft HOLD SoR only** (**no** invent points-review Soft HOLD SoR)
+- Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA **qa-confirm Soft HOLD SoR only** (**no** invent points-review Soft HOLD SoR) — answers 1–10 MET
 - Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67** — do not reopen
 - Gate **#27 CLOSED** — do not reopen
 - Soft Soft CLOSE Soft HOLD next SA-REV until CA PASS + Arch QA + Security Soft HOLD SoR CLEAR
@@ -180,38 +181,43 @@ Role boundary (binding Product): **platform-owner admin ≠ Participant UI (#69)
 
 | Moment ID | Name | Trigger (when) | Scope under review | Next stage HOLD until |
 |-----------|------|----------------|--------------------|------------------------|
-| **SA-REV-STEP3-ADMIN** | Spec #148 / Product Step 3 platform-owner admin Soft HOLD SoR | This deliverable — Soft HOLD SoR written | Option A admin route surface + PlatformOwner principal + O1–O3 + narrow ops + host inherit AWS Step 2 Option A Soft HOLD provision + dual wall binding + IN/OUT/Soft HOLD + Soft Soft CLOSE Soft HOLD § Security AWAIT | Soft Soft CLOSE Soft HOLD next until **CA PASS** + Architecture QA + Security Soft HOLD SoR CLEAR (**qa-confirm only**; **no** invent points-review Soft HOLD SoR) |
+| **SA-REV-STEP3-ADMIN** | Spec #148 / Product Step 3 platform-owner admin Soft HOLD SoR | This deliverable — Soft HOLD SoR written | Option A admin route surface + PlatformOwner principal + O1–O3 + narrow ops + host inherit AWS Step 2 Option A Soft HOLD provision + dual wall binding + IN/OUT/Soft HOLD + § Security answers 1–10 MET | Soft Soft CLOSE Soft HOLD next until **CA PASS** + Architecture QA + Security Soft HOLD SoR CLEAR (**qa-confirm only**; **no** invent points-review Soft HOLD SoR) |
 | Soft Soft CLOSE Soft HOLD next | Soft Soft CLOSE Soft HOLD until CA PASS path | Soft Soft CLOSE Soft HOLD invent as open now | Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD | Soft Soft CLOSE Soft HOLD until CA PASS + Arch QA + Security Soft HOLD SoR CLEAR |
 
 **Rules:** Do **not** unlock invent Stories / invent AC beyond Product / Soft HOLD provision Soft HOLD from SA alone. Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD. Soft HOLD multi-provider Soft HOLD stands. Soft Soft CLOSE Soft HOLD Step 4 until Step 3 CLOSED.
 
 ---
 
-## 6. § Security — Soft Soft CLOSE Soft HOLD AWAIT checklist
+## 6. Security answers (Architecture always-critical handshake)
 
-**Architecture always Security-critical.**
+**Checklist:** `verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md` (ISSUED).  
+**Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA confirms 1–10** via Soft HOLD SoR `verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md` (**qa-confirm only** — **no invent points-review Soft HOLD SoR**).
 
-| Field | Value |
-|-------|-------|
-| Checklist | Soft Soft CLOSE Soft HOLD **AWAIT** Chief Security ISSUED — Soft Soft CLOSE Soft HOLD invent checklist points |
-| Soft HOLD SoR path note | When Chief Security ISSUES checklist → amend this § Security with answers **1–N** citing sections/evidence in this Soft HOLD SoR |
-| Architecture QA | Soft Soft CLOSE Soft HOLD Architecture QA done-list / PASS until checklist + answers + Security QA |
-| Handshake Soft HOLD SoR | Soft HOLD SoR = **qa-confirm only** — **no invent points-review Soft HOLD SoR** |
-
-Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security Soft HOLD SoR CLEAR path.
+| # | Security point | Architecture answer | Cite |
+|---|----------------|---------------------|------|
+| 1 | Role boundary platform-owner ≠ #69 | **MET.** Distinct **PlatformOwner** admin route surface (API + thin admin UI) with distinct principal / role claim — **≠** Participant UI (#69). Reject Participant conflation and designs that grant Participant roles platform-owner admin powers. Soft HOLD invent Participant Strategy/Assistant as admin. | §2 Option A (pick) / Options reject B; §3.1 Principal / role boundary; Product Spec scope lock; #69 CLOSED Soft HOLD SoR |
+| 2 | O1 min roles Soft HOLD O9 SSO | **MET.** O1 registered users list/view/manage under **minimum** PlatformOwner role flag Soft HOLD invent full RBAC Story matrix Soft HOLD invent Cognito/SSO / O9 as Step 3 delivered. Soft HOLD invent mature identity beyond min admin role model. | §3.2 O1; §2 Options reject C Soft HOLD DEFER O9; Product Spec scope OUTs; §4 OUT O9 / Cognito |
+| 3 | Fail-closed dual-wall Option A §3b | **MET.** Admin views/management of users, Artifacts, negotiations/offers, and related ops **bind** CEO-accepted Option A **§3b**: Platform API/DB FieldPolicy wall **and** agent/tool hard wall (same Domain `IFieldPolicy.Evaluate` for **all** FieldClasses). Reject prompt-only controls, parallel ACL tables that drift from FieldPolicy, tenant shortcuts that weaken fail-closed list/discovery scrub, or admin bypass that dumps denied FieldClasses. Soft Soft CLOSE Soft HOLD weaken Participant dual wall for PlatformOwner convenience. | §3.1 Dual wall; §3.7 Security binding; Option A tip §3a/§3b (cite, not rewrite) @ tip Soft Soft CLOSE Soft HOLD `c28361f` context; Gate **#27 CLOSED**; Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67** |
+| 4 | O2 Artifacts Soft HOLD invent Field-capture Stories | **MET.** Platform-owner Artifact views/management on **existing MVP fabric Artifact entities** under FieldPolicy fail-closed + resource scope. Soft HOLD invent product Stories / Field-capture store migration as in-scope delivery **here**. Soft HOLD invent AC beyond Product scope Soft HOLD invent parallel Artifact ACL Soft HOLD invent settlement/escrow/checkout. | §3.3 O2; Product Spec scope + Soft HOLD invent Stories; §4 OUT |
+| 5 | O3 Soft HOLD ShareOutbound regressions | **MET.** Platform-owner negotiations/offers views/management preserve identity-until-accept: no contact/PII on public Participant DTOs; **LoginEmail** never in agent/model context; **ContactEmail** ShareOutbound **Accept-gated** server-side. Soft HOLD leak LoginEmail / ContactEmail / StrategyBody / denied FieldClasses into admin UI, logs, or exports without explicit Accept-gated / FieldPolicy allow. Soft Soft CLOSE Soft HOLD invent cross-tenant Participant bypass of dual wall for agent path. | §3.4 O3; §3.1 / §3.7 LoginEmail Soft HOLD invent dump; Option A §3b + Stage A/B Security PASS posture; Gate #27 CLOSED |
+| 6 | Related ops narrow fail-closed | **MET.** Related platform ops = **only** ops views that **directly** support O1–O3 on existing MVP fabric entities — fail-closed. Soft HOLD invent broad ops/admin surface Soft HOLD invent settlement/escrow/checkout Soft HOLD invent O4/O6 and other O* not in Product IN Soft HOLD invent Stories for ops scope expansion. | §3.5 Related platform ops; Product Spec IN; §4 OUT O4/O6 / settlement |
+| 7 | Soft HOLD AWS provision; inherit Step 2 @ tip `c28361f` design only | **MET.** Host inherit cites AWS Soft HOLD SoR #142 @ tip Soft Soft CLOSE Soft HOLD `c28361f` as **design constraints only** (ECS Express Mode Fargate Soft HOLD provision; managed Postgres Soft HOLD provision; Secrets Manager/task role; CloudWatch Soft HOLD paid; App Runner OUT; Option A §3b dual wall). Soft HOLD AWS account create / resource provision / spend / paid plugins / non-local deploy. Any later provision/spend → escalate **CA → CPM → COO → CEO**. PoC **$0** for provision. Soft HOLD invent second cluster Soft HOLD invent App Runner Soft HOLD invent store Stories as Step 3 provision delivery. | §3.6 Host inherit; AWS Soft HOLD SoR #142 @ tip Soft Soft CLOSE Soft HOLD `c28361f`; DevOps ECS Express lock Soft HOLD spend; §4 Soft HOLD provision; Sources |
+| 8 | Soft HOLD mature A8/A9/paid obs | **MET.** Soft HOLD invent A8 mature metering UI Soft HOLD invent A9 mature PII vault/KMS Soft HOLD invent Cognito/SSO as delivered Soft HOLD invent paid observability beyond free tiers without COO→CEO Soft HOLD dump LoginEmail / ContactEmail / StrategyBody / denied FieldClasses into logs/metrics/traces Soft HOLD invent OTel/audit as a new Story here. CloudWatch Soft HOLD paid backends Soft HOLD PII leak (inherit Step 2 obs Soft HOLD). | §3.7 Security binding; §3.6 Observability Soft HOLD; §4 Soft HOLD A8/A9 Soft HOLD / OUT; AWS Soft HOLD SoR #142 obs Soft HOLD; Soft HOLD invent admin agents |
+| 9 | OUT / Soft HOLD locked pack | **MET.** OUT / Soft HOLD pack includes: Soft HOLD invent Stories; Soft HOLD invent AC beyond Product scope; Soft HOLD AWS provision/spend; Soft HOLD Marketing publish; Soft HOLD multi-provider Spec/doc rewrite until Step 3 CLOSED (then Step 4 track only); Soft HOLD invent Spec/AC Steps **4–5** until Step 3 CLOSED (+ CEO confirm invent before Step 5); **O9** SSO/IdP; **A8** mature metering UI; **A9** mature PII vault; settlement/escrow/checkout; Gate **#27** CLOSED stay closed; Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67**; App Runner; MotorMarket/DC4; Cognito as delivered; MCP marketplace; PoC **$0**. Cost/critical → COO → CEO. Soft HOLD invent reuse Participant UI (#69) as admin Soft HOLD invent multi-account admin / separate admin microservice mesh. | §4 OUT / Soft HOLD; header Locks; Product Spec scope OUTs; checklist point 9 |
+| 10 | Traceability + handshake Soft HOLD SoR | **MET.** Cites Product Spec scope lock + strategy Step 3 + Option A §3b + Step 2 #142 tip Soft Soft CLOSE Soft HOLD `c28361f` + #69 Participant boundary + Gate **#27 CLOSED** + Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67**. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA confirms 1–10 via `verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md`. Handshake Soft HOLD SoR = **qa-confirm only** (Gate #25/#26/#27 pattern) — **no invent points-review Soft HOLD SoR**. Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD Soft HOLD provision Soft HOLD. Sibling Spec checklist remains separate Soft HOLD SoR / Soft HOLD Spec QA track. | This §6 Security; Sources; §5 moments Soft Soft CLOSE Soft HOLD next; checklist DOC-FLOW; tip Soft Soft CLOSE Soft HOLD `c28361f` |
 
 ---
 
 ## 7. Done-list → Architecture QA
 
-- [ ] Options cover CA brief + Product Spec scope lock (O1–O3 + narrow related ops)
-- [ ] Role boundary PlatformOwner ≠ Participant (#69) explicit
-- [ ] Host inherit cites AWS Soft HOLD SoR #142 @ tip Soft Soft CLOSE Soft HOLD `c28361f` (Option A; Soft HOLD provision; App Runner OUT)
-- [ ] Option A §3a/§3b dual wall cited — Soft HOLD invent parallel admin ACL that drifts
-- [ ] Explicit IN / OUT / Soft HOLD match Product scope + CA brief
-- [ ] Review moments table present for CA → CPM (`gate:sa-arch-review`)
-- [ ] § Security Soft Soft CLOSE Soft HOLD AWAIT checklist — Soft Soft CLOSE Soft HOLD invent answers until ISSUED
-- [ ] Soft Soft CLOSE Soft HOLD Architecture QA PASS until **Security QA** confirms via qa-confirm Soft HOLD SoR only (**no invent points-review Soft HOLD SoR**)
+- [x] Options cover CA brief + Product Spec scope lock (O1–O3 + narrow related ops)
+- [x] Role boundary PlatformOwner ≠ Participant (#69) explicit
+- [x] Host inherit cites AWS Soft HOLD SoR #142 @ tip Soft Soft CLOSE Soft HOLD `c28361f` (Option A; Soft HOLD provision; App Runner OUT)
+- [x] Option A §3a/§3b dual wall cited — Soft HOLD invent parallel admin ACL that drifts
+- [x] Explicit IN / OUT / Soft HOLD match Product scope + CA brief + checklist point 9
+- [x] Review moments table present for CA → CPM (`gate:sa-arch-review`)
+- [x] § Security answers 1–10 MET with section cites (checklist ISSUED)
+- [ ] Soft Soft CLOSE Soft HOLD Architecture QA PASS until **Security QA** confirms 1–10 via qa-confirm Soft HOLD SoR only (**no invent points-review Soft HOLD SoR**)
 - [ ] Confirm to Chief only after Security Soft HOLD SoR CLEAR path Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD
 
 ---
@@ -224,4 +230,4 @@ None.
 
 ## 9. Disposition
 
-Soft HOLD SoR ready for Spec cite after **CA design grounding CLEAR** path. Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD. Soft HOLD invent AC beyond Product scope Soft HOLD. Soft HOLD provision Soft HOLD. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security checklist ISSUED + answers + Security QA qa-confirm Soft HOLD SoR only. Soft HOLD multi-provider Soft HOLD. Gate **#27 CLOSED**. Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67**. Tip Soft Soft CLOSE Soft HOLD `c28361f`. PoC **$0**. Quiet.
+Soft HOLD SoR ready for Spec cite after **CA design grounding CLEAR** path. **Amended:** § Security answers points 1–10 MET. Soft Soft CLOSE Soft HOLD invent Stories Soft HOLD. Soft HOLD invent AC beyond Product scope Soft HOLD. Soft HOLD provision Soft HOLD. Soft Soft CLOSE Soft HOLD Architecture QA PASS until Security QA confirms 1–10 via qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR). Soft HOLD multi-provider Soft HOLD. Gate **#27 CLOSED**. Soft Soft CLOSE Soft HOLD Soft **#41 CLOSED** via **#66+#67**. Tip Soft Soft CLOSE Soft HOLD `c28361f`. PoC **$0**. Quiet.
