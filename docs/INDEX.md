@@ -64,6 +64,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-22__sa__architecture__mvp-stage-b-sa-rev-mvp-b-review.md](architecture/2026-09-22__sa__architecture__mvp-stage-b-sa-rev-mvp-b-review.md) — SA architecture review — Gate #25 SA-REV MVP-B (INDEX catch-up; Soft Soft CLOSE Soft HOLD checklist SoR separate)
 - [2026-09-28__sa__architecture__mvp-stage-c-sa-rev-mvp-c-review.md](architecture/2026-09-28__sa__architecture__mvp-stage-c-sa-rev-mvp-c-review.md)
 - [2026-10-01__sa__architecture__mvp-sa-rev-mvp-close-review.md](architecture/2026-10-01__sa__architecture__mvp-sa-rev-mvp-close-review.md)
+- [2026-10-02__sa__architecture__aws-cloud-design-step-2.md](architecture/2026-10-02__sa__architecture__aws-cloud-design-step-2.md)
 - [2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md](architecture/2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md)
 
 ## specs/
@@ -99,6 +100,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__cq__assessment__mvp-stage-c-agent-tool-hardwall-scrubber-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-agent-tool-hardwall-scrubber-no-refactor.md)
 - [2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md)
 - [2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md)
+- [2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md](specs/2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md)
 ---
 
 ## plans/
@@ -564,6 +566,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md)
+- [2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md](verification/2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md)
+- [2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md](verification/2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md)
 
 ## ops/
 
