@@ -102,6 +102,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-thin-assistant-runtime-no-refactor.md)
 - [2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md)
 - [2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md](specs/2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md)
+- [2026-10-02__spec__spec__platform-owner-admin-dashboard.md](specs/2026-10-02__spec__spec__platform-owner-admin-dashboard.md)
 ---
 
 ## plans/
@@ -566,12 +567,14 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-checklist.md)
 - [2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md)
+- [2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-qa-confirm.md](verification/2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md)
 - [2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md](verification/2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md)
 - [2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md](verification/2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md)
+- [2026-10-02__spec__verification__platform-owner-admin-dashboard.md](verification/2026-10-02__spec__verification__platform-owner-admin-dashboard.md)
 
 ## ops/
 
