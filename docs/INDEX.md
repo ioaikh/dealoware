@@ -570,6 +570,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md)
 - [2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-qa-confirm.md](verification/2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-spec-step-4-agentic-client-surface-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-4-agentic-client-surface-checklist.md)
+- [2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-3-admin-dashboard-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md)
