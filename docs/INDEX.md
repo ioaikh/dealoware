@@ -445,6 +445,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-checklist.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-checklist.md)
 - [2026-09-28__sa__verification__mvp-stage-c-sa-rev-mvp-c-review.md](verification/2026-09-28__sa__verification__mvp-stage-c-sa-rev-mvp-c-review.md)
 - [2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-sa-rev-mvp-c-qa-confirm.md)
+- [2026-10-01__security__verification__mvp-sa-rev-mvp-close-checklist.md](verification/2026-10-01__security__verification__mvp-sa-rev-mvp-close-checklist.md)
 - [2026-09-23__security__verification__research-02-00-et.md](verification/2026-09-23__security__verification__research-02-00-et.md)
 - [2026-09-23__security__verification__research-12-00-et.md](verification/2026-09-23__security__verification__research-12-00-et.md)
 - [2026-09-24__security__verification__research-02-00-et.md](verification/2026-09-24__security__verification__research-02-00-et.md)
