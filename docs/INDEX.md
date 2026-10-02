@@ -564,6 +564,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-qa-confirm.md](verification/2026-09-28__security__verification__mvp-stage-c-thin-assistant-doc-qa-confirm.md)
 - [2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-checklist.md)
 - [2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-spec-step-2-aws-arch-design-qa-confirm.md)
+- [2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md](verification/2026-10-02__security__verification__mvp-spec-step-3-admin-dashboard-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-checklist.md)
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md)
 - [2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md](verification/2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md)
