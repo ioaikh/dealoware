@@ -66,6 +66,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-01__sa__architecture__mvp-sa-rev-mvp-close-review.md](architecture/2026-10-01__sa__architecture__mvp-sa-rev-mvp-close-review.md)
 - [2026-10-02__sa__architecture__aws-cloud-design-step-2.md](architecture/2026-10-02__sa__architecture__aws-cloud-design-step-2.md)
 - [2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md](architecture/2026-09-28__sa__architecture__mvp-stage-c-assistant-hardwall-budgets-ui.md)
+- [2026-10-02__sa__architecture__admin-dashboard-step-3.md](architecture/2026-10-02__sa__architecture__admin-dashboard-step-3.md) — Spec #148 / Product Step 3 platform-owner admin Soft HOLD SoR (SA-REV-STEP3-ADMIN)
 
 ## specs/
 
