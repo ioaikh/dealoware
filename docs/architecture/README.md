@@ -12,3 +12,4 @@
 
 - [2026-09-20 PoC post-delivery review](2026-09-20__sa__architecture__poc-post-delivery-review.md) — Chief Architect PASS (post-milestone gate)
 - [2026-10-02 Step 3 admin dashboard](2026-10-02__sa__architecture__admin-dashboard-step-3.md) — Spec #148 / Product Step 3 platform-owner admin Soft HOLD SoR (SA-REV-STEP3-ADMIN)
+- [2026-10-02 Step 4 agentic client surface](2026-10-02__sa__architecture__agentic-client-surface-step-4.md) — Spec #155 / Product Step 4 provider-neutral agentic client surface SoR (SA-REV-STEP4-CLIENT)
