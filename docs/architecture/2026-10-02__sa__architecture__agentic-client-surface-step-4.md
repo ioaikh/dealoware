@@ -1,14 +1,14 @@
 # Architecture options SoR — Spec #155 / Product Step 4 provider-neutral agentic client surface
 
-**Status:** Senior Architect **proposal SoR** for Spec #155 / Product Step 4. Design SoR only. HOLD Architecture QA PASS until SoR CLEAR + Security QA confirms via qa-confirm SoR only (**no** invent points-review SoR). HOLD invent Stories. HOLD build / implementation / spend until separately named CEO unlock. Quiet. PoC **$0**.
+**Status:** Senior Architect **proposal Soft HOLD SoR** for Spec #155 / Product Step 4. **Amended:** § Security answers points 1–10 MET. HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA confirms 1–10 via qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR). HOLD invent Stories. HOLD build / implementation / spend until separately named CEO unlock. Quiet. PoC **$0**.
 **Date:** 2026-10-02
 **Author:** Dealoware Senior Architect
 **Brief from:** Chief Architect → Senior Architect → Architecture QA (Architecture always Security-critical)
 **Issue:** https://github.com/ioaikh/dealoware/issues/155
 **Moment IDs:** **SA-REV-STEP4-CLIENT** (this deliverable) · HOLD next until CA design grounding PASS + Arch QA + Security SoR CLEAR
 **DOC-FLOW:** `architecture/2026-10-02__sa__architecture__agentic-client-surface-step-4.md`
-**Security checklist:** AWAIT ISSUED (`verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md` expected) · **do not invent** § Security 1–10 MET
-**Expected Security QA SoR:** `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (handshake SoR = **qa-confirm only**)
+**Security checklist:** `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md` · **Amended:** § Security answers points 1–10 MET (ISSUED; Soft HOLD score until Soft HOLD SoR CLEAR / Docs QA INDEX PASS)
+**Expected Security QA Soft HOLD SoR:** `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (handshake Soft HOLD SoR = **qa-confirm only**)
 
 | Field | Value |
 |-------|-------|
@@ -18,10 +18,10 @@
 | Host shape | Amazon **ECS Express Mode (Fargate)** HOLD provision — inherit AWS Step 2 Option A SoR; **App Runner OUT** |
 | Cost | PoC **$0** · HOLD provision · HOLD spend · HOLD build |
 | Tip context | Step 3 #148 CLOSED tip `ff707ae` · AWS SoR #142 tip `c28361f` |
-| Status | Senior Architect proposal SoR · § Security AWAIT checklist |
+| Status | Senior Architect proposal Soft HOLD SoR · Security answers 1–10 MET |
 | Author | Dealoware Senior Architect |
 | Brief from | CA |
-| Security | Architecture always Security-critical · checklist AWAIT · HOLD Arch QA PASS until Security QA qa-confirm SoR only |
+| Security | Architecture always Security-critical · checklist ISSUED · answers 1–10 MET · HOLD Arch QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA qa-confirm Soft HOLD SoR only |
 
 ## Sources
 
@@ -47,7 +47,7 @@
 
 Architecture options SoR for Spec #155 / Product Step 4: a **provider-neutral agentic client surface** on the negotiation fabric. First-party bots and external agentic clients are first-class clients of the **same** negotiation/assistant API (not a Grok-only path). This SoR is the written client-surface contract shape plus **one reference client path designed** (not built). Primary delivery framing is **V1 OpenAPI/webhooks**.
 
-This deliverable is **design SoR only**. HOLD invent Stories. HOLD invent AC beyond strategy What. HOLD build. HOLD provision. HOLD spend. HOLD Architecture QA PASS until SoR CLEAR + Security QA confirms via **qa-confirm SoR only**.
+This deliverable is **design SoR only**. HOLD invent Stories. HOLD invent AC beyond strategy What. HOLD build. HOLD provision. HOLD spend. **Amended:** § Security answers points 1–10 MET. HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA confirms via **qa-confirm Soft HOLD SoR only**.
 
 Role boundary: this surface is a **Participant-principal client** of the Dealoware API. It is **not** the PlatformOwner admin surface (Step 3 #148) and **not** the Participant UI (#69).
 
@@ -148,7 +148,8 @@ The path is a **design narrative for Spec**. It is not a built client, not a liv
 - External systems as **example client classes only**
 - Host inherit cite: AWS SoR #142 @ `c28361f` (constraints only)
 - Proposed SA-REV-STEP4-CLIENT moment for CA → CPM
-- Soft HOLD multi-provider lift **scoped to this Step 4 Spec-track design SoR only**
+- Soft HOLD multi-provider lift **scoped to this Step 4 Spec-track design Soft HOLD SoR only**
+- § Security answers 1–10 MET against ISSUED checklist
 
 ### OUT
 
@@ -182,7 +183,7 @@ The path is a **design narrative for Spec**. It is not a built client, not a liv
 - HOLD Step 5
 - HOLD MCP (V5) and multi-LLM/BYO (V4)
 - Soft HOLD multi-provider remains for implementation and for any track other than this Step 4 design SoR
-- HOLD Architecture QA PASS until SoR CLEAR + Security QA **qa-confirm SoR only**
+- HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA **qa-confirm Soft HOLD SoR only** — answers 1–10 MET
 - HOLD Spec content until **CA design grounding PASS**
 - Gate **#27 CLOSED** · Soft **#41 CLOSED** via **#66+#67**
 
@@ -192,32 +193,29 @@ The path is a **design narrative for Spec**. It is not a built client, not a liv
 
 | Moment ID | Name | Trigger (when) | Scope under review | Next stage HOLD until |
 |-----------|------|----------------|--------------------|------------------------|
-| **SA-REV-STEP4-CLIENT** | Spec #155 / Product Step 4 provider-neutral agentic client surface | This deliverable — SoR written | Option A same-API client surface + Participant principal + contract shape + reference path designed + V1 OpenAPI/webhooks framing + inherit dual wall + host constraints + IN/OUT/HOLD | HOLD next until **CA design grounding PASS** + Architecture QA + Security SoR CLEAR (**qa-confirm only**; **no** invent points-review SoR) |
+| **SA-REV-STEP4-CLIENT** | Spec #155 / Product Step 4 provider-neutral agentic client surface | This deliverable — SoR written | Option A same-API client surface + Participant principal + contract shape + reference path designed + V1 OpenAPI/webhooks framing + inherit dual wall + host constraints + IN/OUT/HOLD | HOLD next until **CA design grounding PASS** + Architecture QA + Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR (**qa-confirm only**; **no** invent points-review Soft HOLD SoR) |
 
 **Rules:** Do not unlock invent Stories, build, or provision from SA alone. Soft HOLD multi-provider lift does not unlock implementation or spend.
 
 ---
 
-## 6. Security (Architecture always-critical handshake)
+## 6. Security answers (Architecture always-critical handshake)
 
-**Checklist:** AWAIT ISSUED. Do **not** invent points-review SoR and do **not** mark 1–10 MET before the checklist exists.
+**Checklist:** `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-checklist.md` (ISSUED; Soft HOLD score until Soft HOLD SoR CLEAR).
+**HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA confirms 1–10** via Soft HOLD SoR `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (**qa-confirm only** — **no invent points-review Soft HOLD SoR**).
 
-**HOLD Architecture QA PASS until Security QA confirms** via expected SoR `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md` (**qa-confirm only**).
-
-Design commitments Security can checklist against (not a substitute for the issued checklist):
-
-1. Same API for first-party and external clients — no Grok-only bypass.
-2. Participant principal on every client; PlatformOwner admin (#148) stays off this surface.
-3. Option A §3b dual wall on **all** clients; no parallel client ACL.
-4. Identity seal equal on the bot path (LoginEmail / ContactEmail / ShareOutbound / denied FieldClasses).
-5. Reference path is design only; build and connector auth/rate limits stay HOLD.
-6. V1 OpenAPI/webhooks only; MCP and multi-LLM/BYO out.
-7. HOLD AWS provision; inherit Step 2 @ `c28361f` as constraints.
-8. No PII in logs, webhooks, or traces beyond FieldPolicy allow.
-9. OUT pack in §4 locked.
-10. Traceability to strategy Step 4, #66+#67, #69, #148 @ `ff707ae`, #142 @ `c28361f`, #27 CLOSED, Soft #41 CLOSED.
-
----
+| # | Security point | Architecture answer | Cite |
+|---|----------------|---------------------|------|
+| 1 | Provider-neutral same-API first-class clients; no Grok-only path | **MET.** One provider-neutral Dealoware negotiation/assistant API (**#66+#67**) is the only client surface. First-party bots **and** external agentic clients are first-class clients of that **same** API under Participant principal. Reject Grok-only, provider-locked, or weaker external forks. Soft HOLD multi-provider lifts for this **design Soft HOLD SoR** only — no implementation, spend, or live partner wiring. | §2 Option A (pick) / reject B; §3.1 One API; strategy Step 4; Soft #41 CLOSED via #66+#67 |
+| 2 | Written client-surface contract; no invented connector auth or rate limits | **MET.** Written contract shape covers auth boundary, Participant principal, FieldPolicy / hard wall on **all** clients, and identity seal equal on the bot path. Auth beyond that minimum is named Soft HOLD TBD. No connector auth schemes, rate-limit regimes, partner-specific auth, or live partner credentials ahead of a separately named CEO unlock. | §3.2 Client-surface contract; §4 OUT / HOLD; strategy Step 4 |
+| 3 | Fail-closed dual-wall on all clients (Option A §3a/§3b) | **MET.** Every client — first-party bot path and external agentic clients — binds Option A **§3a/§3b**: Platform API/DB FieldPolicy wall **and** agent/tool hard wall (same Domain `IFieldPolicy.Evaluate` for **all** FieldClasses). Reject prompt-only controls, parallel ACL tables that drift from FieldPolicy, tenant shortcuts that weaken fail-closed list/discovery scrub, or client-class bypass that dumps denied FieldClasses. | §3.1 Dual wall; §3.6 Security binding; Option A tip §3a/§3b (cite, not rewrite); Gate **#27 CLOSED**; Soft **#41 CLOSED** via **#66+#67**; Step 3 tip `ff707ae` |
+| 4 | Identity seal equal on the bot path | **MET.** Identity-until-accept holds **equally** on the bot/agent path and other clients of the same API: no contact/PII on public Participant DTOs; **LoginEmail** never in agent/model context; **ContactEmail** ShareOutbound **Accept-gated** server-side. No client path that leaks LoginEmail / ContactEmail / StrategyBody / denied FieldClasses into prompts, logs, webhooks, or exports without explicit Accept-gated / FieldPolicy allow. | §3.2 Identity seal; §3.3 reference path webhook FieldPolicy; §3.6 Security binding; Option A + Stage A/B Security PASS posture |
+| 5 | One reference client path designed; no build | **MET.** One reference client path is **designed** (documented narrative for Spec) and **not built**. No implementation, SDK ship, deploy, paid plugins, or non-local client runtime. No Stories for building the reference path. No AC that require a running client. Build stays on HOLD until a separately named CEO unlock. | §3.3 One reference client path; §2 reject H; §4 OUT build |
+| 6 | V1 OpenAPI/webhooks; V4 and V5 out | **MET.** Delivery primary framing is **V1 OpenAPI/webhooks**. Multi-LLM / BYO (**V4**) and MCP breadth / marketplace (**V5**) are out of Step 4. No design that presupposes V4/V5 delivery. | §2 Options reject C/D; §3.2 Delivery framing; §4 OUT V4/V5; strategy Step 4 OUT |
+| 7 | External systems are example client classes only | **MET.** External systems may be named only as **example client classes**. No live partner integrations, partner NDAs, partner-specific secrets, AC that require a named live partner, or Marketing publish of partner names as delivered partners. | §3.1 Example classes; §4 OUT live partners / Marketing |
+| 8 | No AWS provision; inherit Step 2 design constraints only | **MET.** Host inherit cites AWS SoR #142 @ tip `c28361f` as **design constraints only** (ECS Express Mode, provision on HOLD; App Runner OUT; Option A §3b dual wall). No AWS account create, resource provision, spend, paid plugins, or non-local deploy. Build stays on HOLD. Any later provision/spend escalates **CA → CPM → COO → CEO**. PoC **$0**. | §3.5 Host inherit; AWS SoR #142 @ tip `c28361f`; §4 HOLD provision |
+| 9 | OUT / HOLD locked pack | **MET.** OUT / HOLD pack includes: no invented Stories; no AC beyond strategy What; no build/implementation/spend until a separately named CEO unlock; no invented connector auth or rate limits; no V4 multi-LLM/BYO; no V5 MCP; no Marketing publish; no AWS provision/spend; no Spec/AC for Step **5** until Step 4 CLOSED plus explicit CEO invent-confirm; no settlement/escrow/checkout; Gate **#27** stays CLOSED; Soft **#41** stays CLOSED via #66+#67; App Runner out; MotorMarket/DC4 out; Cognito not delivered; PoC **$0**. Cost/critical goes COO → CEO. No Grok-only path. PlatformOwner admin (#148) and Participant UI (#69) are not this surface. No second client cluster. | §4 OUT / HOLD; header Locks; checklist point 9 |
+| 10 | Traceability + handshake SoR pattern | **MET.** Cites strategy Step 4 + Option A §3a/§3b + Step 3 #148 tip `ff707ae` + Step 2 #142 tip `c28361f` + #69 Participant boundary + Gate **#27 CLOSED** + Soft **#41 CLOSED** via **#66+#67**. HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA confirms 1–10 via `verification/2026-10-02__security__verification__mvp-sa-step-4-agentic-client-qa-confirm.md`. Handshake SoR = **qa-confirm only** (Gate #25/#26/#27 pattern) — no invented points-review SoR. Spec content stays on HOLD until **CA design grounding PASS**. Sibling Spec checklist remains a separate SoR / Spec QA track. No invented Stories, no build, no provision. | This §6; Sources; §5 moments; checklist DOC-FLOW |
 
 ## 7. Done-list → Architecture QA
 
@@ -227,8 +225,8 @@ Design commitments Security can checklist against (not a substitute for the issu
 - [x] Host inherit cites AWS SoR #142 @ `c28361f` (HOLD provision; App Runner OUT)
 - [x] Explicit IN / OUT / HOLD match strategy What + CA brief
 - [x] Review moments table present for CA → CPM (`gate:sa-arch-review`)
-- [ ] § Security answers 1–10 MET — **AWAIT checklist** (do not invent)
-- [ ] HOLD Architecture QA PASS until SoR CLEAR + Security QA qa-confirm SoR only
+- [x] § Security answers 1–10 MET with section cites (checklist ISSUED)
+- [ ] HOLD Architecture QA PASS until Soft HOLD SoR CLEAR + Security Soft HOLD SoR CLEAR + Security QA qa-confirm Soft HOLD SoR only
 - [ ] HOLD Spec content until CA design grounding PASS
 - [ ] Confirm to Chief only after that path — HOLD invent Stories · HOLD build
 
@@ -242,4 +240,4 @@ None. Build, spend, connector auth, and paid keys stay HOLD until a separately n
 
 ## 9. Disposition
 
-SoR ready for **CA design grounding** review. HOLD Spec content until that PASS. HOLD invent Stories. HOLD build / implementation / spend. HOLD provision. HOLD Architecture QA PASS until SoR CLEAR + Security QA qa-confirm SoR only (**no** invent points-review SoR). Soft HOLD multi-provider lifted **only** for this Step 4 Spec-track design SoR. Gate **#27 CLOSED**. Soft **#41 CLOSED** via **#66+#67**. Step 3 tip `ff707ae`. AWS tip `c28361f`. PoC **$0**. Quiet.
+Soft HOLD SoR amended: § Security answers points 1–10 MET. HOLD Spec content until CA design grounding PASS. HOLD invent Stories. HOLD build / implementation / spend. HOLD provision. HOLD Architecture QA PASS until Soft HOLD SoR CLEAR (#157) + Security Soft HOLD SoR CLEAR + Security QA confirms 1–10 via qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR). Soft HOLD multi-provider lifted **only** for this Step 4 Spec-track design Soft HOLD SoR. Gate **#27 CLOSED**. Soft **#41 CLOSED** via **#66+#67**. Step 3 tip `ff707ae`. AWS tip `c28361f`. PoC **$0**. Quiet.
