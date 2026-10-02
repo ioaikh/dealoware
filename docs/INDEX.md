@@ -31,6 +31,8 @@
 - [product/CEO-ORIGINAL-BRIEF.md](product/CEO-ORIGINAL-BRIEF.md) — **original** verbatim CEO specification (do not overwrite with summary)
 - [product/PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — **processed summary** (Product may refresh; goals, domain, claims lock, licensing)
 - [ops/ORG-OPS.md](ops/ORG-OPS.md) — agent ops charter, pipeline, triads, doc ownership
+- [2026-10-02__ops__root-cause__soft-hold-filler-relapse.md](ops/2026-10-02__ops__root-cause__soft-hold-filler-relapse.md)
+- [2026-10-02__ops__proposal__org-ops-soft-hold-ping-lock.md](ops/2026-10-02__ops__proposal__org-ops-soft-hold-ping-lock.md)
 - [meta/DOC-FLOW.md](meta/DOC-FLOW.md) — all-team publish flow (naming, handoff, mirror map)
 - [meta/INDEX-DELTA.md](meta/INDEX-DELTA.md) — hourly delta index procedure (no full re-scan)
 
@@ -715,6 +717,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__ops__verification__brief-33-6h-noon.md](ops/reports/2026-09-28__ops__verification__brief-33-6h-noon.md)
 - [2026-09-28__ops__verification__brief-34-6h-evening.md](ops/reports/2026-09-28__ops__verification__brief-34-6h-evening.md)
 
+- [2026-10-02__ops__audit__148-step3-admin-dashboard-15m-watch-delete.md](ops/reports/2026-10-02__ops__audit__148-step3-admin-dashboard-15m-watch-delete.md)
 ## meta/
 
 - [DOC-FLOW.md](meta/DOC-FLOW.md)
