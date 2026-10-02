@@ -580,6 +580,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md](verification/2026-10-02__security__verification__mvp-sa-step-2-aws-arch-design-qa-confirm.md)
 - [2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md](verification/2026-10-02__sa__verification__mvp-sa-step-2-aws-arch-design-review.md)
 - [2026-10-02__sa__verification__mvp-sa-step-4-agentic-client-review.md](verification/2026-10-02__sa__verification__mvp-sa-step-4-agentic-client-review.md)
+- [2026-10-02__ca__verification__mvp-sa-step-4-agentic-client-design-grounding-pass.md](verification/2026-10-02__ca__verification__mvp-sa-step-4-agentic-client-design-grounding-pass.md)
 - [2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md](verification/2026-10-02__spec__verification__aws-cloud-architecture-design-ecs-express.md)
 - [2026-10-02__spec__verification__platform-owner-admin-dashboard.md](verification/2026-10-02__spec__verification__platform-owner-admin-dashboard.md)
 
