@@ -4,7 +4,7 @@
 **Date:** 2026-10-02  
 **Author:** Dealoware Senior Spec  
 **Brief:** Chief Spec CLEAR WRITE #155 (CA design grounding PASS Soft HOLD SoR CLEAR tip **`90120c3`** PR **#167**; Spec Security checklist ISSUED)  
-**Issue:** https://github.com/ioaikh/dealoware/issues/155 · `status:in-dev` · Spec Step 4 — Provider-neutral agentic client surface (design Soft HOLD SoR Soft HOLD build) — **do not close #155**  
+**Issue:** https://github.com/ioaikh/dealoware/issues/155 · `status:in-dev` · Spec Step 4 — Provider-neutral agentic client surface (design Soft HOLD SoR Soft HOLD build) — **keep #155 OPEN**  
 **DOC-FLOW:** `specs/2026-10-02__spec__spec__provider-neutral-agentic-client-surface.md`  
 **Constraints:** **Design Soft HOLD SoR Spec only.** Soft HOLD invent Stories · Soft HOLD invent AC beyond strategy What · Soft HOLD build/implementation/spend until separately named CEO unlock · Soft HOLD invent connector auth/rate limits ahead of CEO · Soft HOLD invent MCP V5 · Soft HOLD invent multi-LLM/BYO V4 · Soft HOLD Marketing publish · Soft HOLD AWS provision/spend · Soft HOLD invent Spec/AC Step 5 · Gate **#27 CLOSED** · Soft **#41 CLOSED** via **#66+#67** · **App Runner OUT** · MotorMarket/DC4 OUT · settlement/escrow OUT · PlatformOwner admin (#148 tip **`ff707ae`**) **≠** this surface · Participant UI (#69) **≠** invent as this API surface rewrite · Soft HOLD multi-provider Soft HOLD **lifts for this Spec track only** (design Soft HOLD SoR — not impl/spend) · PoC **$0** · spend → **COO → CEO**. Tips: CA design grounding PASS Soft HOLD SoR **`90120c3`** (PR **#167**) · architecture Soft HOLD SoR lineage **`6dc48d7`** (#162) / **`c1b4e8c`** (#163) · Security qa-confirm Soft HOLD SoR PASS **#165** @ **`5d93bdf`** · Arch QA Soft HOLD SoR PASS **#166** @ tip **`eb11262`** · AWS inherit Soft HOLD provision **`c28361f`** · admin Soft HOLD SoR **`ff707ae`**. Spec QA Soft HOLD until Spec-step Security QA PASS + Soft HOLD SoR qa-confirm MERGED. Handshake Soft HOLD SoR = **qa-confirm only** — do **not** invent points-review Soft HOLD SoR. Done-list to **Chief Spec** (not Spec QA yet). Quiet filler Soft HOLD invent Soft HOLD.
 
@@ -60,7 +60,7 @@ Turn Product Step 4 strategy What + scope lock + CA PASS Option A Soft HOLD SoR 
 
 This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD invent AC beyond strategy What. Soft HOLD build/implementation/spend. Soft HOLD invent connector auth/rate limits. Soft HOLD invent V4/V5. Soft HOLD Marketing. Soft HOLD AWS provision. Soft HOLD Step 5. Soft HOLD invent live partners. Soft HOLD invent PlatformOwner admin as this surface. Soft HOLD invent Grok-only fork. PoC **$0**.
 
-**#155 stays OPEN** (`status:in-dev`) — do **not** close from this Spec.
+**#155 stays OPEN** (`status:in-dev`) — keep issue #155 OPEN.
 
 ---
 
@@ -196,7 +196,7 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 | 7 | External = example client classes only Soft HOLD invent live partners | **MET.** Example client classes only. Soft HOLD invent live partners Soft HOLD invent Marketing as delivered partners Soft HOLD invent partner Secrets Soft HOLD invent AC requiring a named live partner. | Locked #8; §3; §8 OUT |
 | 8 | Soft HOLD AWS provision; inherit Step 2 design constraints only | **MET.** Cites #142 Soft HOLD SoR @ tip **`c28361f`** design constraints only Soft HOLD provision Soft HOLD invent App Runner Soft HOLD invent spend Soft HOLD invent build Soft HOLD. PoC **$0**. Escalate COO→CEO. | Locked #9/#12; §7 Host inherit; §8 Soft HOLD |
 | 9 | OUT / Soft HOLD locked pack | **MET.** OUT/Soft HOLD pack includes invent Stories; invent AC beyond strategy What; Soft HOLD build/impl/spend; invent connector auth/rate limits; invent V4/V5; Marketing; AWS provision; invent Spec/AC Step 5; settlement/escrow; Gate #27 CLOSED; Soft #41 CLOSED; App Runner; MotorMarket/DC4; Cognito as delivered; PoC $0. | Locked #0/#11/#12; §8; header Constraints |
-| 10 | Traceability + handshake Soft HOLD SoR pattern | **MET.** Cites strategy Step 4 + Option A §3b + #148 tip `ff707ae` + #142 tip `c28361f` + Gate #27 CLOSED + Soft #41 CLOSED via #66+#67 + CA design grounding PASS Soft HOLD SoR tip `90120c3` (#167) + CA PASS lineage `6dc48d7`/`c1b4e8c` + Arch QA Soft HOLD SoR PASS #166 @ `eb11262` + SA Security Soft HOLD SoR PASS #165 @ `5d93bdf` + Spec checklist Soft HOLD SoR (no invent twin). Spec QA Soft HOLD until Soft HOLD SoR `…mvp-spec-step-4-agentic-client-surface-qa-confirm.md` PASS + MERGED. Handshake Soft HOLD SoR = **qa-confirm only**. Done-list → Chief Spec. #155 stays OPEN. | This §9; Sources; §8 Soft HOLD; §12 Done-list |
+| 10 | Traceability + handshake Soft HOLD SoR pattern | **MET.** Cites strategy Step 4 + Option A §3b + #148 tip `ff707ae` + #142 tip `c28361f` + Gate #27 CLOSED + Soft #41 CLOSED via #66+#67 + CA design grounding PASS Soft HOLD SoR tip `90120c3` (#167) + CA PASS lineage `6dc48d7`/`c1b4e8c` + Arch QA Soft HOLD SoR PASS #166 @ `eb11262` + SA Security Soft HOLD SoR PASS #165 @ `5d93bdf` + Spec checklist Soft HOLD SoR (no invent twin). Spec QA Soft HOLD until Soft HOLD SoR `…mvp-spec-step-4-agentic-client-surface-qa-confirm.md` PASS + MERGED. Handshake Soft HOLD SoR = **qa-confirm only**. Done-list → Chief Spec. Keep #155 OPEN. | This §9; Sources; §8 Soft HOLD; §12 Done-list |
 
 ---
 
@@ -261,7 +261,7 @@ Spec QA Soft HOLD until **all** of:
 - [ ] §9 Security Spec checklist binding 1–10 with Spec section cites; Soft HOLD SoR checklist path only (no invent twin)
 - [ ] §10 Acceptance mapping complete; Soft HOLD invent AC beyond strategy What
 - [ ] Tips **`6dc48d7`/`c1b4e8c`** + **`5d93bdf`** + **`eb11262`** + **`c28361f`** + **`ff707ae`** present
-- [ ] Gate #27 CLOSED / Soft #41 CLOSED held; PoC $0; #155 stays OPEN
+- [ ] Gate #27 CLOSED / Soft #41 CLOSED held; PoC $0; keep #155 OPEN
 
 ---
 
@@ -276,6 +276,6 @@ Spec QA Soft HOLD until **all** of:
 - [x] Acceptance mapping for Product / Issue #155 (no invent Stories / invent AC beyond strategy What; **no Product AC mapping gaps**)
 - [x] Tips CA PASS Soft HOLD SoR **`90120c3`** (#167) + **`6dc48d7`/`c1b4e8c`** + Soft HOLD SoR PASS **`5d93bdf`** (#165) + Arch QA Soft HOLD SoR PASS **`eb11262`** (#166) + **`c28361f`** + **`ff707ae`** + Spec checklist Soft HOLD SoR path cited
 - [ ] Spec QA Soft HOLD until Spec-step Security QA PASS + Soft HOLD SoR qa-confirm MERGED
-- [ ] Soft HOLD SoR twin under `docs/specs/…` (this Spec Soft HOLD SoR PR) — Relates to #155; do not close #155
+- [ ] Soft HOLD SoR twin under `docs/specs/…` (this Spec Soft HOLD SoR PR) — Relates to #155; keep #155 OPEN
 
 **Confirm to Chief Spec** when draft ready for Spec QA (after Spec-step Security PASS gate). Soft HOLD Spec QA until then. Soft HOLD invent Stories Soft HOLD invent build Soft HOLD. PoC **$0**. Quiet.
