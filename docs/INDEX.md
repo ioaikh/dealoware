@@ -106,6 +106,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md)
 - [2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md](specs/2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md)
 - [2026-10-02__spec__spec__platform-owner-admin-dashboard.md](specs/2026-10-02__spec__spec__platform-owner-admin-dashboard.md)
+- [2026-10-02__spec__spec__provider-neutral-agentic-client-surface.md](specs/2026-10-02__spec__spec__provider-neutral-agentic-client-surface.md)
 ---
 
 ## plans/
