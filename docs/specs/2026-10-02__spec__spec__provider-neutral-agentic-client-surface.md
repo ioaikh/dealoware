@@ -6,7 +6,7 @@
 **Brief:** Chief Spec CLEAR WRITE #155 (CA design grounding PASS Soft HOLD SoR CLEAR tip **`90120c3`** PR **#167**; Spec Security checklist ISSUED)  
 **Issue:** https://github.com/ioaikh/dealoware/issues/155 · `status:in-dev` · Spec Step 4 — Provider-neutral agentic client surface (design Soft HOLD SoR Soft HOLD build) — **keep #155 OPEN**  
 **DOC-FLOW:** `specs/2026-10-02__spec__spec__provider-neutral-agentic-client-surface.md`  
-**Constraints:** **Design Soft HOLD SoR Spec only.** Soft HOLD invent Stories · Soft HOLD invent AC beyond strategy What · Soft HOLD build/implementation/spend until separately named CEO unlock · Soft HOLD invent connector auth/rate limits ahead of CEO · Soft HOLD invent MCP V5 · Soft HOLD invent multi-LLM/BYO V4 · Soft HOLD Marketing publish · Soft HOLD AWS provision/spend · Soft HOLD invent Spec/AC Step 5 · Gate **#27 CLOSED** · Soft **#41 CLOSED** via **#66+#67** · **App Runner OUT** · MotorMarket/DC4 OUT · settlement/escrow OUT · PlatformOwner admin (#148 tip **`ff707ae`**) **≠** this surface · Participant UI (#69) **≠** invent as this API surface rewrite · Soft HOLD multi-provider Soft HOLD **lifts for this Spec track only** (design Soft HOLD SoR — not impl/spend) · PoC **$0** · spend → **COO → CEO**. Tips: CA design grounding PASS Soft HOLD SoR **`90120c3`** (PR **#167**) · architecture Soft HOLD SoR lineage **`6dc48d7`** (#162) / **`c1b4e8c`** (#163) · Security qa-confirm Soft HOLD SoR PASS **#165** @ **`5d93bdf`** · Arch QA Soft HOLD SoR PASS **#166** @ tip **`eb11262`** · AWS inherit Soft HOLD provision **`c28361f`** · admin Soft HOLD SoR **`ff707ae`**. Spec QA Soft HOLD until Spec-step Security QA PASS + Soft HOLD SoR qa-confirm MERGED. Handshake Soft HOLD SoR = **qa-confirm only** — do **not** invent points-review Soft HOLD SoR. Done-list to **Chief Spec** (not Spec QA yet). Quiet filler Soft HOLD invent Soft HOLD.
+**Constraints:** **Design Soft HOLD SoR Spec only.** Soft HOLD invent Stories · Soft HOLD invent AC beyond strategy What · Soft HOLD build/implementation/spend until separately named CEO unlock · Soft HOLD invent connector auth/rate limits ahead of CEO · Soft HOLD Marketing publish · Soft HOLD AWS provision/spend · Soft HOLD invent Spec/AC Step 5 · Gate **#27 CLOSED** · Soft **#41 CLOSED** via **#66+#67** · **App Runner OUT** · MotorMarket/DC4 OUT · settlement/escrow OUT · PlatformOwner admin (#148 tip **`ff707ae`**) **≠** this surface · Participant UI (#69) **≠** invent as this API surface rewrite · Soft HOLD multi-provider Soft HOLD **lifts for this Spec track only** (design Soft HOLD SoR — not impl/spend) · PoC **$0** · spend → **COO → CEO**. Tips: CA design grounding PASS Soft HOLD SoR **`90120c3`** (PR **#167**) · architecture Soft HOLD SoR lineage **`6dc48d7`** (#162) / **`c1b4e8c`** (#163) · Security qa-confirm Soft HOLD SoR PASS **#165** @ **`5d93bdf`** · Arch QA Soft HOLD SoR PASS **#166** @ tip **`eb11262`** · AWS inherit Soft HOLD provision **`c28361f`** · admin Soft HOLD SoR **`ff707ae`**. Spec QA Soft HOLD until Spec-step Security QA PASS + Soft HOLD SoR qa-confirm MERGED. Handshake Soft HOLD SoR = **qa-confirm only** — do **not** invent points-review Soft HOLD SoR. Done-list to **Chief Spec** (not Spec QA yet). Quiet filler Soft HOLD invent Soft HOLD.
 
 ---
 
@@ -30,7 +30,7 @@
 | Gate #27 CLOSED | Gate **#27 CLOSED** Soft HOLD SoR | Identity/ACL gate CLOSED |
 | Participant UI #69 | `specs/2026-09-28__spec__spec__mvp-stage-c-basic-ui-first-party-bot-x2.md` | Human Participant UI ≠ this client-surface Spec |
 
-**Product alignment:** Spec success = written provider-neutral client-surface contract + V1 OpenAPI/webhooks framing + one reference client path **designed**; OUT list explicit; **no build/implementation invent**; PoC $0. Soft HOLD multi-provider lifts for this Spec-track design Soft HOLD SoR only. Conflicts → escalate PM → Product → CEO. Cost/critical → COO → CEO.
+**Product alignment:** Spec success = written provider-neutral client-surface contract + delivery lock (inbound connector model) + one reference client path **designed**; OUT list explicit; **no build/implementation invent**; PoC $0. Soft HOLD multi-provider lifts for this Spec-track design Soft HOLD SoR only. Conflicts → escalate PM → Product → CEO. Cost/critical → COO → CEO.
 
 ---
 
@@ -44,7 +44,7 @@
 | 3 | Dual wall | Option A **§3b** FieldPolicy dual wall on **every** client (API/DB FieldPolicy **and** agent/tool hard wall; same Domain `IFieldPolicy.Evaluate`). Soft HOLD invent parallel ACL / prompt-only / client-class bypass |
 | 4 | Identity seal | Identity seal **equal** on the bot path vs other clients of the same API; LoginEmail never in agent/model context; ContactEmail ShareOutbound Accept-gated |
 | 5 | Contract framing | Written client-surface contract: auth · Participant principal · FieldPolicy/hard wall all clients · identity seal equal on bot path. Soft HOLD invent connector auth/rate limits ahead of CEO |
-| 6 | Delivery stage | **V1 OpenAPI + webhooks**; Soft HOLD invent MCP V5 · Soft HOLD invent multi-LLM/BYO V4 as Step 4 |
+| 6 | Delivery stage | Inbound is a connector they call. Grok attaches a connector or a public MCP. Muse calls an API or MCP we expose. A dot uses account plugins. We do not run a client inside their bot and we do not poll them. A wake-up into Grok or Muse is not chosen. The signed POST is real and is not Dots-only (MCP Events covers ChatGPT Work chats and dots). That callback is not chosen as a build. |
 | 7 | Reference path | **One** reference client path **designed not built**; Soft HOLD invent Stories / running-client AC |
 | 8 | External naming | Example client classes only; Soft HOLD invent live partners / Marketing as delivered partners |
 | 9 | Host inherit | Cite AWS #142 @ tip **`c28361f`** design constraints only Soft HOLD provision; **App Runner OUT** |
@@ -56,9 +56,9 @@
 
 ## 1. Purpose
 
-Turn Product Step 4 strategy What + scope lock + CA PASS Option A Soft HOLD SoR into a **Security-bound provider-neutral agentic client surface Spec Soft HOLD SoR** for Issue #155: one negotiation/assistant API where first-party bots and external agentic clients are first-class clients of the **same** API; written client-surface contract; one reference client path **designed** (not built); V1 OpenAPI/webhooks framing.
+Turn Product Step 4 strategy What + scope lock + CA PASS Option A Soft HOLD SoR into a **Security-bound provider-neutral agentic client surface Spec Soft HOLD SoR** for Issue #155: one negotiation/assistant API where first-party bots and external agentic clients are first-class clients of the **same** API; written client-surface contract; one reference client path **designed** (not built); delivery lock (inbound connector model).
 
-This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD invent AC beyond strategy What. Soft HOLD build/implementation/spend. Soft HOLD invent connector auth/rate limits. Soft HOLD invent V4/V5. Soft HOLD Marketing. Soft HOLD AWS provision. Soft HOLD Step 5. Soft HOLD invent live partners. Soft HOLD invent PlatformOwner admin as this surface. Soft HOLD invent Grok-only fork. PoC **$0**.
+This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD invent AC beyond strategy What. Soft HOLD build/implementation/spend. Soft HOLD invent connector auth/rate limits. Soft HOLD Marketing. Soft HOLD AWS provision. Soft HOLD Step 5. Soft HOLD invent live partners. Soft HOLD invent PlatformOwner admin as this surface. Soft HOLD invent Grok-only fork. PoC **$0**.
 
 **#155 stays OPEN** (`status:in-dev`) — keep issue #155 OPEN.
 
@@ -68,12 +68,12 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 
 | Option | Spec disposition |
 |--------|------------------|
-| **A. Same Dealoware negotiation/assistant API (#66+#67) as the only client surface; Participant principal; §3b dual wall every client; identity seal equal on bot path; V1 OpenAPI+webhooks; reference path designed not built; example client classes only** | **PICK** — Soft HOLD SoR only; Soft HOLD invent Stories Soft HOLD build |
+| **A. Same Dealoware negotiation/assistant API (#66+#67) as the only client surface; Participant principal; §3b dual wall every client; identity seal equal on bot path; inbound connector model; reference path designed not built; example client classes only** | **PICK** — Soft HOLD SoR only; Soft HOLD invent Stories Soft HOLD build |
 | B. Grok-only / provider-locked special path | **OUT / Reject** |
 | C. Separate weaker external API / forked ACL | **OUT / Reject** |
 | D. PlatformOwner admin (#148) as this surface | **OUT / Reject** — admin ≠ client surface |
 | E. App Runner client host Soft HOLD invent | **OUT / Reject** — App Runner OUT |
-| F. Cognito/SSO / MCP V5 / multi-LLM V4 as Step 4 delivered | **OUT / Reject** |
+| F. Cognito/SSO as Step 4 delivered | **OUT / Reject** |
 
 **Pick: Option A.** Soft HOLD invent Stories. Soft HOLD build. Soft HOLD invent second API / Grok-only / admin fold-in.
 
@@ -115,11 +115,13 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 
 ---
 
-## 6. V1 OpenAPI / webhooks + reference client path
+## 6. Delivery lock (inbound connector model) + reference client path
+
+Inbound is a connector they call. Grok attaches a connector or a public MCP. Muse calls an API or MCP we expose. A dot uses account plugins. We do not run a client inside their bot and we do not poll them. A wake-up into Grok or Muse is not chosen. The signed POST is real and is not Dots-only (MCP Events covers ChatGPT Work chats and dots). That callback is not chosen as a build.
 
 | Surface | Spec lock | Soft HOLD |
 |---------|-----------|-----------|
-| Delivery framing | **V1 OpenAPI + webhooks** as Spec target surface | Soft HOLD invent MCP V5 Soft HOLD invent multi-LLM/BYO V4 as Step 4 |
+| Delivery framing | Inbound connector model (they call us; we do not poll or run a client inside their bot) | Soft HOLD invent build |
 | Reference client path | **One** reference path **designed** (documented how an external agentic client attaches via the same API) | Soft HOLD invent build Soft HOLD invent SDK ship Soft HOLD invent deploy Soft HOLD invent Stories Soft HOLD invent AC requiring a running client |
 
 ---
@@ -140,7 +142,7 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 - Provider-neutral agentic client surface Spec Soft HOLD SoR Option A for Spec #155 / Product Step 4
 - Same Dealoware API (#66+#67) as only client surface; first-party bots + external agentic clients first-class under Participant principal
 - Written client-surface contract (auth · Participant · FieldPolicy/hard wall all clients · identity seal equal on bot path)
-- V1 OpenAPI/webhooks framing
+- Delivery lock (inbound connector model: they call us; we do not poll or run a client inside their bot)
 - One reference client path designed not built
 - Example client classes only
 - Soft HOLD multi-provider Soft HOLD lifts for this Spec track only (design Soft HOLD SoR)
@@ -153,7 +155,6 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 - invent AC beyond strategy What
 - build / implementation / spend Soft HOLD until separately named CEO unlock
 - invent connector auth / rate limits ahead of CEO
-- MCP V5 · multi-LLM/BYO V4
 - Marketing publish Soft HOLD
 - AWS account / resource provision / spend Soft HOLD
 - invent Spec/AC Step **5** until Step 4 CLOSED + explicit CEO invent-confirm
@@ -192,10 +193,10 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 | 3 | Fail-closed dual-wall on all clients (Option A §3b) | **MET.** Binds Option A §3b on every client (bot + external). Soft HOLD invent prompt-only Soft HOLD invent parallel ACL Soft HOLD invent client-class bypass Soft HOLD invent dump denied FieldClasses. Cite Option A + Gate #27 CLOSED / #67 + #148 tip `ff707ae`. | Locked #3; §5 Dual wall; Sources |
 | 4 | Identity seal equal on the bot path Soft HOLD invent identity shortcuts | **MET.** Identity seal equal on bot path; no contact/PII on public Participant DTOs; LoginEmail never in agent/model context; ContactEmail ShareOutbound Accept-gated. Soft HOLD invent leaks into prompts/logs/webhooks/exports without Accept-gated / FieldPolicy allow. | Locked #4; §5 Identity seal; §8 OUT |
 | 5 | One reference client path designed Soft HOLD invent build | **MET.** One reference client path **designed not built**. Soft HOLD invent implementation Soft HOLD invent SDK ship Soft HOLD invent Stories Soft HOLD invent AC requiring a running client. | Locked #7; §6 Reference path; §8 Soft HOLD build |
-| 6 | V1 OpenAPI/webhooks Soft HOLD invent V4/V5 | **MET.** Delivery primary framing **V1 OpenAPI/webhooks**. Soft HOLD invent multi-LLM/BYO V4 Soft HOLD invent MCP V5 as Step 4. | Locked #6; §6; §8 OUT |
+| 6 | Delivery lock (inbound connector model) | **MET.** Inbound is a connector they call. Grok attaches a connector or a public MCP. Muse calls an API or MCP we expose. A dot uses account plugins. We do not run a client inside their bot and we do not poll them. A wake-up into Grok or Muse is not chosen. The signed POST is real and is not Dots-only (MCP Events covers ChatGPT Work chats and dots). That callback is not chosen as a build. | Locked #6; §6 |
 | 7 | External = example client classes only Soft HOLD invent live partners | **MET.** Example client classes only. Soft HOLD invent live partners Soft HOLD invent Marketing as delivered partners Soft HOLD invent partner Secrets Soft HOLD invent AC requiring a named live partner. | Locked #8; §3; §8 OUT |
 | 8 | Soft HOLD AWS provision; inherit Step 2 design constraints only | **MET.** Cites #142 Soft HOLD SoR @ tip **`c28361f`** design constraints only Soft HOLD provision Soft HOLD invent App Runner Soft HOLD invent spend Soft HOLD invent build Soft HOLD. PoC **$0**. Escalate COO→CEO. | Locked #9/#12; §7 Host inherit; §8 Soft HOLD |
-| 9 | OUT / Soft HOLD locked pack | **MET.** OUT/Soft HOLD pack includes invent Stories; invent AC beyond strategy What; Soft HOLD build/impl/spend; invent connector auth/rate limits; invent V4/V5; Marketing; AWS provision; invent Spec/AC Step 5; settlement/escrow; Gate #27 CLOSED; Soft #41 CLOSED; App Runner; MotorMarket/DC4; Cognito as delivered; PoC $0. | Locked #0/#11/#12; §8; header Constraints |
+| 9 | OUT / Soft HOLD locked pack | **MET.** OUT/Soft HOLD pack includes invent Stories; invent AC beyond strategy What; Soft HOLD build/impl/spend; invent connector auth/rate limits; Marketing; AWS provision; invent Spec/AC Step 5; settlement/escrow; Gate #27 CLOSED; Soft #41 CLOSED; App Runner; MotorMarket/DC4; Cognito as delivered; PoC $0. | Locked #0/#11/#12; §8; header Constraints |
 | 10 | Traceability + handshake Soft HOLD SoR pattern | **MET.** Cites strategy Step 4 + Option A §3b + #148 tip `ff707ae` + #142 tip `c28361f` + Gate #27 CLOSED + Soft #41 CLOSED via #66+#67 + CA design grounding PASS Soft HOLD SoR tip `90120c3` (#167) + CA PASS lineage `6dc48d7`/`c1b4e8c` + Arch QA Soft HOLD SoR PASS #166 @ `eb11262` + SA Security Soft HOLD SoR PASS #165 @ `5d93bdf` + Spec checklist Soft HOLD SoR (no invent twin). Spec QA Soft HOLD until Soft HOLD SoR `…mvp-spec-step-4-agentic-client-surface-qa-confirm.md` PASS + MERGED. Handshake Soft HOLD SoR = **qa-confirm only**. Done-list → Chief Spec. Keep #155 OPEN. | This §9; Sources; §8 Soft HOLD; §12 Done-list |
 
 ---
@@ -209,12 +210,12 @@ This Spec is **design Soft HOLD SoR only**. Soft HOLD invent Stories. Soft HOLD 
 | One provider-neutral negotiation/assistant API; first-party bots + external first-class on same API | Option A same API Soft HOLD invent Grok-only Soft HOLD invent second API | Locked #1; §2/#3 |
 | Written client-surface contract: auth · Participant · FieldPolicy/hard wall all clients · identity seal equal on bot path | §4/#5 Soft HOLD invent connector auth Soft HOLD invent identity shortcuts | Locked #4/#5; §4/#5 |
 | One reference client path designed (not built) | Designed Soft HOLD invent build Soft HOLD invent Stories | Locked #7; §6 |
-| V1 OpenAPI/webhooks framing | V1 Soft HOLD invent V4/V5 | Locked #6; §6 |
+| Delivery lock (inbound connector model) | Inbound connector model (they call us; we do not poll or run a client inside their bot) | Locked #6; §6 |
 | External = example client classes only | Soft HOLD invent live partners Soft HOLD invent Marketing partners | Locked #8; §3 |
 | Soft HOLD invent Stories Soft HOLD invent AC beyond strategy What Soft HOLD | Explicit Soft HOLD | Locked #0; §8 |
 | Soft HOLD build/impl/spend Soft HOLD | Explicit Soft HOLD until separately named CEO unlock | Locked #0; §8 |
 | Soft HOLD invent connector auth/rate limits Soft HOLD | Explicit Soft HOLD | Locked #5; §4/#8 |
-| Soft HOLD invent MCP V5 Soft HOLD invent multi-LLM/BYO V4 Soft HOLD | Explicit OUT | Locked #6; §8 OUT |
+| Callback not chosen as a build | Explicit Soft HOLD build | Locked #6; §6 |
 | Soft HOLD Marketing Soft HOLD AWS provision Soft HOLD Step 5 Soft HOLD | Explicit Soft HOLD/OUT | Locked #0/#9; §7/#8 |
 | Soft HOLD multi-provider Soft HOLD lifts for this Spec track only (design Soft HOLD SoR) | Explicit Soft HOLD lift scope | Locked #10; §2 |
 | Gate #27 CLOSED · Soft #41 CLOSED via #66+#67 | Explicit OUT reopen | Locked #11; §8 |
@@ -255,7 +256,7 @@ Spec QA Soft HOLD until **all** of:
 
 - [ ] Design Soft HOLD SoR covers strategy What / Product IN (Issue #155)
 - [ ] Option A pick locked; same API; Participant principal; §3b dual wall every client; identity seal equal on bot path
-- [ ] V1 OpenAPI/webhooks + one reference client path designed not built; example client classes only
+- [ ] Delivery lock (inbound connector model) + one reference client path designed not built; example client classes only
 - [ ] Soft HOLD multi-provider Soft HOLD lifts for this Spec track only (design Soft HOLD SoR — not impl/spend)
 - [ ] Host inherit cites #142 @ tip **`c28361f`**; admin #148 @ tip **`ff707ae`** ≠ this surface; App Runner OUT
 - [ ] §9 Security Spec checklist binding 1–10 with Spec section cites; Soft HOLD SoR checklist path only (no invent twin)
@@ -270,8 +271,8 @@ Spec QA Soft HOLD until **all** of:
 - [x] Design Spec written at DOC-FLOW path
 - [x] Option A same-API client surface bound from CA PASS Soft HOLD SoR lineage **`6dc48d7`/`c1b4e8c`**
 - [x] Participant principal; dual wall §3b every client; identity seal equal on bot path
-- [x] V1 OpenAPI/webhooks + reference path designed not built; example client classes only
-- [x] Soft HOLD / OUT pack locked (invent Stories, invent AC beyond strategy What, Soft HOLD build/impl/spend, invent connector auth/rate limits, V4/V5, Marketing, AWS provision, Step 5, Gate #27, Soft #41, App Runner, MotorMarket/DC4, admin ≠ this surface, PoC $0)
+- [x] Delivery lock (inbound connector model) + reference path designed not built; example client classes only
+- [x] Soft HOLD / OUT pack locked (invent Stories, invent AC beyond strategy What, Soft HOLD build/impl/spend, invent connector auth/rate limits, Marketing, AWS provision, Step 5, Gate #27, Soft #41, App Runner, MotorMarket/DC4, admin ≠ this surface, PoC $0)
 - [x] Spec Security checklist points 1–10 answered with Spec section cites (§9)
 - [x] Acceptance mapping for Product / Issue #155 (no invent Stories / invent AC beyond strategy What; **no Product AC mapping gaps**)
 - [x] Tips CA PASS Soft HOLD SoR **`90120c3`** (#167) + **`6dc48d7`/`c1b4e8c`** + Soft HOLD SoR PASS **`5d93bdf`** (#165) + Arch QA Soft HOLD SoR PASS **`eb11262`** (#166) + **`c28361f`** + **`ff707ae`** + Spec checklist Soft HOLD SoR path cited
