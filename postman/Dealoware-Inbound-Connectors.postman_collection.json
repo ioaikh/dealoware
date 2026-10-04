@@ -1,0 +1,657 @@
+{
+	"info": {
+		"_postman_id": "dealoware-inbound-connectors",
+		"name": "Dealoware PoC — Inbound Connectors",
+		"description": "Inbound connector tests for the Dealoware PoC.\n\n## Contract (locked)\n\nInbound is a connector they call:\n- Grok attaches a connector or a public MCP.\n- Muse calls an API or MCP we expose.\n- A dot uses account plugins.\n\nThese three stay apart — three separate HTTP requests.\n\n## Quick Start\n\n1. Ensure API is running: `dotnet run --project src/Dealoware.Api`\n2. Verify: GET `{{baseUrl}}/health` → `{\"status\":\"ok\"}`\n3. Run folders in order: 01-Bootstrap → 02-Create-Negotiation → 03-Inbound-Connectors\n\n## Variables\n\nThe collection auto-captures credentials and IDs via Tests scripts.\n\n## Authentication\n\nAll protected endpoints use `Authorization: ApiKey {{...ApiKey}}`\n\nRegister: POST /auth/register with displayName → receive apiKey (store securely, shown once only)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5287",
+			"type": "string"
+		},
+		{
+			"key": "sellerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "buyerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "sellerSub",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "buyerSub",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "artifactId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "negotiationId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "00-Health-Check",
+			"item": [
+				{
+					"name": "Health Check (No Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has status ok\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql(\"ok\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Verify the API is running. No authentication required."
+					},
+					"response": []
+				}
+			],
+			"description": "Verify the API is running before starting scenarios."
+		},
+		{
+			"name": "01-Bootstrap",
+			"item": [
+				{
+					"name": "Register Seller",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has required fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"sellerApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"sellerSub\", jsonData.sub);",
+									"console.log(\"Seller registered - Sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Seller\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register the Seller participant. Captures sellerApiKey and sellerSub."
+					},
+					"response": []
+				},
+				{
+					"name": "Register Buyer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"buyerApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"buyerSub\", jsonData.sub);",
+									"console.log(\"Buyer registered - Sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Buyer\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "Register the Buyer participant. Captures buyerApiKey and buyerSub."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Artifact (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"artifactId\", jsonData.id);",
+									"console.log(\"Artifact created - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"entities\": [\n    {\n      \"name\": \"Test Item\",\n      \"description\": \"Item for connector testing\"\n    }\n  ],\n  \"intent\": \"sell\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/artifacts",
+							"host": ["{{baseUrl}}"],
+							"path": ["artifacts"]
+						},
+						"description": "Create an artifact for negotiation. Captures artifactId."
+					},
+					"response": []
+				}
+			],
+			"description": "Bootstrap: Register participants and create artifact."
+		},
+		{
+			"name": "02-Create-Negotiation",
+			"item": [
+				{
+					"name": "Create Negotiation (Seller initiates)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Create returns negotiation ID\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData.id).to.not.be.empty;",
+									"});",
+									"",
+									"pm.test(\"Negotiation status is Open\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
+									"console.log(\"Negotiation created - ID: \" + jsonData.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations"]
+						},
+						"description": "Create negotiation. Contract: Create still returns an id. Captures negotiationId."
+					},
+					"response": []
+				},
+				{
+					"name": "Counterparty GETs Negotiation (Buyer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Counterparty can GET negotiation by ID\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('negotiationId'));",
+									"});",
+									"",
+									"pm.test(\"Intents are correct\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.partyAIntent).to.eql('sell');",
+									"    pm.expect(jsonData.partyBIntent).to.eql('buy');",
+									"});",
+									"",
+									"console.log(\"Counterparty successfully retrieved negotiation\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["negotiations", "{{negotiationId}}"]
+						},
+						"description": "Contract: The other Participant can GET it."
+					},
+					"response": []
+				}
+			],
+			"description": "Create negotiation and verify counterparty can GET it."
+		},
+		{
+			"name": "03-Inbound-Connectors",
+			"item": [
+				{
+					"name": "Grok Connector - Initiate (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has Grok connector type\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.connectorType).to.eql('grok');",
+									"});",
+									"",
+									"pm.test(\"Response has negotiation ID\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.negotiationId).to.eql(pm.collectionVariables.get('negotiationId'));",
+									"});",
+									"",
+									"pm.test(\"Response has participant ID\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.participantId).to.eql(pm.collectionVariables.get('sellerSub'));",
+									"});",
+									"",
+									"console.log(\"Grok connector initiated successfully\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/grok/initiate",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "grok", "initiate"]
+						},
+						"description": "Contract: Grok attaches a connector or a public MCP we expose."
+					},
+					"response": []
+				},
+				{
+					"name": "Grok Connector - Initiate (Buyer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Buyer can also use Grok connector\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.participantId).to.eql(pm.collectionVariables.get('buyerSub'));",
+									"});",
+									"",
+									"console.log(\"Buyer Grok connector initiated\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/grok/initiate",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "grok", "initiate"]
+						},
+						"description": "Both parties can access via Grok connector."
+					},
+					"response": []
+				},
+				{
+					"name": "Muse Connector - Get Status (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has Muse connector type\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.connectorType).to.eql('muse');",
+									"});",
+									"",
+									"pm.test(\"Operation is get_status\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.operation).to.eql('get_status');",
+									"});",
+									"",
+									"pm.test(\"Result contains negotiation status\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.result).to.have.property('NegotiationStatus');",
+									"});",
+									"",
+									"console.log(\"Muse connector get_status successful\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\",\n  \"operation\": \"get_status\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/muse/call",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "muse", "call"]
+						},
+						"description": "Contract: Muse calls an API or MCP we expose."
+					},
+					"response": []
+				},
+				{
+					"name": "Muse Connector - List Offers (Buyer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Operation is list_offers\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.operation).to.eql('list_offers');",
+									"});",
+									"",
+									"console.log(\"Muse connector list_offers successful\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\",\n  \"operation\": \"list_offers\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/muse/call",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "muse", "call"]
+						},
+						"description": "Muse connector with list_offers operation."
+					},
+					"response": []
+				},
+				{
+					"name": "Dot Connector - View (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has Dot connector type\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.connectorType).to.eql('dot');",
+									"});",
+									"",
+									"pm.test(\"Plugin action is view\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.pluginAction).to.eql('view');",
+									"});",
+									"",
+									"pm.test(\"Account ID matches seller\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.accountId).to.eql(pm.collectionVariables.get('sellerSub'));",
+									"});",
+									"",
+									"pm.test(\"Identity is sealed\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.actionResult.IdentitySealed).to.be.true;",
+									"});",
+									"",
+									"console.log(\"Dot connector view successful\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\",\n  \"pluginAction\": \"view\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/dot/plugin",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "dot", "plugin"]
+						},
+						"description": "Contract: A dot uses account plugins. ChatGPT Work chats and dots access via this path."
+					},
+					"response": []
+				},
+				{
+					"name": "Dot Connector - Interact (Buyer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Plugin action is interact\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.pluginAction).to.eql('interact');",
+									"});",
+									"",
+									"pm.test(\"Account ID matches buyer\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.accountId).to.eql(pm.collectionVariables.get('buyerSub'));",
+									"});",
+									"",
+									"console.log(\"Dot connector interact successful\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"negotiationId\": \"{{negotiationId}}\",\n  \"pluginAction\": \"interact\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/connectors/dot/plugin",
+							"host": ["{{baseUrl}}"],
+							"path": ["connectors", "dot", "plugin"]
+						},
+						"description": "Dot connector with interact action."
+					},
+					"response": []
+				}
+			],
+			"description": "**Three separate inbound connector paths:**\n\n1. POST /connectors/grok/initiate — Grok attaches a connector or a public MCP\n2. POST /connectors/muse/call — Muse calls an API or MCP we expose\n3. POST /connectors/dot/plugin — A dot uses account plugins\n\nThese three stay apart (contract locked)."
+		}
+	]
+}
