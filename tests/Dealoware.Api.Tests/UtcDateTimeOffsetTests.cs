@@ -72,7 +72,7 @@ public class UtcDateTimeOffsetUnitTests
     public void Model_AppliesUtcConverter_ToEveryDateTimeOffsetProperty(string connectionString)
     {
         var services = new ServiceCollection();
-        services.AddInfrastructure(connectionString, _ => null, requireVerifiedTls: false);
+        services.AddInfrastructure(connectionString, _ => null, strictNonDevelopment: false);
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();

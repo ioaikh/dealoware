@@ -60,6 +60,10 @@ public class JwtFailClosedExitTests
         start.Environment["ASPNETCORE_ENVIRONMENT"] = environment;
         start.Environment[JwtSigningKeyValidator.EnvironmentVariableName] = signingKey;
         start.Environment["Jwt__SigningKey"] = "";
+        // Non-Development requires Postgres (not SQLite). Provide DB_HOST so provider selection
+        // passes and JWT validation can be tested. The test doesn't actually connect.
+        start.Environment["DB_HOST"] = "127.0.0.1";
+        start.Environment["DB_NAME"] = "dealoware_test";
 
         using var process = Process.Start(start);
         Assert.NotNull(process);
