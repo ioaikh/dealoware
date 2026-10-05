@@ -24,7 +24,7 @@ public static class DependencyInjection
     /// Never commit real secrets to source.
     /// </summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
-        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable);
+        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable, requireVerifiedTls: true);
 
     /// <summary>
     /// Same as <see cref="AddInfrastructure(IServiceCollection, string)"/> with an explicit
@@ -34,8 +34,26 @@ public static class DependencyInjection
         this IServiceCollection services,
         string connectionString,
         Func<string, string?> getEnv)
+        => services.AddInfrastructure(connectionString, getEnv, requireVerifiedTls: true);
+
+    /// <summary>
+    /// Adds infrastructure services with explicit TLS verification control.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">Connection string from configuration.</param>
+    /// <param name="getEnv">Environment variable lookup function.</param>
+    /// <param name="requireVerifiedTls">
+    /// When true (non-Development), enforces SSL Mode=VerifyFull with the RDS root CA.
+    /// When false (Development), allows weaker SSL modes for local Postgres.
+    /// Pass <c>!builder.Environment.IsDevelopment()</c> from Program.cs.
+    /// </param>
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        string connectionString,
+        Func<string, string?> getEnv,
+        bool requireVerifiedTls)
     {
-        var selection = DatabaseProviderSelector.Select(connectionString, getEnv);
+        var selection = DatabaseProviderSelector.Select(connectionString, getEnv, requireVerifiedTls);
 
         services.AddDbContext<DealowareDbContext>(options =>
         {

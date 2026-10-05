@@ -19,4 +19,12 @@ WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=build /app/publish .
+
+# AWS RDS global CA bundle for Postgres TLS VerifyFull.
+# Source: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+# This is public trust material, not a secret. Mode 0444 = read-only.
+COPY --chmod=0444 certs/rds-global-bundle.pem /app/certs/rds-global-bundle.pem
+RUN echo "fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c  /app/certs/rds-global-bundle.pem" | sha256sum -c - \
+ && grep -q "BEGIN CERTIFICATE" /app/certs/rds-global-bundle.pem
+
 ENTRYPOINT ["dotnet", "Dealoware.Api.dll"]
