@@ -1,9 +1,18 @@
+using Dealoware.Api;
 using Dealoware.Api.Endpoints;
 using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+
+// One-shot migrate: same image/binary, separate process. Does not start the web host.
+// Operator injects migrations-capable DB_* into this task only — never into the long-lived API.
+if (DatabaseMigrateCommand.IsMigrateArgs(args))
+{
+    Environment.ExitCode = await DatabaseMigrateCommand.RunAsync(args);
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,10 +84,12 @@ app.UseSwaggerUI(c =>
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Development only: EnsureCreated for local SQLite. Non-Development schema changes
+// use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, app.Environment.EnvironmentName);
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))

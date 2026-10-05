@@ -539,12 +539,35 @@ Dealoware.sln
 
 ### Database
 
-The PoC uses SQLite for local persistence. The database file (`dealoware.db`) is created automatically on first run.
+Local Development uses SQLite by default. The database file (`dealoware.db`) is created automatically on first run via `EnsureCreated` (Development only).
 
 **Connection string precedence:**
 1. `ConnectionStrings:DefaultConnection` in appsettings.json
 2. `DEALOWARE_CONNECTION_STRING` environment variable
 3. Default: `Data Source=dealoware.db`
+
+When `DB_HOST` is set, the API builds a PostgreSQL connection from environment variables instead:
+
+| Variable | Description |
+|----------|-------------|
+| `DB_HOST` | Database host (when set, selects PostgreSQL) |
+| `DB_PORT` | Port (default `5432`) |
+| `DB_NAME` | Database name |
+| `DB_USERNAME` | Database user |
+| `DB_PASSWORD` | Database password |
+
+**Schema evolution (H3):**
+
+- **Long-lived API** — uses DML-capable credentials via the same `DB_*` / connection-string path. It does **not** run migrations at startup. Outside Development it does **not** call `EnsureCreated`.
+- **Migrate one-shot** — run schema migrations in a separate process with the same binary:
+
+```bash
+dotnet run --project src/Dealoware.Api -- migrate
+# or, from a published image/folder:
+dotnet Dealoware.Api.dll migrate
+```
+
+  Inject migrations-capable credentials into `DB_*` (or the connection string) **only for that migrate process**. Never inject migrations or master credentials into the long-lived API process.
 
 > **Note:** Never commit real credentials. Use environment variables or secure configuration for production.
 
