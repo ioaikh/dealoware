@@ -612,6 +612,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md) — Security checklist Dev Plan Core admin. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
 - [2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md) — Security points-review Dev Plan Core admin. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
 - [2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md) — Security Soft HOLD SoR Dev Plan qa-confirm Core admin. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
+- [2026-10-05__qa__verification__core-admin-dashboard-test-design.md](verification/2026-10-05__qa__verification__core-admin-dashboard-test-design.md) — Independent QAQA PASS Core admin A6 test design. Active holds: no passwords/AWS IDs; no deploy; no Stories/code until H4 live PASS. PoC $0.
 
 ## ops/
 
