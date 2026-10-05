@@ -455,7 +455,7 @@
 									"",
 									"pm.test(\"Result contains negotiation status\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData.result).to.have.property('NegotiationStatus');",
+									"    pm.expect(jsonData.result).to.have.property('negotiationStatus');",
 									"});",
 									"",
 									"console.log(\"Muse connector get_status successful\");"
@@ -564,7 +564,7 @@
 									"",
 									"pm.test(\"Identity is sealed\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData.actionResult.IdentitySealed).to.be.true;",
+									"    pm.expect(jsonData.actionResult.identitySealed).to.be.true;",
 									"});",
 									"",
 									"console.log(\"Dot connector view successful\");"
