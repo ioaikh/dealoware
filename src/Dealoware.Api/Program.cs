@@ -24,7 +24,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
 
-builder.Services.AddInfrastructure(connectionString);
+builder.Services.AddInfrastructure(
+    connectionString,
+    Environment.GetEnvironmentVariable,
+    requireVerifiedTls: !builder.Environment.IsDevelopment());
 
 // Fail closed outside Development: catch InvalidOperationException from key validation and
 // Environment.Exit(1) when running as the real Dealoware.Api process. An unhandled throw here
