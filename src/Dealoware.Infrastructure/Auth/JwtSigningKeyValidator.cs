@@ -5,9 +5,10 @@ namespace Dealoware.Infrastructure.Auth;
 /// <summary>
 /// Resolves and validates the JWT signing key.
 ///
-/// Production: the key must be set, must not be the development placeholder, and must be at least
+/// Strict mode (every environment except Development: Production, Staging, Testing, custom names):
+/// the key must be set, must not be the development placeholder, and must be at least
 /// <see cref="MinimumKeyBytes"/> bytes (UTF-8). Otherwise startup fails fast.
-/// Non-Production: unchanged PoC behavior, falling back to the development placeholder when no key is set.
+/// Development: unchanged PoC behavior, falling back to the development placeholder when no key is set.
 ///
 /// Exception messages never include the key value.
 /// </summary>
@@ -23,12 +24,13 @@ public static class JwtSigningKeyValidator
     public const int MinimumKeyBytes = 32;
 
     /// <summary>
-    /// Returns the signing key to use, or throws <see cref="InvalidOperationException"/> in Production
-    /// when the key is missing, blank, the development placeholder, or shorter than <see cref="MinimumKeyBytes"/> bytes.
+    /// Returns the signing key to use. When <paramref name="requireStrictKey"/> is true (callers pass
+    /// <c>!IsDevelopment()</c>), throws <see cref="InvalidOperationException"/> if the key is missing, blank,
+    /// the development placeholder, or shorter than <see cref="MinimumKeyBytes"/> bytes.
     /// </summary>
-    public static string Validate(string? key, bool isProduction)
+    public static string Validate(string? key, bool requireStrictKey)
     {
-        if (!isProduction)
+        if (!requireStrictKey)
         {
             return key ?? DevelopmentPlaceholderKey;
         }
@@ -36,19 +38,19 @@ public static class JwtSigningKeyValidator
         if (string.IsNullOrWhiteSpace(key))
         {
             throw new InvalidOperationException(
-                $"{EnvironmentVariableName} is not set. A JWT signing key of at least {MinimumKeyBytes} bytes is required in Production.");
+                $"{EnvironmentVariableName} is not set. A JWT signing key of at least {MinimumKeyBytes} bytes is required outside Development.");
         }
 
         if (string.Equals(key.Trim(), DevelopmentPlaceholderKey, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                $"{EnvironmentVariableName} is set to the public development placeholder, which is not allowed in Production. Configure a random key of at least {MinimumKeyBytes} bytes.");
+                $"{EnvironmentVariableName} is set to the public development placeholder, which is only allowed in Development. Configure a random key of at least {MinimumKeyBytes} bytes.");
         }
 
         if (Encoding.UTF8.GetByteCount(key) < MinimumKeyBytes)
         {
             throw new InvalidOperationException(
-                $"{EnvironmentVariableName} is too short. A JWT signing key of at least {MinimumKeyBytes} bytes (UTF-8) is required in Production.");
+                $"{EnvironmentVariableName} is too short. A JWT signing key of at least {MinimumKeyBytes} bytes (UTF-8) is required outside Development.");
         }
 
         return key;
