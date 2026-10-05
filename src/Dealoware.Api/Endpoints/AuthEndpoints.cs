@@ -5,6 +5,7 @@ using Dealoware.Domain.Budget;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Dealoware.Api.Endpoints;
 
@@ -54,12 +55,23 @@ public static class AuthEndpoints
     /// CAPTCHA / proof-of-work remain out of scope for this PoC.
     /// </summary>
     private static async Task<IResult> Register(
+        HttpContext httpContext,
         RegisterRequest? request,
         IParticipantRepository participantRepository,
         IApiKeyRepository apiKeyRepository,
         IBudgetService budgetService,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger("Dealoware.Api.Auth.Register");
+        var partitionKey = AuthRateLimiting.GetPartitionKey(httpContext);
+        var xff = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        logger.LogDebug(
+            "Register request: PartitionKey={PartitionKey}, XFF={XffPresent}, RemoteIp={RemoteIp}",
+            AuthRateLimiting.MaskIp(partitionKey),
+            xff is not null,
+            AuthRateLimiting.MaskIp(httpContext.Connection.RemoteIpAddress?.ToString()));
+        
         var participant = Participant.Create(request?.DisplayName);
         var (credential, rawApiKey) = ApiKeyCredential.Create(participant.Id);
 
@@ -88,12 +100,23 @@ public static class AuthEndpoints
     /// The API key must be valid and not revoked.
     /// </summary>
     private static async Task<IResult> IssueToken(
+        HttpContext httpContext,
         TokenRequest request,
         IParticipantRepository participantRepository,
         IApiKeyRepository apiKeyRepository,
         JwtService jwtService,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger("Dealoware.Api.Auth.Token");
+        var partitionKey = AuthRateLimiting.GetPartitionKey(httpContext);
+        var xff = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        logger.LogDebug(
+            "Token request: PartitionKey={PartitionKey}, XFF={XffPresent}, RemoteIp={RemoteIp}",
+            AuthRateLimiting.MaskIp(partitionKey),
+            xff is not null,
+            AuthRateLimiting.MaskIp(httpContext.Connection.RemoteIpAddress?.ToString()));
+        
         if (string.IsNullOrWhiteSpace(request.ApiKey))
         {
             return Results.Unauthorized();

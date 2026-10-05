@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Dealoware.Api.RateLimiting;
 using Dealoware.Application.Auth.Dtos;
+using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
 
@@ -174,6 +176,71 @@ public sealed class AuthRateLimitTests : IDisposable
         Assert.Equal("203.0.113.40", AuthRateLimiting.GetPartitionKey(httpContext));
     }
 
+    [Fact]
+    public void MaskIp_MasksLastOctetOfIPv4()
+    {
+        Assert.Equal("192.168.1.0", AuthRateLimiting.MaskIp("192.168.1.123"));
+        Assert.Equal("10.0.0.0", AuthRateLimiting.MaskIp("10.0.0.255"));
+        Assert.Equal("unknown", AuthRateLimiting.MaskIp(null));
+        Assert.Equal("unknown", AuthRateLimiting.MaskIp(""));
+        Assert.Equal("unknown", AuthRateLimiting.MaskIp("unknown"));
+    }
+
+    [Fact]
+    public async Task Register_Production_ExceedingPermitLimit_Returns429()
+    {
+        // Test in Production environment with explicit config to ensure rate limiting works
+        using var factory = new RateLimitedWebApplicationFactory(
+            registerPermit: 3,
+            tokenPermit: 100,
+            windowSeconds: 60,
+            environment: "Production");
+        factory.EnsureSchemaCreated();
+        var client = factory.CreateClient();
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 5; i++)
+        {
+            var response = await client.PostAsJsonAsync("/auth/register", new RegisterRequest
+            {
+                DisplayName = $"prod-rate-limit-{i}"
+            });
+            statuses.Add(response.StatusCode);
+        }
+
+        Assert.Equal(3, statuses.Count(s => s == HttpStatusCode.Created));
+        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
+    }
+
+    [Fact]
+    public async Task Token_Production_WithXFF_ExceedingPermitLimit_Returns429()
+    {
+        // Test in Production environment with XFF header to verify ALB-like behavior
+        using var factory = new RateLimitedWebApplicationFactory(
+            registerPermit: 100,
+            tokenPermit: 3,
+            windowSeconds: 60,
+            environment: "Production");
+        factory.EnsureSchemaCreated();
+        var client = factory.CreateClient();
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 5; i++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/token")
+            {
+                Content = JsonContent.Create(new TokenRequest { ApiKey = "dlw_invalid_key123456" })
+            };
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.100");
+            var response = await client.SendAsync(request);
+            statuses.Add(response.StatusCode);
+        }
+
+        // First 3 should be 401 (invalid key), then 429
+        Assert.Equal(3, statuses.Count(s => s == HttpStatusCode.Unauthorized));
+        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
+    }
+
     private static async Task<HttpStatusCode> RegisterFrom(HttpClient client, string forwardedFor, string displayName)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/register")
@@ -205,29 +272,59 @@ public sealed class AuthRateLimitTests : IDisposable
 
 /// <summary>
 /// Isolated host with explicit RateLimiting:* settings (overrides Development defaults).
+/// For non-Development environments, call EnsureSchemaCreated() before first request.
 /// </summary>
 public sealed class RateLimitedWebApplicationFactory : IsolatedWebApplicationFactory
 {
     private readonly int _registerPermit;
     private readonly int _tokenPermit;
     private readonly int _windowSeconds;
+    private readonly string _environment;
+    private bool _schemaEnsured;
 
     public RateLimitedWebApplicationFactory(
         int registerPermit,
         int tokenPermit,
-        int windowSeconds)
+        int windowSeconds,
+        string environment = "Development")
     {
         _registerPermit = registerPermit;
         _tokenPermit = tokenPermit;
         _windowSeconds = windowSeconds;
+        _environment = environment;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+        builder.UseEnvironment(_environment);
         builder.UseSetting("RateLimiting:AuthRegister:PermitLimit", _registerPermit.ToString());
         builder.UseSetting("RateLimiting:AuthRegister:WindowSeconds", _windowSeconds.ToString());
         builder.UseSetting("RateLimiting:AuthToken:PermitLimit", _tokenPermit.ToString());
         builder.UseSetting("RateLimiting:AuthToken:WindowSeconds", _windowSeconds.ToString());
+        
+        // For Production, need Postgres connection string format to pass startup checks
+        if (!string.Equals(_environment, "Development", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.UseSetting(
+                "ConnectionStrings:DefaultConnection",
+                "Host=127.0.0.1;Port=5432;Database=dealoware_test;Username=test;Password=test");
+            // Provide a valid JWT key for non-Development
+            builder.UseSetting("DEALOWARE_JWT_SIGNING_KEY", 
+                string.Concat(Enumerable.Repeat("TestOnlyNotSecret0123456789", 3))[..64]);
+        }
+    }
+
+    /// <summary>
+    /// For non-Development environments, ensures the SQLite schema is created since the app
+    /// skips EnsureCreated for Production. Call this once before sending requests.
+    /// </summary>
+    public void EnsureSchemaCreated()
+    {
+        if (_schemaEnsured) return;
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.Database.EnsureCreated();
+        _schemaEnsured = true;
     }
 }

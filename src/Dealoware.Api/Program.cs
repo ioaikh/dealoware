@@ -91,6 +91,10 @@ var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
     .Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
 
+// Log rate limit configuration at startup for diagnostics
+Console.WriteLine($"[RateLimiting] AuthRegister: {rateLimitOptions.AuthRegister.PermitLimit}/{rateLimitOptions.AuthRegister.WindowSeconds}s, " +
+                  $"AuthToken: {rateLimitOptions.AuthToken.PermitLimit}/{rateLimitOptions.AuthToken.WindowSeconds}s");
+
 // The API runs behind a load balancer that is its only ingress, so the TCP peer is the balancer,
 // not the client. Read the client IP from X-Forwarded-For (and scheme from X-Forwarded-Proto) and
 // trust whichever proxy hop sends them, instead of the default loopback-only list (the balancer's
