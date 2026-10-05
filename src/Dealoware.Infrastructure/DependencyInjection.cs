@@ -20,11 +20,14 @@ public static class DependencyInjection
     /// Adds infrastructure services including EF Core.
     /// Uses PostgreSQL when DB_HOST is set or the connection string is a PostgreSQL one ("Host=..."),
     /// otherwise SQLite. See <see cref="DatabaseProviderSelector"/>.
+    /// When <paramref name="strictNonDevelopment"/> is true (non-Development):
+    /// - SQLite selection is refused (throws)
+    /// - Postgres enforces SSL Mode=VerifyFull with the RDS root CA
     /// Connection settings should be provided via configuration (env var or appsettings).
     /// Never commit real secrets to source.
     /// </summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
-        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable, requireVerifiedTls: true);
+        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable, strictNonDevelopment: true);
 
     /// <summary>
     /// Same as <see cref="AddInfrastructure(IServiceCollection, string)"/> with an explicit
@@ -34,26 +37,28 @@ public static class DependencyInjection
         this IServiceCollection services,
         string connectionString,
         Func<string, string?> getEnv)
-        => services.AddInfrastructure(connectionString, getEnv, requireVerifiedTls: true);
+        => services.AddInfrastructure(connectionString, getEnv, strictNonDevelopment: true);
 
     /// <summary>
-    /// Adds infrastructure services with explicit TLS verification control.
+    /// Adds infrastructure services with explicit strict mode control.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="connectionString">Connection string from configuration.</param>
     /// <param name="getEnv">Environment variable lookup function.</param>
-    /// <param name="requireVerifiedTls">
-    /// When true (non-Development), enforces SSL Mode=VerifyFull with the RDS root CA.
-    /// When false (Development), allows weaker SSL modes for local Postgres.
+    /// <param name="strictNonDevelopment">
+    /// When true (non-Development):
+    /// - Enforces SSL Mode=VerifyFull with the RDS root CA for Postgres
+    /// - Throws if SQLite would be selected (requires DB_HOST or Host= connection string)
+    /// When false (Development), allows weaker SSL modes and SQLite.
     /// Pass <c>!builder.Environment.IsDevelopment()</c> from Program.cs.
     /// </param>
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         string connectionString,
         Func<string, string?> getEnv,
-        bool requireVerifiedTls)
+        bool strictNonDevelopment)
     {
-        var selection = DatabaseProviderSelector.Select(connectionString, getEnv, requireVerifiedTls);
+        var selection = DatabaseProviderSelector.Select(connectionString, getEnv, strictNonDevelopment);
 
         services.AddDbContext<DealowareDbContext>(options =>
         {

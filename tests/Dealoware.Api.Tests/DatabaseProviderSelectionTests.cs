@@ -1,4 +1,8 @@
 using Dealoware.Infrastructure;
+using Dealoware.Infrastructure.Auth;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Hosting;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,7 +22,7 @@ public class DatabaseProviderSelectionTests
         return key => map.TryGetValue(key, out var value) ? value : null;
     }
 
-    #region Non-strict mode (Development) - keeps existing Require behavior
+    #region Non-strict mode (Development) - allows SQLite and weaker SSL
 
     [Fact]
     public void NonStrict_DbHost_BuildsNpgsqlConnectionString_WithSslRequire()
@@ -30,7 +34,7 @@ public class DatabaseProviderSelectionTests
             ("DB_PASSWORD", "placeholder-password"));
 
         var selection = DatabaseProviderSelector.Select(
-            "Data Source=dealoware.db", env, requireVerifiedTls: false);
+            "Data Source=dealoware.db", env, strictNonDevelopment: false);
 
         Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
         var csb = new NpgsqlConnectionStringBuilder(selection.ConnectionString);
@@ -48,7 +52,7 @@ public class DatabaseProviderSelectionTests
     {
         var env = Env(("DB_HOST", "localhost"), ("DB_PORT", "6543"), ("DB_NAME", "dealoware"));
 
-        var selection = DatabaseProviderSelector.Select(null, env, requireVerifiedTls: false);
+        var selection = DatabaseProviderSelector.Select(null, env, strictNonDevelopment: false);
 
         Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
         var csb = new NpgsqlConnectionStringBuilder(selection.ConnectionString);
@@ -60,15 +64,50 @@ public class DatabaseProviderSelectionTests
     public void NonStrict_HostConnectionString_SelectsPostgres_Unchanged()
     {
         var connectionString = "Host=localhost;Port=5432;Database=dealoware;Username=app_user;Password=placeholder";
-        var selection = DatabaseProviderSelector.Select(connectionString, Env(), requireVerifiedTls: false);
+        var selection = DatabaseProviderSelector.Select(connectionString, Env(), strictNonDevelopment: false);
 
         Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
         Assert.Equal(connectionString, selection.ConnectionString);
     }
 
+    [Fact]
+    public void NonStrict_DevelopmentStyle_AllowsSqlite()
+    {
+        var selection = DatabaseProviderSelector.Select(
+            "Data Source=dealoware.db",
+            Env(),
+            strictNonDevelopment: false);
+
+        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
+    }
+
+    [Theory]
+    [InlineData("Data Source=dealoware.db")]
+    [InlineData("Data Source=TestDb;Mode=Memory;Cache=Shared")]
+    public void NonStrict_SqliteConnectionString_StaysSqlite(string connectionString)
+    {
+        var selection = DatabaseProviderSelector.Select(connectionString, Env(), strictNonDevelopment: false);
+
+        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
+        Assert.Equal(connectionString, selection.ConnectionString);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void NonStrict_EmptyDbHost_IsIgnored(string dbHost)
+    {
+        var selection = DatabaseProviderSelector.Select(
+            "Data Source=dealoware.db",
+            Env(("DB_HOST", dbHost)),
+            strictNonDevelopment: false);
+
+        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
+    }
+
     #endregion
 
-    #region Strict mode (Production) - enforces VerifyFull + RootCertificate
+    #region Strict mode (Production) - enforces VerifyFull + RootCertificate + refuses SQLite
 
     [Fact]
     public void Strict_DbHost_BuildsNpgsqlConnectionString_WithVerifyFullAndRootCert()
@@ -82,7 +121,7 @@ public class DatabaseProviderSelectionTests
         var selection = DatabaseProviderSelector.Select(
             "Data Source=dealoware.db",
             env,
-            requireVerifiedTls: true,
+            strictNonDevelopment: true,
             fileExistsCheck: _ => true,
             certLoadCheck: _ => true);
 
@@ -103,7 +142,7 @@ public class DatabaseProviderSelectionTests
         var env = Env(("DB_HOST", "localhost"), ("DB_PORT", "6543"), ("DB_NAME", "dealoware"));
 
         var selection = DatabaseProviderSelector.Select(
-            null, env, requireVerifiedTls: true,
+            null, env, strictNonDevelopment: true,
             fileExistsCheck: _ => true,
             certLoadCheck: _ => true);
 
@@ -119,7 +158,7 @@ public class DatabaseProviderSelectionTests
     {
         var connectionString = "Host=localhost;Port=5432;Database=dealoware;Username=app_user;Password=placeholder";
         var selection = DatabaseProviderSelector.Select(
-            connectionString, Env(), requireVerifiedTls: true,
+            connectionString, Env(), strictNonDevelopment: true,
             fileExistsCheck: _ => true,
             certLoadCheck: _ => true);
 
@@ -138,7 +177,7 @@ public class DatabaseProviderSelectionTests
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             DatabaseProviderSelector.Select(
-                null, env, requireVerifiedTls: true,
+                null, env, strictNonDevelopment: true,
                 fileExistsCheck: _ => false,
                 certLoadCheck: _ => true));
 
@@ -155,7 +194,7 @@ public class DatabaseProviderSelectionTests
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             DatabaseProviderSelector.Select(
-                null, env, requireVerifiedTls: true,
+                null, env, strictNonDevelopment: true,
                 fileExistsCheck: _ => true,
                 certLoadCheck: _ => false));
 
@@ -175,7 +214,7 @@ public class DatabaseProviderSelectionTests
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             DatabaseProviderSelector.Select(
-                connectionString, Env(), requireVerifiedTls: true,
+                connectionString, Env(), strictNonDevelopment: true,
                 fileExistsCheck: _ => true,
                 certLoadCheck: _ => true));
 
@@ -187,7 +226,7 @@ public class DatabaseProviderSelectionTests
     {
         var connectionString = "Host=localhost;Database=dealoware;SSL Mode=VerifyFull";
         var selection = DatabaseProviderSelector.Select(
-            connectionString, Env(), requireVerifiedTls: true,
+            connectionString, Env(), strictNonDevelopment: true,
             fileExistsCheck: _ => true,
             certLoadCheck: _ => true);
 
@@ -207,7 +246,7 @@ public class DatabaseProviderSelectionTests
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             DatabaseProviderSelector.Select(
-                connectionString, Env(), requireVerifiedTls: true,
+                connectionString, Env(), strictNonDevelopment: true,
                 fileExistsCheck: _ => true,
                 certLoadCheck: _ => true));
 
@@ -221,13 +260,55 @@ public class DatabaseProviderSelectionTests
     {
         var connectionString = $"Host=localhost;Database=dealoware;{trustSetting}";
         var selection = DatabaseProviderSelector.Select(
-            connectionString, Env(), requireVerifiedTls: true,
+            connectionString, Env(), strictNonDevelopment: true,
             fileExistsCheck: _ => true,
             certLoadCheck: _ => true);
 
         Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
         var csb = new NpgsqlConnectionStringBuilder(selection.ConnectionString);
         Assert.Equal(SslMode.VerifyFull, csb.SslMode);
+    }
+
+    [Fact]
+    public void Strict_WithSqliteConnectionString_Throws()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => DatabaseProviderSelector.Select(
+                "Data Source=dealoware.db", Env(), strictNonDevelopment: true,
+                fileExistsCheck: _ => true, certLoadCheck: _ => true));
+
+        Assert.Contains("PostgreSQL", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DB_HOST", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Host=", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Password", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Strict_WithDbHost_SelectsPostgres()
+    {
+        var env = Env(
+            ("DB_HOST", "db.example"),
+            ("DB_NAME", "dealoware"),
+            ("DB_USERNAME", "app_user"),
+            ("DB_PASSWORD", "placeholder-password"));
+
+        var selection = DatabaseProviderSelector.Select(
+            "Data Source=dealoware.db", env, strictNonDevelopment: true,
+            fileExistsCheck: _ => true, certLoadCheck: _ => true);
+
+        Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
+    }
+
+    [Fact]
+    public void Strict_WithHostConnectionString_SelectsPostgres()
+    {
+        const string connectionString = "Host=localhost;Port=5432;Database=dealoware;Username=app_user;Password=placeholder";
+
+        var selection = DatabaseProviderSelector.Select(
+            connectionString, Env(), strictNonDevelopment: true,
+            fileExistsCheck: _ => true, certLoadCheck: _ => true);
+
+        Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
     }
 
     #endregion
@@ -240,31 +321,7 @@ public class DatabaseProviderSelectionTests
         var env = Env(("DB_HOST", "localhost"), ("DB_PORT", "not-a-port"));
 
         Assert.Throws<InvalidOperationException>(() =>
-            DatabaseProviderSelector.Select(null, env, requireVerifiedTls: false));
-    }
-
-    [Theory]
-    [InlineData("Data Source=dealoware.db")]
-    [InlineData("Data Source=TestDb;Mode=Memory;Cache=Shared")]
-    public void SqliteConnectionString_StaysSqlite(string connectionString)
-    {
-        var selection = DatabaseProviderSelector.Select(connectionString, Env(), requireVerifiedTls: true);
-
-        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
-        Assert.Equal(connectionString, selection.ConnectionString);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void EmptyDbHost_IsIgnored(string dbHost)
-    {
-        var selection = DatabaseProviderSelector.Select(
-            "Data Source=dealoware.db",
-            Env(("DB_HOST", dbHost)),
-            requireVerifiedTls: false);
-
-        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
+            DatabaseProviderSelector.Select(null, env, strictNonDevelopment: false));
     }
 
     #endregion
@@ -278,7 +335,7 @@ public class DatabaseProviderSelectionTests
         services.AddInfrastructure(
             "Data Source=dealoware.db",
             Env(("DB_HOST", "db.example"), ("DB_NAME", "dealoware")),
-            requireVerifiedTls: false);
+            strictNonDevelopment: false);
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -295,7 +352,7 @@ public class DatabaseProviderSelectionTests
         services.AddInfrastructure(
             "Data Source=dealoware.db",
             Env(),
-            requireVerifiedTls: false);
+            strictNonDevelopment: false);
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -303,6 +360,18 @@ public class DatabaseProviderSelectionTests
 
         Assert.True(db.Database.IsSqlite());
         Assert.False(db.Database.IsNpgsql());
+    }
+
+    [Fact]
+    public void AddInfrastructure_Strict_WithSqlite_Throws()
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => services.AddInfrastructure("Data Source=dealoware.db", Env(), strictNonDevelopment: true));
+
+        Assert.Contains("PostgreSQL", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("placeholder-password", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     #endregion
@@ -316,4 +385,43 @@ public class DatabaseProviderSelectionTests
     }
 
     #endregion
+
+    #region Host integration tests
+
+    [Fact]
+    public void Host_Production_WithSqliteOnly_FailsAtStartup()
+    {
+        using var factory = new SqliteOnlyProductionWebApplicationFactory();
+
+        var ex = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(ex);
+        var messages = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            messages.Add(current.Message);
+        }
+
+        Assert.Contains(messages, m => m.Contains("PostgreSQL", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(messages, m => m.Contains("DB_HOST", StringComparison.Ordinal));
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Production host with a valid JWT key but an explicit SQLite connection string and no DB_HOST,
+/// so provider selection would choose SQLite and must fail closed.
+/// </summary>
+file sealed class SqliteOnlyProductionWebApplicationFactory : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment(Environments.Production);
+        builder.UseSetting(
+            JwtSigningKeyValidator.EnvironmentVariableName,
+            EnvironmentWebApplicationFactory.TestSigningKey64);
+        builder.UseSetting("Jwt:SigningKey", string.Empty);
+        builder.UseSetting("ConnectionStrings:DefaultConnection", "Data Source=dealoware.db");
+    }
 }

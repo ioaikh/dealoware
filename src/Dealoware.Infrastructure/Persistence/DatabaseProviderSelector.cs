@@ -26,7 +26,11 @@ public sealed record DatabaseSelection(DatabaseProvider Provider, string Connect
 ///    In strict mode (non-Development): SSL Mode=VerifyFull + RDS CA root certificate.
 /// 2. Else if the configured connection string contains "Host=" (case-insensitive), use PostgreSQL.
 ///    In strict mode: parse and enforce VerifyFull + root certificate; reject weak modes.
-/// 3. Otherwise keep SQLite with the configured connection string.
+/// 3. Otherwise use SQLite with the configured connection string.
+///
+/// When <paramref name="strictNonDevelopment"/> is true (non-Development):
+/// - Postgres paths enforce SSL Mode=VerifyFull with the RDS root CA
+/// - SQLite selection (step 3) throws instead of silently using SQLite
 ///
 /// Values come from configuration / environment only. Never commit real secrets to source.
 /// </summary>
@@ -41,19 +45,21 @@ public static class DatabaseProviderSelector
     public const string RdsRootCertificatePath = "/app/certs/rds-global-bundle.pem";
 
     public static DatabaseSelection Select(string? configuredConnectionString)
-        => Select(configuredConnectionString, Environment.GetEnvironmentVariable, requireVerifiedTls: true);
+        => Select(configuredConnectionString, Environment.GetEnvironmentVariable, strictNonDevelopment: true);
 
     public static DatabaseSelection Select(string? configuredConnectionString, Func<string, string?> getEnv)
-        => Select(configuredConnectionString, getEnv, requireVerifiedTls: true);
+        => Select(configuredConnectionString, getEnv, strictNonDevelopment: true);
 
     /// <summary>
     /// Selects the database provider and builds the connection string.
     /// </summary>
     /// <param name="configuredConnectionString">Connection string from configuration.</param>
     /// <param name="getEnv">Environment variable lookup function.</param>
-    /// <param name="requireVerifiedTls">
-    /// When true (non-Development), enforces SSL Mode=VerifyFull with the RDS root CA.
-    /// When false (Development), allows weaker SSL modes for local Postgres.
+    /// <param name="strictNonDevelopment">
+    /// When true (non-Development):
+    /// - Enforces SSL Mode=VerifyFull with the RDS root CA for Postgres
+    /// - Throws if SQLite would be selected (requires DB_HOST or Host= connection string)
+    /// When false (Development), allows weaker SSL modes and SQLite.
     /// Matches the pattern used by JwtSigningKeyValidator.
     /// </param>
     /// <param name="fileExistsCheck">Optional file existence check (for testing).</param>
@@ -61,7 +67,7 @@ public static class DatabaseProviderSelector
     public static DatabaseSelection Select(
         string? configuredConnectionString,
         Func<string, string?> getEnv,
-        bool requireVerifiedTls,
+        bool strictNonDevelopment,
         Func<string, bool>? fileExistsCheck = null,
         Func<string, bool>? certLoadCheck = null)
     {
@@ -70,9 +76,9 @@ public static class DatabaseProviderSelector
         var dbHost = getEnv("DB_HOST");
         if (!string.IsNullOrWhiteSpace(dbHost))
         {
-            var connectionString = BuildPostgresFromEnvironment(dbHost.Trim(), getEnv, requireVerifiedTls);
+            var connectionString = BuildPostgresFromEnvironment(dbHost.Trim(), getEnv, strictNonDevelopment);
             
-            if (requireVerifiedTls)
+            if (strictNonDevelopment)
             {
                 ValidateRootCertificateExists(fileExistsCheck, certLoadCheck);
             }
@@ -83,11 +89,11 @@ public static class DatabaseProviderSelector
         if (!string.IsNullOrWhiteSpace(configuredConnectionString) &&
             configuredConnectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase))
         {
-            var connectionString = requireVerifiedTls
+            var connectionString = strictNonDevelopment
                 ? EnforceVerifyFullOnConnectionString(configuredConnectionString)
                 : configuredConnectionString;
             
-            if (requireVerifiedTls)
+            if (strictNonDevelopment)
             {
                 ValidateRootCertificateExists(fileExistsCheck, certLoadCheck);
             }
@@ -95,10 +101,17 @@ public static class DatabaseProviderSelector
             return new DatabaseSelection(DatabaseProvider.Postgres, connectionString);
         }
 
+        if (strictNonDevelopment)
+        {
+            throw new InvalidOperationException(
+                "Non-Development environments require PostgreSQL. " +
+                "Set DB_HOST (and related DB_* settings) or provide a connection string containing Host=.");
+        }
+
         return new DatabaseSelection(DatabaseProvider.Sqlite, configuredConnectionString ?? string.Empty);
     }
 
-    private static string BuildPostgresFromEnvironment(string host, Func<string, string?> getEnv, bool requireVerifiedTls)
+    private static string BuildPostgresFromEnvironment(string host, Func<string, string?> getEnv, bool strictNonDevelopment)
     {
         var portValue = getEnv("DB_PORT");
         var port = DefaultPostgresPort;
@@ -116,7 +129,7 @@ public static class DatabaseProviderSelector
             Port = port
         };
 
-        if (requireVerifiedTls)
+        if (strictNonDevelopment)
         {
             builder.SslMode = SslMode.VerifyFull;
             builder.RootCertificate = RdsRootCertificatePath;

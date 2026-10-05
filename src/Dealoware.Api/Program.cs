@@ -24,10 +24,29 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
 
-builder.Services.AddInfrastructure(
-    connectionString,
-    Environment.GetEnvironmentVariable,
-    requireVerifiedTls: !builder.Environment.IsDevelopment());
+// Fail closed outside Development: catch InvalidOperationException from provider selection (SQLite
+// refused, TLS cert missing, weak SSL mode) and Environment.Exit(1) when running as the real
+// Dealoware.Api process. An unhandled throw here aborts the runtime (exit 134/SIGABRT locally;
+// some containers report 139/SIGSEGV) instead of a clean exit code 1. WebApplicationFactory hosts
+// keep the throw so existing startup tests work.
+try
+{
+    builder.Services.AddInfrastructure(
+        connectionString,
+        Environment.GetEnvironmentVariable,
+        strictNonDevelopment: !builder.Environment.IsDevelopment());
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
 
 // Fail closed outside Development: catch InvalidOperationException from key validation and
 // Environment.Exit(1) when running as the real Dealoware.Api process. An unhandled throw here
