@@ -15,9 +15,12 @@ builder.Services.AddInfrastructure(connectionString);
 
 var jwtSettings = new JwtSettings
 {
-    SigningKey = Environment.GetEnvironmentVariable("DEALOWARE_JWT_SIGNING_KEY")
-        ?? builder.Configuration["Jwt:SigningKey"]
-        ?? "DEVELOPMENT_PLACEHOLDER_KEY_CHANGE_IN_PRODUCTION_32CHARS",
+    // Production fails fast on a missing, placeholder, or too-short key; other environments
+    // keep the development placeholder fallback.
+    SigningKey = JwtSigningKeyValidator.Validate(
+        Environment.GetEnvironmentVariable(JwtSigningKeyValidator.EnvironmentVariableName)
+            ?? builder.Configuration["Jwt:SigningKey"],
+        builder.Environment.IsProduction()),
     TokenLifetimeMinutes = int.TryParse(
         Environment.GetEnvironmentVariable("DEALOWARE_JWT_LIFETIME_MINUTES") 
         ?? builder.Configuration["Jwt:LifetimeMinutes"], 
