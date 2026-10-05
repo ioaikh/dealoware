@@ -39,13 +39,14 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "Universal Negotiation Platform API - PoC"
     });
-    c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "API Key authentication. Use 'ApiKey {your-key}'",
+        Description = "JWT Bearer token authentication. Use 'Bearer {token}' obtained from POST /auth/token.",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "ApiKey"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -55,7 +56,7 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "ApiKey"
+                    Id = "Bearer"
                 }
             },
             Array.Empty<string>()

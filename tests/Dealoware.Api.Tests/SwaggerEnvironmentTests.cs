@@ -51,6 +51,22 @@ public class SwaggerEnvironmentTests
     }
 
     [Fact]
+    public async Task Swagger_Json_Development_HasJwtBearerSecurityScheme()
+    {
+        await using var factory = new EnvironmentWebApplicationFactory(
+            "Development",
+            EnvironmentWebApplicationFactory.TestSigningKey64);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("\"type\": \"http\"", content);
+        Assert.Contains("\"scheme\": \"bearer\"", content);
+        Assert.Contains("\"bearerFormat\": \"JWT\"", content);
+    }
+
+    [Fact]
     public async Task Swagger_UI_Development_Returns200()
     {
         await using var factory = new EnvironmentWebApplicationFactory(
@@ -72,6 +88,19 @@ public class SwaggerEnvironmentTests
         var client = factory.CreateClient();
 
         var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Swagger_IndexHtml_Production_Returns404()
+    {
+        await using var factory = new EnvironmentWebApplicationFactory(
+            "Production",
+            EnvironmentWebApplicationFactory.TestSigningKey64);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/index.html");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
