@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Dealoware.Api.RateLimiting;
 using Dealoware.Application.Auth.Dtos;
 using Microsoft.AspNetCore.Hosting;
 
@@ -79,6 +81,125 @@ public sealed class AuthRateLimitTests : IDisposable
 
         var health = await client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+    }
+
+    [Fact]
+    public async Task Register_429_IncludesRetryAfterHeaderAndJsonBody()
+    {
+        var client = _factory.CreateClient();
+
+        HttpResponseMessage? rejected = null;
+        for (var i = 0; i < 4; i++)
+        {
+            rejected = await client.PostAsJsonAsync("/auth/register", new RegisterRequest
+            {
+                DisplayName = $"retry-after-{i}"
+            });
+        }
+
+        await AssertRateLimitedWithRetryAfter(rejected!, windowSeconds: 60);
+    }
+
+    [Fact]
+    public async Task Token_429_IncludesRetryAfterHeader()
+    {
+        using var factory = new RateLimitedWebApplicationFactory(
+            registerPermit: 100,
+            tokenPermit: 2,
+            windowSeconds: 30);
+        var client = factory.CreateClient();
+
+        HttpResponseMessage? rejected = null;
+        for (var i = 0; i < 3; i++)
+        {
+            rejected = await client.PostAsJsonAsync("/auth/token", new TokenRequest
+            {
+                ApiKey = "dlw_invalid_key123456"
+            });
+        }
+
+        await AssertRateLimitedWithRetryAfter(rejected!, windowSeconds: 30);
+    }
+
+    [Fact]
+    public async Task Register_DistinctForwardedForClients_GetSeparateBuckets()
+    {
+        var client = _factory.CreateClient();
+
+        // Client A (documentation-range address) exhausts its 3-request budget.
+        var clientAStatuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 4; i++)
+        {
+            clientAStatuses.Add(await RegisterFrom(client, "203.0.113.10", $"client-a-{i}"));
+        }
+
+        Assert.Equal(3, clientAStatuses.Count(s => s == HttpStatusCode.Created));
+        Assert.Equal(HttpStatusCode.TooManyRequests, clientAStatuses[^1]);
+
+        // Client B arrives through the same proxy hop but a different X-Forwarded-For: its own bucket.
+        Assert.Equal(HttpStatusCode.Created, await RegisterFrom(client, "203.0.113.20", "client-b-0"));
+
+        // Requests without the header (the proxy hop itself) are also a separate partition.
+        var direct = await client.PostAsJsonAsync("/auth/register", new RegisterRequest { DisplayName = "direct" });
+        Assert.Equal(HttpStatusCode.Created, direct.StatusCode);
+
+        // Client A is still limited.
+        Assert.Equal(HttpStatusCode.TooManyRequests, await RegisterFrom(client, "203.0.113.10", "client-a-again"));
+    }
+
+    [Fact]
+    public async Task Register_SpoofedLeftmostForwardedFor_DoesNotEscapeBucket()
+    {
+        var client = _factory.CreateClient();
+
+        // The load balancer appends the real client IP as the right-most entry; anything to its left
+        // is client-supplied. Changing the left-most value every request must not reset the budget.
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 5; i++)
+        {
+            statuses.Add(await RegisterFrom(client, $"198.51.100.{i + 1}, 203.0.113.30", $"spoof-{i}"));
+        }
+
+        Assert.Equal(3, statuses.Count(s => s == HttpStatusCode.Created));
+        Assert.Equal(HttpStatusCode.TooManyRequests, statuses[^1]);
+    }
+
+    [Fact]
+    public void PartitionKey_UsesConnectionRemoteIpAddress()
+    {
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        Assert.Equal("unknown", AuthRateLimiting.GetPartitionKey(httpContext));
+
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.40");
+        Assert.Equal("203.0.113.40", AuthRateLimiting.GetPartitionKey(httpContext));
+    }
+
+    private static async Task<HttpStatusCode> RegisterFrom(HttpClient client, string forwardedFor, string displayName)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/register")
+        {
+            Content = JsonContent.Create(new RegisterRequest { DisplayName = displayName })
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        var response = await client.SendAsync(request);
+        return response.StatusCode;
+    }
+
+    private static async Task AssertRateLimitedWithRetryAfter(HttpResponseMessage response, int windowSeconds)
+    {
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+
+        var retryAfter = response.Headers.RetryAfter;
+        Assert.NotNull(retryAfter);
+        Assert.NotNull(retryAfter!.Delta);
+        var headerSeconds = (int)retryAfter.Delta!.Value.TotalSeconds;
+        Assert.InRange(headerSeconds, 1, windowSeconds);
+
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(AuthRateLimiting.RateLimitedErrorCode, body.RootElement.GetProperty("error").GetString());
+        Assert.Equal(headerSeconds, body.RootElement.GetProperty("retryAfterSeconds").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(body.RootElement.GetProperty("message").GetString()));
     }
 }
 

@@ -4,6 +4,7 @@ using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Dealoware.Api.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using System.Threading.RateLimiting;
@@ -38,13 +39,29 @@ var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
     .Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
 
+// The API runs behind a load balancer that is its only ingress, so the TCP peer is the balancer,
+// not the client. Read the client IP from X-Forwarded-For (and scheme from X-Forwarded-Proto) and
+// trust whichever proxy hop sends them, instead of the default loopback-only list (the balancer's
+// address is not fixed). ForwardLimit stays at the default of 1: only the right-most entry, which
+// the balancer appends itself, is used, so client-supplied entries to its left cannot pick the bucket.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = AuthRateLimiting.CreateOnRejected(
+        fallbackRetryAfterSeconds: Math.Max(1, Math.Max(
+            rateLimitOptions.AuthRegister.WindowSeconds,
+            rateLimitOptions.AuthToken.WindowSeconds)));
 
     options.AddPolicy(AuthRateLimitOptions.RegisterPolicy, httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            partitionKey: AuthRateLimiting.GetPartitionKey(httpContext),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = Math.Max(1, rateLimitOptions.AuthRegister.PermitLimit),
@@ -55,7 +72,7 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy(AuthRateLimitOptions.TokenPolicy, httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            partitionKey: AuthRateLimiting.GetPartitionKey(httpContext),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = Math.Max(1, rateLimitOptions.AuthToken.PermitLimit),
@@ -99,6 +116,9 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
+app.UseForwardedHeaders();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
