@@ -1,9 +1,22 @@
+using Dealoware.Api;
 using Dealoware.Api.Endpoints;
 using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Dealoware.Api.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
+using System.Threading.RateLimiting;
+
+// One-shot migrate: same image/binary, separate process. Does not start the web host.
+// Operator injects migrations-capable DB_* into this task only — never into the long-lived API.
+if (DatabaseMigrateCommand.IsMigrateArgs(args))
+{
+    Environment.ExitCode = await DatabaseMigrateCommand.RunAsync(args);
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,17 +24,60 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
 
-builder.Services.AddInfrastructure(connectionString);
+// Fail closed outside Development: catch InvalidOperationException from provider selection (SQLite
+// refused, TLS cert missing, weak SSL mode) and Environment.Exit(1) when running as the real
+// Dealoware.Api process. An unhandled throw here aborts the runtime (exit 134/SIGABRT locally;
+// some containers report 139/SIGSEGV) instead of a clean exit code 1. WebApplicationFactory hosts
+// keep the throw so existing startup tests work.
+try
+{
+    builder.Services.AddInfrastructure(
+        connectionString,
+        Environment.GetEnvironmentVariable,
+        strictNonDevelopment: !builder.Environment.IsDevelopment());
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
 
-var jwtSettings = new JwtSettings
+    throw;
+}
+
+// Fail closed outside Development: catch InvalidOperationException from key validation and
+// Environment.Exit(1) when running as the real Dealoware.Api process. An unhandled throw here
+// aborts the runtime (exit 134/SIGABRT locally; some containers report 139/SIGSEGV) instead of a
+// clean exit code 1. WebApplicationFactory hosts keep the throw so existing startup tests work.
+string signingKey;
+try
 {
     // Every environment except Development fails fast on a missing, placeholder, or too-short key;
     // only Development keeps the placeholder fallback. The environment variable is read through
     // configuration (environment variables are a default configuration source).
-    SigningKey = JwtSigningKeyValidator.Validate(
+    signingKey = JwtSigningKeyValidator.Validate(
         builder.Configuration[JwtSigningKeyValidator.EnvironmentVariableName]
             ?? builder.Configuration["Jwt:SigningKey"],
-        requireStrictKey: !builder.Environment.IsDevelopment()),
+        requireStrictKey: !builder.Environment.IsDevelopment());
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
+var jwtSettings = new JwtSettings
+{
+    SigningKey = signingKey,
     TokenLifetimeMinutes = int.TryParse(
         Environment.GetEnvironmentVariable("DEALOWARE_JWT_LIFETIME_MINUTES") 
         ?? builder.Configuration["Jwt:LifetimeMinutes"], 
@@ -29,6 +85,54 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddAuthServices(jwtSettings);
+
+
+var rateLimitOptions = builder.Configuration
+    .GetSection(AuthRateLimitOptions.SectionName)
+    .Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+
+// The API runs behind a load balancer that is its only ingress, so the TCP peer is the balancer,
+// not the client. Read the client IP from X-Forwarded-For (and scheme from X-Forwarded-Proto) and
+// trust whichever proxy hop sends them, instead of the default loopback-only list (the balancer's
+// address is not fixed). ForwardLimit stays at the default of 1: only the right-most entry, which
+// the balancer appends itself, is used, so client-supplied entries to its left cannot pick the bucket.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = AuthRateLimiting.CreateOnRejected(
+        fallbackRetryAfterSeconds: Math.Max(1, Math.Max(
+            rateLimitOptions.AuthRegister.WindowSeconds,
+            rateLimitOptions.AuthToken.WindowSeconds)));
+
+    options.AddPolicy(AuthRateLimitOptions.RegisterPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: AuthRateLimiting.GetPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = Math.Max(1, rateLimitOptions.AuthRegister.PermitLimit),
+                Window = TimeSpan.FromSeconds(Math.Max(1, rateLimitOptions.AuthRegister.WindowSeconds)),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy(AuthRateLimitOptions.TokenPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: AuthRateLimiting.GetPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = Math.Max(1, rateLimitOptions.AuthToken.PermitLimit),
+                Window = TimeSpan.FromSeconds(Math.Max(1, rateLimitOptions.AuthToken.WindowSeconds)),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -39,13 +143,14 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "Universal Negotiation Platform API - PoC"
     });
-    c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "API Key authentication. Use 'ApiKey {your-key}'",
+        Description = "JWT Bearer token authentication. Use 'Bearer {token}' obtained from POST /auth/token.",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "ApiKey"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -55,7 +160,7 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "ApiKey"
+                    Id = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -65,20 +170,30 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
+app.UseForwardedHeaders();
+
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Dealoware API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Dealoware API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+app.UseRateLimiter();
+
+// Development only: EnsureCreated for local SQLite. Non-Development schema changes
+// use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, app.Environment.EnvironmentName);
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))

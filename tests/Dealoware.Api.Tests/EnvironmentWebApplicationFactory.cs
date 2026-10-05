@@ -1,5 +1,6 @@
 using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
 
 namespace Dealoware.Api.Tests;
 
@@ -32,5 +33,13 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
         // Empty string = blank, which strict mode treats as "not set" and overrides any runner env value.
         builder.UseSetting(JwtSigningKeyValidator.EnvironmentVariableName, _signingKey ?? string.Empty);
         builder.UseSetting("Jwt:SigningKey", string.Empty);
+        // Non-Development refuses silent SQLite. Supply a Host= connection string so Production/Staging
+        // hosts pass provider selection; ConfigureServices still swaps to in-memory SQLite for the test.
+        if (!string.Equals(_environment, Environments.Development, StringComparison.OrdinalIgnoreCase))
+        {
+            builder.UseSetting(
+                "ConnectionStrings:DefaultConnection",
+                "Host=127.0.0.1;Port=5432;Database=dealoware_test;Username=test;Password=test");
+        }
     }
 }
