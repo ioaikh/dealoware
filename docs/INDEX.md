@@ -149,6 +149,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__devplan__plan__mvp-stage-c-thin-assistant-runtime-x1.md](plans/2026-09-28__devplan__plan__mvp-stage-c-thin-assistant-runtime-x1.md)
 - [2026-09-28__devplan__plan__mvp-stage-c-participant-isolation-option-a-remainder.md](plans/2026-09-28__devplan__plan__mvp-stage-c-participant-isolation-option-a-remainder.md)
 
+- [2026-10-05__devplan__plan__core-admin-dashboard.md](plans/2026-10-05__devplan__plan__core-admin-dashboard.md) — Dev Plan Core admin dashboard Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
+
 ## qa/
 
 
@@ -195,7 +197,11 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__qa__qa-report__mvp-stage-c-a8-min-meters-budgets.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-a8-min-meters-budgets.md)
 - [2026-09-28__qa__qa-report__mvp-stage-c-basic-ui-first-party-bot-x2.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-basic-ui-first-party-bot-x2.md)
 - [2026-09-28__qa__qa-report__mvp-stage-c-participant-isolation-option-a-remainder.md](qa/2026-09-28__qa__qa-report__mvp-stage-c-participant-isolation-option-a-remainder.md)
+
 ---
+
+
+- [2026-10-05__qa__test-design__core-admin-dashboard.md](qa/2026-10-05__qa__test-design__core-admin-dashboard.md) — A6 Test design Core admin dashboard (**PASS**). Soft HOLD Stories/build until this PASS. Soft HOLD A7 until H4. Soft HOLD invent password/AWS. Soft HOLD invent deploy until Ivan OK. Host admin.core only. PoC $0.
 
 ## verification/
 
@@ -602,6 +608,10 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-05__ca__verification__core-admin-dashboard-design-grounding-pass.md](verification/2026-10-05__ca__verification__core-admin-dashboard-design-grounding-pass.md) — CA design grounding PASS Core admin. Soft HOLD SoR. Soft HOLD build. PoC $0.
 - [2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md](verification/2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md) — Finance QA PASS Soft HOLD SES + Turnstile estimate. Soft HOLD invent password/AWS. Soft HOLD build. PoC $0.
 - [2026-10-05__spec__verification__core-admin-dashboard.md](verification/2026-10-05__spec__verification__core-admin-dashboard.md) — Spec QA formal PASS Core admin Spec v2.2. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD build. Soft HOLD invent deploy. PoC $0.
+- [2026-10-05__devplan__verification__core-admin-dashboard.md](verification/2026-10-05__devplan__verification__core-admin-dashboard.md) — Dev Plan QA PASS Core admin dashboard. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
+- [2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md) — Security checklist Dev Plan Core admin. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
+- [2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md) — Security points-review Dev Plan Core admin. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
+- [2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md](verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md) — Security Soft HOLD SoR Dev Plan qa-confirm Core admin. Soft HOLD invent password/AWS. Soft HOLD invent deploy. Soft HOLD build. PoC $0.
 
 ## ops/
 
