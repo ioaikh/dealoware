@@ -1,4 +1,5 @@
 using Dealoware.Api.Auth;
+using Dealoware.Api.RateLimiting;
 using Dealoware.Application.Auth.Dtos;
 using Dealoware.Domain.Budget;
 using Dealoware.Domain.Participants;
@@ -11,14 +12,8 @@ public static class AuthEndpoints
 {
     /// <summary>
     /// Maps authentication endpoints for participant registration and credential management.
-    /// 
-    /// Rate limiting note (PoC/local-only):
-    /// These bootstrap endpoints issue credentials. In production, add:
-    /// - Rate limiting per IP
-    /// - CAPTCHA or proof-of-work for registration
-    /// - Monitoring for credential stuffing attempts
-    /// 
-    /// Currently suitable for local development only.
+    /// POST /auth/register and POST /auth/token are fixed-window rate limited per client IP
+    /// (see RateLimiting in appsettings). CAPTCHA / proof-of-work remain out of scope for this PoC.
     /// </summary>
     public static void MapAuthEndpoints(this WebApplication app)
     {
@@ -26,13 +21,17 @@ public static class AuthEndpoints
 
         group.MapPost("/register", Register)
             .WithName("Register")
+            .RequireRateLimiting(AuthRateLimitOptions.RegisterPolicy)
             .Produces<RegisterResponse>(StatusCodes.Status201Created)
-            .Produces<ProblemDetails>(StatusCodes.Status400BadRequest);
+            .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         group.MapPost("/token", IssueToken)
             .WithName("IssueToken")
+            .RequireRateLimiting(AuthRateLimitOptions.TokenPolicy)
             .Produces<TokenResponse>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         group.MapPost("/revoke", Revoke)
             .WithName("Revoke")
@@ -51,9 +50,8 @@ public static class AuthEndpoints
     /// This is a bootstrap endpoint - creates principal + credential in one call.
     /// Stage C #68: Also provisions initial budget for metered invocations.
     /// 
-    /// ABUSE NOTE (PoC): No rate limiting in this PoC. Production requires:
-    /// - Rate limit registration per IP
-    /// - Consider CAPTCHA/proof-of-work
+    /// Rate limited per client IP (AuthRateLimitOptions.RegisterPolicy).
+    /// CAPTCHA / proof-of-work remain out of scope for this PoC.
     /// </summary>
     private static async Task<IResult> Register(
         RegisterRequest? request,

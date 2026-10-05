@@ -3,7 +3,10 @@ using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Dealoware.Api.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +32,38 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddAuthServices(jwtSettings);
+
+
+var rateLimitOptions = builder.Configuration
+    .GetSection(AuthRateLimitOptions.SectionName)
+    .Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(AuthRateLimitOptions.RegisterPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = Math.Max(1, rateLimitOptions.AuthRegister.PermitLimit),
+                Window = TimeSpan.FromSeconds(Math.Max(1, rateLimitOptions.AuthRegister.WindowSeconds)),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy(AuthRateLimitOptions.TokenPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = Math.Max(1, rateLimitOptions.AuthToken.PermitLimit),
+                Window = TimeSpan.FromSeconds(Math.Max(1, rateLimitOptions.AuthToken.WindowSeconds)),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -74,6 +109,8 @@ app.UseSwaggerUI(c =>
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+app.UseRateLimiter();
 
 using (var scope = app.Services.CreateScope())
 {
