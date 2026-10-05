@@ -11,7 +11,25 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
 
-builder.Services.AddInfrastructure(connectionString);
+try
+{
+    builder.Services.AddInfrastructure(
+        connectionString,
+        requireStrictPostgres: !builder.Environment.IsDevelopment());
+}
+catch (InvalidOperationException ex)
+{
+    // Fail closed outside Development when Postgres is required but SQLite would be selected.
+    // Exit(1) for the real Dealoware.Api process; WebApplicationFactory hosts keep the throw.
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
 
 var jwtSettings = new JwtSettings
 {

@@ -20,22 +20,27 @@ public static class DependencyInjection
     /// Adds infrastructure services including EF Core.
     /// Uses PostgreSQL when DB_HOST is set or the connection string is a PostgreSQL one ("Host=..."),
     /// otherwise SQLite. See <see cref="DatabaseProviderSelector"/>.
+    /// When <paramref name="requireStrictPostgres"/> is true (non-Development), SQLite is refused.
     /// Connection settings should be provided via configuration (env var or appsettings).
     /// Never commit real secrets to source.
     /// </summary>
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
-        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable);
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        string connectionString,
+        bool requireStrictPostgres = false)
+        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable, requireStrictPostgres);
 
     /// <summary>
-    /// Same as <see cref="AddInfrastructure(IServiceCollection, string)"/> with an explicit
+    /// Same as <see cref="AddInfrastructure(IServiceCollection, string, bool)"/> with an explicit
     /// environment lookup (used by tests so they do not mutate process environment).
     /// </summary>
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         string connectionString,
-        Func<string, string?> getEnv)
+        Func<string, string?> getEnv,
+        bool requireStrictPostgres = false)
     {
-        var selection = DatabaseProviderSelector.Select(connectionString, getEnv);
+        var selection = DatabaseProviderSelector.Select(connectionString, getEnv, requireStrictPostgres);
 
         services.AddDbContext<DealowareDbContext>(options =>
         {

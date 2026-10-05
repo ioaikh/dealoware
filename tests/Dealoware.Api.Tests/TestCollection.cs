@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Dealoware.Infrastructure.Persistence;
 
@@ -26,12 +28,17 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.ConfigureServices(services =>
+        // After the app registers its provider (SQLite or Npgsql), replace with this
+        // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
+        // registered alongside SQLite.
+        builder.ConfigureTestServices(services =>
         {
-            var descriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<DealowareDbContext>));
-            
-            if (descriptor != null)
+            foreach (var descriptor in services
+                         .Where(d => d.ServiceType == typeof(DbContextOptions<DealowareDbContext>)
+                                     || d.ServiceType == typeof(DbContextOptions)
+                                     || d.ServiceType == typeof(IDbContextOptionsConfiguration<DealowareDbContext>)
+                                     || d.ServiceType == typeof(DealowareDbContext))
+                         .ToList())
             {
                 services.Remove(descriptor);
             }

@@ -1,4 +1,8 @@
 using Dealoware.Infrastructure;
+using Dealoware.Infrastructure.Auth;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Hosting;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -119,5 +123,100 @@ public class DatabaseProviderSelectionTests
 
         Assert.True(db.Database.IsSqlite());
         Assert.False(db.Database.IsNpgsql());
+    }
+
+    [Fact]
+    public void StrictPostgres_WithSqliteConnectionString_Throws()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => DatabaseProviderSelector.Select("Data Source=dealoware.db", Env(), requireStrictPostgres: true));
+
+        Assert.Contains("PostgreSQL", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DB_HOST", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Host=", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Password", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StrictPostgres_DevelopmentStyle_AllowsSqlite()
+    {
+        var selection = DatabaseProviderSelector.Select(
+            "Data Source=dealoware.db",
+            Env(),
+            requireStrictPostgres: false);
+
+        Assert.Equal(DatabaseProvider.Sqlite, selection.Provider);
+    }
+
+    [Fact]
+    public void StrictPostgres_WithDbHost_SelectsPostgres()
+    {
+        var env = Env(
+            ("DB_HOST", "db.example"),
+            ("DB_NAME", "dealoware"),
+            ("DB_USERNAME", "app_user"),
+            ("DB_PASSWORD", "placeholder-password"));
+
+        var selection = DatabaseProviderSelector.Select("Data Source=dealoware.db", env, requireStrictPostgres: true);
+
+        Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
+    }
+
+    [Fact]
+    public void StrictPostgres_WithHostConnectionString_SelectsPostgres()
+    {
+        const string connectionString = "Host=localhost;Port=5432;Database=dealoware;Username=app_user;Password=placeholder";
+
+        var selection = DatabaseProviderSelector.Select(connectionString, Env(), requireStrictPostgres: true);
+
+        Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
+        Assert.Equal(connectionString, selection.ConnectionString);
+    }
+
+    [Fact]
+    public void AddInfrastructure_StrictPostgres_WithSqlite_Throws()
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => services.AddInfrastructure("Data Source=dealoware.db", Env(), requireStrictPostgres: true));
+
+        Assert.Contains("PostgreSQL", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("placeholder-password", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Host_Production_WithSqliteOnly_FailsAtStartup()
+    {
+        using var factory = new SqliteOnlyProductionWebApplicationFactory();
+
+        var ex = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(ex);
+        var messages = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            messages.Add(current.Message);
+        }
+
+        Assert.Contains(messages, m => m.Contains("PostgreSQL", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(messages, m => m.Contains("DB_HOST", StringComparison.Ordinal));
+    }
+}
+
+/// <summary>
+/// Production host with a valid JWT key but an explicit SQLite connection string and no DB_HOST,
+/// so provider selection would choose SQLite and must fail closed.
+/// </summary>
+file sealed class SqliteOnlyProductionWebApplicationFactory : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment(Environments.Production);
+        builder.UseSetting(
+            JwtSigningKeyValidator.EnvironmentVariableName,
+            EnvironmentWebApplicationFactory.TestSigningKey64);
+        builder.UseSetting("Jwt:SigningKey", string.Empty);
+        builder.UseSetting("ConnectionStrings:DefaultConnection", "Data Source=dealoware.db");
     }
 }

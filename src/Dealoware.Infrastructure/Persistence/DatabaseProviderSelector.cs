@@ -25,16 +25,20 @@ public sealed record DatabaseSelection(DatabaseProvider Provider, string Connect
 /// 2. Else if the configured connection string contains "Host=" (case-insensitive), use PostgreSQL with it.
 /// 3. Otherwise keep SQLite with the configured connection string.
 ///
-/// Values come from configuration / environment only. Never commit real secrets to source.
+/// When <paramref name="requireStrictPostgres"/> is true (non-Development), step 3 throws instead of
+/// silently using SQLite. Values come from configuration / environment only. Never commit real secrets.
 /// </summary>
 public static class DatabaseProviderSelector
 {
     public const int DefaultPostgresPort = 5432;
 
-    public static DatabaseSelection Select(string? configuredConnectionString)
-        => Select(configuredConnectionString, Environment.GetEnvironmentVariable);
+    public static DatabaseSelection Select(string? configuredConnectionString, bool requireStrictPostgres = false)
+        => Select(configuredConnectionString, Environment.GetEnvironmentVariable, requireStrictPostgres);
 
-    public static DatabaseSelection Select(string? configuredConnectionString, Func<string, string?> getEnv)
+    public static DatabaseSelection Select(
+        string? configuredConnectionString,
+        Func<string, string?> getEnv,
+        bool requireStrictPostgres = false)
     {
         ArgumentNullException.ThrowIfNull(getEnv);
 
@@ -48,6 +52,13 @@ public static class DatabaseProviderSelector
             configuredConnectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase))
         {
             return new DatabaseSelection(DatabaseProvider.Postgres, configuredConnectionString);
+        }
+
+        if (requireStrictPostgres)
+        {
+            throw new InvalidOperationException(
+                "Non-Development environments require PostgreSQL. " +
+                "Set DB_HOST (and related DB_* settings) or provide a connection string containing Host=.");
         }
 
         return new DatabaseSelection(DatabaseProvider.Sqlite, configuredConnectionString ?? string.Empty);
