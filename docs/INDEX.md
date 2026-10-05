@@ -112,6 +112,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md](specs/2026-09-28__cq__assessment__mvp-stage-c-a8-min-meters-budgets-no-refactor.md)
 - [2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md](specs/2026-10-02__spec__spec__aws-cloud-architecture-design-ecs-express.md)
 - [2026-10-02__spec__spec__platform-owner-admin-dashboard.md](specs/2026-10-02__spec__spec__platform-owner-admin-dashboard.md)
+- [2026-10-05__spec__spec__core-admin-dashboard.md](specs/2026-10-05__spec__spec__core-admin-dashboard.md) — Spec v2.2 Core admin dashboard (admin.core.dealoware.com). Soft HOLD invent password/AWS. Soft HOLD build. Soft HOLD invent deploy. PoC $0.
 ---
 
 ## plans/
@@ -597,10 +598,10 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md](verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md) — Security qa-confirm SA Core admin. Soft HOLD SoR. Soft HOLD build. PoC $0.
 - [2026-10-05__security__verification__core-admin-dashboard-spec-checklist.md](verification/2026-10-05__security__verification__core-admin-dashboard-spec-checklist.md) — Security checklist Spec Core admin. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD build. PoC $0.
 - [2026-10-05__security__verification__core-admin-dashboard-spec-points-review.md](verification/2026-10-05__security__verification__core-admin-dashboard-spec-points-review.md) — Security points-review Spec Core admin. Soft HOLD SoR. Soft HOLD build. PoC $0.
-- [2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md](verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md) — Security qa-confirm Spec Core admin. Soft HOLD SoR. Soft HOLD build. PoC $0.
+- [2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md](verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md) — Security Soft HOLD SoR qa-confirm Spec Core admin PASS 15/15. Soft HOLD invent password/AWS. Soft HOLD build. Soft HOLD invent deploy. PoC $0.
 - [2026-10-05__ca__verification__core-admin-dashboard-design-grounding-pass.md](verification/2026-10-05__ca__verification__core-admin-dashboard-design-grounding-pass.md) — CA design grounding PASS Core admin. Soft HOLD SoR. Soft HOLD build. PoC $0.
 - [2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md](verification/2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md) — Finance QA PASS Soft HOLD SES + Turnstile estimate. Soft HOLD invent password/AWS. Soft HOLD build. PoC $0.
-- [2026-10-05__spec__verification__core-admin-dashboard.md](verification/2026-10-05__spec__verification__core-admin-dashboard.md) — Spec verification Core admin dashboard. Soft HOLD SoR. Soft HOLD build. PoC $0.
+- [2026-10-05__spec__verification__core-admin-dashboard.md](verification/2026-10-05__spec__verification__core-admin-dashboard.md) — Spec QA formal PASS Core admin Spec v2.2. Soft HOLD SoR. Soft HOLD invent password/AWS. Soft HOLD build. Soft HOLD invent deploy. PoC $0.
 
 ## ops/
 
