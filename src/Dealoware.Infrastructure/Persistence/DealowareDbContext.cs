@@ -34,6 +34,20 @@ public class DealowareDbContext : DbContext
     {
     }
 
+    /// <summary>
+    /// Store every DateTimeOffset as UTC. PostgreSQL timestamptz (Npgsql) rejects non-zero offsets;
+    /// SQLite keeps working the same way, just with normalized values.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<UtcDateTimeOffsetConverter>();
+        configurationBuilder.Properties<DateTimeOffset?>()
+            .HaveConversion<UtcDateTimeOffsetConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

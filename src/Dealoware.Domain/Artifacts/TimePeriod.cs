@@ -18,8 +18,9 @@ public sealed class TimePeriod
         return new TimePeriod
         {
             Id = Guid.NewGuid(),
-            Start = start,
-            End = end
+            // Persist as UTC: PostgreSQL timestamptz (Npgsql) only accepts offset zero.
+            Start = start.ToUniversalTime(),
+            End = end.ToUniversalTime()
         };
     }
 }

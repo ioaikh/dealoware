@@ -38,7 +38,7 @@ public sealed class RevokedToken
             Jti = jti,
             Sub = sub,
             RevokedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt.ToUniversalTime()
         };
     }
 }

@@ -37,6 +37,8 @@ public class JwtService
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = key,
+            // Tokens are issued with HS256 only; reject any other alg (e.g. HS384/HS512, none).
+            ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256 },
             ClockSkew = TimeSpan.FromMinutes(1)
         };
     }
@@ -137,7 +139,7 @@ public class JwtService
 public class JwtSettings
 {
     /// <summary>
-    /// Signing key for JWT tokens. Must be at least 32 characters.
+    /// Signing key for JWT tokens. Must be at least 32 bytes (UTF-8) outside Development.
     /// Source: DEALOWARE_JWT_SIGNING_KEY environment variable.
     /// </summary>
     public string SigningKey { get; set; } = string.Empty;

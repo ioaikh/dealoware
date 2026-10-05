@@ -3,6 +3,7 @@ using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,9 +15,13 @@ builder.Services.AddInfrastructure(connectionString);
 
 var jwtSettings = new JwtSettings
 {
-    SigningKey = Environment.GetEnvironmentVariable("DEALOWARE_JWT_SIGNING_KEY")
-        ?? builder.Configuration["Jwt:SigningKey"]
-        ?? "DEVELOPMENT_PLACEHOLDER_KEY_CHANGE_IN_PRODUCTION_32CHARS",
+    // Every environment except Development fails fast on a missing, placeholder, or too-short key;
+    // only Development keeps the placeholder fallback. The environment variable is read through
+    // configuration (environment variables are a default configuration source).
+    SigningKey = JwtSigningKeyValidator.Validate(
+        builder.Configuration[JwtSigningKeyValidator.EnvironmentVariableName]
+            ?? builder.Configuration["Jwt:SigningKey"],
+        requireStrictKey: !builder.Environment.IsDevelopment()),
     TokenLifetimeMinutes = int.TryParse(
         Environment.GetEnvironmentVariable("DEALOWARE_JWT_LIFETIME_MINUTES") 
         ?? builder.Configuration["Jwt:LifetimeMinutes"], 
@@ -25,7 +30,47 @@ var jwtSettings = new JwtSettings
 
 builder.Services.AddAuthServices(jwtSettings);
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Dealoware API",
+        Version = "v1",
+        Description = "Universal Negotiation Platform API - PoC"
+    });
+    c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    {
+        Description = "API Key authentication. Use 'ApiKey {your-key}'",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "ApiKey"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "ApiKey"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Dealoware API v1");
+    c.RoutePrefix = "swagger";
+});
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -36,7 +81,10 @@ using (var scope = app.Services.CreateScope())
     await db.Database.EnsureCreatedAsync();
 }
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
+    .WithName("Health")
+    .WithTags("Health")
+    .Produces<object>(StatusCodes.Status200OK);
 
 app.MapAuthEndpoints();
 app.MapArtifactEndpoints();
@@ -47,6 +95,7 @@ app.MapProfileEndpoints();
 app.MapStrategyEndpoints();
 app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
+app.MapInboundConnectorEndpoints();
 
 app.Run();
 

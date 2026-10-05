@@ -17,14 +17,37 @@ namespace Dealoware.Infrastructure;
 public static class DependencyInjection
 {
     /// <summary>
-    /// Adds infrastructure services including EF Core with SQLite.
-    /// Connection string should be provided via configuration (env var or appsettings).
+    /// Adds infrastructure services including EF Core.
+    /// Uses PostgreSQL when DB_HOST is set or the connection string is a PostgreSQL one ("Host=..."),
+    /// otherwise SQLite. See <see cref="DatabaseProviderSelector"/>.
+    /// Connection settings should be provided via configuration (env var or appsettings).
     /// Never commit real secrets to source.
     /// </summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
+        => services.AddInfrastructure(connectionString, Environment.GetEnvironmentVariable);
+
+    /// <summary>
+    /// Same as <see cref="AddInfrastructure(IServiceCollection, string)"/> with an explicit
+    /// environment lookup (used by tests so they do not mutate process environment).
+    /// </summary>
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        string connectionString,
+        Func<string, string?> getEnv)
     {
+        var selection = DatabaseProviderSelector.Select(connectionString, getEnv);
+
         services.AddDbContext<DealowareDbContext>(options =>
-            options.UseSqlite(connectionString));
+        {
+            if (selection.Provider == DatabaseProvider.Postgres)
+            {
+                options.UseNpgsql(selection.ConnectionString);
+            }
+            else
+            {
+                options.UseSqlite(selection.ConnectionString);
+            }
+        });
 
         services.AddScoped<IArtifactRepository, ArtifactRepository>();
         services.AddScoped<IParticipantRepository, ParticipantRepository>();

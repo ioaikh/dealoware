@@ -132,8 +132,9 @@ public sealed class Negotiation
             PartyAIntent = partyAIntent.Trim().ToLowerInvariant(),
             PartyBIntent = partyBIntent.Trim().ToLowerInvariant(),
             Status = NegotiationStatus.Open,
-            StartsAt = startsAt,
-            EndsAt = endsAt,
+            // Persist as UTC: PostgreSQL timestamptz (Npgsql) only accepts offset zero.
+            StartsAt = startsAt?.ToUniversalTime(),
+            EndsAt = endsAt?.ToUniversalTime(),
             CreatedAt = DateTimeOffset.UtcNow
         };
 

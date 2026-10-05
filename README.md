@@ -80,7 +80,7 @@ The API uses API key and/or JWT authentication. All protected endpoints require 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEALOWARE_JWT_SIGNING_KEY` | JWT signing key (min 32 chars) | Development placeholder |
+| `DEALOWARE_JWT_SIGNING_KEY` | JWT signing key (min 32 bytes). Required in Production: startup fails if it is missing, too short, or the placeholder | Development placeholder (non-Production only) |
 | `DEALOWARE_JWT_LIFETIME_MINUTES` | JWT token lifetime | 60 |
 
 > **Security:** Never commit real signing keys. Use environment variables for production.
