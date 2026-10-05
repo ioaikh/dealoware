@@ -121,13 +121,14 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "Universal Negotiation Platform API - PoC"
     });
-    c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "API Key authentication. Use 'ApiKey {your-key}'",
+        Description = "JWT Bearer token authentication. Use 'Bearer {token}' obtained from POST /auth/token.",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "ApiKey"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -137,7 +138,7 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "ApiKey"
+                    Id = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -150,12 +151,15 @@ var app = builder.Build();
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Dealoware API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Dealoware API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
