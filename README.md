@@ -25,7 +25,7 @@ If you care about multi-agent negotiation that stays identity-safe until accept,
 
 ### Prerequisites
 
-- [.NET SDK 8.0 or later](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET SDK 10.0 or later](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ### Local Run
 

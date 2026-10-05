@@ -1,7 +1,7 @@
 # Local development Dockerfile — multi-stage build
 # Production deployment config (IAM, Secrets Manager, ECR promo, signing) is out of scope
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /src
 
 COPY Dealoware.sln ./
@@ -14,7 +14,7 @@ RUN dotnet restore Dealoware.sln
 COPY src/ src/
 RUN dotnet publish src/Dealoware.Api/Dealoware.Api.csproj -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080

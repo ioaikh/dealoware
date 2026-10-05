@@ -37,7 +37,7 @@ Newman-runnable Postman collection for interactive and CI testing.
 
 ### Prerequisites
 
-- .NET 8 SDK
+- .NET 10 SDK
 - Node.js 16+ (for Newman/Postman tests only)
 
 ### Run xUnit Tests (Recommended)
