@@ -1,3 +1,4 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Budget;
 using Dealoware.Domain.Negotiations;
@@ -29,6 +30,16 @@ public class DealowareDbContext : DbContext
     /// Stage C #68: Per-Participant budgets for metered Assistant/LLM usage.
     /// </summary>
     public DbSet<ParticipantBudget> ParticipantBudgets => Set<ParticipantBudget>();
+
+    /// <summary>
+    /// A7: Admin sessions for CoreOwner authentication.
+    /// </summary>
+    public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
+
+    /// <summary>
+    /// A7: Append-only admin audit log.
+    /// </summary>
+    public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
 
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
@@ -70,5 +81,9 @@ public class DealowareDbContext : DbContext
         
         // Stage C #68: Per-Participant budgets
         modelBuilder.ApplyConfiguration(new ParticipantBudgetEntityConfiguration());
+        
+        // A7: Admin session and audit tables
+        modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
     }
 }

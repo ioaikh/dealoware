@@ -54,6 +54,16 @@ public sealed class Participant
     /// </summary>
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>
+    /// Soft-delete marker. When non-null, indicates the entity is soft-deleted.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    /// <summary>
+    /// Concurrency token for optimistic concurrency control.
+    /// </summary>
+    public uint Version { get; private set; }
+
     private Participant() { }
 
     /// <summary>

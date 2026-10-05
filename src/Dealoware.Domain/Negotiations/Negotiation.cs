@@ -63,6 +63,16 @@ public sealed class Negotiation
     public DateTimeOffset CreatedAt { get; private set; }
 
     /// <summary>
+    /// Soft-delete marker. When non-null, indicates the entity is soft-deleted.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    /// <summary>
+    /// Concurrency token for optimistic concurrency control.
+    /// </summary>
+    public uint Version { get; private set; }
+
+    /// <summary>
     /// Navigation property for Offers in this negotiation.
     /// </summary>
     private readonly List<Offer> _offers = new();
