@@ -379,9 +379,27 @@ public class DatabaseProviderSelectionTests
     #region Root certificate path constant
 
     [Fact]
-    public void RdsRootCertificatePath_IsCorrectImagePath()
+    public void DefaultRdsRootCertificatePath_IsCorrectImagePath()
     {
-        Assert.Equal("/app/certs/rds-global-bundle.pem", DatabaseProviderSelector.RdsRootCertificatePath);
+        Assert.Equal("/app/certs/rds-global-bundle.pem", DatabaseProviderSelector.DefaultRdsRootCertificatePath);
+    }
+
+    [Fact]
+    public void RdsRootCertificatePath_RespectsEnvVarOverride()
+    {
+        var originalValue = Environment.GetEnvironmentVariable(DatabaseProviderSelector.RdsCertPathEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(DatabaseProviderSelector.RdsCertPathEnvVar, "/custom/path/cert.pem");
+            Assert.Equal("/custom/path/cert.pem", DatabaseProviderSelector.RdsRootCertificatePath);
+            
+            Environment.SetEnvironmentVariable(DatabaseProviderSelector.RdsCertPathEnvVar, null);
+            Assert.Equal(DatabaseProviderSelector.DefaultRdsRootCertificatePath, DatabaseProviderSelector.RdsRootCertificatePath);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(DatabaseProviderSelector.RdsCertPathEnvVar, originalValue);
+        }
     }
 
     #endregion

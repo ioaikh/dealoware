@@ -8,11 +8,19 @@ namespace Dealoware.Api.Tests;
 /// <summary>
 /// Module initializer that creates a test certificate file for strict mode tests.
 /// The DatabaseProviderSelector validates that the RDS root certificate bundle exists
-/// in non-Development environments; this creates a valid test certificate at that path.
+/// in non-Development environments; this creates a valid test certificate at a temp path
+/// and sets the override environment variable.
 /// </summary>
 public static class TestStartup
 {
     private static bool _initialized;
+    private static string? _testCertPath;
+
+    /// <summary>
+    /// Path to the test certificate created by the module initializer.
+    /// Null if initialization failed or hasn't run yet.
+    /// </summary>
+    public static string? TestCertificatePath => _testCertPath;
 
     [ModuleInitializer]
     public static void Initialize()
@@ -20,45 +28,52 @@ public static class TestStartup
         if (_initialized) return;
         _initialized = true;
 
-        CreateTestCertificateIfNeeded();
+        CreateTestCertificate();
     }
 
-    private static void CreateTestCertificateIfNeeded()
+    private static void CreateTestCertificate()
     {
-        var certPath = DatabaseProviderSelector.RdsRootCertificatePath;
-        
         try
         {
-            var dir = Path.GetDirectoryName(certPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            var tempDir = Path.Combine(Path.GetTempPath(), "dealoware-test-certs");
+            Directory.CreateDirectory(tempDir);
+            
+            var certPath = Path.Combine(tempDir, "test-rds-ca.pem");
+            _testCertPath = certPath;
+
+            if (!File.Exists(certPath))
             {
-                Directory.CreateDirectory(dir);
+                using var rsa = RSA.Create(2048);
+                var req = new CertificateRequest(
+                    "CN=Test RDS CA, O=Test, C=US",
+                    rsa,
+                    HashAlgorithmName.SHA256,
+                    RSASignaturePadding.Pkcs1);
+
+                req.CertificateExtensions.Add(
+                    new X509BasicConstraintsExtension(
+                        certificateAuthority: true,
+                        hasPathLengthConstraint: false,
+                        pathLengthConstraint: 0,
+                        critical: true));
+
+                using var cert = req.CreateSelfSigned(
+                    DateTimeOffset.UtcNow.AddDays(-1),
+                    DateTimeOffset.UtcNow.AddYears(10));
+                    
+                var pem = cert.ExportCertificatePem();
+                File.WriteAllText(certPath, pem);
             }
 
-            if (File.Exists(certPath)) return;
-
-            using var rsa = RSA.Create(2048);
-            var req = new CertificateRequest(
-                "CN=Test RDS CA, O=Test, C=US",
-                rsa,
-                HashAlgorithmName.SHA256,
-                RSASignaturePadding.Pkcs1);
-
-            req.CertificateExtensions.Add(
-                new X509BasicConstraintsExtension(certificateAuthority: true, hasPathLengthConstraint: false, pathLengthConstraint: 0, critical: true));
-
-            using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));
-            var pem = cert.ExportCertificatePem();
-            File.WriteAllText(certPath, pem);
+            // Set the environment variable so DatabaseProviderSelector uses this path
+            Environment.SetEnvironmentVariable(
+                DatabaseProviderSelector.RdsCertPathEnvVar,
+                certPath);
         }
-        catch (UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            // Running in an environment where /app/certs is not writable.
+            Console.Error.WriteLine($"TestStartup: Failed to create test certificate: {ex.Message}");
             // Tests that require the cert will fail with a clear error message.
-        }
-        catch (IOException)
-        {
-            // Same - cert file could not be created.
         }
     }
 }

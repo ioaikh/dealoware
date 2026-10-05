@@ -39,10 +39,25 @@ public static class DatabaseProviderSelector
     public const int DefaultPostgresPort = 5432;
     
     /// <summary>
-    /// Path to the AWS RDS global CA bundle baked into the container image.
+    /// Default path to the AWS RDS global CA bundle baked into the container image.
     /// This is public trust material, not a secret.
     /// </summary>
-    public const string RdsRootCertificatePath = "/app/certs/rds-global-bundle.pem";
+    public const string DefaultRdsRootCertificatePath = "/app/certs/rds-global-bundle.pem";
+    
+    /// <summary>
+    /// Environment variable to override the RDS root certificate path (for testing).
+    /// Production containers use the default path; tests can override to a temp location.
+    /// </summary>
+    public const string RdsCertPathEnvVar = "DEALOWARE_RDS_CERT_PATH";
+    
+    /// <summary>
+    /// Resolved path to the RDS root certificate bundle.
+    /// Uses <see cref="RdsCertPathEnvVar"/> if set, otherwise <see cref="DefaultRdsRootCertificatePath"/>.
+    /// </summary>
+    public static string RdsRootCertificatePath =>
+        Environment.GetEnvironmentVariable(RdsCertPathEnvVar) is { Length: > 0 } envPath
+            ? envPath
+            : DefaultRdsRootCertificatePath;
 
     public static DatabaseSelection Select(string? configuredConnectionString)
         => Select(configuredConnectionString, Environment.GetEnvironmentVariable, strictNonDevelopment: true);

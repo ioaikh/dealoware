@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Dealoware.Infrastructure.Auth;
+using Dealoware.Infrastructure.Persistence;
 
 namespace Dealoware.Api.Tests;
 
@@ -64,6 +65,11 @@ public class JwtFailClosedExitTests
         // passes and JWT validation can be tested. The test doesn't actually connect.
         start.Environment["DB_HOST"] = "127.0.0.1";
         start.Environment["DB_NAME"] = "dealoware_test";
+        // Pass the test certificate path so cert validation passes before JWT validation runs.
+        if (TestStartup.TestCertificatePath is { } certPath)
+        {
+            start.Environment[DatabaseProviderSelector.RdsCertPathEnvVar] = certPath;
+        }
 
         using var process = Process.Start(start);
         Assert.NotNull(process);
