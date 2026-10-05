@@ -9,7 +9,7 @@ COPY src/Dealoware.Api/Dealoware.Api.csproj src/Dealoware.Api/
 COPY src/Dealoware.Domain/Dealoware.Domain.csproj src/Dealoware.Domain/
 COPY src/Dealoware.Application/Dealoware.Application.csproj src/Dealoware.Application/
 COPY src/Dealoware.Infrastructure/Dealoware.Infrastructure.csproj src/Dealoware.Infrastructure/
-RUN dotnet restore Dealoware.sln
+RUN dotnet restore src/Dealoware.Api/Dealoware.Api.csproj
 
 COPY src/ src/
 RUN dotnet publish src/Dealoware.Api/Dealoware.Api.csproj -c Release -o /app/publish --no-restore
