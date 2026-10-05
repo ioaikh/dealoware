@@ -22,25 +22,47 @@ public static class AuthRateLimiting
         httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     /// <summary>
-    /// Masks an IP address for logging: zeroes the last octet of IPv4, or last 80 bits of IPv6.
-    /// Returns "unknown" if the input is null/empty.
+    /// Masks an IP address for logging: zeroes the last octet of IPv4, or keeps only the /64
+    /// prefix of IPv6 (first 4 groups). Returns "unknown" if the input is null/empty.
     /// </summary>
     public static string MaskIp(string? ip)
     {
         if (string.IsNullOrEmpty(ip) || ip == "unknown")
             return "unknown";
         
-        // IPv4: mask last octet
+        // IPv4: mask last octet (e.g., 192.168.1.123 → 192.168.1.0)
         var lastDot = ip.LastIndexOf('.');
         if (lastDot > 0)
             return ip[..lastDot] + ".0";
         
-        // IPv6: mask last 80 bits (5 groups)
-        var colonCount = ip.Count(c => c == ':');
-        if (colonCount >= 2)
-            return ip.Split(':').Take(3).Aggregate((a, b) => a + ":" + b) + "::0";
+        // IPv6: keep /64 prefix (first 4 groups), mask the rest
+        // Handle both full form (2001:db8:85a3:0000:...) and compressed (2001:db8::1)
+        if (ip.Contains(':'))
+        {
+            // Expand :: if present, then take first 4 groups
+            var expanded = ExpandIPv6(ip);
+            var groups = expanded.Split(':');
+            if (groups.Length >= 4)
+                return $"{groups[0]}:{groups[1]}:{groups[2]}:{groups[3]}::0";
+        }
         
         return "masked";
+    }
+
+    /// <summary>
+    /// Expands an IPv6 address with :: notation to full 8-group form for consistent masking.
+    /// </summary>
+    private static string ExpandIPv6(string ip)
+    {
+        if (!ip.Contains("::"))
+            return ip;
+        
+        var parts = ip.Split(new[] { "::" }, 2, StringSplitOptions.None);
+        var left = string.IsNullOrEmpty(parts[0]) ? Array.Empty<string>() : parts[0].Split(':');
+        var right = parts.Length > 1 && !string.IsNullOrEmpty(parts[1]) ? parts[1].Split(':') : Array.Empty<string>();
+        var missing = 8 - left.Length - right.Length;
+        var zeros = Enumerable.Repeat("0", missing);
+        return string.Join(":", left.Concat(zeros).Concat(right));
     }
 
     /// <summary>

@@ -66,7 +66,7 @@ public static class AuthEndpoints
         var logger = loggerFactory.CreateLogger("Dealoware.Api.Auth.Register");
         var partitionKey = AuthRateLimiting.GetPartitionKey(httpContext);
         var xff = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        logger.LogDebug(
+        logger.LogInformation(
             "Register request: PartitionKey={PartitionKey}, XFF={XffPresent}, RemoteIp={RemoteIp}",
             AuthRateLimiting.MaskIp(partitionKey),
             xff is not null,
@@ -111,7 +111,7 @@ public static class AuthEndpoints
         var logger = loggerFactory.CreateLogger("Dealoware.Api.Auth.Token");
         var partitionKey = AuthRateLimiting.GetPartitionKey(httpContext);
         var xff = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        logger.LogDebug(
+        logger.LogInformation(
             "Token request: PartitionKey={PartitionKey}, XFF={XffPresent}, RemoteIp={RemoteIp}",
             AuthRateLimiting.MaskIp(partitionKey),
             xff is not null,

@@ -187,6 +187,23 @@ public sealed class AuthRateLimitTests : IDisposable
     }
 
     [Fact]
+    public void MaskIp_KeepsIPv6Slash64Prefix()
+    {
+        // Full IPv6: keep first 4 groups (/64 prefix), mask the rest
+        Assert.Equal("2001:db8:85a3:0::0", AuthRateLimiting.MaskIp("2001:db8:85a3:0:1:2:3:4"));
+        
+        // Compressed IPv6 with :: notation
+        Assert.Equal("2001:db8:0:0::0", AuthRateLimiting.MaskIp("2001:db8::1"));
+        Assert.Equal("fe80:0:0:0::0", AuthRateLimiting.MaskIp("fe80::1"));
+        
+        // Loopback
+        Assert.Equal("0:0:0:0::0", AuthRateLimiting.MaskIp("::1"));
+        
+        // Full form
+        Assert.Equal("2001:db8:abcd:1234::0", AuthRateLimiting.MaskIp("2001:db8:abcd:1234:5678:9abc:def0:1234"));
+    }
+
+    [Fact]
     public async Task Register_Production_ExceedingPermitLimit_Returns429()
     {
         // Test in Production environment with explicit config to ensure rate limiting works
