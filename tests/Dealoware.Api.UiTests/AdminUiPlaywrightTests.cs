@@ -17,17 +17,17 @@ public sealed class AdminUiPlaywrightTests
     {
         var context = await _server.Browser.NewContextAsync(new()
         {
-            ExtraHTTPHeaders = new Dictionary<string, string> { ["Host"] = AdminUiServerFixture.AdminHost },
             ViewportSize = new() { Width = 1280, Height = 800 },
             IgnoreHTTPSErrors = true
         });
+        var host = new Uri(_server.BaseUrl).Host;
         await context.AddCookiesAsync(
         [
             new Cookie
             {
                 Name = AdminSessionCookie.Name,
                 Value = _server.SessionId.ToString("D"),
-                Url = _server.BaseUrl,
+                Domain = host,
                 Path = "/admin",
                 HttpOnly = true,
                 Secure = false,
@@ -435,10 +435,7 @@ public sealed class AdminUiPlaywrightTests
     [Fact]
     public async Task TD_ADM_UI_ci_01_UnsignedAssetsStayDenied()
     {
-        var context = await _server.Browser.NewContextAsync(new()
-        {
-            ExtraHTTPHeaders = new Dictionary<string, string> { ["Host"] = AdminUiServerFixture.AdminHost }
-        });
+        var context = await _server.Browser.NewContextAsync();
         var page = await context.NewPageAsync();
         var js = await page.GotoAsync(Url("/admin/ui/admin.js"));
         Assert.Equal(401, js?.Status);

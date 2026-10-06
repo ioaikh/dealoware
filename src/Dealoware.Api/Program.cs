@@ -92,6 +92,21 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
+var adminUiTestFlag = Environment.GetEnvironmentVariable("DEALOWARE_ADMIN_UI_TEST");
+if (builder.Environment.IsDevelopment()
+    && (adminUiTestFlag == "1" || string.Equals(adminUiTestFlag, "true", StringComparison.OrdinalIgnoreCase)))
+{
+    // Local Playwright only: the browser cannot set Host. Never enabled outside Development.
+    builder.Services.PostConfigure<AdminHostOptions>(options =>
+    {
+        options.AllowedHosts ??= [];
+        foreach (var host in new[] { "127.0.0.1", "localhost" })
+        {
+            if (!options.AllowedHosts.Contains(host, StringComparer.OrdinalIgnoreCase))
+                options.AllowedHosts.Add(host);
+        }
+    });
+}
 
 builder.Services.AddAuthorization(options =>
 {
