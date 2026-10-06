@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Dealoware.Application\Dealoware.Application.csproj" />
     <ProjectReference Include="..\Dealoware.Domain\Dealoware.Domain.csproj" />
   </ItemGroup>
 

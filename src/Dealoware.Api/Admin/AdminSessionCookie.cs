@@ -7,6 +7,8 @@ namespace Dealoware.Api.Admin;
 public static class AdminSessionCookie
 {
     public const string Name = "dw_admin_session";
+    public const string PendingName = "dw_admin_pending";
+    public const string AntiForgeryName = AdminAntiForgery.CookieName;
 
     /// <summary>
     /// HttpOnly, Secure, SameSite=Strict, path-scoped to /admin (host-only cookie).

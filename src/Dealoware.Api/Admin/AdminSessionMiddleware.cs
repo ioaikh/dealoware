@@ -8,6 +8,9 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Fail-closed session gate for all /admin routes.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
+/// Signed-out exemptions are the exact path+method pairs this step owns
+/// (route-prefix note r5 sha c5e9d232; r3 and r4 VOID). F2: GET
+/// /admin/bootstrap takes no token.
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -28,6 +31,12 @@ public sealed class AdminSessionMiddleware
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (IsSignedOutExempt(context))
         {
             await _next(context);
             return;
@@ -74,6 +83,16 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    private static bool IsSignedOutExempt(HttpContext context)
+    {
+        if (!AdminPathCanonicalizer.TryCanonicalize(context, out var canonical))
+        {
+            return false;
+        }
+
+        return AdminSignedOutAccess.IsOwnedSignedOutPair(canonical, context.Request.Method);
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)

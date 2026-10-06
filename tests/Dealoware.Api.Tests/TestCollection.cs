@@ -35,6 +35,10 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(
             IpHasher.KeyEnvironmentVariable,
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        // Non-Development hosts fail closed without a Turnstile secret. Test-only value.
+        builder.UseSetting(
+            TurnstileOptions.SecretEnvironmentVariable,
+            "test-turnstile-secret-value");
 
         // After the app registers its provider (SQLite or Npgsql), replace with this
         // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
