@@ -49,6 +49,7 @@ public class AdminPasswordResetTests
         Assert.DoesNotContain("not found", knownBody, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(CoreOwnerEmail, knownBody);
 
+        await Mail().WaitForSentAsync(2);
         var sent = Mail().Sent;
         Assert.Equal(2, sent.Count);
         Assert.All(sent, item =>
@@ -391,8 +392,8 @@ public class AdminPasswordResetTests
     {
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
-        Throttle().Clear();
 
+        var before = await ResetCounterCountAsync();
         var af = await IssueAntiForgeryAsync();
         var client = CreateClient();
         using var request = new HttpRequestMessage(
@@ -408,7 +409,7 @@ public class AdminPasswordResetTests
         using var response = await client.SendAsync(request);
         AssertLinkExpired(response);
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
-        Assert.NotEmpty(Throttle().Failures);
+        Assert.True(await ResetCounterCountAsync() > before);
     }
 
     [Fact]
@@ -511,6 +512,127 @@ public class AdminPasswordResetTests
     }
 
     [Fact]
+    public async Task TD_ADM_030_SC9_Request_SameStatusBodyAndTiming_MailOffPath()
+    {
+        await SeedCredentialAsync();
+        var mail = Mail();
+        mail.Clear();
+        mail.SendDelay = TimeSpan.FromMilliseconds(350);
+
+        var knownSw = System.Diagnostics.Stopwatch.StartNew();
+        using var known = await PostRequestAsync(CoreOwnerEmail);
+        knownSw.Stop();
+        var unknownSw = System.Diagnostics.Stopwatch.StartNew();
+        using var unknown = await PostRequestAsync("nobody@example.com");
+        unknownSw.Stop();
+        var lockedSw = System.Diagnostics.Stopwatch.StartNew();
+        using var locked = await PostRequestAsync(CoreOwnerEmail);
+        lockedSw.Stop();
+
+        var knownBody = await known.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, known.StatusCode);
+        Assert.Equal(known.StatusCode, unknown.StatusCode);
+        Assert.Equal(known.StatusCode, locked.StatusCode);
+        Assert.Equal(knownBody, await unknown.Content.ReadAsStringAsync());
+        Assert.Equal(knownBody, await locked.Content.ReadAsStringAsync());
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, knownBody);
+        Assert.True(knownSw.Elapsed < mail.SendDelay);
+        Assert.True(unknownSw.Elapsed < mail.SendDelay);
+        Assert.True(lockedSw.Elapsed < mail.SendDelay);
+        Assert.Empty(mail.Sent);
+
+        await mail.WaitForSentAsync(2);
+        Assert.Equal(2, mail.Sent.Count);
+        mail.SendDelay = TimeSpan.Zero;
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_Request_TwentyEventsThen429_PersistedAtomically()
+    {
+        await SeedCredentialAsync();
+        HttpResponseMessage? lastOk = null;
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            lastOk?.Dispose();
+            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.com");
+            Assert.Equal(HttpStatusCode.OK, lastOk.StatusCode);
+            Assert.DoesNotContain(
+                "Retry-After",
+                lastOk.Headers.Select(h => h.Key),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        Assert.NotNull(lastOk);
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, await lastOk.Content.ReadAsStringAsync());
+        lastOk.Dispose();
+
+        var counter = await ResetCounterAsync();
+        Assert.NotNull(counter);
+        Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
+        Assert.True(counter.IsLocked(Clock().UtcNow));
+
+        using var knownLocked = await PostRequestAsync(CoreOwnerEmail);
+        using var unknownLocked = await PostRequestAsync("nobody@example.com");
+        var knownLockedBody = await AssertThrottledAsync(knownLocked);
+        var unknownLockedBody = await AssertThrottledAsync(unknownLocked);
+        Assert.Equal(knownLockedBody, unknownLockedBody);
+        Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_SC6_F2_BadToken_TwentyThen429_PasswordRuleDoesNotCount()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        await ClearResetCountersAsync();
+
+        var tooShort = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = "short-value",
+            totp = Factor().ValidTotp
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+        Assert.Null(await ResetCounterAsync());
+
+        HttpResponseMessage? lastExpired = null;
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            lastExpired?.Dispose();
+            lastExpired = await PostConfirmAsync(new
+            {
+                token = $"bad-token-{i}",
+                newPassword = NextPassword,
+                totp = Factor().ValidTotp
+            });
+            AssertLinkExpired(lastExpired);
+        }
+
+        lastExpired!.Dispose();
+        var counter = await ResetCounterAsync();
+        Assert.NotNull(counter);
+        Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
+
+        using var throttled = await PostConfirmAsync(new
+        {
+            token = "bad-token-over",
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        await AssertThrottledAsync(throttled);
+
+        using var goodWhileLocked = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        await AssertThrottledAsync(goodWhileLocked);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+        Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+    }
+
+    [Fact]
     public void TD_ADM_052_CookieOptions_MatchRouteNote24()
     {
         var options = AdminSessionCookie.CreateOptions();
@@ -537,18 +659,17 @@ public class AdminPasswordResetTests
     private FakeAdminClock Clock()
         => _factory.Services.GetRequiredService<FakeAdminClock>();
 
-    private CapturingAdminResetIpThrottle Throttle()
-        => _factory.Services.GetRequiredService<CapturingAdminResetIpThrottle>();
-
     private HttpClient CreateClient()
         => _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
     private async Task SeedCredentialAsync()
     {
         Factor().Reset();
+        Mail().Clear();
         using var scope = _factory.Services.CreateScope();
         var hasher = scope.ServiceProvider.GetRequiredService<IAdminPasswordHasher>();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
         var existing = db.AdminCredentials.SingleOrDefault(c => c.Email == CoreOwnerEmail);
         if (existing is null)
         {
@@ -581,6 +702,7 @@ public class AdminPasswordResetTests
         Mail().Clear();
         var response = await PostRequestAsync(CoreOwnerEmail);
         response.EnsureSuccessStatusCode();
+        await Mail().WaitForSentAsync(1);
         var link = Assert.Single(Mail().Sent).TextBody;
         var hashAt = link.IndexOf("#token=", StringComparison.Ordinal);
         Assert.True(hashAt >= 0);
@@ -649,6 +771,34 @@ public class AdminPasswordResetTests
     }
 
     private sealed record IssuedAntiForgery(string Token, string CookieHeader, string SetCookie);
+
+    private async Task<AdminResetIpCounter?> ResetCounterAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        return db.AdminResetIpCounters.SingleOrDefault();
+    }
+
+    private async Task<int> ResetCounterCountAsync()
+        => (await ResetCounterAsync())?.FailureCount ?? 0;
+
+    private async Task ClearResetCountersAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<string> AssertThrottledAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.False(response.Headers.Contains("Retry-After"));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(AdminPasswordResetCopy.Throttled, body);
+        Assert.DoesNotContain("locked", body, StringComparison.OrdinalIgnoreCase);
+        return body;
+    }
 
     private static void AssertLinkExpired(HttpResponseMessage response)
     {

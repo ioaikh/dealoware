@@ -12,8 +12,11 @@ public static class AdminPasswordResetServiceExtensions
         services.AddSingleton<IAdminPasswordHasher, Pbkdf2AdminPasswordHasher>();
         services.AddSingleton<IAdminClock, SystemAdminClock>();
         services.AddSingleton<IAdminMailSender, UnconfiguredAdminMailSender>();
+        services.AddSingleton<ChannelAdminMailDispatcher>();
+        services.AddSingleton<IAdminMailDispatcher>(sp => sp.GetRequiredService<ChannelAdminMailDispatcher>());
+        services.AddHostedService(sp => sp.GetRequiredService<ChannelAdminMailDispatcher>());
         services.AddSingleton<IAdminSecondFactorVerifier, PendingStep3SecondFactorVerifier>();
-        services.AddSingleton<IAdminResetIpThrottle, PendingStep5ResetIpThrottle>();
+        services.AddScoped<IAdminResetIpThrottle, AdminResetIpThrottle>();
         return services;
     }
 }

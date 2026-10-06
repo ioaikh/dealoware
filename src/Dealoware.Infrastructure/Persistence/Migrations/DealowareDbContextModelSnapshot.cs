@@ -171,6 +171,26 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminCredentials", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminResetIpCounter", b =>
+                {
+                    b.Property<string>("IpHmac")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailureCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("WindowStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("IpHmac");
+
+                    b.ToTable("AdminResetIpCounters", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Artifacts.Artifact", b =>
                 {
                     b.Property<Guid>("Id")

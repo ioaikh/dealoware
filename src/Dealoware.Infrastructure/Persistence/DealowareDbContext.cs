@@ -51,6 +51,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminCredential> AdminCredentials => Set<AdminCredential>();
 
+    /// <summary>
+    /// A7 Step 4 / SC-6: reset IP throttle counters (atomic conditional updates).
+    /// Incremental after the frozen 15-table stamp — not a BaselineSchema table.
+    /// </summary>
+    public DbSet<AdminResetIpCounter> AdminResetIpCounters => Set<AdminResetIpCounter>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -112,5 +118,6 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminPasswordResetTokenEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminResetIpCounterEntityConfiguration());
     }
 }

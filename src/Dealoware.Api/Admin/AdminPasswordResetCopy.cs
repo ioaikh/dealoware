@@ -11,6 +11,8 @@ public static class AdminPasswordResetCopy
 
     public const string InvalidLink = "This link is no longer valid. Request a new one.";
 
+    public const string Throttled = "Too many attempts. Try again later.";
+
     public const string CompleteFailed = "We couldn't complete this reset. Check your details and try again.";
 
     public const string CompleteSucceeded =

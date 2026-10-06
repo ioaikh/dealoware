@@ -1,10 +1,16 @@
 namespace Dealoware.Domain.Admin;
 
-/// <summary>
-/// Step 5 owns the reset/bootstrap IP throttle. Step 4 records a failure
-/// so that implementation can count it. This PR ships a no-op.
-/// </summary>
+public sealed record AdminResetThrottleRecord(bool Throttled, int FailureCount);
+
 public interface IAdminResetIpThrottle
 {
-    Task RecordFailureAsync(string ipHmac, CancellationToken cancellationToken);
+    Task<bool> IsThrottledAsync(string ipHmac, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Atomically records one reset-IP event. In-lock events are not counted.
+    /// </summary>
+    Task<AdminResetThrottleRecord> RecordFailureAsync(
+        string ipHmac,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 }

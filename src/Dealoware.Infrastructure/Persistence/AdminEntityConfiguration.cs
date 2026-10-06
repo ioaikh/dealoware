@@ -130,3 +130,23 @@ public class AdminCredentialEntityConfiguration : IEntityTypeConfiguration<Admin
             .IsRequired();
     }
 }
+
+public class AdminResetIpCounterEntityConfiguration : IEntityTypeConfiguration<AdminResetIpCounter>
+{
+    public void Configure(EntityTypeBuilder<AdminResetIpCounter> builder)
+    {
+        builder.ToTable("AdminResetIpCounters");
+
+        builder.HasKey(c => c.IpHmac);
+
+        builder.Property(c => c.IpHmac)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.Property(c => c.WindowStartedAt)
+            .IsRequired();
+
+        builder.Property(c => c.FailureCount)
+            .IsRequired();
+    }
+}
