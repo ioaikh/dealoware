@@ -7,12 +7,20 @@ using Microsoft.AspNetCore.Http;
 namespace Dealoware.Api.Tests;
 
 /// <summary>
-/// Test-only GET /admin/api/audit stub. Step 8 owns the real endpoint.
-/// Matches the locked read contract: filters (action, entityType, from, to),
-/// paging (offset/limit default 50 max 200), list fields, and detail snapshots.
+/// Test-only GET /admin/api/audit stub bound to Step 8 PR #32 @ db22afba.
+/// Drop this stub after #32 merges: rebase onto main and use the real endpoint.
+/// GET /admin/api/audit/{id} is a viewer-only adapter for S-D2; #32 is list-only
+/// and already includes snapshots on each list item.
 /// </summary>
 public static class AdminAuditApiStub
 {
+    public const int DefaultLimit = 50;
+    public const int MaxLimit = 200;
+    public const int IpHmacPrefixLength = 12;
+    public const int MaxQLength = 100;
+    public const int MaxFilterLength = 200;
+    public const int MaxActionLength = 64;
+
     public static readonly Guid EditId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid DeleteId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     public static readonly Guid AuthFailId = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -23,11 +31,30 @@ public static class AdminAuditApiStub
 
     public const string Actor = "io@aiknowhow.com";
 
+    private static readonly HashSet<string> SortAllowlist = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "timestamp",
+        "-timestamp",
+        "action",
+        "-action",
+        "actorEmail",
+        "-actorEmail",
+        "entityType",
+        "-entityType"
+    };
+
     public static IReadOnlyList<StubEntry> Seed { get; } = CreateSeed();
 
     public static async Task WriteAsync(HttpContext context)
     {
         var path = context.Request.Path.Value ?? "";
+        if (IsMutation(context.Request.Method)
+            && path.Equals("/admin/api/audit", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+
         if (HttpMethods.IsGet(context.Request.Method)
             && path.Equals("/admin/api/audit", StringComparison.OrdinalIgnoreCase))
         {
@@ -46,10 +73,15 @@ public static class AdminAuditApiStub
         context.Response.StatusCode = StatusCodes.Status404NotFound;
     }
 
+    private static bool IsMutation(string method) =>
+        HttpMethods.IsPost(method)
+        || HttpMethods.IsPut(method)
+        || HttpMethods.IsPatch(method)
+        || HttpMethods.IsDelete(method);
+
     private static async Task WriteListAsync(HttpContext context)
     {
-        var query = context.Request.Query;
-        if (!TryParsePaging(query, out var offset, out var limit, out var badRequest))
+        if (!TryParseQuery(context.Request.Query, out var query, out var badRequest))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             context.Response.ContentType = "application/json";
@@ -58,43 +90,17 @@ public static class AdminAuditApiStub
             return;
         }
 
-        var action = query["action"].ToString();
-        var entityType = query["entityType"].ToString();
-        var actorEmail = query["actorEmail"].ToString();
-        var reasonClass = query["reasonClass"].ToString();
-        DateTimeOffset? from = TryParseDate(query["from"].ToString());
-        DateTimeOffset? to = TryParseDate(query["to"].ToString());
-
-        var filtered = Seed.Where(entry =>
-        {
-            if (!string.IsNullOrWhiteSpace(action)
-                && !string.Equals(entry.Action, action, StringComparison.Ordinal))
-                return false;
-            if (!string.IsNullOrWhiteSpace(entityType)
-                && !string.Equals(entry.EntityType, entityType, StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (!string.IsNullOrWhiteSpace(actorEmail)
-                && !entry.Actor.Contains(actorEmail, StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (!string.IsNullOrWhiteSpace(reasonClass)
-                && !string.Equals(entry.ReasonClass ?? "", reasonClass, StringComparison.Ordinal))
-                return false;
-            if (from is { } fromValue && entry.Timestamp < fromValue)
-                return false;
-            if (to is { } toValue && entry.Timestamp > toValue)
-                return false;
-            return true;
-        }).OrderByDescending(entry => entry.Timestamp).ThenBy(entry => entry.Id).ToList();
-
-        var page = filtered.Skip(offset).Take(limit).Select(ToListItem).ToList();
+        var filtered = ApplyFilters(Seed, query);
+        var sorted = ApplySort(filtered, query.Sort);
+        var page = sorted.Skip(query.Offset).Take(query.Limit).Select(ToReadModel).ToList();
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(JsonSerializer.Serialize(new
         {
-            offset,
-            limit,
+            items = page,
             total = filtered.Count,
-            items = page
+            offset = query.Offset,
+            limit = query.Limit
         }));
     }
 
@@ -111,48 +117,165 @@ public static class AdminAuditApiStub
 
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(ToDetailItem(entry)));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(ToReadModel(entry)));
     }
 
-    private static bool TryParsePaging(IQueryCollection query, out int offset, out int limit, out bool badRequest)
+    private static bool TryParseQuery(IQueryCollection query, out ParsedQuery parsed, out bool badRequest)
     {
-        offset = 0;
-        limit = 50;
+        parsed = new ParsedQuery(0, DefaultLimit, "-timestamp", null, null, null, null, null, null, null, null, null);
         badRequest = false;
-        var offsetRaw = query["offset"].FirstOrDefault();
-        var limitRaw = query["limit"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(offsetRaw) && !int.TryParse(offsetRaw, out offset))
+
+        if (!TryParseNonNegativeInt(query, "offset", 0, out var offset))
         {
             badRequest = true;
             return false;
         }
-        if (!string.IsNullOrWhiteSpace(limitRaw) && !int.TryParse(limitRaw, out limit))
+
+        if (!TryParseLimit(query, out var limit))
         {
             badRequest = true;
             return false;
         }
-        if (offset < 0 || limit < 0)
+
+        var sort = query["sort"].ToString();
+        if (string.IsNullOrWhiteSpace(sort))
+            sort = "-timestamp";
+        if (sort.Length > MaxFilterLength || !SortAllowlist.Contains(sort))
         {
             badRequest = true;
             return false;
         }
-        if (limit == 0)
-            limit = 50;
-        if (limit > 200)
-            limit = 200;
+
+        if (!TryOptionalCapped(query, "action", MaxActionLength, out var action)
+            || !TryOptionalCapped(query, "actorEmail", MaxFilterLength, out var actorEmail)
+            || !TryOptionalCapped(query, "entityType", MaxActionLength, out var entityType)
+            || !TryOptionalCapped(query, "reasonClass", MaxActionLength, out var reasonClass)
+            || !TryOptionalCapped(query, "q", MaxQLength, out var q)
+            || !TryOptionalGuid(query, "entityId", out var entityId)
+            || !TryOptionalGuid(query, "correlationId", out var correlationId)
+            || !TryOptionalTimestamp(query, "from", out var from)
+            || !TryOptionalTimestamp(query, "to", out var to))
+        {
+            badRequest = true;
+            return false;
+        }
+
+        parsed = new ParsedQuery(
+            offset, limit, sort, action, actorEmail, entityType, entityId,
+            reasonClass, correlationId, from, to, q);
         return true;
     }
 
-    private static DateTimeOffset? TryParseDate(string? raw)
+    private static bool TryParseLimit(IQueryCollection query, out int limit)
     {
+        limit = DefaultLimit;
+        var raw = query["limit"].ToString();
         if (string.IsNullOrWhiteSpace(raw))
-            return null;
-        return DateTimeOffset.TryParse(raw, out var value) ? value : null;
+            return true;
+        if (!int.TryParse(raw, out var parsed) || parsed < 0)
+            return false;
+        limit = Math.Min(parsed, MaxLimit);
+        return true;
     }
 
-    private static object ToListItem(StubEntry entry) => ToReadModel(entry);
+    private static bool TryParseNonNegativeInt(IQueryCollection query, string name, int optionalDefault, out int value)
+    {
+        value = optionalDefault;
+        var raw = query[name].ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return true;
+        if (!int.TryParse(raw, out var parsed) || parsed < 0)
+            return false;
+        value = parsed;
+        return true;
+    }
 
-    private static object ToDetailItem(StubEntry entry) => ToReadModel(entry);
+    private static bool TryOptionalCapped(IQueryCollection query, string name, int maxLength, out string? value)
+    {
+        value = null;
+        var raw = query[name].ToString();
+        if (string.IsNullOrEmpty(raw))
+            return true;
+        if (raw.Length > maxLength)
+            return false;
+        value = raw;
+        return true;
+    }
+
+    private static bool TryOptionalGuid(IQueryCollection query, string name, out Guid? value)
+    {
+        value = null;
+        var raw = query[name].ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return true;
+        if (!Guid.TryParse(raw, out var parsed))
+            return false;
+        value = parsed;
+        return true;
+    }
+
+    private static bool TryOptionalTimestamp(IQueryCollection query, string name, out DateTimeOffset? value)
+    {
+        value = null;
+        var raw = query[name].ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return true;
+        if (raw.Length > MaxFilterLength || !DateTimeOffset.TryParse(raw, out var parsed))
+            return false;
+        value = parsed.ToUniversalTime();
+        return true;
+    }
+
+    private static List<StubEntry> ApplyFilters(IEnumerable<StubEntry> source, ParsedQuery query)
+    {
+        return source.Where(entry =>
+        {
+            if (!string.IsNullOrEmpty(query.Action) && entry.Action != query.Action)
+                return false;
+            if (!string.IsNullOrEmpty(query.ActorEmail)
+                && !entry.Actor.Contains(query.ActorEmail, StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (!string.IsNullOrEmpty(query.EntityType) && entry.EntityType != query.EntityType)
+                return false;
+            if (query.EntityId is { } entityId && entry.EntityId != entityId)
+                return false;
+            if (!string.IsNullOrEmpty(query.ReasonClass) && entry.ReasonClass != query.ReasonClass)
+                return false;
+            if (query.CorrelationId is { } correlationId && entry.CorrelationId != correlationId)
+                return false;
+            if (query.From is { } from && entry.Timestamp < from)
+                return false;
+            if (query.To is { } to && entry.Timestamp > to)
+                return false;
+            if (!string.IsNullOrEmpty(query.Q))
+            {
+                var q = query.Q;
+                var hit = entry.Action.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || entry.Actor.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (entry.EntityType is not null
+                        && entry.EntityType.Contains(q, StringComparison.OrdinalIgnoreCase));
+                if (!hit)
+                    return false;
+            }
+
+            return true;
+        }).ToList();
+    }
+
+    private static IEnumerable<StubEntry> ApplySort(IEnumerable<StubEntry> source, string sort)
+    {
+        return sort.ToLowerInvariant() switch
+        {
+            "timestamp" => source.OrderBy(e => e.Timestamp).ThenBy(e => e.Id),
+            "action" => source.OrderBy(e => e.Action).ThenBy(e => e.Id),
+            "-action" => source.OrderByDescending(e => e.Action).ThenBy(e => e.Id),
+            "actoremail" => source.OrderBy(e => e.Actor).ThenBy(e => e.Id),
+            "-actoremail" => source.OrderByDescending(e => e.Actor).ThenBy(e => e.Id),
+            "entitytype" => source.OrderBy(e => e.EntityType).ThenBy(e => e.Id),
+            "-entitytype" => source.OrderByDescending(e => e.EntityType).ThenBy(e => e.Id),
+            _ => source.OrderByDescending(e => e.Timestamp).ThenBy(e => e.Id)
+        };
+    }
 
     private static object ToReadModel(StubEntry entry) => new
     {
@@ -160,7 +283,7 @@ public static class AdminAuditApiStub
         timestamp = entry.Timestamp,
         action = entry.Action,
         actorEmail = entry.Actor,
-        ipHmacPrefix = entry.IpHmacPrefix,
+        ipHmacPrefix = Prefix(entry.IpHmacPrefix),
         entityType = entry.EntityType,
         entityId = entry.EntityId,
         reasonClass = entry.ReasonClass,
@@ -168,6 +291,15 @@ public static class AdminAuditApiStub
         beforeSnapshot = SerializeSnapshot(entry.Before),
         afterSnapshot = SerializeSnapshot(entry.After)
     };
+
+    private static string Prefix(string ipHmac)
+    {
+        if (string.IsNullOrEmpty(ipHmac))
+            return string.Empty;
+        return ipHmac.Length <= IpHmacPrefixLength
+            ? ipHmac
+            : ipHmac[..IpHmacPrefixLength];
+    }
 
     private static readonly HashSet<string> SecretKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -288,6 +420,20 @@ public static class AdminAuditApiStub
         Dictionary<string, string?>? Before,
         Dictionary<string, string?>? After,
         Guid? CorrelationId = null);
+
+    private sealed record ParsedQuery(
+        int Offset,
+        int Limit,
+        string Sort,
+        string? Action,
+        string? ActorEmail,
+        string? EntityType,
+        Guid? EntityId,
+        string? ReasonClass,
+        Guid? CorrelationId,
+        DateTimeOffset? From,
+        DateTimeOffset? To,
+        string? Q);
 }
 
 public sealed class AdminAuditApiStubStartupFilter : IStartupFilter
@@ -302,10 +448,17 @@ public sealed class AdminAuditApiStubStartupFilter : IStartupFilter
                 await using var buffer = new MemoryStream();
                 context.Response.Body = buffer;
                 await nxt();
-                var isAuditRead = HttpMethods.IsGet(context.Request.Method)
-                    && context.Request.Path.StartsWithSegments("/admin/api/audit");
+                var isAuditApi = context.Request.Path.StartsWithSegments("/admin/api/audit");
                 var isCoreOwner = context.User.IsInRole(AdminSessionMiddleware.CoreOwnerRole);
-                if (isAuditRead && isCoreOwner && context.Response.StatusCode == StatusCodes.Status404NotFound)
+                var isGet = HttpMethods.IsGet(context.Request.Method);
+                var isMutate = HttpMethods.IsPost(context.Request.Method)
+                    || HttpMethods.IsPut(context.Request.Method)
+                    || HttpMethods.IsPatch(context.Request.Method)
+                    || HttpMethods.IsDelete(context.Request.Method);
+                var isListPath = context.Request.Path.Equals("/admin/api/audit", StringComparison.OrdinalIgnoreCase);
+                if (isAuditApi && isCoreOwner
+                    && ((isGet && context.Response.StatusCode == StatusCodes.Status404NotFound)
+                        || (isMutate && isListPath)))
                 {
                     context.Response.Body = original;
                     context.Response.Headers.ContentLength = null;

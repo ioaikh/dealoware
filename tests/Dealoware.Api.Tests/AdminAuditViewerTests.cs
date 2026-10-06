@@ -7,7 +7,7 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// Step 15 audit viewer: host/session deny, no-data HTML, no mutate, no secrets/IPs.
-/// GET /admin/api/audit is a test-host stub until Step 8 merges.
+/// GET /admin/api/audit is a test-host stub bound to Step 8 PR #32 @ db22afba.
 /// </summary>
 [Collection("AdminUiWebAppTests")]
 public class AdminAuditViewerTests
@@ -114,11 +114,7 @@ public class AdminAuditViewerTests
             mutate.Headers.Host = AdminHost;
             mutate.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={id:D}");
             using var mutateResponse = await client.SendAsync(mutate);
-            Assert.True(
-                mutateResponse.StatusCode is HttpStatusCode.NotFound
-                    or HttpStatusCode.MethodNotAllowed
-                    or HttpStatusCode.Unauthorized,
-                $"{method} /admin/api/audit was {mutateResponse.StatusCode}");
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, mutateResponse.StatusCode);
         }
 
         var js = AdminAuditViewerEndpoints.LoadUiResource("audit.js");
@@ -158,7 +154,15 @@ public class AdminAuditViewerTests
         Assert.Equal("entity_edit", item.GetProperty("action").GetString());
         Assert.Equal(AdminAuditApiStub.Actor, item.GetProperty("actorEmail").GetString());
         Assert.Equal("a1b2c3d4e5f6", item.GetProperty("ipHmacPrefix").GetString());
+        Assert.True(item.GetProperty("ipHmacPrefix").GetString()!.Length <= AdminAuditApiStub.IpHmacPrefixLength);
         Assert.False(item.TryGetProperty("actor", out _));
+        Assert.False(item.TryGetProperty("ip", out _));
+        Assert.False(item.TryGetProperty("rawIp", out _));
+        Assert.False(item.TryGetProperty("ipHmac", out _));
+        Assert.Equal(JsonValueKind.Array, listJson.GetProperty("items").ValueKind);
+        Assert.True(listJson.TryGetProperty("total", out _));
+        Assert.True(listJson.TryGetProperty("offset", out _));
+        Assert.True(listJson.TryGetProperty("limit", out _));
 
         var js = AdminAuditViewerEndpoints.LoadUiResource("audit.js");
         Assert.Contains("SECRET_KEYS", js);
@@ -177,7 +181,7 @@ public class AdminAuditViewerTests
     }
 
     [Fact]
-    public async Task TD_ADM_140_AuditApiStub_EmptyFilter_And_PagingContract()
+    public async Task TD_ADM_140_AuditApiStub_MatchesStep8PagingContract()
     {
         var id = await _factory.SeedCoreOwnerSessionAsync();
         var client = _factory.CreateAdminClient();
@@ -190,6 +194,15 @@ public class AdminAuditViewerTests
         Assert.Equal(0, emptyPayload.GetProperty("total").GetInt32());
         Assert.Equal(JsonValueKind.Array, emptyPayload.GetProperty("items").ValueKind);
         Assert.Equal(0, emptyPayload.GetProperty("items").GetArrayLength());
+        Assert.Equal(0, emptyPayload.GetProperty("offset").GetInt32());
+        Assert.Equal(AdminAuditApiStub.DefaultLimit, emptyPayload.GetProperty("limit").GetInt32());
+
+        using var defaults = await client.SendAsync(
+            AdminUiWebApplicationFactory.AdminGet("/admin/api/audit", AdminHost, id));
+        var defaultPayload = await defaults.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, defaultPayload.GetProperty("offset").GetInt32());
+        Assert.Equal(AdminAuditApiStub.DefaultLimit, defaultPayload.GetProperty("limit").GetInt32());
+        Assert.Equal(AdminAuditApiStub.DefaultLimit, defaultPayload.GetProperty("items").GetArrayLength());
 
         using var page = await client.SendAsync(
             AdminUiWebApplicationFactory.AdminGet(
@@ -207,7 +220,20 @@ public class AdminAuditViewerTests
                 AdminHost,
                 id));
         var clampedPayload = await clamped.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(200, clampedPayload.GetProperty("limit").GetInt32());
+        Assert.Equal(AdminAuditApiStub.MaxLimit, clampedPayload.GetProperty("limit").GetInt32());
+
+        using var negative = await client.SendAsync(
+            AdminUiWebApplicationFactory.AdminGet("/admin/api/audit?limit=-1", AdminHost, id));
+        Assert.Equal(HttpStatusCode.BadRequest, negative.StatusCode);
+        Assert.Contains("\"error\":\"Bad request\"", await negative.Content.ReadAsStringAsync());
+
+        using var badSort = await client.SendAsync(
+            AdminUiWebApplicationFactory.AdminGet("/admin/api/audit?sort=ip", AdminHost, id));
+        Assert.Equal(HttpStatusCode.BadRequest, badSort.StatusCode);
+
+        using var includeDeleted = await client.SendAsync(
+            AdminUiWebApplicationFactory.AdminGet("/admin/api/audit?includeDeleted=true", AdminHost, id));
+        Assert.Equal(HttpStatusCode.OK, includeDeleted.StatusCode);
     }
 
     [Fact]

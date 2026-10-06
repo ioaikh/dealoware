@@ -5,6 +5,7 @@
     var API_PATH = "/admin/api/audit";
     var DEFAULT_LIMIT = 50;
     var MAX_LIMIT = 200;
+    // Step 8 PR #32 @ db22afba: items, total, offset, limit, ipHmacPrefix only.
     var SECRET_KEYS = {
         password: true,
         passwordhash: true,

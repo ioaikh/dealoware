@@ -11,8 +11,9 @@ using Microsoft.Extensions.Hosting;
 namespace Dealoware.Api.Tests;
 
 /// <summary>
-/// Admin viewer test host: real UI endpoints plus a GET /admin/api/audit stub.
-/// The stub is swapped for Step 8's real endpoint after that PR merges.
+/// Admin viewer test host: real UI endpoints plus a GET /admin/api/audit stub
+/// bound to Step 8 PR #32 @ db22afba. After #32 merges, rebase onto main and
+/// drop the stub.
 /// </summary>
 public class AdminUiWebApplicationFactory : IsolatedWebApplicationFactory
 {

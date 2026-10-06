@@ -39,6 +39,15 @@ public class AdminAuditOutPackTests
         Assert.Contains("/admin/audit", detail);
         Assert.DoesNotContain("href=\"/audit\"", list);
         Assert.DoesNotContain("href=\"/audit\"", detail);
+
+        var js = files[3];
+        Assert.Contains("payload.items", js);
+        Assert.Contains("payload.total", js);
+        Assert.Contains("payload.offset", js);
+        Assert.Contains("payload.limit", js);
+        Assert.Contains("item.ipHmacPrefix", js);
+        Assert.DoesNotContain("item.rawIp", js);
+        Assert.DoesNotContain("item.ipHmac;", js);
     }
 
     [Fact]

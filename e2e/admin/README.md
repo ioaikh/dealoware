@@ -27,7 +27,9 @@ Every Playwright UI spec runs axe and writes a JSON file. Any violation fails th
 
 The local host is `http://127.0.0.1:4173` with `Host: admin.core.dealoware.com`. Specs never call `https://admin.core.dealoware.com`.
 
-`GET /admin/api/audit` is a test-host stub until Step 8 merges. After that PR lands, rebase and swap the stub for the real endpoint.
+`GET /admin/api/audit` is a test-host stub bound to Step 8 PR #32 @ `db22afba`
+(`items`, `total`, `offset`, `limit` default 50 / max 200, `ipHmacPrefix` only,
+no mutating controls). After #32 merges, rebase onto main and drop the stub.
 
 ## CI Behavior
 
