@@ -4,7 +4,8 @@ public interface IAdminBootstrapService
 {
     /// <summary>
     /// Mints a single-use bootstrap token (24h max), stores only the hash,
-    /// and sends the /admin/setup/password link through <see cref="IAdminMailSender"/>.
+    /// and sends the /admin/bootstrap#token link through <see cref="IAdminMailSender"/>.
+    /// The raw token travels only in the URL fragment.
     /// </summary>
     Task<AdminBootstrapIssueResult> IssueLinkAsync(
         string? ipHmac,
@@ -40,4 +41,6 @@ public abstract record AdminBootstrapSetPasswordResult
     public sealed record PasswordRejected(string Error) : AdminBootstrapSetPasswordResult;
 
     public sealed record AlreadySet : AdminBootstrapSetPasswordResult;
+
+    public sealed record Throttled : AdminBootstrapSetPasswordResult;
 }

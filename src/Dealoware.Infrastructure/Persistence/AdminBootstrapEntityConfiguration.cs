@@ -40,3 +40,22 @@ public sealed class AdminBootstrapTokenEntityConfiguration : IEntityTypeConfigur
         builder.HasIndex(t => t.ExpiresAt);
     }
 }
+
+public sealed class AdminBootstrapIpThrottleEntityConfiguration : IEntityTypeConfiguration<AdminBootstrapIpThrottle>
+{
+    public void Configure(EntityTypeBuilder<AdminBootstrapIpThrottle> builder)
+    {
+        builder.ToTable("AdminBootstrapIpThrottles");
+        builder.HasKey(t => t.Id);
+        builder.Property(t => t.IpKey)
+            .IsRequired()
+            .HasMaxLength(128);
+        builder.HasIndex(t => t.IpKey)
+            .IsUnique();
+        builder.Property(t => t.WindowStartedAt)
+            .IsRequired();
+        builder.Property(t => t.AttemptCount)
+            .IsRequired();
+        builder.Property(t => t.LockedUntil);
+    }
+}

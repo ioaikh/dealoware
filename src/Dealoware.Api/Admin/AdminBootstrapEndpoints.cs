@@ -7,6 +7,8 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Step 2 bootstrap password-set API and signed-out landings.
 /// Pages are Step 14; this file only serves the JSON the screens call.
+/// F2 (r5 sha c5e9d232): GET /admin/bootstrap takes no token and has no
+/// side effects. The token is checked on POST only.
 /// </summary>
 public static class AdminBootstrapEndpoints
 {
@@ -67,12 +69,21 @@ public static class AdminBootstrapEndpoints
 
     private static IResult InspectBootstrap(HttpContext context)
     {
+        // F2: no token query, no inspect, no consume.
         var antiForgery = AdminAntiForgery.Issue(context);
-        return Results.Json(new { valid = true, antiForgeryToken = antiForgery });
+        return Results.Json(new { antiForgeryToken = antiForgery });
     }
 
     private static IResult LinkExpired()
         => Results.Json(new { error = AdminAuthMessages.InvalidOrExpiredLink });
+
+    private static IResult GoToLinkExpired()
+        => Results.Redirect(AdminSignedOutAccess.LinkExpired);
+
+    private static IResult Throttled()
+        => Results.Json(
+            new { error = AdminAuthMessages.InvalidOrExpiredLink },
+            statusCode: StatusCodes.Status429TooManyRequests);
 
     private static async Task<IResult> SetBootstrapPassword(
         HttpContext context,
@@ -82,25 +93,13 @@ public static class AdminBootstrapEndpoints
     {
         if (!AdminAntiForgery.Validate(context, body.AntiForgeryToken))
         {
-            return AdminDeny.UnauthorizedResult();
+            return GoToLinkExpired();
         }
 
-        var remoteIp = context.Connection.RemoteIpAddress?.ToString();
-        if (string.IsNullOrWhiteSpace(remoteIp))
-        {
-            remoteIp = "0.0.0.0";
-        }
-
+        var remoteIp = AdminTrustedClientIp.Get(context);
         var ipHmac = ipHasher.Hash(remoteIp);
-        var token = body.Token;
-        if (string.IsNullOrWhiteSpace(token)
-            && context.Request.Query.TryGetValue("token", out var queryToken))
-        {
-            token = queryToken.ToString();
-        }
-
         var result = await bootstrap.SetPasswordAsync(
-            token,
+            body.Token,
             body.Password,
             body.TurnstileToken,
             remoteIp,
@@ -116,7 +115,8 @@ public static class AdminBootstrapEndpoints
             AdminBootstrapSetPasswordResult.PasswordRejected rejected => Results.Json(
                 new { error = rejected.Error },
                 statusCode: StatusCodes.Status400BadRequest),
-            _ => AdminDeny.UnauthorizedResult()
+            AdminBootstrapSetPasswordResult.Throttled => Throttled(),
+            _ => GoToLinkExpired()
         };
     }
 

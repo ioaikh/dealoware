@@ -60,10 +60,32 @@ public class AdminBootstrapTokens : Migration
             name: "IX_AdminBootstrapTokens_ExpiresAt",
             table: "AdminBootstrapTokens",
             column: "ExpiresAt");
+
+        migrationBuilder.CreateTable(
+            name: "AdminBootstrapIpThrottles",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(nullable: false),
+                IpKey = table.Column<string>(maxLength: 128, nullable: false),
+                WindowStartedAt = table.Column<DateTimeOffset>(nullable: false),
+                AttemptCount = table.Column<int>(nullable: false),
+                LockedUntil = table.Column<DateTimeOffset>(nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_AdminBootstrapIpThrottles", x => x.Id);
+            });
+
+        migrationBuilder.CreateIndex(
+            name: "IX_AdminBootstrapIpThrottles_IpKey",
+            table: "AdminBootstrapIpThrottles",
+            column: "IpKey",
+            unique: true);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.DropTable(name: "AdminBootstrapIpThrottles");
         migrationBuilder.DropTable(name: "AdminBootstrapTokens");
         migrationBuilder.DropTable(name: "AdminCredentials");
     }

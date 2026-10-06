@@ -4,7 +4,7 @@ using System.Text;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// r3 §5 / §10 C6 return-path allowlist. Failures resolve to /admin/.
+/// r5 sha c5e9d232 C6 return-path allowlist. Failures resolve to /admin/.
 /// </summary>
 public static class AdminReturnPath
 {

@@ -349,6 +349,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(AppliedAfterMigrateIds, applied);
             Assert.Equal(0, await db.AdminCredentials.CountAsync());
             Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapIpThrottles.CountAsync());
         }
     }
 
@@ -397,6 +398,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(FrozenStampMigrationIds, applied.Take(2).ToArray());
             Assert.Equal(0, await db.AdminCredentials.CountAsync());
             Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapIpThrottles.CountAsync());
         }
     }
 
@@ -586,6 +588,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(AppliedAfterMigrateIds, applied);
             Assert.Equal(0, await db.AdminCredentials.CountAsync());
             Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapIpThrottles.CountAsync());
         }
     }
 

@@ -8,8 +8,9 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Fail-closed session gate for all /admin routes.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
-/// Signed-out exemptions are the exact path+method pairs in route-prefix note r2 §2.2
-/// that this step owns, plus /admin/auth/ static files (§2.3).
+/// Signed-out exemptions are the exact path+method pairs this step owns
+/// (route-prefix note r5 sha c5e9d232; r3 and r4 VOID). F2: GET
+/// /admin/bootstrap takes no token.
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -27,7 +28,6 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
-        IAdminBootstrapService bootstrap,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
@@ -36,7 +36,7 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
-        if (await IsSignedOutExemptAsync(context, bootstrap))
+        if (IsSignedOutExempt(context))
         {
             await _next(context);
             return;
@@ -85,32 +85,14 @@ public sealed class AdminSessionMiddleware
         await _next(context);
     }
 
-    private static async Task<bool> IsSignedOutExemptAsync(HttpContext context, IAdminBootstrapService bootstrap)
+    private static bool IsSignedOutExempt(HttpContext context)
     {
         if (!AdminPathCanonicalizer.TryCanonicalize(context, out var canonical))
         {
             return false;
         }
 
-        var method = context.Request.Method;
-
-        if (HttpMethods.IsGet(method) && AdminSignedOutAccess.IsAuthStatic(canonical))
-        {
-            return true;
-        }
-
-        if (AdminSignedOutAccess.IsLinkExpiredGet(canonical, method))
-        {
-            return true;
-        }
-
-        if (AdminSignedOutAccess.IsBootstrapPage(canonical, method)
-            || AdminSignedOutAccess.IsBootstrapApiPost(canonical, method))
-        {
-            return await AdminSignedOutAccess.HasUsableBootstrapTokenAsync(context, bootstrap);
-        }
-
-        return false;
+        return AdminSignedOutAccess.IsOwnedSignedOutPair(canonical, context.Request.Method);
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)

@@ -5,7 +5,6 @@ using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
@@ -15,6 +14,7 @@ public class AdminBootstrapTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
     private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string TrustedClient = "203.0.113.10";
 
     private readonly BootstrapWebApplicationFactory _factory;
 
@@ -29,6 +29,7 @@ public class AdminBootstrapTests
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminCredentials.RemoveRange(db.AdminCredentials);
         db.AdminBootstrapTokens.RemoveRange(db.AdminBootstrapTokens);
+        db.AdminBootstrapIpThrottles.RemoveRange(db.AdminBootstrapIpThrottles);
         db.AdminAuditLog.RemoveRange(db.AdminAuditLog);
         await db.SaveChangesAsync();
         _factory.Mail.Sent.Clear();
@@ -39,7 +40,8 @@ public class AdminBootstrapTests
     private HttpClient CreateClient()
         => _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
-            HandleCookies = false
+            HandleCookies = false,
+            AllowAutoRedirect = false
         });
 
     private static string NewPassword()
@@ -57,9 +59,11 @@ public class AdminBootstrapTests
     private static string TokenFromLink(string link)
     {
         var uri = new Uri(link);
-        Assert.StartsWith("https://admin.core.dealoware.com/admin/bootstrap", uri.GetLeftPart(UriPartial.Path));
-        var query = QueryHelpers.ParseQuery(uri.Query);
-        var token = query["token"].ToString();
+        Assert.Equal("https://admin.core.dealoware.com/admin/bootstrap", uri.GetLeftPart(UriPartial.Path));
+        Assert.True(string.IsNullOrEmpty(uri.Query));
+        Assert.DoesNotContain("token=", uri.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrEmpty(uri.Fragment));
+        var token = Uri.UnescapeDataString(uri.Fragment.TrimStart('#'));
         Assert.False(string.IsNullOrWhiteSpace(token));
         return token;
     }
@@ -67,15 +71,20 @@ public class AdminBootstrapTests
     private async Task<(string Token, string AntiForgery)> IssueReadyAsync(HttpClient client)
     {
         var token = await IssueTokenAsync();
-        using var get = await client.SendAsync(AdminRequest(
-            HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
+        var af = await IssueAntiForgeryAsync(client);
+        return (token, af);
+    }
+
+    private static async Task<string> IssueAntiForgeryAsync(HttpClient client)
+    {
+        using var get = await client.SendAsync(AdminRequest(HttpMethod.Get, AdminSignedOutAccess.BootstrapPage));
         var inspectBody = await get.Content.ReadAsStringAsync();
         Assert.True(get.StatusCode == HttpStatusCode.OK, inspectBody);
         var json = JsonSerializer.Deserialize<JsonElement>(inspectBody)!;
         var af = json.GetProperty("antiForgeryToken").GetString();
         Assert.False(string.IsNullOrEmpty(af));
-        return (token, af!);
+        Assert.False(json.TryGetProperty("token", out _));
+        return af!;
     }
 
     private static HttpRequestMessage AdminRequest(
@@ -83,11 +92,16 @@ public class AdminBootstrapTests
         string path,
         object? body = null,
         string host = AdminHost,
-        string? antiForgery = null)
+        string? antiForgery = null,
+        string? forwardedFor = TrustedClient)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = host;
-        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.10");
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        }
+
         if (antiForgery is not null)
         {
             request.Headers.TryAddWithoutValidation(AdminAntiForgery.HeaderName, antiForgery);
@@ -109,6 +123,21 @@ public class AdminBootstrapTests
         Assert.Contains("\"error\":\"Unauthorized\"", body);
         Assert.DoesNotContain(CoreOwnerEmail, body);
         Assert.DoesNotContain("expired", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("used", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TOTP", body, StringComparison.OrdinalIgnoreCase);
+        return body;
+    }
+
+    private static async Task<string> AssertGoesToLinkExpired(HttpResponseMessage response)
+    {
+        Assert.True(
+            response.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod or HttpStatusCode.Found,
+            $"expected redirect to link-expired, got {(int)response.StatusCode}");
+        var location = response.Headers.Location?.ToString();
+        Assert.Contains(AdminSignedOutAccess.LinkExpired, location);
+        Assert.DoesNotContain("token=", location, StringComparison.OrdinalIgnoreCase);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(CoreOwnerEmail, body);
         Assert.DoesNotContain("used", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("TOTP", body, StringComparison.OrdinalIgnoreCase);
         return body;
@@ -137,7 +166,7 @@ public class AdminBootstrapTests
             AdminSignedOutAccess.BootstrapApi,
             new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
             antiForgery: af));
-        var reuseBody = await AssertGenericUnauthorized(reuse);
+        await AssertGoesToLinkExpired(reuse);
 
         var expiredToken = await IssueFreshTokenAfterResetAsync();
         _factory.Clock.UtcNow = _factory.Clock.UtcNow.AddHours(24).AddMinutes(1);
@@ -146,18 +175,17 @@ public class AdminBootstrapTests
             AdminSignedOutAccess.BootstrapApi,
             new { token = expiredToken, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
             antiForgery: af));
-        var expiredBody = await AssertGenericUnauthorized(expired);
+        await AssertGoesToLinkExpired(expired);
 
         using var random = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
             new { token = "truncated-or-random", password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
             antiForgery: af));
-        var randomBody = await AssertGenericUnauthorized(random);
+        await AssertGoesToLinkExpired(random);
 
-        Assert.Equal(reuseBody, expiredBody);
-        Assert.Equal(expiredBody, randomBody);
         Assert.DoesNotContain("password", _factory.Mail.LastTextBody!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("?token=", _factory.Mail.LastTextBody!, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string> IssueFreshTokenAfterResetAsync()
@@ -170,6 +198,44 @@ public class AdminBootstrapTests
         var issued = await bootstrap.IssueLinkAsync("testhmac");
         Assert.True(issued.Sent);
         return TokenFromLink(_factory.Mail.LastTextBody!);
+    }
+
+    [Fact]
+    public async Task F2_GetBootstrap_TakesNoToken_TokenCheckedOnPostOnly()
+    {
+        await ResetAsync();
+        var client = CreateClient();
+        var token = await IssueTokenAsync();
+
+        using var get = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        var json = await get.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(json.TryGetProperty("token", out _));
+        Assert.False(string.IsNullOrEmpty(json.GetProperty("antiForgeryToken").GetString()));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.All(db.AdminBootstrapTokens.ToList(), t => Assert.Null(t.ConsumedAt));
+            Assert.Empty(db.AdminBootstrapIpThrottles.ToList());
+        }
+
+        var af = json.GetProperty("antiForgeryToken").GetString();
+        using var queryOnlyPost = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            $"{AdminSignedOutAccess.BootstrapApi}?token={Uri.EscapeDataString(token)}",
+            new { password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        await AssertGoesToLinkExpired(queryOnlyPost);
+
+        using var bodyPost = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        Assert.Equal(HttpStatusCode.OK, bodyPost.StatusCode);
     }
 
     [Fact]
@@ -208,10 +274,7 @@ public class AdminBootstrapTests
         }
 
         var ruleRejectToken = await IssueFreshTokenAfterResetAsync();
-        using var ruleGet = await client.SendAsync(AdminRequest(
-            HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(ruleRejectToken)}"));
-        var ruleAf = (await ruleGet.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("antiForgeryToken").GetString();
+        var ruleAf = await IssueAntiForgeryAsync(client);
         using var tooShort = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
@@ -222,8 +285,10 @@ public class AdminBootstrapTests
         Assert.Contains(AdminAuthMessages.PasswordTooShort, shortBody);
 
         using var stillValid = await client.SendAsync(AdminRequest(
-            HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(ruleRejectToken)}"));
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token = ruleRejectToken, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = ruleAf },
+            antiForgery: ruleAf));
         Assert.Equal(HttpStatusCode.OK, stillValid.StatusCode);
     }
 
@@ -274,21 +339,24 @@ public class AdminBootstrapTests
             Assert.DoesNotContain(CoreOwnerEmail, body);
         }
 
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        Assert.False(db.AdminCredentials.Any(c => c.PasswordHash != null));
-        var captcha = db.AdminAuditLog.Where(e => e.ReasonClass == AdminAuthMessages.CaptchaFailedReason).ToList();
-        Assert.True(captcha.Count >= 3);
-        Assert.All(captcha, row =>
+        using (var scope = _factory.Services.CreateScope())
         {
-            Assert.False(string.IsNullOrEmpty(row.IpHmac));
-            Assert.DoesNotContain("forged", row.IpHmac);
-            Assert.DoesNotContain("ok", row.AfterSnapshot ?? string.Empty);
-        });
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.False(db.AdminCredentials.Any(c => c.PasswordHash != null));
+            Assert.Empty(db.AdminBootstrapIpThrottles.ToList());
+            var captcha = db.AdminAuditLog.Where(e => e.ReasonClass == AdminAuthMessages.CaptchaFailedReason).ToList();
+            Assert.True(captcha.Count >= 3);
+            Assert.All(captcha, row =>
+            {
+                Assert.False(string.IsNullOrEmpty(row.IpHmac));
+                Assert.DoesNotContain("forged", row.IpHmac);
+                Assert.DoesNotContain("ok", row.AfterSnapshot ?? string.Empty);
+            });
+        }
 
         using var inspect = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
+            AdminSignedOutAccess.BootstrapPage));
         Assert.Equal(HttpStatusCode.OK, inspect.StatusCode);
 
         using var valid = await Post(FakeTurnstileVerifier.ValidToken);
@@ -301,6 +369,7 @@ public class AdminBootstrapTests
         await ResetAsync();
         var client = CreateClient();
         var token = await IssueTokenAsync();
+        var af = await IssueAntiForgeryAsync(client);
 
         using var extra = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
@@ -312,21 +381,24 @@ public class AdminBootstrapTests
             $"{AdminSignedOutAccess.BootstrapApi}?token={Uri.EscapeDataString(token)}"));
         await AssertGenericUnauthorized(wrongMethod);
 
-        using var missing = await client.SendAsync(AdminRequest(
+        using var getNoToken = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
             AdminSignedOutAccess.BootstrapPage));
-        await AssertGenericUnauthorized(missing);
+        Assert.Equal(HttpStatusCode.OK, getNoToken.StatusCode);
 
         using var apiMissing = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
-            new { password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken }));
-        await AssertGenericUnauthorized(apiMissing);
+            new { password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        await AssertGoesToLinkExpired(apiMissing);
 
-        using var pageOk = await client.SendAsync(AdminRequest(
-            HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
-        Assert.Equal(HttpStatusCode.OK, pageOk.StatusCode);
+        using var queryTokenPost = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            $"{AdminSignedOutAccess.BootstrapApi}?token={Uri.EscapeDataString(token)}",
+            new { password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        await AssertGoesToLinkExpired(queryTokenPost);
 
         using var expiredPage = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
@@ -359,11 +431,11 @@ public class AdminBootstrapTests
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
             new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken }));
-        await AssertGenericUnauthorized(missingAf);
+        await AssertGoesToLinkExpired(missingAf);
 
         using var wrongHost = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
-            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}",
+            AdminSignedOutAccess.BootstrapPage,
             host: "core.dealoware.com"));
         Assert.Equal(HttpStatusCode.NotFound, wrongHost.StatusCode);
         var wrongHostBody = await wrongHost.Content.ReadAsStringAsync();
@@ -380,6 +452,19 @@ public class AdminBootstrapTests
             $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
         Assert.Equal(HttpStatusCode.OK, getTwice.StatusCode);
 
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.All(db.AdminBootstrapTokens.ToList(), t => Assert.Null(t.ConsumedAt));
+        }
+
+        using var stillWorks = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        Assert.Equal(HttpStatusCode.OK, stillWorks.StatusCode);
+
         var cookie = AdminSessionCookie.CreateOptions();
         Assert.True(cookie.HttpOnly);
         Assert.True(cookie.Secure);
@@ -391,6 +476,117 @@ public class AdminBootstrapTests
         Assert.Equal("dw_admin_af", AdminAntiForgery.CookieName);
         Assert.DoesNotContain("__Host-", AdminSessionCookie.Name);
         Assert.DoesNotContain("__Host-", AdminAntiForgery.CookieName);
+    }
+
+    [Fact]
+    public async Task SC6_BootstrapIpThrottle_IsDatabaseAtomic_AndIgnoresSpoofedLeftMostXff()
+    {
+        await ResetAsync();
+        var client = CreateClient();
+        var af = await IssueAntiForgeryAsync(client);
+        var password = NewPassword();
+
+        async Task<HttpResponseMessage> Guess(string xff, string guess)
+            => await client.SendAsync(AdminRequest(
+                HttpMethod.Post,
+                AdminSignedOutAccess.BootstrapApi,
+                new { token = guess, password, turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+                antiForgery: af,
+                forwardedFor: xff));
+
+        for (var i = 0; i < AdminBootstrapIpThrottle.AttemptLimit - 1; i++)
+        {
+            var spoof = i % 2 == 0 ? "198.51.100.1, " + TrustedClient : "198.51.100.99, " + TrustedClient;
+            using var fail = await Guess(spoof, $"guess-{i}");
+            await AssertGoesToLinkExpired(fail);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+            var expectedKey = hasher.Hash(TrustedClient);
+            var row = Assert.Single(db.AdminBootstrapIpThrottles.ToList());
+            Assert.Equal(expectedKey, row.IpKey);
+            Assert.Equal(AdminBootstrapIpThrottle.AttemptLimit - 1, row.AttemptCount);
+            Assert.Null(row.LockedUntil);
+            Assert.DoesNotContain("198.51.100", row.IpKey);
+            Assert.DoesNotContain(TrustedClient, row.IpKey);
+        }
+
+        var liveToken = await IssueTokenAsync();
+        using var twentieth = await Guess("203.0.113.1, " + TrustedClient, "guess-last");
+        Assert.Equal(HttpStatusCode.TooManyRequests, twentieth.StatusCode);
+        Assert.Null(twentieth.Headers.RetryAfter);
+        var throttledBody = await twentieth.Content.ReadAsStringAsync();
+        Assert.Contains(AdminAuthMessages.InvalidOrExpiredLink, throttledBody);
+        Assert.DoesNotContain("locked", throttledBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CoreOwnerEmail, throttledBody);
+
+        using var whileThrottled = await Guess(TrustedClient, liveToken);
+        Assert.Equal(HttpStatusCode.TooManyRequests, whileThrottled.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var row = Assert.Single(db.AdminBootstrapTokens.ToList());
+            Assert.Null(row.ConsumedAt);
+            var throttle = Assert.Single(db.AdminBootstrapIpThrottles.ToList());
+            Assert.Equal(AdminBootstrapIpThrottle.AttemptLimit, throttle.AttemptCount);
+            Assert.NotNull(throttle.LockedUntil);
+        }
+
+        using var otherIp = await Guess("198.51.100.50", liveToken);
+        Assert.Equal(HttpStatusCode.OK, otherIp.StatusCode);
+    }
+
+    [Fact]
+    public async Task SC6_TurnstileAndPasswordRule_DoNotIncrementBootstrapIpThrottle()
+    {
+        await ResetAsync();
+        var client = CreateClient();
+        var (token, af) = await IssueReadyAsync(client);
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var captcha = await client.SendAsync(AdminRequest(
+                HttpMethod.Post,
+                AdminSignedOutAccess.BootstrapApi,
+                new { token, password = NewPassword(), turnstileToken = "forged", antiForgeryToken = af },
+                antiForgery: af));
+            Assert.Equal(HttpStatusCode.BadRequest, captcha.StatusCode);
+        }
+
+        using var tooShort = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token, password = "short", turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Empty(db.AdminBootstrapIpThrottles.ToList());
+        }
+
+        using var ok = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
+    public void SC6_BootstrapThrottle_IsNotProcessMemory()
+    {
+        var root = RepoRoot();
+        var service = File.ReadAllText(Path.Combine(root, "src", "Dealoware.Infrastructure", "Admin", "AdminBootstrapService.cs"));
+        Assert.DoesNotContain("ConcurrentDictionary", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("MemoryCache", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("static int", service, StringComparison.Ordinal);
+        Assert.Contains("ExecuteUpdateAsync", service, StringComparison.Ordinal);
+        Assert.Contains("AdminBootstrapIpThrottles", service, StringComparison.Ordinal);
     }
 
     private static void AssertNoSessionCookie(HttpResponseMessage response)

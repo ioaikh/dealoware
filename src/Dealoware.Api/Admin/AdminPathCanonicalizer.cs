@@ -4,7 +4,7 @@ using System.Text;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// r3 §10 C1: canonicalise the request path before any exemption compare.
+/// r5 sha c5e9d232 C1: canonicalise the request path before any exemption compare.
 /// </summary>
 public static class AdminPathCanonicalizer
 {

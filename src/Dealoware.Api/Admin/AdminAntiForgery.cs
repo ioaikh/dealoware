@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// r3 §10 C3 / C5: anti-forgery cookie <c>dw_admin_af</c> on exempt POSTs.
+/// r5 sha c5e9d232 C3 / C5: anti-forgery cookie <c>dw_admin_af</c> on exempt POSTs.
 /// Host-only, Path=/admin, no __Host- prefix.
 /// </summary>
 public static class AdminAntiForgery
