@@ -214,6 +214,7 @@ public class AdminSurfaceTests
     {
         var methods = typeof(IAdminAuditRepository).GetMethods().Select(m => m.Name).ToHashSet();
         Assert.Contains("AddAsync", methods);
+        Assert.Contains("ListPageAsync", methods);
         Assert.DoesNotContain("UpdateAsync", methods);
         Assert.DoesNotContain("DeleteAsync", methods);
         Assert.DoesNotContain("Remove", methods);
