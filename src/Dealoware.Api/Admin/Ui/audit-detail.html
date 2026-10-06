@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audit entry · Dealoware admin</title>
+    <link rel="stylesheet" href="/admin/audit/shell/audit.css">
+</head>
+<body data-admin-screen="S-D2">
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="admin-header">
+        <p class="product-name">Dealoware admin</p>
+        <nav class="admin-nav" aria-label="Admin">
+            <button type="button" class="nav-menu" aria-expanded="false" hidden>Menu</button>
+            <ul>
+                <li><a href="/admin">Stats</a></li>
+                <li><a href="/admin/participants">Participants</a></li>
+                <li><a href="/admin/artifacts">Artifacts</a></li>
+                <li><a href="/admin/negotiations">Negotiations</a></li>
+                <li><a href="/admin/offers">Offers</a></li>
+                <li><a href="/admin/audit" aria-current="page">Audit log</a></li>
+                <li><a href="/admin/settings/security">Security settings</a></li>
+                <li>
+                    <form method="post" action="/admin/sign-out">
+                        <button type="submit">Sign out</button>
+                    </form>
+                </li>
+            </ul>
+        </nav>
+    </header>
+    <main id="main" tabindex="-1">
+        <p><a id="back-to-list" href="/admin/audit">Back to audit log</a></p>
+        <h1>Audit entry</h1>
+        <p class="lede">Read-only before and after values. Only FieldPolicy-allowed fields are shown.</p>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+        <p id="error" class="error" role="alert" hidden></p>
+        <section id="entry-summary" aria-labelledby="summary-heading">
+            <h2 id="summary-heading">Entry</h2>
+            <dl id="summary-fields"></dl>
+        </section>
+        <section id="snapshots" aria-labelledby="snapshot-heading">
+            <h2 id="snapshot-heading">Before and after</h2>
+            <div id="snapshot-grid" class="snapshot-grid"></div>
+        </section>
+    </main>
+    <script src="/admin/audit/shell/audit.js" defer></script>
+</body>
+</html>

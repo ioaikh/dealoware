@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audit log · Dealoware admin</title>
+    <link rel="stylesheet" href="/admin/audit/shell/audit.css">
+</head>
+<body data-admin-screen="S-D1">
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="admin-header">
+        <p class="product-name">Dealoware admin</p>
+        <nav class="admin-nav" aria-label="Admin">
+            <button type="button" class="nav-menu" aria-expanded="false" hidden>Menu</button>
+            <ul>
+                <li><a href="/admin">Stats</a></li>
+                <li><a href="/admin/participants">Participants</a></li>
+                <li><a href="/admin/artifacts">Artifacts</a></li>
+                <li><a href="/admin/negotiations">Negotiations</a></li>
+                <li><a href="/admin/offers">Offers</a></li>
+                <li><a href="/admin/audit" aria-current="page">Audit log</a></li>
+                <li><a href="/admin/settings/security">Security settings</a></li>
+                <li>
+                    <form method="post" action="/admin/sign-out">
+                        <button type="submit">Sign out</button>
+                    </form>
+                </li>
+            </ul>
+        </nav>
+    </header>
+    <main id="main" tabindex="-1">
+        <h1>Audit log</h1>
+        <p class="lede">Read-only record of admin authentication and entity changes. This log cannot be edited or deleted.</p>
+        <form id="audit-filters" class="filters" method="get" action="/admin/audit">
+            <div class="field">
+                <label for="action">Action</label>
+                <select id="action" name="action">
+                    <option value="">All actions</option>
+                    <option value="login_success">login_success</option>
+                    <option value="login_failure">login_failure</option>
+                    <option value="reset_request">reset_request</option>
+                    <option value="reset_complete">reset_complete</option>
+                    <option value="totp_enroll">totp_enroll</option>
+                    <option value="totp_change">totp_change</option>
+                    <option value="recovery_code_use">recovery_code_use</option>
+                    <option value="signin.second_factor_failed">signin.second_factor_failed</option>
+                    <option value="entity_edit">entity_edit</option>
+                    <option value="entity_delete">entity_delete</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="entityType">Entity type</label>
+                <select id="entityType" name="entityType">
+                    <option value="">All types</option>
+                    <option value="Participant">Participant</option>
+                    <option value="Artifact">Artifact</option>
+                    <option value="Negotiation">Negotiation</option>
+                    <option value="Offer">Offer</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="from">From</label>
+                <input id="from" name="from" type="date">
+            </div>
+            <div class="field">
+                <label for="to">To</label>
+                <input id="to" name="to" type="date">
+            </div>
+            <div class="actions">
+                <button type="submit" class="primary">Apply filters</button>
+                <button type="button" id="clear-filters" class="secondary">Clear all filters</button>
+            </div>
+        </form>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+        <p id="error" class="error" role="alert" hidden></p>
+        <div class="table-wrap">
+            <table id="audit-table" aria-busy="false">
+                <caption>Admin audit entries</caption>
+                <thead>
+                    <tr>
+                        <th scope="col" aria-sort="descending">Time</th>
+                        <th scope="col">Actor</th>
+                        <th scope="col">Action</th>
+                        <th scope="col">Entity type</th>
+                        <th scope="col">Entity ID</th>
+                        <th scope="col">Outcome</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-rows"></tbody>
+            </table>
+        </div>
+        <div id="empty" class="empty" hidden></div>
+        <nav class="pager" aria-label="Audit pages">
+            <p id="page-summary"></p>
+            <label for="limit">Page size</label>
+            <select id="limit" name="limit">
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+            <button type="button" id="prev-page">Previous</button>
+            <button type="button" id="next-page">Next</button>
+        </nav>
+    </main>
+    <script src="/admin/audit/shell/audit.js" defer></script>
+</body>
+</html>

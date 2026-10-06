@@ -280,6 +280,7 @@ app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
+app.MapAdminAuditViewer();
 
 app.Run();
 
