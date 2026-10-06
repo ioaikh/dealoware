@@ -100,6 +100,25 @@ builder.Services.AddAuthorization(options =>
             .RequireRole(AdminSessionMiddleware.CoreOwnerRole));
 });
 
+try
+{
+    var ipHasher = IpHasher.Create(
+        name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
+        isDevelopment: builder.Environment.IsDevelopment());
+    builder.Services.AddSingleton<IIpHasher>(ipHasher);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
 
 var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
@@ -211,6 +230,7 @@ app.UseStaticFiles();
 app.UseRateLimiter();
 
 app.UseMiddleware<AdminSessionMiddleware>();
+app.UseAuthorization();
 
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.

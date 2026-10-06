@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
@@ -14,6 +16,10 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
     /// <summary>Test-only 64-character alphanumeric signing key. Not a real secret.</summary>
     public static readonly string TestSigningKey64 =
         string.Concat(Enumerable.Repeat("TestOnlyNotSecret0123456789", 3))[..64];
+
+    /// <summary>Runtime-generated HMAC key for Production test hosts. Not a real secret.</summary>
+    public static readonly string TestIpHmacKey =
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
     private readonly string _environment;
     private readonly string? _signingKey;
@@ -33,6 +39,7 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
         // Empty string = blank, which strict mode treats as "not set" and overrides any runner env value.
         builder.UseSetting(JwtSigningKeyValidator.EnvironmentVariableName, _signingKey ?? string.Empty);
         builder.UseSetting("Jwt:SigningKey", string.Empty);
+        builder.UseSetting(IpHasher.KeyEnvironmentVariable, TestIpHmacKey);
         // Non-Development refuses silent SQLite. Supply a Host= connection string so Production/Staging
         // hosts pass provider selection; ConfigureServices still swaps to in-memory SQLite for the test.
         if (!string.Equals(_environment, Environments.Development, StringComparison.OrdinalIgnoreCase))
