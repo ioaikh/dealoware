@@ -119,6 +119,8 @@ catch (InvalidOperationException ex)
     throw;
 }
 
+builder.Services.AddAdminMail(builder.Configuration);
+
 
 var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
