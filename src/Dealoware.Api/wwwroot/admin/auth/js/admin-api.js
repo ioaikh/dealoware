@@ -1,10 +1,12 @@
 /**
  * Single client module for Steps 2–5 auth API routes and JSON shapes.
- * Paths follow route-prefix note r2 (a4fa4351) §2.2 optional auth JSON.
+ * Paths follow route-prefix note r3 (b079a814) §2.2 optional auth JSON.
+ * Every exempt POST sends X-CSRF-TOKEN (C3). Return path is never put in a
+ * sign-in query string (C6).
  *
  * Assumed endpoints (admin host only; listed exemptions only):
  *   POST /admin/api/auth/sign-in
- *        body { email, password, turnstileToken, returnPath? }
+ *        body { email, password, turnstileToken }
  *        → 200 { next: "code" } + pending-auth HttpOnly cookie
  *        → 401/429 { error }
  *   POST /admin/api/auth/sign-in/code
@@ -17,7 +19,7 @@
  *        → 401/429 { error, restart?: true }
  *   POST /admin/api/auth/reset
  *        body { email, turnstileToken }
- *        → 200 {} (same for known/unknown/locked) | 429 { error }
+ *        → 200 {} (same status/body for unknown email, wrong password, or hold) | 429 { error }
  *   POST /admin/api/auth/bootstrap
  *        body { token, password, confirmPassword, turnstileToken }
  *        → 200 { next: "authenticator" }
@@ -28,11 +30,18 @@
  *        → 200 { next: "signin", status: "password-set" }
  *        → 400 { error, reason? } | 401 { error } | 404 { next: "link-expired", variant: "reset" }
  *   POST /admin/api/auth/sign-out
- *        → 204 (idempotent)
+ *        → 204 (idempotent; anti-forgery required)
+ *   POST /admin/api/settings/password  (session required; not exempt)
+ *        body { currentPassword, newPassword, confirmPassword, code?, recoveryCode? }
+ *        → 200 { next: "signin", status: "password-changed" }
+ *        → 400 { error, reason?: "too_short"|"too_long"|"common"|"same_as_current"|"mismatch" }
+ *        → 401 { error }  (step-up failure; same body each time)
+ *        → 401 { error, signedOut: true }  (account hold; land on S-A1)
+ *        No Turnstile. Notice email is out of v1.
  *
  * Not exempt (session or later PRs): GET /admin/api/me, enroll JSON, any other /admin/api/**
  * TOTP enroll/confirm are assumed as later Step 3 routes and are called only after
- * the enrol-pending cookie is set (page already passed the session gate).
+ * enrol pending (dw_admin_pending=enrol in Development) has passed the session gate.
  */
 (function (global) {
   "use strict";
@@ -47,6 +56,7 @@
     signOut: "/admin/api/auth/sign-out",
     totpEnroll: "/admin/api/auth/totp/enroll",
     totpEnrollConfirm: "/admin/api/auth/totp/enroll/confirm",
+    passwordChange: "/admin/api/settings/password",
     me: "/admin/api/me"
   };
 
@@ -61,6 +71,7 @@
     reset: "/admin/reset",
     resetSent: "/admin/reset/sent",
     resetConfirm: "/admin/reset/confirm",
+    security: "/admin/settings/security",
     stats: "/admin/"
   };
 
@@ -70,8 +81,23 @@
     return fallback || global.AdminCopy.signInFailure;
   }
 
-  function request(method, url, body) {
+  var csrfToken = "";
+
+  function ensureCsrf() {
+    if (csrfToken) return Promise.resolve(csrfToken);
+    return fetch(PAGES.signIn, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "text/html" }
+    }).then(function (response) {
+      csrfToken = response.headers.get("X-CSRF-TOKEN") || "";
+      return csrfToken;
+    });
+  }
+
+  function send(method, url, body, csrf) {
     var headers = { Accept: "application/json" };
+    if (csrf) headers["X-CSRF-TOKEN"] = csrf;
     var init = {
       method: method,
       credentials: "same-origin",
@@ -82,6 +108,8 @@
       init.body = JSON.stringify(body);
     }
     return fetch(url, init).then(function (response) {
+      var headerToken = response.headers.get("X-CSRF-TOKEN");
+      if (headerToken) csrfToken = headerToken;
       return response.text().then(function (text) {
         var payload = null;
         if (text) {
@@ -95,6 +123,13 @@
           retryAfter: response.headers.get("Retry-After")
         };
       });
+    });
+  }
+
+  function request(method, url, body) {
+    if (method === "GET") return send(method, url, body, "");
+    return ensureCsrf().then(function (csrf) {
+      return send(method, url, body, csrf);
     });
   }
 
@@ -166,6 +201,12 @@
     },
     resetComplete: function (body) {
       return request("POST", ROUTES.resetConfirm, body);
+    },
+    changePassword: function (body) {
+      return request("POST", ROUTES.passwordChange, body);
+    },
+    me: function () {
+      return request("GET", ROUTES.me);
     }
   };
 })(window);

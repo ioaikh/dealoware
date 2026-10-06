@@ -14,7 +14,7 @@ public static class AdminAntiForgery
         var token = existing;
         if (string.IsNullOrWhiteSpace(token))
         {
-            token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             context.Response.Cookies.Append(
                 AdminAuthCookies.AntiForgery,
                 token,

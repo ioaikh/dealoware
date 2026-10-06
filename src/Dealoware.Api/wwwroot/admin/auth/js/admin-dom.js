@@ -1,5 +1,5 @@
 /**
- * Safe DOM helpers. Never assign data to innerHTML.
+ * Safe DOM helpers. Encode outputs with textContent / text nodes only.
  */
 (function (global) {
   "use strict";

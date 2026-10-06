@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Serves S-A1–S-A11 HTML after the session gate. Pages live outside wwwroot
+/// Serves S-A1–S-A12 HTML after the session gate. Pages live outside wwwroot
 /// so they are never served as anonymous static files except via §2.2.
 /// </summary>
 public static class AdminAuthPageEndpoints
@@ -45,6 +45,11 @@ public static class AdminAuthPageEndpoints
                 .AllowAnonymous();
         }
 
+        app.MapGet(AdminAuthPaths.SettingsSecurity, (HttpContext context, IWebHostEnvironment env) =>
+                WritePage(context, env, "security.html"))
+            .RequireAuthorization(AdminSessionMiddleware.PolicyName)
+            .WithTags("AdminAuthUi");
+
         app.MapPost(AdminAuthPaths.SignOut, SignOutAsync)
             .WithTags("AdminAuthUi")
             .AllowAnonymous();
@@ -79,6 +84,8 @@ public static class AdminAuthPageEndpoints
         context.Response.Headers.Pragma = "no-cache";
         context.Response.Headers["Referrer-Policy"] = "no-referrer";
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        if (HttpMethods.IsGet(context.Request.Method))
+            AdminAntiForgery.IssueOnGet(context);
         return Results.File(path, "text/html; charset=utf-8");
     }
 

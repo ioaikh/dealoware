@@ -13,9 +13,6 @@ export default defineConfig({
   outputDir: "./test-results",
   use: {
     baseURL: "http://127.0.0.1:5088",
-    extraHTTPHeaders: {
-      Host: "admin.core.dealoware.com"
-    },
     browserName: "chromium",
     headless: true,
     screenshot: "off",
@@ -28,7 +25,11 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
-      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_ENVIRONMENT: "Development",
+      DOTNET_ROOT: process.env.DOTNET_ROOT ?? `${process.env.HOME}/.dotnet`,
+      PATH: process.env.PATH ?? "",
+      AdminHost__AllowedHosts__0: "admin.core.dealoware.com",
+      AdminHost__AllowedHosts__1: "127.0.0.1"
     }
   }
 });

@@ -21,6 +21,7 @@ public static class AdminAuthPaths
     public const string ResetSent = "/admin/reset/sent";
     public const string ResetConfirm = "/admin/reset/confirm";
     public const string SignOut = "/admin/sign-out";
+    public const string SettingsSecurity = "/admin/settings/security";
     public const string Stats = "/admin/";
     public const string StatsBare = "/admin";
 
@@ -105,8 +106,8 @@ public static class AdminAuthPaths
         }
 
         if (decoded.Contains("//", StringComparison.Ordinal)
-            || decoded.Contains("..", StringComparison.Ordinal)
-            || decoded.Contains(';'))
+            || decoded.Contains(';')
+            || decoded.Split('/').Any(segment => segment == ".."))
         {
             return false;
         }

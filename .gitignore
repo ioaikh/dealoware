@@ -61,3 +61,4 @@ node_modules/
 package-lock.json
 # Allow e2e lockfile for pinned Playwright dependencies
 !e2e/package-lock.json
+!tests/admin-ui/package-lock.json

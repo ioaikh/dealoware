@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { expectAxe, mockAuthApi, openAdmin, screenshotScreen } from "../helpers";
+import { expectAxe, mockAuthApi, openAdmin, screenshotScreen, serveStatsLanding } from "../helpers";
 
 const pending = [{ name: "dw_admin_pending", value: "valid" }];
-const enrol = [{ name: "dw_admin_enrol", value: "valid" }];
+const enrol = [{ name: "dw_admin_pending", value: "enrol" }];
 
 const screens: { id: string; path: string; title: string; cookies?: { name: string; value: string }[]; query?: string }[] = [
   { id: "S-A1", path: "/admin/sign-in", title: "Sign in · Dealoware admin" },
@@ -152,14 +152,18 @@ test("TD-ADM-UI-auth-15 return path allowlist @TD-ADM-UI-auth-15", async ({ page
   await expectAxe(page, "TD-ADM-UI-auth-15");
 });
 
-test("TD-ADM-UI-auth-16 recovery banner without S-A12 link @TD-ADM-UI-auth-16", async ({ page }) => {
+test("TD-ADM-UI-auth-16 recovery banner with S-A12 link @TD-ADM-UI-auth-16", async ({ page }) => {
   await mockAuthApi(page);
+  await serveStatsLanding(page);
   await openAdmin(page, "/admin/sign-in/recovery", pending);
   await page.locator("#recovery-code").fill("ALPHA-ONE");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/recoveryRemaining=9/);
   await expect(page.locator("#recovery-banner-text")).toContainText("9");
-  await expect(page.locator("body")).not.toContainText("Manage recovery codes");
+  await expect(page.getByRole("link", { name: "Manage recovery codes" })).toHaveAttribute(
+    "href",
+    "/admin/settings/security"
+  );
   await expectAxe(page, "TD-ADM-UI-auth-16");
 });
 

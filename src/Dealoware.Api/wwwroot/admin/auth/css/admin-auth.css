@@ -237,3 +237,48 @@ a {
 .live {
   min-height: 1.25rem;
 }
+
+.skip {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  transform: translateY(-200%);
+  background: var(--card);
+  padding: 0.35rem 0.65rem;
+  z-index: 2;
+}
+
+.skip:focus {
+  transform: none;
+}
+
+.admin-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem;
+}
+
+.settings-shell {
+  max-width: 36rem;
+  margin: 2rem auto;
+  padding: 0 1.25rem 3rem;
+}
+
+.settings-section {
+  margin: 0 0 2rem;
+  padding-top: 0.25rem;
+}
+
+.settings-section h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}

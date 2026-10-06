@@ -84,6 +84,11 @@
     var text = "";
     if (status === "expired" || status === "signed-out") text = AdminCopy.sessionEnded;
     else if (status === "password-set") text = AdminCopy.passwordSetStatus;
+    else if (status === "password-changed") text = AdminCopy.passwordChangedStatus;
+    else if (status === "auth-failed") {
+      showSignInFailure();
+      return;
+    }
     if (!text) return;
     AdminDom.setText(box, text);
     AdminDom.show(box, true);
@@ -125,8 +130,7 @@
       AdminApi.signInStep1({
         email: email,
         password: password,
-        turnstileToken: AdminTurnstile.token(),
-        returnPath: AdminApi.safeReturnPath(AdminApi.queryParam("return"))
+        turnstileToken: AdminTurnstile.token()
       }).then(function (result) {
         setBusy(form, false);
         AdminDom.el("password").value = "";
@@ -543,6 +547,8 @@
         AdminCopy.recoveryBannerPrefix + remaining + AdminCopy.recoveryBannerSuffix
       );
       AdminDom.show(banner, true);
+      var manage = AdminDom.el("manage-recovery-codes");
+      AdminDom.show(manage, true);
       var dismiss = AdminDom.el("dismiss-banner");
       if (dismiss) {
         dismiss.addEventListener("click", function () {
@@ -550,6 +556,137 @@
         });
       }
     }
+  }
+
+  function showStepUpStatus(message) {
+    var status = AdminDom.el("stepup-status");
+    AdminDom.setText(status, message || "");
+  }
+
+  function initSecuritySettings() {
+    var form = AdminDom.el("change-password-form");
+    if (!form) return;
+    bindDoubleSubmit(form);
+    AdminPassword.bindToggle("current-password", "current-password-toggle");
+    AdminPassword.bindToggle("new-password", "new-password-toggle");
+    AdminPassword.bindToggle("confirm-password", "confirm-password-toggle");
+    var helper = AdminDom.el("password-helper");
+    if (helper) AdminDom.setText(helper, AdminCopy.passwordHelper);
+    focusFirstField();
+
+    AdminApi.me().then(function (result) {
+      var count = result.payload && result.payload.remainingRecoveryCodes;
+      if (typeof count === "number")
+        AdminDom.setText(AdminDom.el("recovery-n"), String(count));
+    });
+
+    var signOut = AdminDom.el("sign-out");
+    if (signOut) {
+      signOut.addEventListener("click", function () {
+        AdminApi.signInCancel().then(function () {
+          AdminApi.go(AdminApi.PAGES.signIn + "?status=signed-out");
+        });
+      });
+    }
+
+    var mode = "totp";
+    var switchLink = AdminDom.el("use-recovery");
+    function setMode(next) {
+      mode = next;
+      AdminDom.show(AdminDom.el("totp-field"), mode === "totp");
+      AdminDom.show(AdminDom.el("recovery-field"), mode === "recovery");
+      if (switchLink)
+        AdminDom.setText(switchLink, mode === "totp" ? "Use a recovery code instead" : "Use an authenticator code instead");
+    }
+    if (switchLink) {
+      switchLink.addEventListener("click", function (event) {
+        event.preventDefault();
+        setMode(mode === "totp" ? "recovery" : "totp");
+      });
+    }
+
+    function checkLength() {
+      var message = AdminPassword.lengthMessage(AdminDom.el("new-password").value);
+      AdminDom.setInvalid(AdminDom.el("new-password"), AdminDom.el("new-password-error"), message);
+      return message;
+    }
+
+    function checkMismatch() {
+      var a = AdminDom.el("new-password").value;
+      var b = AdminDom.el("confirm-password").value;
+      var mismatch = b && a !== b ? AdminCopy.passwordMismatch : "";
+      AdminDom.setInvalid(AdminDom.el("confirm-password"), AdminDom.el("confirm-password-error"), mismatch);
+      return mismatch;
+    }
+
+    AdminDom.el("new-password").addEventListener("blur", checkLength);
+    AdminDom.el("confirm-password").addEventListener("blur", checkMismatch);
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (busy) return;
+      showStepUpStatus("");
+      var current = AdminDom.el("current-password").value;
+      var currentError = current ? "" : AdminCopy.passwordRequired;
+      AdminDom.setInvalid(AdminDom.el("current-password"), AdminDom.el("current-password-error"), currentError);
+      var lengthError = checkLength();
+      var mismatch = checkMismatch();
+      var body = {
+        currentPassword: current,
+        newPassword: AdminDom.el("new-password").value,
+        confirmPassword: AdminDom.el("confirm-password").value
+      };
+      if (mode === "totp") {
+        var code = AdminDom.el("code").value.trim();
+        var codeError = /^\d{6}$/.test(code) ? "" : AdminCopy.codeRequired;
+        AdminDom.setInvalid(AdminDom.el("code"), AdminDom.el("code-error"), codeError);
+        if (codeError || currentError || lengthError || mismatch) {
+          if (lengthError || mismatch) AdminDom.el("new-password").focus();
+          return;
+        }
+        body.code = code;
+      } else {
+        var recovery = AdminDom.el("recovery-code").value;
+        var recError = recovery.trim() ? "" : AdminCopy.recoveryRequired;
+        AdminDom.setInvalid(AdminDom.el("recovery-code"), AdminDom.el("recovery-error"), recError);
+        if (recError || currentError || lengthError || mismatch) {
+          if (lengthError || mismatch) AdminDom.el("new-password").focus();
+          return;
+        }
+        body.recoveryCode = normalizeRecovery(recovery);
+      }
+      setBusy(form, true);
+      AdminApi.changePassword(body).then(function (result) {
+        setBusy(form, false);
+        if (result.ok) {
+          AdminApi.go(AdminApi.PAGES.signIn + "?status=password-changed");
+          return;
+        }
+        if (result.payload && result.payload.signedOut) {
+          AdminApi.go(AdminApi.PAGES.signIn + "?status=auth-failed");
+          return;
+        }
+        var named = result.payload && AdminPassword.namedServerReason(result.payload.reason);
+        if (named) {
+          showStepUpStatus("");
+          AdminDom.setInvalid(AdminDom.el("new-password"), AdminDom.el("new-password-error"), named);
+          AdminDom.el("new-password").focus();
+          return;
+        }
+        showStepUpStatus(AdminCopy.stepUpFailure);
+        AdminDom.el("current-password").value = "";
+        var codeInput = AdminDom.el("code");
+        var recInput = AdminDom.el("recovery-code");
+        if (codeInput) codeInput.value = "";
+        if (recInput) recInput.value = "";
+        AdminDom.el("current-password").focus();
+      }, function () {
+        setBusy(form, false);
+        showStepUpStatus(AdminCopy.stepUpFailure);
+        AdminDom.el("current-password").value = "";
+        AdminDom.el("current-password").focus();
+      });
+    });
   }
 
   var screen = document.body.getAttribute("data-screen");
@@ -565,6 +702,7 @@
     "S-A9": initResetCheckEmail,
     "S-A10": initResetPassword,
     "S-A11": initSessionEnded,
+    "S-A12": initSecuritySettings,
     "home": initHome
   };
   if (starters[screen]) starters[screen]();

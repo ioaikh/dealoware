@@ -21,18 +21,62 @@ export async function openAdmin(page: Page, adminPath: string, cookies: { name: 
     throw new Error("Playwright must use /admin/ paths: " + adminPath);
   }
   await page.addInitScript(TURNSTILE_INIT);
+  if (adminPath.startsWith("/admin/setup/recovery-codes")) {
+    await page.addInitScript(() => {
+      sessionStorage.setItem("dw-admin-recovery-once", JSON.stringify(["alpha-one", "bravo-two"]));
+    });
+  }
   if (cookies.length) {
     await page.context().addCookies(
       cookies.map((c) => ({
         name: c.name,
         value: c.value,
-        url: "http://127.0.0.1:5088",
+        domain: "127.0.0.1",
         path: "/admin",
-        httpOnly: true
+        httpOnly: true,
+        secure: false
       }))
     );
   }
   await page.goto(adminPath, { waitUntil: "domcontentloaded" });
+}
+
+export async function serveStatsLanding(page: Page) {
+  const html = fs.readFileSync(
+    path.resolve(__dirname, "../../src/Dealoware.Api/AdminUi/pages/stats.html"),
+    "utf8"
+  );
+  await page.route((url) => url.pathname === "/admin/" || url.pathname === "/admin", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: html
+      });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+export async function openSecuritySettings(page: Page) {
+  const html = fs.readFileSync(
+    path.resolve(__dirname, "../../src/Dealoware.Api/AdminUi/pages/security.html"),
+    "utf8"
+  );
+  await page.route((url) => url.pathname === "/admin/settings/security", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        headers: { "Cache-Control": "no-store" },
+        body: html
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto("/admin/settings/security", { waitUntil: "domcontentloaded" });
 }
 
 export async function expectAxe(page: Page, caseId: string) {
@@ -52,7 +96,85 @@ export async function screenshotScreen(page: Page, name: string) {
   await page.screenshot({ path: path.join(SCREEN_DIR, `${name}.png`), fullPage: true });
 }
 
-export async function mockAuthApi(page: Page) {
+export async function mockAuthApi(page: Page, options: { passwordDelayMs?: number } = {}) {
+  await page.route("**/admin/api/me", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ principal: "CoreOwner", remainingRecoveryCodes: 10 })
+    });
+  });
+
+  await page.route("**/admin/api/settings/password", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    if (options.passwordDelayMs)
+      await new Promise((resolve) => setTimeout(resolve, options.passwordDelayMs));
+    const body = route.request().postDataJSON() as {
+      currentPassword?: string;
+      newPassword?: string;
+      confirmPassword?: string;
+      code?: string;
+      recoveryCode?: string;
+    };
+    const stepUp = JSON.stringify({
+      error: "We couldn't confirm it's you. Check your current password and code."
+    });
+    if (body?.currentPassword === "incorrect-value-aaa" || body?.code === "000000" || body?.recoveryCode === "usedcode") {
+      await route.fulfill({ status: 401, contentType: "application/json", body: stepUp });
+      return;
+    }
+    if (body?.currentPassword === "trigger-hold-value") {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "We couldn't sign you in. Check your details and try again later. You can also reset your password.",
+          signedOut: true
+        })
+      });
+      return;
+    }
+    if (body?.newPassword === "passwordpassword1") {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "This password is too common. Choose another.", reason: "common" })
+      });
+      return;
+    }
+    if (body?.newPassword && body.newPassword === body.currentPassword) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Choose a password that is different from your current one.",
+          reason: "same_as_current"
+        })
+      });
+      return;
+    }
+    if (body?.newPassword && body.confirmPassword && body.newPassword !== body.confirmPassword) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "These passwords don't match.", reason: "mismatch" })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ next: "signin", status: "password-changed" })
+    });
+  });
+
   await page.route("**/admin/api/auth/**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
@@ -68,7 +190,13 @@ export async function mockAuthApi(page: Page) {
       await route.fulfill({
         status: throttle ? 429 : unknown || !body?.password ? 401 : 200,
         contentType: "application/json",
-        body: throttle || unknown || !body?.password ? failBody : JSON.stringify({ next: "code" })
+        body: throttle || unknown || !body?.password ? failBody : JSON.stringify({ next: "code" }),
+        headers: throttle || unknown || !body?.password
+          ? { "Content-Type": "application/json" }
+          : {
+              "Content-Type": "application/json",
+              "Set-Cookie": "dw_admin_pending=valid; Path=/admin; SameSite=Strict"
+            }
       });
       return;
     }
