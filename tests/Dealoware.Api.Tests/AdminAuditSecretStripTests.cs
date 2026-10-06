@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dealoware.Api.Admin;
@@ -176,6 +178,77 @@ public class AdminAuditSecretStripTests
     }
 
     [Fact]
+    public void TdAdm101_DeepNestedJsonStrings_StoresPlaceholderFast()
+    {
+        var raw = NestedJsonStrings(25);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var clock = Stopwatch.StartNew();
+        var entry = AdminAuditEntry.CreateEntityEvent(
+            AdminAuditActions.EntityEdit,
+            CoreOwnerEmail,
+            "hmac-not-an-ip",
+            "Participant",
+            Guid.NewGuid(),
+            beforeSnapshot: raw,
+            afterSnapshot: raw);
+        clock.Stop();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.Equal(AdminAuditSnapshots.FailClosedPlaceholder, entry.BeforeSnapshot);
+        Assert.Equal(AdminAuditSnapshots.FailClosedPlaceholder, entry.AfterSnapshot);
+        Assert.DoesNotContain("LEAK-deep-v1", entry.BeforeSnapshot);
+        Assert.True(clock.ElapsedMilliseconds < 200, $"deep nest took {clock.ElapsedMilliseconds}ms");
+        Assert.True(allocated < 2_000_000, $"deep nest allocated {allocated} bytes");
+    }
+
+    [Fact]
+    public void TdAdm101_InputOver64Kb_StoresPlaceholderWithoutParse()
+    {
+        var raw = new string('x', (64 * 1024) + 1);
+        Assert.True(Encoding.UTF8.GetByteCount(raw) > AdminAuditSnapshots.MaxInputUtf8Bytes);
+
+        var clock = Stopwatch.StartNew();
+        var entry = AdminAuditEntry.CreateEntityEvent(
+            AdminAuditActions.EntityEdit,
+            CoreOwnerEmail,
+            "hmac-not-an-ip",
+            "Participant",
+            Guid.NewGuid(),
+            beforeSnapshot: raw);
+        clock.Stop();
+
+        Assert.Equal(AdminAuditSnapshots.FailClosedPlaceholder, entry.BeforeSnapshot);
+        Assert.DoesNotContain("xxxx", entry.BeforeSnapshot);
+        Assert.True(clock.ElapsedMilliseconds < 200, $"oversize took {clock.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public void TdAdm101_Depth8WithinLimit_StillStripsSecrets()
+    {
+        var raw = NestedObjects(8, "{\"password\":\"LEAK-depth8-v1\",\"displayName\":\"visible-audit-field\"}");
+        var stripped = AdminAuditSnapshots.StripForbiddenKeys(raw);
+        Assert.NotEqual(AdminAuditSnapshots.FailClosedPlaceholder, stripped);
+        Assert.Contains(VisibleMarker, stripped);
+        Assert.DoesNotContain("LEAK-depth8-v1", stripped);
+        Assert.DoesNotContain("password", stripped, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TdAdm101_JwtAndBearerValues_AreRedactedUnderAnyKey()
+    {
+        const string jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJpc2FhYyJ9.dGVzdHNpZ25hdHVyZQ";
+        const string bearer = "Bearer LEAK-bearer-value-v1";
+        var raw = "{\"note\":\"" + jwt + "\",\"auth\":\"" + bearer + "\",\"displayName\":\"visible-audit-field\"}";
+        var stripped = AdminAuditSnapshots.StripForbiddenKeys(raw);
+        using var doc = JsonDocument.Parse(stripped!);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("auth").GetString());
+        Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
+        Assert.DoesNotContain(jwt, stripped);
+        Assert.DoesNotContain("LEAK-bearer-value-v1", stripped);
+    }
+
+    [Fact]
     public async Task TdAdm101_SqliteRecorder_StoresNoReviewerSecrets()
     {
         await using var connection = new SqliteConnection("Data Source=AuditStrip_Db;Mode=Memory;Cache=Shared");
@@ -224,6 +297,22 @@ public class AdminAuditSecretStripTests
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();
         return session.Id;
+    }
+
+    private static string NestedJsonStrings(int wraps)
+    {
+        var inner = "{\"password\":\"LEAK-deep-v1\",\"displayName\":\"ok\"}";
+        for (var i = 0; i < wraps; i++)
+            inner = "{\"details\":" + JsonSerializer.Serialize(inner) + "}";
+        return inner;
+    }
+
+    private static string NestedObjects(int depth, string innermost)
+    {
+        var json = innermost;
+        for (var i = 1; i < depth; i++)
+            json = "{\"l" + i + "\":" + json + "}";
+        return json;
     }
 
     private static string BuildSecretJson()
