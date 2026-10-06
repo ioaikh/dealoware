@@ -7,8 +7,8 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Exact signed-out exemptions for AdminSessionMiddleware (route-prefix note r3 §2 + §10 C1).
 /// Path is canonicalised first, then compared with ordinal case-insensitive equality.
-/// No prefix or query matching except GET static files under /admin/auth/.
-/// Step 4 aliases (ResetPage, ResetApi, …) keep the password-reset endpoints compiling.
+/// GET /admin/reset/confirm takes no token (b6194918 item 6). The reset token is
+/// checked on POST only, in the body.
 /// </summary>
 public static class AdminSignedOutExemptions
 {
@@ -68,8 +68,8 @@ public static class AdminSignedOutExemptions
         new(ResetSent, HttpMethod.Get, TokenKind.None),
         new(Bootstrap, HttpMethod.Get, TokenKind.Bootstrap),
         new(Bootstrap, HttpMethod.Post, TokenKind.Bootstrap),
-        new(ResetConfirm, HttpMethod.Get, TokenKind.PasswordReset),
-        new(ResetConfirm, HttpMethod.Post, TokenKind.PasswordReset),
+        new(ResetConfirm, HttpMethod.Get, TokenKind.None),
+        new(ResetConfirm, HttpMethod.Post, TokenKind.None),
         new(LinkExpired, HttpMethod.Get, TokenKind.None),
         new(SetupAuthenticator, HttpMethod.Get, TokenKind.PendingSignIn),
         new(SetupAuthenticator, HttpMethod.Post, TokenKind.PendingSignIn),
@@ -80,7 +80,7 @@ public static class AdminSignedOutExemptions
         new(ApiSignInRecovery, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiReset, HttpMethod.Post, TokenKind.None),
         new(ApiBootstrap, HttpMethod.Post, TokenKind.Bootstrap),
-        new(ApiResetConfirm, HttpMethod.Post, TokenKind.PasswordReset),
+        new(ApiResetConfirm, HttpMethod.Post, TokenKind.None),
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
@@ -90,6 +90,14 @@ public static class AdminSignedOutExemptions
     public static bool IsSignOut(string canonicalPath)
         => string.Equals(canonicalPath, SignOut, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiSignOut, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsResetPath(string canonicalPath)
+        => string.Equals(canonicalPath, Reset, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ResetSent, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ResetConfirm, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, LinkExpired, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsAuthPost(string canonicalPath)
         => string.Equals(canonicalPath, SignIn, StringComparison.OrdinalIgnoreCase)
@@ -132,23 +140,6 @@ public static class AdminSignedOutExemptions
             AdminPendingToken.Hash(raw),
             cancellationToken);
         return pending is not null && pending.IsUsable();
-    }
-
-    public static async Task<bool> HasValidResetTokenAsync(
-        HttpContext context,
-        IAdminPasswordResetTokenRepository tokens,
-        IAdminClock clock,
-        CancellationToken cancellationToken)
-    {
-        var raw = await ReadResetTokenAsync(context, cancellationToken);
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return false;
-        }
-
-        var hash = AdminPasswordResetToken.HashRaw(raw.Trim());
-        var row = await tokens.FindUsableByHashAsync(hash, clock.UtcNow, cancellationToken);
-        return row is not null;
     }
 
     public static bool TryGetCanonicalPath(HttpContext context, out string path)
@@ -196,14 +187,12 @@ public static class AdminSignedOutExemptions
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        if (context.Request.Query.TryGetValue("token", out var queryToken)
-            && !string.IsNullOrWhiteSpace(queryToken))
+        if (!HttpMethods.IsPost(context.Request.Method))
         {
-            return queryToken.ToString();
+            return null;
         }
 
-        if (HttpMethods.IsPost(context.Request.Method)
-            && context.Request.ContentLength is > 0)
+        if (context.Request.ContentLength is > 0)
         {
             context.Request.EnableBuffering();
         }

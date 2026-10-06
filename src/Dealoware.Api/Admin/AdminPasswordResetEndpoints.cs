@@ -2,14 +2,14 @@ using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
+using Dealoware.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Password-reset API under /admin/api/auth/reset*. Page twins under
-/// /admin/reset* are owned by Step 14; this PR maps the POST twins so
-/// the r3 §2.2 rows this step owns are live.
+/// Password-reset API under /admin/api/auth/reset*. Confirm GET is token-free
+/// (b6194918 item 6). The token travels in the mail fragment and the POST body.
 /// </summary>
 public static class AdminPasswordResetEndpoints
 {
@@ -17,10 +17,23 @@ public static class AdminPasswordResetEndpoints
     public const string ConfirmApiPath = AdminSignedOutExemptions.ResetConfirmApi;
     public const string RequestPagePath = AdminSignedOutExemptions.ResetPage;
     public const string ConfirmPagePath = AdminSignedOutExemptions.ResetConfirmPage;
+    public const string LinkExpiredPath = AdminSignedOutExemptions.LinkExpiredPage;
     public const string MailSubject = "Reset your Dealoware admin password";
+    public const string ResetLinkOrigin = "https://admin.core.dealoware.com";
+    public const int TokenEntropyBytes = 32;
 
     public static void MapAdminPasswordReset(this WebApplication app)
     {
+        app.MapGet(ConfirmPagePath, ConfirmPageGet)
+            .WithName("AdminPasswordResetConfirmPageGet")
+            .WithTags("Admin")
+            .AllowAnonymous();
+
+        app.MapGet(LinkExpiredPath, LinkExpiredGet)
+            .WithName("AdminPasswordResetLinkExpired")
+            .WithTags("Admin")
+            .AllowAnonymous();
+
         app.MapPost(RequestApiPath, RequestReset)
             .WithName("AdminPasswordResetRequest")
             .WithTags("Admin")
@@ -39,7 +52,7 @@ public static class AdminPasswordResetEndpoints
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status303SeeOther);
 
         app.MapPost(ConfirmPagePath, CompleteReset)
             .WithName("AdminPasswordResetConfirmPage")
@@ -47,7 +60,41 @@ public static class AdminPasswordResetEndpoints
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status303SeeOther);
+    }
+
+    private static IResult ConfirmPageGet(HttpContext http)
+    {
+        ApplyNoStoreNoReferrer(http);
+        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        http.Response.Headers.ContentSecurityPolicy =
+            $"default-src 'none'; script-src 'nonce-{nonce}'; form-action 'self'; base-uri 'none'";
+        var af = http.Response.Headers.TryGetValue(AdminCookieNames.AntiForgeryHeader, out var issued)
+                 && !string.IsNullOrWhiteSpace(issued)
+            ? issued.ToString()
+            : AdminAntiForgery.Issue(http);
+        var html =
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+            "<title>Reset password</title></head><body>" +
+            $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\">" +
+            $"<input type=\"hidden\" name=\"af\" value=\"{af}\">" +
+            "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
+            "<label>New password <input type=\"password\" name=\"newPassword\" autocomplete=\"new-password\"></label>" +
+            "<label>Authenticator code <input name=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
+            "<label>Recovery code <input name=\"recoveryCode\" autocomplete=\"off\"></label>" +
+            "<button type=\"submit\">Update password</button></form>" +
+            $"<script nonce=\"{nonce}\">(function(){{var h=location.hash;history.replaceState(null,\"\",location.pathname);var m=/[#&]token=([^&]*)/.exec(h);var el=document.getElementById(\"token\");if(el&&m)el.value=decodeURIComponent(m[1].replace(/\\+/g,\" \"));}})();</script>" +
+            "</body></html>";
+        return Results.Content(html, "text/html; charset=utf-8");
+    }
+
+    private static IResult LinkExpiredGet(HttpContext http)
+    {
+        ApplyNoStoreNoReferrer(http);
+        var html =
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+            $"<title>Link expired</title></head><body><p>{AdminPasswordResetCopy.InvalidLink}</p></body></html>";
+        return Results.Content(html, "text/html; charset=utf-8");
     }
 
     private static async Task<IResult> RequestReset(
@@ -58,7 +105,6 @@ public static class AdminPasswordResetEndpoints
         IIpHasher ipHasher,
         IAdminClock clock,
         IOptions<CoreOwnerOptions> coreOwner,
-        IOptions<AdminHostOptions> hostOptions,
         HttpContext http)
     {
         var now = clock.UtcNow;
@@ -76,9 +122,8 @@ public static class AdminPasswordResetEndpoints
             var row = AdminPasswordResetToken.Create(ownerEmail, hash, now);
             await tokens.AddAsync(row, http.RequestAborted);
 
-            var link = BuildResetLink(hostOptions.Value, raw);
             await mail.SendAsync(
-                new AdminMailMessage(ownerEmail, MailSubject, link),
+                new AdminMailMessage(ownerEmail, MailSubject, BuildResetLink(raw)),
                 http.RequestAborted);
         }
         else
@@ -102,9 +147,11 @@ public static class AdminPasswordResetEndpoints
         IAdminPasswordHasher hasher,
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
+        IAdminResetIpThrottle throttle,
         IIpHasher ipHasher,
         IAdminClock clock,
         IOptions<CoreOwnerOptions> coreOwner,
+        DealowareDbContext db,
         HttpContext http)
     {
         var now = clock.UtcNow;
@@ -122,14 +169,14 @@ public static class AdminPasswordResetEndpoints
         if (row is null
             || !string.Equals(row.Email, ownerEmail, StringComparison.Ordinal))
         {
-            return InvalidLinkResult();
+            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
         }
 
         var totp = NullIfWhiteSpace(body?.Totp);
         var recovery = NullIfWhiteSpace(body?.RecoveryCode);
         if (totp is null && recovery is null)
         {
-            return CompleteFailedResult();
+            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
         }
 
         var factor = await secondFactor.VerifyAsync(
@@ -139,13 +186,13 @@ public static class AdminPasswordResetEndpoints
             http.RequestAborted);
         if (!factor.Succeeded)
         {
-            return CompleteFailedResult();
+            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
         }
 
         var credential = await credentials.GetByEmailAsync(ownerEmail, http.RequestAborted);
         if (credential is null)
         {
-            return CompleteFailedResult();
+            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
         }
 
         var proposed = body?.NewPassword ?? string.Empty;
@@ -159,9 +206,11 @@ public static class AdminPasswordResetEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
+        await using var tx = await db.Database.BeginTransactionAsync(http.RequestAborted);
         if (!await tokens.TryConsumeAsync(hash!, now, http.RequestAborted))
         {
-            return InvalidLinkResult();
+            await tx.RollbackAsync(http.RequestAborted);
+            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
         }
 
         credential.ReplacePassword(hasher.Hash(AdminPasswordRules.Normalize(proposed)), now);
@@ -179,19 +228,39 @@ public static class AdminPasswordResetEndpoints
         }
 
         await audit.SaveChangesAsync(http.RequestAborted);
+        await tx.CommitAsync(http.RequestAborted);
 
         return Results.Json(new { message = AdminPasswordResetCopy.CompleteSucceeded });
     }
 
-    private static IResult InvalidLinkResult()
-        => Results.Json(
-            new { error = AdminPasswordResetCopy.InvalidLink },
-            statusCode: StatusCodes.Status401Unauthorized);
+    private static async Task<IResult> FailExpiredAsync(
+        IAdminAuditRepository audit,
+        IAdminResetIpThrottle throttle,
+        string ipHmac,
+        DateTimeOffset now,
+        HttpContext http)
+    {
+        await audit.AddAsync(
+            AdminAuditEntry.CreateAuthEvent(
+                "reset_complete_failed",
+                string.Empty,
+                ipHmac,
+                reasonClass: "invalid_link",
+                timestamp: now),
+            http.RequestAborted);
+        await audit.SaveChangesAsync(http.RequestAborted);
+        await throttle.RecordFailureAsync(ipHmac, http.RequestAborted);
 
-    private static IResult CompleteFailedResult()
-        => Results.Json(
-            new { error = AdminPasswordResetCopy.CompleteFailed },
-            statusCode: StatusCodes.Status401Unauthorized);
+        ApplyNoStoreNoReferrer(http);
+        http.Response.Headers.Location = LinkExpiredPath;
+        return Results.StatusCode(StatusCodes.Status303SeeOther);
+    }
+
+    private static void ApplyNoStoreNoReferrer(HttpContext http)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
 
     private static string NormalizeEmail(string? email)
         => (email ?? string.Empty).Trim().ToLowerInvariant();
@@ -200,18 +269,13 @@ public static class AdminPasswordResetEndpoints
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string CreateRawToken()
-        => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        => Convert.ToBase64String(RandomNumberGenerator.GetBytes(TokenEntropyBytes))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
 
-    private static string BuildResetLink(AdminHostOptions hosts, string rawToken)
-    {
-        var host = hosts.AllowedHosts is { Count: > 0 }
-            ? hosts.AllowedHosts[0]
-            : "admin.core.dealoware.com";
-        return $"https://{host}{ConfirmPagePath}?token={Uri.EscapeDataString(rawToken)}";
-    }
+    public static string BuildResetLink(string rawToken)
+        => $"{ResetLinkOrigin}{ConfirmPagePath}#token={Uri.EscapeDataString(rawToken)}";
 
     private static string HashClientIp(IIpHasher ipHasher, HttpContext http)
     {

@@ -30,8 +30,6 @@ public sealed class AdminSessionMiddleware
         HttpContext context,
         IAdminSessionRepository sessions,
         IAdminCoreOwnerAccountRepository accounts,
-        IAdminPasswordResetTokenRepository resetTokens,
-        IAdminClock clock,
         AdminAntiForgeryService antiforgery,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
@@ -41,15 +39,8 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
-        if (await IsSignedOutExemptAsync(context, accounts, resetTokens, clock, antiforgery))
+        if (await IsSignedOutExemptAsync(context, accounts, antiforgery))
         {
-            if (HttpMethods.IsPost(context.Request.Method)
-                && !AdminAntiForgery.TryValidate(context))
-            {
-                await AdminDeny.WriteUnauthorizedAsync(context);
-                return;
-            }
-
             if (AdminSignedOutExemptions.IsFormGet(context))
             {
                 AdminAntiForgery.Issue(context);
@@ -108,8 +99,6 @@ public sealed class AdminSessionMiddleware
     internal static async Task<bool> IsSignedOutExemptAsync(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        IAdminPasswordResetTokenRepository resetTokens,
-        IAdminClock clock,
         AdminAntiForgeryService antiforgery)
     {
         if (!AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical))
@@ -137,9 +126,6 @@ public sealed class AdminSessionMiddleware
             AdminSignedOutExemptions.TokenKind.PendingSignIn =>
                 await AdminSignedOutExemptions.HasValidPendingTokenAsync(
                     context, accounts, context.RequestAborted),
-            AdminSignedOutExemptions.TokenKind.PasswordReset =>
-                await AdminSignedOutExemptions.HasValidResetTokenAsync(
-                    context, resetTokens, clock, context.RequestAborted),
             // Bootstrap tokens are owned by Step 2. Missing token → not exempt.
             _ => false
         };
@@ -153,6 +139,9 @@ public sealed class AdminSessionMiddleware
         var hasSessionCookie = !string.IsNullOrWhiteSpace(context.Request.Cookies[AdminSessionCookie.Name]);
         if (AdminSignedOutExemptions.IsSignOut(canonical) && !hasSessionCookie)
             return true;
+
+        if (AdminSignedOutExemptions.IsResetPath(canonical))
+            return AdminAntiForgery.TryValidate(context);
 
         if (antiforgery.TryValidate(context))
             return true;

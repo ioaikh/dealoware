@@ -95,3 +95,38 @@ public sealed class FakeAdminClock : IAdminClock
 
     public void Advance(TimeSpan delta) => _utcNow = _utcNow.Add(delta);
 }
+
+public sealed class CapturingAdminResetIpThrottle : IAdminResetIpThrottle
+{
+    private readonly List<string> _failures = [];
+    private readonly object _gate = new();
+
+    public IReadOnlyList<string> Failures
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _failures.ToList();
+            }
+        }
+    }
+
+    public Task RecordFailureAsync(string ipHmac, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            _failures.Add(ipHmac);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _failures.Clear();
+        }
+    }
+}

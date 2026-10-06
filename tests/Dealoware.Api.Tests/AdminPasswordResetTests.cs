@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Dealoware.Api.Admin;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -54,7 +55,8 @@ public class AdminPasswordResetTests
         {
             Assert.Equal(CoreOwnerEmail, item.To);
             Assert.Equal(AdminPasswordResetEndpoints.MailSubject, item.Subject);
-            Assert.Contains("/admin/reset/confirm?token=", item.TextBody);
+            Assert.Contains("https://admin.core.dealoware.com/admin/reset/confirm#token=", item.TextBody);
+            Assert.DoesNotContain("?token=", item.TextBody);
             Assert.DoesNotContain(CurrentPassword, item.TextBody);
             Assert.DoesNotContain(NextPassword, item.TextBody);
             Assert.DoesNotContain("password=", item.TextBody, StringComparison.OrdinalIgnoreCase);
@@ -72,9 +74,7 @@ public class AdminPasswordResetTests
             token,
             newPassword = NextPassword
         });
-        Assert.Equal(HttpStatusCode.Unauthorized, skip.StatusCode);
-        var skipBody = await skip.Content.ReadAsStringAsync();
-        Assert.Contains(AdminPasswordResetCopy.CompleteFailed, skipBody);
+        AssertLinkExpired(skip);
 
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
 
@@ -113,10 +113,7 @@ public class AdminPasswordResetTests
             newPassword = "radio station third!",
             recoveryCode = Factor().ValidRecoveryCode
         });
-        Assert.Equal(HttpStatusCode.Unauthorized, replayCode.StatusCode);
-        Assert.Contains(
-            AdminPasswordResetCopy.CompleteFailed,
-            await replayCode.Content.ReadAsStringAsync());
+        AssertLinkExpired(replayCode);
         Assert.True(await CredentialStillMatchesAsync(NextPassword));
     }
 
@@ -135,7 +132,10 @@ public class AdminPasswordResetTests
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
-        var client = _factory.CreateClient();
+        Assert.DoesNotContain(
+            ReadSetCookie(complete),
+            c => c.StartsWith(AdminCookieNames.Session + "=", StringComparison.Ordinal));
+        var client = CreateClient();
         using var me = await client.SendAsync(AdminGet("/admin/api/me", sessionId));
         Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
 
@@ -218,43 +218,45 @@ public class AdminPasswordResetTests
             totp = Factor().ValidTotp
         });
 
-        var replayBody = await replay.Content.ReadAsStringAsync();
-        var expiredBody = await expired.Content.ReadAsStringAsync();
-        var randomBody = await random.Content.ReadAsStringAsync();
-
-        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
-        Assert.Equal(replay.StatusCode, expired.StatusCode);
-        Assert.Equal(replay.StatusCode, random.StatusCode);
-        Assert.Equal(replayBody, expiredBody);
-        Assert.Equal(replayBody, randomBody);
-        Assert.Contains("\"error\":\"Unauthorized\"", replayBody);
+        AssertLinkExpired(replay);
+        AssertLinkExpired(expired);
+        AssertLinkExpired(random);
+        Assert.Equal(
+            replay.Headers.Location?.ToString(),
+            expired.Headers.Location?.ToString());
     }
 
     [Fact]
-    public async Task TD_ADM_031_ConfirmPage_ReplayExpiredRandom_SameDeny()
+    public async Task TD_ADM_031_ConfirmGet_IgnoresQueryToken_SameForm_NoStore()
     {
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
-        await PostConfirmAsync(new
-        {
-            token,
-            newPassword = NextPassword,
-            totp = Factor().ValidTotp
-        });
 
-        var replay = await GetConfirmPageAsync(token);
-        var expiredToken = await RequestRawTokenAsync();
-        Clock().Advance(TimeSpan.FromHours(2));
-        var expired = await GetConfirmPageAsync(expiredToken);
-        var random = await GetConfirmPageAsync("not-a-real-token");
+        using var withQuery = await SendAsync(
+            HttpMethod.Get,
+            $"{AdminSignedOutExemptions.ResetConfirmPage}?token={Uri.EscapeDataString(token)}");
+        using var bare = await SendAsync(HttpMethod.Get, AdminSignedOutExemptions.ResetConfirmPage);
 
-        var replayBody = await replay.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
-        Assert.Equal(replay.StatusCode, expired.StatusCode);
-        Assert.Equal(replay.StatusCode, random.StatusCode);
-        Assert.Equal(replayBody, await expired.Content.ReadAsStringAsync());
-        Assert.Equal(replayBody, await random.Content.ReadAsStringAsync());
-        Assert.Contains("\"error\":\"Unauthorized\"", replayBody);
+        Assert.Equal(HttpStatusCode.OK, withQuery.StatusCode);
+        Assert.Equal(withQuery.StatusCode, bare.StatusCode);
+        AssertNoStoreNoReferrer(withQuery);
+        AssertNoStoreNoReferrer(bare);
+        var queryBody = await withQuery.Content.ReadAsStringAsync();
+        var bareBody = await bare.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(token, queryBody, StringComparison.Ordinal);
+        Assert.Contains("history.replaceState", queryBody, StringComparison.Ordinal);
+        Assert.Contains("location.hash", queryBody, StringComparison.Ordinal);
+        Assert.Equal("text/html", withQuery.Content.Headers.ContentType?.MediaType);
+        Assert.DoesNotContain(
+            ReadSetCookie(withQuery),
+            c => c.Contains(token, StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            ReadSetCookie(withQuery),
+            c => c.StartsWith(AdminCookieNames.Pending + "=", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            ReadSetCookie(withQuery),
+            c => c.StartsWith(AdminCookieNames.Session + "=", StringComparison.Ordinal));
+        Assert.Contains("replaceState", bareBody, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -288,8 +290,7 @@ public class AdminPasswordResetTests
         using var extraConfirm = await SendAsync(HttpMethod.Post, "/admin/api/auth/reset/confirm/extra");
         using var wrongMethodApi = await SendAsync(HttpMethod.Get, "/admin/api/auth/reset");
         using var wrongMethodPage = await SendAsync(HttpMethod.Delete, "/admin/reset");
-        using var missingTokenPage = await SendAsync(HttpMethod.Get, "/admin/reset/confirm");
-        using var missingTokenApi = await SendAsync(HttpMethod.Post, "/admin/api/auth/reset/confirm");
+        using var missingAfConfirm = await SendAsync(HttpMethod.Post, "/admin/api/auth/reset/confirm");
 
         var extraBody = await extraApi.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Unauthorized, extraApi.StatusCode);
@@ -297,11 +298,9 @@ public class AdminPasswordResetTests
         Assert.Equal(HttpStatusCode.Unauthorized, extraConfirm.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrongMethodApi.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrongMethodPage.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, missingTokenPage.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, missingTokenApi.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, missingAfConfirm.StatusCode);
         Assert.Equal(extraBody, await extraPage.Content.ReadAsStringAsync());
         Assert.Equal(extraBody, await wrongMethodApi.Content.ReadAsStringAsync());
-        Assert.Equal(extraBody, await missingTokenPage.Content.ReadAsStringAsync());
         Assert.Contains("\"error\":\"Unauthorized\"", extraBody);
     }
 
@@ -371,8 +370,11 @@ public class AdminPasswordResetTests
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
 
-        using var get = await GetConfirmPageAsync(token);
-        Assert.NotEqual(HttpStatusCode.Unauthorized, get.StatusCode);
+        using var get = await SendAsync(
+            HttpMethod.Get,
+            $"{AdminSignedOutExemptions.ResetConfirmPage}?token={Uri.EscapeDataString(token)}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.DoesNotContain(token, await get.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
         var complete = await PostConfirmAsync(new
         {
@@ -382,6 +384,59 @@ public class AdminPasswordResetTests
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         Assert.True(await CredentialStillMatchesAsync(NextPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_B6194918_QueryTokenOnPost_IsIgnored_GoesToLinkExpired()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        Throttle().Clear();
+
+        var af = await IssueAntiForgeryAsync();
+        var client = CreateClient();
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{AdminPasswordResetEndpoints.ConfirmApiPath}?token={Uri.EscapeDataString(token)}");
+        request.Headers.Host = AdminHost;
+        AttachAntiForgery(request, af);
+        request.Content = JsonContent.Create(new
+        {
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        using var response = await client.SendAsync(request);
+        AssertLinkExpired(response);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+        Assert.NotEmpty(Throttle().Failures);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_B6194918_NewTokenCancelsOld_AndHas128Bits()
+    {
+        await SeedCredentialAsync();
+        var first = await RequestRawTokenAsync();
+        var second = await RequestRawTokenAsync();
+        Assert.NotEqual(first, second);
+
+        var raw = Convert.FromBase64String(PadBase64Url(second));
+        Assert.True(raw.Length * 8 >= 128);
+
+        var stale = await PostConfirmAsync(new
+        {
+            token = first,
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        AssertLinkExpired(stale);
+
+        var ok = await PostConfirmAsync(new
+        {
+            token = second,
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
     [Fact]
@@ -447,6 +502,9 @@ public class AdminPasswordResetTests
         {
             Assert.DoesNotContain("pbkdf2", row.IpHmac, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(token, row.ActorEmail);
+            Assert.DoesNotContain(token, row.ReasonClass ?? string.Empty);
+            Assert.DoesNotContain(token, row.BeforeSnapshot ?? string.Empty);
+            Assert.DoesNotContain(token, row.AfterSnapshot ?? string.Empty);
             Assert.DoesNotContain(NextPassword, row.ActorEmail);
             Assert.False(string.IsNullOrWhiteSpace(row.IpHmac));
         }
@@ -478,6 +536,12 @@ public class AdminPasswordResetTests
 
     private FakeAdminClock Clock()
         => _factory.Services.GetRequiredService<FakeAdminClock>();
+
+    private CapturingAdminResetIpThrottle Throttle()
+        => _factory.Services.GetRequiredService<CapturingAdminResetIpThrottle>();
+
+    private HttpClient CreateClient()
+        => _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
     private async Task SeedCredentialAsync()
     {
@@ -518,14 +582,16 @@ public class AdminPasswordResetTests
         var response = await PostRequestAsync(CoreOwnerEmail);
         response.EnsureSuccessStatusCode();
         var link = Assert.Single(Mail().Sent).TextBody;
-        var token = link[(link.IndexOf("token=", StringComparison.Ordinal) + 6)..];
+        var hashAt = link.IndexOf("#token=", StringComparison.Ordinal);
+        Assert.True(hashAt >= 0);
+        var token = link[(hashAt + 7)..];
         return Uri.UnescapeDataString(token);
     }
 
     private async Task<HttpResponseMessage> PostRequestAsync(string email)
     {
         var af = await IssueAntiForgeryAsync();
-        var client = _factory.CreateClient();
+        var client = CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
         request.Headers.Host = AdminHost;
         AttachAntiForgery(request, af);
@@ -536,7 +602,7 @@ public class AdminPasswordResetTests
     private async Task<HttpResponseMessage> PostConfirmAsync(object body)
     {
         var af = await IssueAntiForgeryAsync();
-        var client = _factory.CreateClient();
+        var client = CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.ConfirmApiPath);
         request.Headers.Host = AdminHost;
         AttachAntiForgery(request, af);
@@ -544,14 +610,9 @@ public class AdminPasswordResetTests
         return await client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> GetConfirmPageAsync(string token)
-        => await SendAsync(
-            HttpMethod.Get,
-            $"{AdminSignedOutExemptions.ResetConfirmPage}?token={Uri.EscapeDataString(token)}");
-
     private async Task<IssuedAntiForgery> IssueAntiForgeryAsync()
     {
-        using var response = await SendAsync(HttpMethod.Get, AdminSignedOutExemptions.ResetPage);
+        using var response = await SendAsync(HttpMethod.Get, AdminSignedOutExemptions.ResetConfirmPage);
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         var setCookies = ReadSetCookie(response);
         var setCookie = Assert.Single(
@@ -589,9 +650,49 @@ public class AdminPasswordResetTests
 
     private sealed record IssuedAntiForgery(string Token, string CookieHeader, string SetCookie);
 
+    private static void AssertLinkExpired(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.SeeOther, response.StatusCode);
+        Assert.Equal(
+            AdminSignedOutExemptions.LinkExpiredPage,
+            response.Headers.Location?.ToString());
+        AssertNoStoreNoReferrer(response);
+    }
+
+    private static void AssertNoStoreNoReferrer(HttpResponseMessage response)
+    {
+        var cacheParts = new List<string>();
+        if (response.Headers.CacheControl is { } parsed)
+        {
+            cacheParts.Add(parsed.ToString());
+        }
+
+        if (response.Headers.TryGetValues("Cache-Control", out var headerCc))
+        {
+            cacheParts.AddRange(headerCc);
+        }
+
+        if (response.Content.Headers.TryGetValues("Cache-Control", out var contentCc))
+        {
+            cacheParts.AddRange(contentCc);
+        }
+
+        Assert.Contains("no-store", string.Join(",", cacheParts), StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            response.Headers.TryGetValues("Referrer-Policy", out var values)
+            && values.Contains("no-referrer"),
+            "Referrer-Policy: no-referrer");
+    }
+
+    private static string PadBase64Url(string value)
+    {
+        var std = value.Replace('-', '+').Replace('_', '/');
+        return std.PadRight(std.Length + (4 - std.Length % 4) % 4, '=');
+    }
+
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path)
     {
-        var client = _factory.CreateClient();
+        var client = CreateClient();
         using var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
         if (method == HttpMethod.Post)
