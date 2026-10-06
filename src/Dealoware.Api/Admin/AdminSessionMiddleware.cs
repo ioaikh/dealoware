@@ -27,8 +27,6 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
-        IAdminPasswordResetTokenRepository resetTokens,
-        IAdminClock clock,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
@@ -37,8 +35,7 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
-        if (await AdminSignedOutExemptions.IsExemptAsync(
-                context, resetTokens, clock, context.RequestAborted))
+        if (await AdminSignedOutExemptions.IsExemptAsync(context, context.RequestAborted))
         {
             if (HttpMethods.IsPost(context.Request.Method)
                 && !AdminAntiForgery.TryValidate(context))

@@ -59,6 +59,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             ReplaceSingleton<IAdminMailSender, RecordingMailSender>(services);
             ReplaceSingleton<IAdminSecondFactorVerifier, FakeAdminSecondFactorVerifier>(services);
             ReplaceSingleton<IAdminClock, FakeAdminClock>(services);
+            ReplaceSingleton<IAdminResetIpThrottle, CapturingAdminResetIpThrottle>(services);
         });
     }
 

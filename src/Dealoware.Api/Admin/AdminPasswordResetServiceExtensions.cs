@@ -13,6 +13,7 @@ public static class AdminPasswordResetServiceExtensions
         services.AddSingleton<IAdminClock, SystemAdminClock>();
         services.AddSingleton<IAdminMailSender, UnconfiguredAdminMailSender>();
         services.AddSingleton<IAdminSecondFactorVerifier, PendingStep3SecondFactorVerifier>();
+        services.AddSingleton<IAdminResetIpThrottle, PendingStep5ResetIpThrottle>();
         return services;
     }
 }

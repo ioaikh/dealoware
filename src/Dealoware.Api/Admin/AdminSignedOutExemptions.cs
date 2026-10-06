@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Dealoware.Domain.Admin;
 
 namespace Dealoware.Api.Admin;
 
@@ -7,7 +6,8 @@ namespace Dealoware.Api.Admin;
 /// r3 §2 signed-out session exemptions owned by Step 4, plus the
 /// /admin/auth/ static-file folder (C8). C1: canonicalise the raw path
 /// before any compare. Query strings never create an exemption.
-/// Token rows require a server-validated unused reset token.
+/// GET /admin/reset/confirm takes no token (b6194918 item 6). The
+/// reset token is checked on POST only, in the body.
 /// </summary>
 public static class AdminSignedOutExemptions
 {
@@ -19,59 +19,55 @@ public static class AdminSignedOutExemptions
     public const string ResetConfirmApi = "/admin/api/auth/reset/confirm";
     public const string AuthStaticPrefix = "/admin/auth";
 
-    public static async Task<bool> IsExemptAsync(
+    public static Task<bool> IsExemptAsync(
         HttpContext context,
-        IAdminPasswordResetTokenRepository tokens,
-        IAdminClock clock,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
+        _ = cancellationToken;
         if (!TryGetCanonicalPath(context, out var path))
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         var method = context.Request.Method;
 
         if (HttpMethods.IsGet(method) && IsAuthStaticFile(path))
         {
-            return true;
+            return Task.FromResult(true);
         }
 
         if (PathEquals(path, ResetPage) && (HttpMethods.IsGet(method) || HttpMethods.IsPost(method)))
         {
-            return true;
+            return Task.FromResult(true);
         }
 
         if (PathEquals(path, ResetSentPage) && HttpMethods.IsGet(method))
         {
-            return true;
+            return Task.FromResult(true);
         }
 
         if (PathEquals(path, LinkExpiredPage) && HttpMethods.IsGet(method))
         {
-            return true;
+            return Task.FromResult(true);
+        }
+
+        if (PathEquals(path, ResetConfirmPage)
+            && (HttpMethods.IsGet(method) || HttpMethods.IsPost(method)))
+        {
+            return Task.FromResult(true);
         }
 
         if (PathEquals(path, ResetApi) && HttpMethods.IsPost(method))
         {
-            return true;
+            return Task.FromResult(true);
         }
 
-        if ((PathEquals(path, ResetConfirmPage) && (HttpMethods.IsGet(method) || HttpMethods.IsPost(method)))
-            || (PathEquals(path, ResetConfirmApi) && HttpMethods.IsPost(method)))
+        if (PathEquals(path, ResetConfirmApi) && HttpMethods.IsPost(method))
         {
-            var raw = await ReadResetTokenAsync(context, cancellationToken);
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return false;
-            }
-
-            var hash = AdminPasswordResetToken.HashRaw(raw.Trim());
-            var row = await tokens.FindUsableByHashAsync(hash, clock.UtcNow, cancellationToken);
-            return row is not null;
+            return Task.FromResult(true);
         }
 
-        return false;
+        return Task.FromResult(false);
     }
 
     public static bool TryGetCanonicalPath(HttpContext context, out string path)
@@ -88,8 +84,7 @@ public static class AdminSignedOutExemptions
 
         return PathEquals(path, ResetPage)
                || PathEquals(path, ResetSentPage)
-               || PathEquals(path, ResetConfirmPage)
-               || PathEquals(path, LinkExpiredPage);
+               || PathEquals(path, ResetConfirmPage);
     }
 
     public static bool IsAuthStaticFile(string canonicalPath)
@@ -119,14 +114,12 @@ public static class AdminSignedOutExemptions
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        if (context.Request.Query.TryGetValue("token", out var queryToken)
-            && !string.IsNullOrWhiteSpace(queryToken))
+        if (!HttpMethods.IsPost(context.Request.Method))
         {
-            return queryToken.ToString();
+            return null;
         }
 
-        if (HttpMethods.IsPost(context.Request.Method)
-            && context.Request.ContentLength is > 0)
+        if (context.Request.ContentLength is > 0)
         {
             context.Request.EnableBuffering();
         }
