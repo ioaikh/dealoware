@@ -9,7 +9,7 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// TD-ADM-110 / TD-ADM-150: admin mail port, SES HTTP adapter, no AWS SDK, no invented account details.
-/// Token links are built by the mail layer (route note r3 b079a814; fragment form b6194918 item 6).
+/// Token links are built by the mail layer (route note r5 c5e9d232; fragment form b6194918 item 6).
 /// </summary>
 public class AdminMailInterfaceTests
 {

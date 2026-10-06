@@ -2,7 +2,7 @@ namespace Dealoware.Application.Admin;
 
 /// <summary>
 /// Builds reset and bootstrap token links. Callers pass the raw token only.
-/// Paths match route note r3 b079a814: /admin/reset/confirm and /admin/bootstrap.
+/// Paths match route note r5 c5e9d232: /admin/reset/confirm and /admin/bootstrap.
 /// Token sits in the URL fragment (Chief Security answers tip b6194918, item 6).
 /// Origin is this fixed constant; never the request Host.
 /// </summary>
@@ -33,7 +33,7 @@ public static class AdminMailPagePaths
     };
 
     /// <summary>
-    /// Token in the fragment (b6194918 item 6). Query strings are banned (r3 / C4.3).
+    /// Token in the fragment (b6194918 item 6). Query strings are banned (r5 / C4.3).
     /// </summary>
     private static string AttachToken(string pageUrl, string token)
         => pageUrl + "#token=" + Uri.EscapeDataString(token);
