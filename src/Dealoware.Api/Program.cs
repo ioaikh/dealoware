@@ -106,6 +106,7 @@ try
         name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
         isDevelopment: builder.Environment.IsDevelopment());
     builder.Services.AddSingleton<IIpHasher>(ipHasher);
+    builder.Services.AddAdminTotp(builder.Configuration, builder.Environment.IsDevelopment());
 }
 catch (InvalidOperationException ex)
 {
@@ -283,6 +284,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminAuthEndpoints();
 
 app.Run();
 

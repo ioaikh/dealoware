@@ -41,6 +41,15 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
 
+    /// <summary>
+    /// A7 Step 3: CoreOwner credential, encrypted TOTP, pending auth, hashed recovery codes.
+    /// </summary>
+    public DbSet<AdminCoreOwnerAccount> AdminCoreOwnerAccounts => Set<AdminCoreOwnerAccount>();
+
+    public DbSet<AdminRecoveryCode> AdminRecoveryCodes => Set<AdminRecoveryCode>();
+
+    public DbSet<AdminPendingAuth> AdminPendingAuths => Set<AdminPendingAuth>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -100,5 +109,8 @@ public class DealowareDbContext : DbContext
         // A7: Admin session and audit tables
         modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminCoreOwnerAccountEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminRecoveryCodeEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminPendingAuthEntityConfiguration());
     }
 }

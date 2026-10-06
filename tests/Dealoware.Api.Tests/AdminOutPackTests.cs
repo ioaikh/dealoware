@@ -56,5 +56,33 @@ public class AdminOutPackTests
         var source = File.ReadAllText(hasherPath);
         Assert.Contains("DEALOWARE_ADMIN_IP_HMAC_KEY", source);
         Assert.DoesNotContain("Turnstile", source, StringComparison.OrdinalIgnoreCase);
+
+        var totpPath = Path.Combine(RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "TotpSecretProtector.cs");
+        var totpSource = File.ReadAllText(totpPath);
+        Assert.Contains("DEALOWARE_ADMIN_TOTP_KEY", totpSource);
+        Assert.DoesNotContain("otpauth://", totpSource, StringComparison.OrdinalIgnoreCase);
+
+        var recoveryPath = Path.Combine(RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "AdminRecoveryCodeHasher.cs");
+        var recoverySource = File.ReadAllText(recoveryPath);
+        Assert.Contains("DEALOWARE_ADMIN_RECOVERY_HMAC_KEY", recoverySource);
+        Assert.DoesNotContain("otpauth://", recoverySource, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SecSc6_FactorLockStateIsNotHeldInProcessMemory()
+    {
+        var root = RepoRoot();
+        var repoPath = Path.Combine(root, "src", "Dealoware.Infrastructure", "Admin", "AdminCoreOwnerAccountRepository.cs");
+        var endpointsPath = Path.Combine(root, "src", "Dealoware.Api", "Admin", "AdminAuthEndpoints.cs");
+        var repoSource = File.ReadAllText(repoPath);
+        var endpointsSource = File.ReadAllText(endpointsPath);
+
+        Assert.Contains("ExecuteUpdateAsync", repoSource, StringComparison.Ordinal);
+        Assert.Contains("FailedFactorAttempts", repoSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExecuteSqlInterpolatedAsync", repoSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConcurrentDictionary", repoSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("MemoryCache", repoSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConcurrentDictionary", endpointsSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("MemoryCache", endpointsSource, StringComparison.Ordinal);
     }
 }

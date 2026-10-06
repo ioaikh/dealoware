@@ -41,3 +41,55 @@ jobs:
           name: test-results
           path: '**/TestResults/*.trx'
           retention-days: 30
+
+  postgres-sec:
+    name: PostgreSQL Sec Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dealoware_ci
+          POSTGRES_PASSWORD: ci_throwaway_not_a_secret
+          POSTGRES_DB: dealoware_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dealoware_ci -d dealoware_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: dealoware_ci
+      DB_USERNAME: dealoware_ci
+      DB_PASSWORD: ci_throwaway_not_a_secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Sec* parallel tests and one full second-factor sign-in
+        run: >
+          dotnet test --no-build --configuration Release --verbosity normal
+          --logger "trx;LogFileName=postgres-sec-results.trx"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin"
+
+      - name: Upload PostgreSQL test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-sec-test-results
+          path: '**/TestResults/*.trx'
+          retention-days: 30
