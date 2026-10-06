@@ -22,6 +22,11 @@ if (DatabaseMigrateCommand.IsMigrateArgs(args))
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+});
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
@@ -310,6 +315,7 @@ app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
 app.MapAdminAuthEndpoints();
+app.MapAdminTestExceptionEndpoint();
 
 app.Run();
 
