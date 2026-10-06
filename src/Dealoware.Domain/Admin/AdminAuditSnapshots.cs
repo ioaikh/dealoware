@@ -257,40 +257,30 @@ public static class AdminAuditSnapshots
 
     private static JsonNode? SanitizeStringValue(string text, int depth, SanitizeState state)
     {
+        if (text.Length > MaxInputUtf8Bytes)
+            return JsonValue.Create("[redacted]");
+
         var trimmed = text.Trim();
         if (LooksLikeSecretValue(trimmed))
             return JsonValue.Create("[redacted]");
 
-        if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '['))
-            return JsonValue.Create(text);
+        if (trimmed.Length > 0
+            && trimmed[0] is '{' or '['
+            && TryMatchBalanced(trimmed, 0, out var wholeEnd)
+            && SkipWhiteSpace(trimmed.AsSpan(), wholeEnd) == trimmed.Length)
+        {
+            var promoted = TrySanitizeJsonSlice(trimmed, depth, state, promote: true);
+            if (state.DepthExceeded)
+                return JsonValue.Create("[redacted]");
+            if (promoted is JsonNode node)
+                return node;
+            return JsonValue.Create("[redacted]");
+        }
 
-        if (!TryEnter(depth, state))
+        var rewritten = RewriteFreeText(text, depth, state);
+        if (state.DepthExceeded)
             return JsonValue.Create("[redacted]");
-
-        var embedDepth = depth + 1;
-        var remaining = MaxDepth - embedDepth;
-        if (remaining < 1)
-        {
-            state.DepthExceeded = true;
-            return JsonValue.Create("[redacted]");
-        }
-
-        try
-        {
-            var embedded = JsonNode.Parse(
-                trimmed,
-                documentOptions: new JsonDocumentOptions { MaxDepth = remaining });
-            return SanitizeNode(embedded, embedDepth, state);
-        }
-        catch (JsonException ex) when (IsMaxDepthException(ex))
-        {
-            state.DepthExceeded = true;
-            return JsonValue.Create("[redacted]");
-        }
-        catch (JsonException)
-        {
-            return JsonValue.Create("[redacted]");
-        }
+        return JsonValue.Create(rewritten);
     }
 
     private static bool TryEnter(int depth, SanitizeState state)
@@ -300,6 +290,271 @@ public static class AdminAuditSnapshots
         state.DepthExceeded = true;
         return false;
     }
+
+    /// <summary>
+    /// Finds <c>{...}</c> / <c>[...]</c> substrings, parses and strips each,
+    /// or redacts the span if it is not JSON. Then redacts
+    /// <c>forbidden-key [=: ] value</c> assignments. Linear, no backtracking regex.
+    /// </summary>
+    private static string RewriteFreeText(string text, int depth, SanitizeState state)
+    {
+        if (text.Length > MaxInputUtf8Bytes)
+            return "[redacted]";
+
+        var builder = new StringBuilder(text.Length);
+        var i = 0;
+        while (i < text.Length && !state.DepthExceeded)
+        {
+            if (text[i] is '{' or '[')
+            {
+                if (!TryMatchBalanced(text, i, out var end))
+                {
+                    builder.Append("[redacted]");
+                    break;
+                }
+
+                var slice = text[i..end];
+                var cleaned = TrySanitizeJsonSlice(slice, depth, state, promote: false);
+                builder.Append(cleaned as string ?? "[redacted]");
+                i = end;
+                continue;
+            }
+
+            builder.Append(text[i]);
+            i++;
+        }
+
+        if (state.DepthExceeded)
+            return "[redacted]";
+        return RedactForbiddenAssignments(builder.ToString());
+    }
+
+    private static object? TrySanitizeJsonSlice(string slice, int depth, SanitizeState state, bool promote)
+    {
+        if (!TryEnter(depth, state))
+            return promote ? null : "[redacted]";
+
+        var embedDepth = depth + 1;
+        var remaining = MaxDepth - embedDepth;
+        if (remaining < 1)
+        {
+            state.DepthExceeded = true;
+            return promote ? null : "[redacted]";
+        }
+
+        try
+        {
+            var embedded = JsonNode.Parse(
+                slice,
+                documentOptions: new JsonDocumentOptions { MaxDepth = remaining });
+            var cleaned = SanitizeNode(embedded, embedDepth, state);
+            if (state.DepthExceeded)
+                return promote ? null : "[redacted]";
+            if (promote)
+                return cleaned;
+            return cleaned?.ToJsonString() ?? "[redacted]";
+        }
+        catch (JsonException ex) when (IsMaxDepthException(ex))
+        {
+            state.DepthExceeded = true;
+            return promote ? null : "[redacted]";
+        }
+        catch (JsonException)
+        {
+            return promote ? null : "[redacted]";
+        }
+    }
+
+    private static bool TryMatchBalanced(string text, int start, out int end)
+    {
+        end = start;
+        if (start >= text.Length || text[start] is not ('{' or '['))
+            return false;
+
+        Span<char> stack = stackalloc char[MaxDepth + 1];
+        var top = 0;
+        stack[top++] = text[start] == '{' ? '}' : ']';
+        var inString = false;
+        var quote = '\0';
+        var limit = Math.Min(text.Length, start + MaxInputUtf8Bytes);
+
+        for (var i = start + 1; i < limit; i++)
+        {
+            var ch = text[i];
+            if (inString)
+            {
+                if (ch == '\\' && i + 1 < limit)
+                {
+                    i++;
+                    continue;
+                }
+
+                if (ch == quote)
+                    inString = false;
+                continue;
+            }
+
+            if (ch is '"' or '\'')
+            {
+                inString = true;
+                quote = ch;
+                continue;
+            }
+
+            if (ch is '{' or '[')
+            {
+                if (top >= stack.Length)
+                    return false;
+                stack[top++] = ch == '{' ? '}' : ']';
+                continue;
+            }
+
+            if (ch is not ('}' or ']'))
+                continue;
+            if (top == 0 || stack[top - 1] != ch)
+                return false;
+            top--;
+            if (top != 0)
+                continue;
+            end = i + 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Linear scan (no backtracking) for a quoted, single-quoted, or bare name
+    /// followed by ':' or '=' and a value. Names use the same normalization as keys.
+    /// </summary>
+    private static string RedactForbiddenAssignments(string text)
+    {
+        if (text.Length > MaxInputUtf8Bytes)
+            return "[redacted]";
+
+        var span = text.AsSpan();
+        var builder = new StringBuilder(text.Length);
+        var i = 0;
+        var copyFrom = 0;
+        while (i < span.Length)
+        {
+            var ch = span[i];
+            if (ch is '"' or '\'')
+            {
+                var tokenStart = i;
+                var quote = ch;
+                i++;
+                var nameStart = i;
+                while (i < span.Length)
+                {
+                    if (span[i] == '\\' && i + 1 < span.Length)
+                    {
+                        i += 2;
+                        continue;
+                    }
+
+                    if (span[i] == quote)
+                        break;
+                    i++;
+                }
+
+                if (i >= span.Length)
+                    break;
+
+                var name = span[nameStart..i];
+                i++;
+                var afterName = SkipWhiteSpace(span, i);
+                if (afterName < span.Length
+                    && span[afterName] is ':' or '='
+                    && IsForbiddenKey(name.ToString()))
+                {
+                    var valueEnd = ConsumeAssignmentValue(span, afterName + 1);
+                    builder.Append(text, copyFrom, tokenStart - copyFrom);
+                    builder.Append("[redacted]");
+                    copyFrom = valueEnd;
+                    i = valueEnd;
+                    continue;
+                }
+
+                continue;
+            }
+
+            if (IsBareNameStart(ch))
+            {
+                var tokenStart = i;
+                i++;
+                while (i < span.Length && IsBareNameContinue(span[i]))
+                    i++;
+
+                var afterName = SkipWhiteSpace(span, i);
+                if (afterName < span.Length
+                    && span[afterName] is ':' or '='
+                    && IsForbiddenKey(span[tokenStart..i].ToString()))
+                {
+                    var valueEnd = ConsumeAssignmentValue(span, afterName + 1);
+                    builder.Append(text, copyFrom, tokenStart - copyFrom);
+                    builder.Append("[redacted]");
+                    copyFrom = valueEnd;
+                    i = valueEnd;
+                    continue;
+                }
+
+                continue;
+            }
+
+            i++;
+        }
+
+        builder.Append(text, copyFrom, text.Length - copyFrom);
+        return builder.ToString();
+    }
+
+    private static int ConsumeAssignmentValue(ReadOnlySpan<char> span, int index)
+    {
+        index = SkipWhiteSpace(span, index);
+        if (index >= span.Length)
+            return index;
+        if (span[index] is '"' or '\'')
+        {
+            var quote = span[index++];
+            while (index < span.Length)
+            {
+                if (span[index] == '\\' && index + 1 < span.Length)
+                {
+                    index += 2;
+                    continue;
+                }
+
+                if (span[index] == quote)
+                    return index + 1;
+                index++;
+            }
+
+            return index;
+        }
+
+        while (index < span.Length
+               && !char.IsWhiteSpace(span[index])
+               && span[index] is not (',' or ';' or '}' or ']'))
+        {
+            index++;
+        }
+
+        return index;
+    }
+
+    private static int SkipWhiteSpace(ReadOnlySpan<char> span, int index)
+    {
+        while (index < span.Length && char.IsWhiteSpace(span[index]))
+            index++;
+        return index;
+    }
+
+    private static bool IsBareNameStart(char ch)
+        => char.IsLetter(ch) || ch == '_';
+
+    private static bool IsBareNameContinue(char ch)
+        => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.' || char.IsWhiteSpace(ch);
 
     private static bool LooksLikeSecretValue(string text)
         => text.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)

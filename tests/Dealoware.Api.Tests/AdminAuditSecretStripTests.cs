@@ -29,6 +29,14 @@ public class AdminAuditSecretStripTests
     private const string MalformedEmbedSecret = "LEAK-malformed-embed-v1";
     private const string MalformedRootSecret = "LEAK-malformed-root-v1";
     private const string NonJsonSecret = "LEAK-plain-v1";
+    private const string FreeTextSecret = "LEAK-freetext-v1";
+    private const string MidStringSecret = "LEAK-mid";
+    private const string EqSecret = "LEAK-eq-v1";
+    private const string ColonSecret = "LEAK-colon-v1";
+    private const string PasswordEqSecret = "LEAK-password-eq";
+    private const string PasswordColonSecret = "LEAK-password-colon";
+    private const string SingleQuoteSecret = "LEAK-singlequote-v1";
+    private const string UnquotedSecret = "LEAK-unquoted-v1";
 
     /// <summary>
     /// Reviewer-required keys. Do not read this from production code.
@@ -119,34 +127,43 @@ public class AdminAuditSecretStripTests
     {
         var malformed = "{\"password\":\"" + MalformedRootSecret;
         const string nonJson = "password=" + NonJsonSecret;
+        var singleQuoted = "{'password':'" + SingleQuoteSecret + "'}";
+        var unquoted = "{password:\"" + UnquotedSecret + "\"}";
         var entityMalformed = Guid.NewGuid();
         var entityPlain = Guid.NewGuid();
+        var entitySingle = Guid.NewGuid();
+        var entityUnquoted = Guid.NewGuid();
+        var cases = new (Guid Id, string Snapshot)[]
+        {
+            (entityMalformed, malformed),
+            (entityPlain, nonJson),
+            (entitySingle, singleQuoted),
+            (entityUnquoted, unquoted)
+        };
 
         using (var scope = _factory.Services.CreateScope())
         {
             var recorder = scope.ServiceProvider.GetRequiredService<IAdminAuditRecorder>();
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            db.AdminAuditLog.Add(recorder.Entity(
-                AdminAuditActions.EntityEdit,
-                CoreOwnerEmail,
-                ClientIp,
-                "Participant",
-                entityMalformed,
-                beforeSnapshot: malformed,
-                afterSnapshot: malformed));
-            db.AdminAuditLog.Add(recorder.Entity(
-                AdminAuditActions.EntityDelete,
-                CoreOwnerEmail,
-                ClientIp,
-                "Participant",
-                entityPlain,
-                beforeSnapshot: nonJson));
+            foreach (var (id, snapshot) in cases)
+            {
+                db.AdminAuditLog.Add(recorder.Entity(
+                    AdminAuditActions.EntityEdit,
+                    CoreOwnerEmail,
+                    ClientIp,
+                    "Participant",
+                    id,
+                    beforeSnapshot: snapshot,
+                    afterSnapshot: snapshot));
+            }
+
             await db.SaveChangesAsync();
 
+            var ids = cases.Select(c => c.Id).ToArray();
             var rows = await db.AdminAuditLog.AsNoTracking()
-                .Where(e => e.EntityId == entityMalformed || e.EntityId == entityPlain)
+                .Where(e => ids.Contains(e.EntityId!.Value))
                 .ToListAsync();
-            Assert.Equal(2, rows.Count);
+            Assert.Equal(4, rows.Count);
             foreach (var row in rows)
             {
                 Assert.Equal(AdminAuditSnapshots.FailClosedPlaceholder, row.BeforeSnapshot);
@@ -155,13 +172,73 @@ public class AdminAuditSecretStripTests
             }
         }
 
-        foreach (var id in new[] { entityMalformed, entityPlain })
+        foreach (var (id, _) in cases)
         {
             var body = await GetAuditBodyAsync(id);
             AssertNoSecrets(body);
             Assert.Contains("_invalid", body);
             Assert.DoesNotContain(ClientIp, body);
         }
+    }
+
+    [Fact]
+    public async Task TdAdm101_MidStringJson_StrippedInDbAndGet()
+    {
+        var note = "see {\"password\":\"" + MidStringSecret + "\"} later";
+        var raw = new JsonObject
+        {
+            ["note"] = note,
+            ["displayName"] = VisibleMarker
+        }.ToJsonString();
+
+        var (stored, body) = await WriteAndReadAsync(raw);
+        AssertNoSecrets(stored);
+        AssertNoSecrets(body);
+        Assert.Contains("see", stored);
+        Assert.Contains("later", stored);
+        Assert.Contains(VisibleMarker, stored);
+        Assert.DoesNotContain(MidStringSecret, stored);
+        Assert.DoesNotContain(MidStringSecret, body);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("see {} later", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_PasswordEqualsAssignment_RedactedInDbAndGet()
+    {
+        var raw = new JsonObject
+        {
+            ["note"] = "password=" + PasswordEqSecret,
+            ["displayName"] = VisibleMarker
+        }.ToJsonString();
+
+        var (stored, body) = await WriteAndReadAsync(raw);
+        AssertNoSecrets(stored);
+        AssertNoSecrets(body);
+        Assert.DoesNotContain(PasswordEqSecret, stored);
+        Assert.DoesNotContain(PasswordEqSecret, body);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_PasswordColonAssignment_RedactedInDbAndGet()
+    {
+        var raw = new JsonObject
+        {
+            ["note"] = "password: " + PasswordColonSecret,
+            ["displayName"] = VisibleMarker
+        }.ToJsonString();
+
+        var (stored, body) = await WriteAndReadAsync(raw);
+        AssertNoSecrets(stored);
+        AssertNoSecrets(body);
+        Assert.DoesNotContain(PasswordColonSecret, stored);
+        Assert.DoesNotContain(PasswordColonSecret, body);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
     }
 
     [Fact]
@@ -276,6 +353,37 @@ public class AdminAuditSecretStripTests
         Assert.Contains(VisibleMarker, stored.BeforeSnapshot);
     }
 
+    private async Task<(string Snapshot, string GetBody)> WriteAndReadAsync(string snapshot)
+    {
+        var entityId = Guid.NewGuid();
+        string stored;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var recorder = scope.ServiceProvider.GetRequiredService<IAdminAuditRecorder>();
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var entry = recorder.Entity(
+                AdminAuditActions.EntityEdit,
+                CoreOwnerEmail,
+                ClientIp,
+                "Participant",
+                entityId,
+                beforeSnapshot: snapshot,
+                afterSnapshot: snapshot);
+            db.AdminAuditLog.Add(entry);
+            await db.SaveChangesAsync();
+            stored = (await db.AdminAuditLog.AsNoTracking().SingleAsync(e => e.Id == entry.Id))
+                .BeforeSnapshot!;
+            AssertNoSecrets(stored);
+            AssertNoSecrets((await db.AdminAuditLog.AsNoTracking().SingleAsync(e => e.Id == entry.Id))
+                .AfterSnapshot);
+        }
+
+        var body = await GetAuditBodyAsync(entityId);
+        AssertNoSecrets(body);
+        Assert.DoesNotContain(ClientIp, body);
+        return (stored, body);
+    }
+
     private async Task<string> GetAuditBodyAsync(Guid entityId)
     {
         var sessionId = await SeedSessionAsync();
@@ -343,6 +451,14 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(MalformedEmbedSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(MalformedRootSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(NonJsonSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(FreeTextSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(MidStringSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(EqSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ColonSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(PasswordEqSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(PasswordColonSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(SingleQuoteSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(UnquotedSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(ClientIp, text, StringComparison.Ordinal);
     }
 }
