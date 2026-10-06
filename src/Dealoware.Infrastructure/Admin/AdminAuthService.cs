@@ -189,6 +189,10 @@ public sealed class AdminAuthService
             return AdminAuthOutcome.ThrottledReset();
         }
 
+        // Every reset request counts toward the per-IP window; Turnstile
+        // failures above do not. In-lock requests never reach here.
+        await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
+
         if (_credentials.IsOwnerEmail(email))
         {
             var raw = CreateOpaqueToken();

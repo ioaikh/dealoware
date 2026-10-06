@@ -810,7 +810,18 @@ public class DatabaseMigrationBaselineTests
             var pk = keys.Single(k => string.Equals(k.Table, tableGroup.Key, StringComparison.Ordinal));
             var defs = tableGroup
                 .Select(c =>
-                    $"\"{c.Name}\" {StoreTypeFor(c.Kind)}{(c.IsNullable ? "" : " NOT NULL")}");
+                {
+                    var sql = $"\"{c.Name}\" {StoreTypeFor(c.Kind)}{(c.IsNullable ? "" : " NOT NULL")}";
+                    // Frozen spec does not record store defaults. EF Version is
+                    // ValueGeneratedOnAdd + HasDefaultValue(0), so inserts omit the
+                    // column and need a SQLite default.
+                    if (!c.IsNullable && c.Kind == BaselineColumnKind.UInt32)
+                    {
+                        sql += " DEFAULT 0";
+                    }
+
+                    return sql;
+                });
             var sql =
                 $"CREATE TABLE \"{tableGroup.Key}\" ({string.Join(", ", defs)}, " +
                 $"PRIMARY KEY ({string.Join(", ", pk.Columns.Select(n => $"\"{n}\""))}))";

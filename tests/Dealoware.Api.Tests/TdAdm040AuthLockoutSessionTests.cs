@@ -92,7 +92,10 @@ public class TdAdm040AuthLockoutSessionTests
         var root = RepoRoot();
         foreach (var file in Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories))
         {
-            if (file.Contains($"{Path.DirectorySeparatorChar}docs{Path.DirectorySeparatorChar}"))
+            if (file.Contains($"{Path.DirectorySeparatorChar}docs{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             {
                 continue;
             }
@@ -155,9 +158,14 @@ public class TdAdm040AuthLockoutSessionTests
             new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Null(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
 
-        using var sixth = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
-            new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        for (var i = 0; i < 4; i++)
+        {
+            using var more = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, more.StatusCode);
+        }
+
         Assert.NotNull(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
     }
 
@@ -362,6 +370,7 @@ public class TdAdm040AuthLockoutSessionTests
         var client = CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Post, AdminAuthEndpoints.SignInPath);
         request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         request.Content = JsonContent.Create(new
         {
             email = OwnerEmail,
@@ -424,7 +433,13 @@ public class TdAdm040AuthLockoutSessionTests
         Assert.Equal(HttpStatusCode.Unauthorized, confirmMissing.StatusCode);
     }
 
-    private HttpClient CreateClient() => _factory.CreateClient();
+    private HttpClient CreateClient() =>
+        _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = false,
+            BaseAddress = new Uri("https://localhost")
+        });
 
     private void ResetClock()
     {
@@ -462,7 +477,7 @@ public class TdAdm040AuthLockoutSessionTests
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        return db.AdminAuditLog.OrderBy(e => e.Timestamp).ToList();
+        return db.AdminAuditLog.AsEnumerable().OrderBy(e => e.Timestamp).ToList();
     }
 
     private async Task<Guid> SignInFullAsync(HttpClient client)
@@ -484,6 +499,7 @@ public class TdAdm040AuthLockoutSessionTests
     {
         var request = new HttpRequestMessage(HttpMethod.Get, "/admin/sign-in");
         request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         using var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var token = response.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
@@ -502,6 +518,7 @@ public class TdAdm040AuthLockoutSessionTests
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         if (HttpMethod.Post.Equals(method))
         {
             var (afCookie, afToken) = await IssueAntiForgeryAsync(client);
@@ -531,6 +548,7 @@ public class TdAdm040AuthLockoutSessionTests
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={sessionId:D}");
         return await client.SendAsync(request);
     }

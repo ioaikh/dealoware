@@ -13,17 +13,20 @@ public sealed class AdminLockoutStore : IAdminLockoutStore
         _db = db;
     }
 
-    public Task<int> CountFailuresAsync(
+    public async Task<int> CountFailuresAsync(
         string scope,
         string subjectKey,
         DateTimeOffset windowStartExclusive,
         CancellationToken ct)
     {
-        return _db.AdminAuthFailureEvents.CountAsync(
-            e => e.Scope == scope
-                 && e.SubjectKey == subjectKey
-                 && e.OccurredAt > windowStartExclusive,
-            ct);
+        // DateTimeOffset comparisons are not translated: the global UTC converter
+        // uses ToUniversalTime(). Filter by key in SQL, apply the exclusive
+        // 15-minute window in memory (event at exactly windowStart is outside).
+        var rows = await _db.AdminAuthFailureEvents
+            .Where(e => e.Scope == scope && e.SubjectKey == subjectKey)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+        return rows.Count(e => e.OccurredAt > windowStartExclusive);
     }
 
     public async Task AddFailureAsync(AdminAuthFailureEvent failure, CancellationToken ct)
@@ -31,16 +34,20 @@ public sealed class AdminLockoutStore : IAdminLockoutStore
         await _db.AdminAuthFailureEvents.AddAsync(failure, ct).ConfigureAwait(false);
     }
 
-    public Task<AdminAuthLockout?> GetActiveLockoutAsync(
+    public async Task<AdminAuthLockout?> GetActiveLockoutAsync(
         string scope,
         string subjectKey,
         DateTimeOffset now,
         CancellationToken ct)
     {
-        return _db.AdminAuthLockouts
-            .Where(l => l.Scope == scope && l.SubjectKey == subjectKey && now < l.ExpiresAt)
+        var rows = await _db.AdminAuthLockouts
+            .Where(l => l.Scope == scope && l.SubjectKey == subjectKey)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+        return rows
+            .Where(l => now < l.ExpiresAt)
             .OrderByDescending(l => l.StartedAt)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefault();
     }
 
     public async Task AddLockoutAsync(AdminAuthLockout lockout, CancellationToken ct)

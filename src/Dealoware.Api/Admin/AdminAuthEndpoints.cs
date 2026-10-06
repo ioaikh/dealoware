@@ -48,7 +48,8 @@ public static class AdminAuthEndpoints
         services.AddScoped<IAdminLockoutStore, AdminLockoutStore>();
         services.AddScoped<IAdminAuthTokenStore, AdminAuthTokenStore>();
         services.AddSingleton<IAdminClock, SystemAdminClock>();
-        services.AddSingleton<IAdminMailSender, RecordingAdminMailSender>();
+        services.AddSingleton<RecordingAdminMailSender>();
+        services.AddSingleton<IAdminMailSender>(sp => sp.GetRequiredService<RecordingAdminMailSender>());
         services.AddScoped<AdminAuthService>();
 
         services.AddAntiforgery(AdminAntiForgery.Configure);

@@ -234,6 +234,7 @@ app.UseRateLimiter();
 
 app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthorization();
+app.UseAntiforgery();
 
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
