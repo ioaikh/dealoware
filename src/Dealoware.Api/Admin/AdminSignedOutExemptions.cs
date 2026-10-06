@@ -151,6 +151,47 @@ public static class AdminSignedOutExemptions
         return row is not null;
     }
 
+    public static bool TryGetCanonicalPath(HttpContext context, out string path)
+        => AdminPathCanonicalizer.TryGetComparablePath(context, out path);
+
+    public static bool IsFormGet(HttpContext context)
+    {
+        if (!HttpMethods.IsGet(context.Request.Method)
+            || !TryGetCanonicalPath(context, out var path)
+            || IsAuthStaticFile(path))
+        {
+            return false;
+        }
+
+        return PathEquals(path, ResetPage)
+               || PathEquals(path, ResetSentPage)
+               || PathEquals(path, ResetConfirmPage)
+               || PathEquals(path, LinkExpiredPage);
+    }
+
+    public static bool IsAuthStaticFile(string canonicalPath)
+    {
+        if (!canonicalPath.StartsWith(AuthStaticPrefix + "/", StringComparison.OrdinalIgnoreCase)
+            || canonicalPath.EndsWith('/'))
+        {
+            return false;
+        }
+
+        var relative = canonicalPath[(AuthStaticPrefix.Length + 1)..];
+        if (string.IsNullOrEmpty(relative))
+        {
+            return false;
+        }
+
+        var lastSlash = relative.LastIndexOf('/');
+        var fileName = lastSlash >= 0 ? relative[(lastSlash + 1)..] : relative;
+        var dot = fileName.LastIndexOf('.');
+        return dot > 0 && dot < fileName.Length - 1;
+    }
+
+    public static bool PathEquals(string path, string expected)
+        => string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
+
     public static async Task<string?> ReadResetTokenAsync(
         HttpContext context,
         CancellationToken cancellationToken)
@@ -159,6 +200,12 @@ public static class AdminSignedOutExemptions
             && !string.IsNullOrWhiteSpace(queryToken))
         {
             return queryToken.ToString();
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method)
+            && context.Request.ContentLength is > 0)
+        {
+            context.Request.EnableBuffering();
         }
 
         if (context.Request.HasFormContentType)

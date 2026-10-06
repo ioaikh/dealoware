@@ -9,7 +9,8 @@ namespace Dealoware.Api.Admin;
 /// Fail-closed session gate for all /admin routes (route-prefix note r3 §2 + §10 C1–C8).
 /// Consulted only after AdminHostMiddleware accepts the admin host (C7).
 /// Exempts only exact canonical path+method pairs. Token rows require a server-validated
-/// pending token. /admin/api/** is never exempt except the listed auth API rows.
+/// pending or reset token. /admin/api/** is never exempt except the listed auth API rows.
+/// C3: GET form pages issue dw_admin_af; exempt POSTs must present it.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
 /// </summary>
 public sealed class AdminSessionMiddleware
@@ -42,6 +43,18 @@ public sealed class AdminSessionMiddleware
 
         if (await IsSignedOutExemptAsync(context, accounts, resetTokens, clock, antiforgery))
         {
+            if (HttpMethods.IsPost(context.Request.Method)
+                && !AdminAntiForgery.TryValidate(context))
+            {
+                await AdminDeny.WriteUnauthorizedAsync(context);
+                return;
+            }
+
+            if (AdminSignedOutExemptions.IsFormGet(context))
+            {
+                AdminAntiForgery.Issue(context);
+            }
+
             await _next(context);
             return;
         }

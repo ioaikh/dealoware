@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Dealoware.Api.Admin;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -305,7 +306,7 @@ public class AdminPasswordResetTests
     }
 
     [Fact]
-    public async Task TD_ADM_030_Request_WrongHost_Is404()
+    public async Task TD_ADM_030_Request_WrongHost_Is404_NoSetCookie_C7()
     {
         var client = _factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
@@ -313,6 +314,114 @@ public class AdminPasswordResetTests
         request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(string.IsNullOrEmpty(body));
+        Assert.DoesNotContain("Unauthorized", body);
+        Assert.Empty(ReadSetCookie(response));
+        Assert.False(response.Headers.Contains(AdminCookieNames.AntiForgeryHeader));
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_C1_TrailingSlash_Encoded_DotDot_SlashSlash_Matrix_Denied()
+    {
+        using var trailing = await SendAsync(HttpMethod.Get, "/admin/reset/");
+        using var extraEncoded = await SendAsync(HttpMethod.Get, "/admin/reset%2fextra");
+        using var dotDot = await SendAsync(HttpMethod.Get, "/admin/reset/../reset");
+        using var slashSlash = await SendAsync(HttpMethod.Get, "/admin//reset");
+        using var matrix = await SendAsync(HttpMethod.Get, "/admin/reset;jsessionid=1");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, trailing.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, extraEncoded.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, dotDot.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, slashSlash.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, matrix.StatusCode);
+        var body = await trailing.Content.ReadAsStringAsync();
+        Assert.Equal(body, await extraEncoded.Content.ReadAsStringAsync());
+        Assert.Contains("\"error\":\"Unauthorized\"", body);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_C3_ExemptPost_MissingOrInvalidAntiForgery_IsGenericDeny()
+    {
+        await SeedCredentialAsync();
+        Mail().Clear();
+
+        using var missing = await SendAsync(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
+        var issued = await IssueAntiForgeryAsync();
+        var client = _factory.CreateClient();
+        using var bad = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
+        bad.Headers.Host = AdminHost;
+        bad.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
+        bad.Headers.TryAddWithoutValidation(AdminCookieNames.AntiForgeryHeader, "not-the-cookie");
+        bad.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+        using var invalid = await client.SendAsync(bad);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        Assert.Equal(
+            await missing.Content.ReadAsStringAsync(),
+            await invalid.Content.ReadAsStringAsync());
+        Assert.Empty(Mail().Sent);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_C3_GetConfirm_DoesNotConsumeToken()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+
+        using var get = await GetConfirmPageAsync(token);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, get.StatusCode);
+
+        var complete = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = Factor().ValidTotp
+        });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+        Assert.True(await CredentialStillMatchesAsync(NextPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_C5_CookieNames_NoHostPrefix()
+    {
+        Assert.Equal("dw_admin_session", AdminCookieNames.Session);
+        Assert.Equal("dw_admin_pending", AdminCookieNames.Pending);
+        Assert.Equal("dw_admin_af", AdminCookieNames.AntiForgery);
+        Assert.Equal(AdminCookieNames.Session, AdminSessionCookie.Name);
+        Assert.DoesNotContain("__Host-", AdminCookieNames.Session, StringComparison.Ordinal);
+        Assert.DoesNotContain("__Host-", AdminCookieNames.Pending, StringComparison.Ordinal);
+        Assert.DoesNotContain("__Host-", AdminCookieNames.AntiForgery, StringComparison.Ordinal);
+
+        var issued = await IssueAntiForgeryAsync();
+        Assert.Contains($"{AdminCookieNames.AntiForgery}=", issued.SetCookie, StringComparison.Ordinal);
+        Assert.DoesNotContain("__Host-", issued.SetCookie, StringComparison.Ordinal);
+        Assert.Contains("path=/admin", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain=", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_C8_AuthFolder_StaticFileOnly_NoHandlers()
+    {
+        var endpoints = _factory.Services.GetRequiredService<EndpointDataSource>();
+        Assert.DoesNotContain(
+            endpoints.Endpoints.OfType<RouteEndpoint>(),
+            e => e.RoutePattern.RawText is { } raw
+                 && raw.StartsWith("/admin/auth", StringComparison.OrdinalIgnoreCase));
+
+        using var css = await SendAsync(HttpMethod.Get, "/admin/auth/reset.css");
+        using var directory = await SendAsync(HttpMethod.Get, "/admin/auth/");
+        using var handlerLike = await SendAsync(HttpMethod.Get, "/admin/auth/handler");
+        using var postFile = await SendAsync(HttpMethod.Post, "/admin/auth/reset.css");
+
+        Assert.Equal(HttpStatusCode.OK, css.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, directory.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, handlerLike.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, postFile.StatusCode);
     }
 
     [Fact]
@@ -351,6 +460,13 @@ public class AdminPasswordResetTests
         Assert.Equal(SameSiteMode.Strict, options.SameSite);
         Assert.Equal("/admin", options.Path);
         Assert.Null(options.Domain);
+
+        var af = AdminAntiForgery.CookieOptions();
+        Assert.True(af.HttpOnly);
+        Assert.True(af.Secure);
+        Assert.Equal(SameSiteMode.Strict, af.SameSite);
+        Assert.Equal("/admin", af.Path);
+        Assert.Null(af.Domain);
     }
 
     private CapturingAdminMailSender Mail()
@@ -407,18 +523,22 @@ public class AdminPasswordResetTests
 
     private async Task<HttpResponseMessage> PostRequestAsync(string email)
     {
+        var af = await IssueAntiForgeryAsync();
         var client = _factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
         request.Headers.Host = AdminHost;
+        AttachAntiForgery(request, af);
         request.Content = JsonContent.Create(new { email });
         return await client.SendAsync(request);
     }
 
     private async Task<HttpResponseMessage> PostConfirmAsync(object body)
     {
+        var af = await IssueAntiForgeryAsync();
         var client = _factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.ConfirmApiPath);
         request.Headers.Host = AdminHost;
+        AttachAntiForgery(request, af);
         request.Content = JsonContent.Create(body);
         return await client.SendAsync(request);
     }
@@ -427,6 +547,46 @@ public class AdminPasswordResetTests
         => await SendAsync(
             HttpMethod.Get,
             $"{AdminSignedOutExemptions.ResetConfirmPage}?token={Uri.EscapeDataString(token)}");
+
+    private async Task<IssuedAntiForgery> IssueAntiForgeryAsync()
+    {
+        using var response = await SendAsync(HttpMethod.Get, AdminSignedOutExemptions.ResetPage);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        var setCookies = ReadSetCookie(response);
+        var setCookie = Assert.Single(
+            setCookies,
+            c => c.StartsWith(AdminCookieNames.AntiForgery + "=", StringComparison.Ordinal));
+        var token = setCookie.Split(';', 2)[0].Split('=', 2)[1];
+        if (response.Headers.TryGetValues(AdminCookieNames.AntiForgeryHeader, out var headers))
+        {
+            Assert.Equal(token, headers.First());
+        }
+
+        return new IssuedAntiForgery(token, $"{AdminCookieNames.AntiForgery}={token}", setCookie);
+    }
+
+    private static void AttachAntiForgery(HttpRequestMessage request, IssuedAntiForgery issued)
+    {
+        request.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
+        request.Headers.TryAddWithoutValidation(AdminCookieNames.AntiForgeryHeader, issued.Token);
+    }
+
+    private static IReadOnlyList<string> ReadSetCookie(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("Set-Cookie", out var headerValues))
+        {
+            return headerValues.ToList();
+        }
+
+        if (response.Content.Headers.TryGetValues("Set-Cookie", out var contentValues))
+        {
+            return contentValues.ToList();
+        }
+
+        return [];
+    }
+
+    private sealed record IssuedAntiForgery(string Token, string CookieHeader, string SetCookie);
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path)
     {
