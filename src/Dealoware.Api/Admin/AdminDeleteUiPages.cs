@@ -297,7 +297,7 @@ public static class AdminDeleteUiPages
                 '<h2 id="delete-dialog-title">' + encode(title) + "</h2>" +
                 (expired ? '<p class="error">This confirmation expired. Review the details again.</p>' : "") +
                 "<p>ID: " + encode(intent.id) + "</p>" +
-                (intent.isOpen ? "<p>This negotiation is open. " + (intent.cascade.offers || 0) + " open child offers are included.</p>" : "") +
+                (intent.entityType === "negotiations" && intent.isOpen ? "<p>This negotiation is open. " + (intent.cascade.offers || 0) + " child offers are included.</p>" : "") +
                 "<ul>" + cascadeItems(intent.cascade).map(function (i) { return "<li>" + encode(i) + "</li>"; }).join("") + "</ul>" +
                 "<p>This can't be restored from the admin.</p>" +
                 (typed ? '<label for="confirm-type">Type ' + encode(typedValue()) + " to confirm</label>" +
