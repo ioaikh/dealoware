@@ -88,5 +88,11 @@ public sealed class IpHasher : IIpHasher
             throw new InvalidOperationException(
                 $"Environment variable {KeyEnvironmentVariable} must be a valid base64-encoded key", ex);
         }
+        catch (ArgumentException)
+        {
+            throw new InvalidOperationException(
+                $"Environment variable {KeyEnvironmentVariable} is too short. " +
+                "A base64-encoded HMAC key of at least 32 bytes is required.");
+        }
     }
 }

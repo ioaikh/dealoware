@@ -22,6 +22,11 @@ if (DatabaseMigrateCommand.IsMigrateArgs(args))
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+});
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
     ?? "Data Source=dealoware.db";
@@ -93,12 +98,33 @@ builder.Services.Configure<CoreOwnerOptions>(
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
 
+try
+{
+    var adminHostOptions = new AdminHostOptions { AllowedHosts = [] };
+    builder.Configuration.GetSection(AdminHostOptions.SectionName).Bind(adminHostOptions);
+    AdminHostOptionsValidator.Validate(
+        adminHostOptions,
+        builder.Environment.EnvironmentName);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
         policy.RequireAuthenticatedUser()
             .RequireRole(AdminSessionMiddleware.CoreOwnerRole));
 });
+builder.Services.AddAdminAuthorizationResultHandler();
 
 try
 {
@@ -107,7 +133,7 @@ try
         isDevelopment: builder.Environment.IsDevelopment());
     builder.Services.AddSingleton<IIpHasher>(ipHasher);
 }
-catch (InvalidOperationException ex)
+catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
 {
     Console.Error.WriteLine(ex.Message);
     var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
@@ -212,6 +238,10 @@ var app = builder.Build();
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 
+// Admin-host-only headers wrap the host gate so 404s, errors, pages, APIs, and
+// signed-out /admin/sign-in and /admin/auth/ responses all receive them.
+app.UseMiddleware<AdminSecurityHeadersMiddleware>();
+
 // Two-way admin host gate: admin paths only on the allowlist host; that host
 // serves only /admin/* and /health.
 app.UseMiddleware<AdminHostMiddleware>();
@@ -283,6 +313,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminTestExceptionEndpoint();
 
 app.Run();
 
