@@ -13,6 +13,7 @@ public sealed record RuntimeLoginPrivilegeFacts(
     bool RolSuper,
     bool RolCreateRole,
     bool RolCreateDb,
+    bool RolBypassRls,
     bool IsRdsSuperuserMember,
     bool OwnsAppSchemaTable);
 
@@ -32,7 +33,8 @@ public static class RuntimeLoginPrivilegeGuard
 
     public const string PrivilegedLoginMessage =
         "The runtime database login is privileged (superuser, CREATEROLE, CREATEDB, " +
-        "rds_superuser membership, or ownership of application-schema tables). " +
+        "BYPASSRLS, inherited rds_superuser membership, or membership in a role that " +
+        "owns application-schema tables). " +
         "The long-lived API must use a least-privilege DML login. Refusing to start. " +
         "Break-glass only: set Database:AllowPrivilegedRuntimeLogin=true.";
 
@@ -45,27 +47,28 @@ public static class RuntimeLoginPrivilegeGuard
         "The runtime login privilege check is skipped. This is not for routine use.";
 
     /// <summary>
-    /// Read-only catalog query. Membership of rds_superuser is an EXISTS against
-    /// pg_roles so a missing role (non-RDS Postgres) is false, not an error.
+    /// Read-only catalog query. Uses <c>pg_has_role(..., 'MEMBER')</c> so inherited
+    /// and SET-only membership counts. <c>rds_superuser</c> is gated on the role
+    /// existing so non-RDS Postgres is false, not an error.
     /// </summary>
-    internal const string PrivilegeFactsSql =
+    public const string PrivilegeFactsSql =
         """
         SELECT
           r.rolsuper,
           r.rolcreaterole,
           r.rolcreatedb,
+          r.rolbypassrls,
           EXISTS (
             SELECT 1
-            FROM pg_catalog.pg_auth_members m
-            INNER JOIN pg_catalog.pg_roles s ON s.oid = m.roleid
-            WHERE m.member = r.oid
-              AND s.rolname = 'rds_superuser'
+            FROM pg_catalog.pg_roles s
+            WHERE s.rolname = 'rds_superuser'
+              AND pg_catalog.pg_has_role(current_user, s.oid, 'MEMBER')
           ) AS is_rds_superuser,
           EXISTS (
             SELECT 1
             FROM pg_catalog.pg_tables t
             WHERE t.schemaname = current_schema()
-              AND t.tableowner = current_user
+              AND pg_catalog.pg_has_role(current_user, t.tableowner, 'MEMBER')
           ) AS owns_app_schema_table
         FROM pg_catalog.pg_roles r
         WHERE r.rolname = current_user
@@ -82,6 +85,7 @@ public static class RuntimeLoginPrivilegeGuard
         return facts.RolSuper
                || facts.RolCreateRole
                || facts.RolCreateDb
+               || facts.RolBypassRls
                || facts.IsRdsSuperuserMember
                || facts.OwnsAppSchemaTable;
     }
@@ -219,8 +223,9 @@ public static class RuntimeLoginPrivilegeGuard
                 RolSuper: ReadBoolean(reader, 0),
                 RolCreateRole: ReadBoolean(reader, 1),
                 RolCreateDb: ReadBoolean(reader, 2),
-                IsRdsSuperuserMember: ReadBoolean(reader, 3),
-                OwnsAppSchemaTable: ReadBoolean(reader, 4));
+                RolBypassRls: ReadBoolean(reader, 3),
+                IsRdsSuperuserMember: ReadBoolean(reader, 4),
+                OwnsAppSchemaTable: ReadBoolean(reader, 5));
         }
         finally
         {

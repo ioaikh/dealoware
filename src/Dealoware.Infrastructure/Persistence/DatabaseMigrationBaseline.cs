@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -24,7 +25,10 @@ public enum MigrationBaselineAction
     FailClosedPartialSchema,
 
     /// <summary>Non-empty database that is not the baseline app schema.</summary>
-    FailClosedUnknownSchema
+    FailClosedUnknownSchema,
+
+    /// <summary>All 13 table names exist but columns or primary keys do not match.</summary>
+    FailClosedSchemaMismatch
 }
 
 /// <summary>
@@ -56,6 +60,11 @@ public static class DatabaseMigrationBaseline
         "The database has tables that are not the Dealoware baseline schema, " +
         "and the baseline migration is not recorded. " +
         "The migrate one-shot refuses to continue.";
+
+    public const string SchemaMismatchMessage =
+        "The database table names match the baseline, but columns or primary keys " +
+        "do not match the frozen baseline model. The migrate one-shot refuses to " +
+        "stamp history or re-run CREATE TABLE.";
 
     /// <summary>
     /// Tables created by Development <c>EnsureCreated</c> / schema bootstrap
@@ -116,12 +125,12 @@ public static class DatabaseMigrationBaseline
             return new MigrationBaselinePlan(MigrationBaselineAction.ApplyMigrations, null);
         }
 
-        if (present == BaselineTableNames.Count)
+        if (present == BaselineTableNames.Count && extras == 0)
         {
             return new MigrationBaselinePlan(MigrationBaselineAction.StampBaselineThenMigrate, null);
         }
 
-        if (present == 0)
+        if (present == 0 || extras > 0)
         {
             return new MigrationBaselinePlan(
                 MigrationBaselineAction.FailClosedUnknownSchema,
@@ -152,16 +161,49 @@ public static class DatabaseMigrationBaseline
         {
             case MigrationBaselineAction.FailClosedPartialSchema:
             case MigrationBaselineAction.FailClosedUnknownSchema:
+            case MigrationBaselineAction.FailClosedSchemaMismatch:
                 throw new InvalidOperationException(
                     plan.FailureMessage ?? PartialSchemaMessage);
 
             case MigrationBaselineAction.StampBaselineThenMigrate:
+                var live = await ReadLiveSchemaAsync(db, cancellationToken).ConfigureAwait(false);
+                var comparison = BaselineSchema.Compare(live.Columns, live.PrimaryKeys);
+                if (!comparison.Matches)
+                {
+                    throw new InvalidOperationException(SchemaMismatchMessage);
+                }
+
                 await StampBaselineAsync(db, ResolveBaselineId(assembly), cancellationToken)
                     .ConfigureAwait(false);
                 break;
         }
 
         await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task<(IReadOnlyList<BaselineLiveColumn> Columns, IReadOnlyList<BaselineLivePrimaryKey> PrimaryKeys)>
+        ReadLiveSchemaAsync(DealowareDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            return db.Database.IsNpgsql()
+                ? await ReadPostgresSchemaAsync(connection, cancellationToken).ConfigureAwait(false)
+                : await ReadSqliteSchemaAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     internal static async Task<IReadOnlyList<string>> ListUserTablesAsync(
@@ -209,6 +251,95 @@ public static class DatabaseMigrationBaseline
                 await connection.CloseAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    private static async Task<(IReadOnlyList<BaselineLiveColumn> Columns, IReadOnlyList<BaselineLivePrimaryKey> PrimaryKeys)>
+        ReadSqliteSchemaAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var columns = new List<BaselineLiveColumn>();
+        var keys = new List<BaselineLivePrimaryKey>();
+
+        foreach (var table in DatabaseMigrationBaseline.BaselineTableNames)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{table.Replace("\"", "\"\"", StringComparison.Ordinal)}\")";
+            var pk = new SortedDictionary<int, string>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var name = reader.GetString(1);
+                var storeType = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+                var notNull = reader.GetInt64(3) != 0;
+                var pkOrdinal = Convert.ToInt32(reader.GetValue(5));
+                columns.Add(new BaselineLiveColumn(table, name, storeType, IsNullable: !notNull));
+                if (pkOrdinal > 0)
+                {
+                    pk[pkOrdinal] = name;
+                }
+            }
+
+            keys.Add(new BaselineLivePrimaryKey(table, pk.Values.ToList()));
+        }
+
+        return (columns, keys);
+    }
+
+    private static async Task<(IReadOnlyList<BaselineLiveColumn> Columns, IReadOnlyList<BaselineLivePrimaryKey> PrimaryKeys)>
+        ReadPostgresSchemaAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var columns = new List<BaselineLiveColumn>();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT table_name, column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name <> '__EFMigrationsHistory'
+                """;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                columns.Add(new BaselineLiveColumn(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    IsNullable: string.Equals(reader.GetString(3), "YES", StringComparison.OrdinalIgnoreCase)));
+            }
+        }
+
+        var keyColumns = new Dictionary<string, SortedDictionary<int, string>>(StringComparer.OrdinalIgnoreCase);
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT tc.table_name, kcu.column_name, kcu.ordinal_position
+                FROM information_schema.table_constraints tc
+                INNER JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_schema = current_schema()
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                  AND tc.table_name <> '__EFMigrationsHistory'
+                """;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var table = reader.GetString(0);
+                if (!keyColumns.TryGetValue(table, out var ordered))
+                {
+                    ordered = new SortedDictionary<int, string>();
+                    keyColumns[table] = ordered;
+                }
+
+                ordered[Convert.ToInt32(reader.GetValue(2))] = reader.GetString(1);
+            }
+        }
+
+        var keys = keyColumns
+            .Select(kv => new BaselineLivePrimaryKey(kv.Key, kv.Value.Values.ToList()))
+            .ToList();
+        return (columns, keys);
     }
 
     private static string ResolveBaselineId(IReadOnlyList<string> assemblyMigrations)

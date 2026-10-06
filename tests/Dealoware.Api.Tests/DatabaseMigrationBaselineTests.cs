@@ -83,6 +83,52 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
+    public void Decide_CompleteSchemaPlusExtraTable_FailsClosedUnknown()
+    {
+        var tables = DatabaseMigrationBaseline.BaselineTableNames.Append("ExtraJunk").ToArray();
+        var plan = DatabaseMigrationBaseline.Decide(AssemblyWithBaseline, Empty, tables);
+
+        Assert.Equal(MigrationBaselineAction.FailClosedUnknownSchema, plan.Action);
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, plan.FailureMessage);
+        AssertSafe(plan.FailureMessage!);
+    }
+
+    [Fact]
+    public void Compare_ColumnMismatch_IsColumnMismatch()
+    {
+        var columns = ExpectedAsLive();
+        var displayName = columns.FindIndex(c =>
+            c.Table == "Participants" && c.Name == "DisplayName");
+        columns[displayName] = columns[displayName] with { IsNullable = false };
+
+        var comparison = BaselineSchema.Compare(columns, ExpectedKeys());
+
+        Assert.False(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.Column, comparison.Kind);
+    }
+
+    [Fact]
+    public void Compare_PrimaryKeyMismatch_IsPrimaryKeyMismatch()
+    {
+        var keys = ExpectedKeys();
+        var participants = keys.FindIndex(k => k.Table == "Participants");
+        keys[participants] = new BaselineLivePrimaryKey("Participants", ["Sub"]);
+
+        var comparison = BaselineSchema.Compare(ExpectedAsLive(), keys);
+
+        Assert.False(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.PrimaryKey, comparison.Kind);
+    }
+
+    [Fact]
+    public void Compare_FrozenBaseline_MatchesItself()
+    {
+        var comparison = BaselineSchema.Compare(ExpectedAsLive(), ExpectedKeys());
+        Assert.True(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.None, comparison.Kind);
+    }
+
+    [Fact]
     public async Task Apply_FreshDatabase_CreatesSchemaAndRecordsBaseline()
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_Fresh;Mode=Memory;Cache=Shared");
@@ -226,6 +272,104 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
+    public async Task Apply_ColumnMismatch_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_ColumnMismatch;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+        }
+
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "ALTER TABLE Participants DROP COLUMN DisplayName;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using var apply = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
+
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Apply_PrimaryKeyMismatch_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_PkMismatch;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+        }
+
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText =
+                """
+                DROP TABLE Participants;
+                CREATE TABLE Participants (
+                  Id TEXT NOT NULL,
+                  Sub TEXT NOT NULL,
+                  DisplayName TEXT,
+                  LoginEmail TEXT,
+                  ContactEmail TEXT,
+                  CreatedAt TEXT NOT NULL,
+                  IsActive INTEGER NOT NULL
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using var apply = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
+
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        AssertSafe(ex.Message);
+    }
+
+    [Fact]
+    public async Task Apply_ExtraTable_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_ExtraTable;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+        }
+
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "CREATE TABLE ExtraJunk (Id TEXT);";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using var apply = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
+
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ApplyStartupSchemaAsync_Development_DoesNotWriteMigrationsHistory()
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_StartupNoHistory;Mode=Memory;Cache=Shared");
@@ -270,6 +414,25 @@ public class DatabaseMigrationBaselineTests
         Assert.Contains("ApplyMigrationsAsync", source, StringComparison.Ordinal);
         Assert.DoesNotContain("RuntimeLoginPrivilegeGuard", source, StringComparison.Ordinal);
     }
+
+    private static List<BaselineLiveColumn> ExpectedAsLive()
+        => BaselineSchema.Columns
+            .Select(c => new BaselineLiveColumn(c.Table, c.Name, StoreTypeFor(c.Kind), c.IsNullable))
+            .ToList();
+
+    private static List<BaselineLivePrimaryKey> ExpectedKeys()
+        => BaselineSchema.PrimaryKeys
+            .Select(k => new BaselineLivePrimaryKey(k.Table, k.Columns))
+            .ToList();
+
+    private static string StoreTypeFor(BaselineColumnKind kind)
+        => kind switch
+        {
+            BaselineColumnKind.Guid or BaselineColumnKind.String or BaselineColumnKind.DateTimeOffset
+                or BaselineColumnKind.Decimal => "TEXT",
+            BaselineColumnKind.Boolean or BaselineColumnKind.Int32 or BaselineColumnKind.Int64 => "INTEGER",
+            _ => "TEXT"
+        };
 
     private static async Task<IReadOnlyList<string>> ListSqliteTablesAsync(SqliteConnection connection)
     {

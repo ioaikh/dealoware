@@ -15,29 +15,68 @@ public class RuntimeLoginPrivilegeGuardTests
         RolSuper: false,
         RolCreateRole: false,
         RolCreateDb: false,
+        RolBypassRls: false,
         IsRdsSuperuserMember: false,
         OwnsAppSchemaTable: false);
 
     private static readonly RuntimeLoginPrivilegeFacts PrivilegedSuperuser = LeastPrivilege with { RolSuper = true };
 
     [Theory]
-    [InlineData(true, false, false, false, false)]
-    [InlineData(false, true, false, false, false)]
-    [InlineData(false, false, true, false, false)]
-    [InlineData(false, false, false, true, false)]
-    [InlineData(false, false, false, false, true)]
-    [InlineData(true, true, true, true, true)]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(false, true, false, false, false, false)]
+    [InlineData(false, false, true, false, false, false)]
+    [InlineData(false, false, false, true, false, false)]
+    [InlineData(false, false, false, false, true, false)]
+    [InlineData(false, false, false, false, false, true)]
+    [InlineData(true, true, true, true, true, true)]
     public void IsPrivilegedRuntimeLogin_AnyFlag_IsPrivileged(
         bool rolSuper,
         bool rolCreateRole,
         bool rolCreateDb,
+        bool rolBypassRls,
         bool isRdsSuperuserMember,
         bool ownsAppSchemaTable)
     {
         var facts = new RuntimeLoginPrivilegeFacts(
-            rolSuper, rolCreateRole, rolCreateDb, isRdsSuperuserMember, ownsAppSchemaTable);
+            rolSuper, rolCreateRole, rolCreateDb, rolBypassRls, isRdsSuperuserMember, ownsAppSchemaTable);
 
         Assert.True(RuntimeLoginPrivilegeGuard.IsPrivilegedRuntimeLogin(facts));
+    }
+
+    [Fact]
+    public void IsPrivilegedRuntimeLogin_IndirectRdsSuperuserMembership_IsPrivileged()
+    {
+        // PrivilegeFactsSql uses pg_has_role(..., 'MEMBER'), so inherited / SET-only
+        // membership in rds_superuser arrives as this fact.
+        var facts = LeastPrivilege with { IsRdsSuperuserMember = true };
+        Assert.True(RuntimeLoginPrivilegeGuard.IsPrivilegedRuntimeLogin(facts));
+    }
+
+    [Fact]
+    public void IsPrivilegedRuntimeLogin_OwnerByMembership_IsPrivileged()
+    {
+        // Table owned by dealoware_migrate / dealoware; current_user is a MEMBER
+        // (including SET-only). PrivilegeFactsSql uses pg_has_role on tableowner.
+        var facts = LeastPrivilege with { OwnsAppSchemaTable = true };
+        Assert.True(RuntimeLoginPrivilegeGuard.IsPrivilegedRuntimeLogin(facts));
+    }
+
+    [Fact]
+    public void IsPrivilegedRuntimeLogin_BypassRls_IsPrivileged()
+    {
+        var facts = LeastPrivilege with { RolBypassRls = true };
+        Assert.True(RuntimeLoginPrivilegeGuard.IsPrivilegedRuntimeLogin(facts));
+    }
+
+    [Fact]
+    public void PrivilegeFactsSql_UsesPgHasRoleForInheritedMembership()
+    {
+        var sql = RuntimeLoginPrivilegeGuard.PrivilegeFactsSql;
+        Assert.Contains("rolbypassrls", sql, StringComparison.Ordinal);
+        Assert.Contains("pg_has_role(current_user, s.oid, 'MEMBER')", sql, StringComparison.Ordinal);
+        Assert.Contains("pg_has_role(current_user, t.tableowner, 'MEMBER')", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("m.member = r.oid", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("t.tableowner = current_user", sql, StringComparison.Ordinal);
     }
 
     [Fact]
