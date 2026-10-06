@@ -30,6 +30,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         _dbName = $"TestDb_{Guid.NewGuid():N}";
         _connection = new SqliteConnection($"Data Source={_dbName};Mode=Memory;Cache=Shared");
         _connection.Open();
+        using var busy = _connection.CreateCommand();
+        busy.CommandText = "PRAGMA busy_timeout = 5000;";
+        busy.ExecuteNonQuery();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

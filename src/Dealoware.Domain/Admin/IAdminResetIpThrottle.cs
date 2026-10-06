@@ -1,15 +1,16 @@
 namespace Dealoware.Domain.Admin;
 
-public sealed record AdminResetThrottleRecord(bool Throttled, int FailureCount);
-
 public interface IAdminResetIpThrottle
 {
     Task<bool> IsThrottledAsync(string ipHmac, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Atomically records one reset-IP event. In-lock events are not counted.
+    /// Atomically reserves one slot under the Spec §8.6 budget
+    /// (FailureCount &lt; Threshold and not locked). Succeeds only when the
+    /// conditional update or insert affects exactly one row (SC-6).
+    /// In-lock events are not counted.
     /// </summary>
-    Task<AdminResetThrottleRecord> RecordFailureAsync(
+    Task<bool> TryReserveAsync(
         string ipHmac,
         DateTimeOffset now,
         CancellationToken cancellationToken);

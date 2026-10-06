@@ -6,7 +6,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Dealoware.Domain.Admin;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
@@ -603,12 +606,49 @@ public class AdminPasswordResetTests
         Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
         Assert.True(counter.IsLocked(Clock().UtcNow));
 
+        Mail().Clear();
         using var knownLocked = await PostRequestAsync(CoreOwnerEmail);
         using var unknownLocked = await PostRequestAsync("nobody@example.com");
-        var knownLockedBody = await AssertThrottledAsync(knownLocked);
-        var unknownLockedBody = await AssertThrottledAsync(unknownLocked);
+        var knownLockedBody = await AssertRequestThrottledAsync(knownLocked);
+        var unknownLockedBody = await AssertRequestThrottledAsync(unknownLocked);
         Assert.Equal(knownLockedBody, unknownLockedBody);
         Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+        Assert.Empty(Mail().Sent);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_R3_ParallelBurst_AtMostTwentyPassOrIssueTokens()
+    {
+        await using var keepAlive = new SqliteConnection("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared");
+        await keepAlive.OpenAsync();
+        await using (var busy = keepAlive.CreateCommand())
+        {
+            busy.CommandText = "PRAGMA busy_timeout = 5000;";
+            await busy.ExecuteNonQueryAsync();
+        }
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>()
+            .UseSqlite("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared")
+            .Options;
+        await using (var created = new DealowareDbContext(options))
+        {
+            await created.Database.EnsureCreatedAsync();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        const string ipHmac = "burst-ip-hmac";
+        var results = await Task.WhenAll(Enumerable.Range(0, 40).Select(async _ =>
+        {
+            await using var db = new DealowareDbContext(options);
+            return await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, now, CancellationToken.None);
+        }));
+
+        Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
+        Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
+
+        await using var check = new DealowareDbContext(options);
+        Assert.Equal(AdminResetIpCounter.Threshold, check.AdminResetIpCounters.Single().FailureCount);
+        Assert.True(check.AdminResetIpCounters.Single().IsLocked(now));
     }
 
     [Fact]
@@ -651,7 +691,7 @@ public class AdminPasswordResetTests
             newPassword = NextPassword,
             totp = Factor().ValidTotp
         });
-        await AssertThrottledAsync(throttled);
+        await AssertConfirmThrottledAsync(throttled);
 
         using var goodWhileLocked = await PostConfirmAsync(new
         {
@@ -659,7 +699,7 @@ public class AdminPasswordResetTests
             newPassword = NextPassword,
             totp = Factor().ValidTotp
         });
-        await AssertThrottledAsync(goodWhileLocked);
+        await AssertConfirmThrottledAsync(goodWhileLocked);
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
         Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
     }
@@ -846,12 +886,24 @@ public class AdminPasswordResetTests
         await db.SaveChangesAsync();
     }
 
-    private static async Task<string> AssertThrottledAsync(HttpResponseMessage response)
+    private static async Task<string> AssertRequestThrottledAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
         Assert.False(response.Headers.Contains("Retry-After"));
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains(AdminPasswordResetCopy.Throttled, body);
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, body);
+        Assert.DoesNotContain("Too many attempts", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("locked", body, StringComparison.OrdinalIgnoreCase);
+        return body;
+    }
+
+    private static async Task<string> AssertConfirmThrottledAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.False(response.Headers.Contains("Retry-After"));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(AdminPasswordResetCopy.SignInGeneric, body);
+        Assert.DoesNotContain("Too many attempts", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("locked", body, StringComparison.OrdinalIgnoreCase);
         return body;
     }
