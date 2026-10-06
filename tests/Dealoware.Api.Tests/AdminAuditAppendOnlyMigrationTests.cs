@@ -19,6 +19,7 @@ public class AdminAuditAppendOnlyMigrationTests
         Assert.Contains("UPDATE OR DELETE", source, StringComparison.Ordinal);
         Assert.Contains("TRUNCATE", source, StringComparison.Ordinal);
         Assert.Contains("AdminAuditLog is append-only", source, StringComparison.Ordinal);
+        Assert.Contains("\"AdminAuditLog\"", source, StringComparison.Ordinal);
         Assert.Contains("return;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("BaselineSchema.Columns", source, StringComparison.Ordinal);
         Assert.DoesNotContain("BaselineTableNames", source, StringComparison.Ordinal);

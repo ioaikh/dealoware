@@ -711,7 +711,8 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
-        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[2]);
+        Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
+        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[3]);
     }
 
     [Fact]
