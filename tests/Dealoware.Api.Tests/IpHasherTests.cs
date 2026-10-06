@@ -89,4 +89,16 @@ public class IpHasherTests
         var direct = new IpHasher(key);
         Assert.Equal(direct.Hash("198.51.100.20"), fromFactory.Hash("198.51.100.20"));
     }
+
+    [Fact]
+    public void TdAdm053_Create_ShortKey_ThrowsInvalidOperationWithoutLeakingKey()
+    {
+        var shortKey = Convert.ToBase64String(new byte[16]);
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => IpHasher.Create(_ => shortKey, isDevelopment: false));
+
+        Assert.Contains(IpHasher.KeyEnvironmentVariable, ex.Message);
+        Assert.Contains("too short", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(shortKey, ex.Message);
+    }
 }
