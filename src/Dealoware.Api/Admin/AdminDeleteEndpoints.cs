@@ -104,9 +104,9 @@ public static class AdminDeleteEndpoints
 
     private static async Task<IResult> ListEntities(
         string entityType,
-        bool includeDeleted,
         AdminDeleteService deletes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeDeleted = false)
     {
         if (!AdminDeleteService.TryNormalizeType(entityType, out var type))
             return Results.Json(new { error = "Not found" }, statusCode: StatusCodes.Status404NotFound);
@@ -118,9 +118,9 @@ public static class AdminDeleteEndpoints
     private static async Task<IResult> GetEntity(
         string entityType,
         Guid id,
-        bool includeDeleted,
         AdminDeleteService deletes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeDeleted = false)
     {
         if (!AdminDeleteService.TryNormalizeType(entityType, out var type))
             return Results.Json(new { error = "Not found" }, statusCode: StatusCodes.Status404NotFound);

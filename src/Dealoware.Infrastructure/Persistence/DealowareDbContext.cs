@@ -5,6 +5,7 @@ using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Dealoware.Infrastructure.Persistence;
 
@@ -53,6 +54,18 @@ public class DealowareDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
+    }
+
+    /// <summary>
+    /// Incremental Step 10 migration is a single .cs file and must not edit
+    /// PR #23's frozen model snapshot. EF 10 treats that drift as
+    /// PendingModelChangesWarning; ignore it so MigrateAsync can apply
+    /// 20261006000400_AdminDeleteConfirmTokens.
+    /// </summary>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(RelationalEventId.PendingModelChangesWarning));
     }
 
     /// <summary>

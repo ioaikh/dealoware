@@ -396,7 +396,8 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(p => p.DeletedAt == null);
 
-        return await query
+        var rows = await query.ToListAsync(cancellationToken);
+        return rows
             .OrderByDescending(p => p.CreatedAt)
             .Select(p => new AdminDeleteUiRow(
                 p.Id,
@@ -406,7 +407,7 @@ public sealed class AdminDeleteService
                 p.DeletedAt,
                 p.IsActive ? "Active" : "Suspended",
                 null))
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     private async Task<IReadOnlyList<AdminDeleteUiRow>> ListArtifactsAsync(
@@ -417,7 +418,8 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(a => a.DeletedAt == null);
 
-        var rows = await query.OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
+        var rows = await query.ToListAsync(cancellationToken);
+        rows = rows.OrderByDescending(a => a.CreatedAt).ToList();
         return rows.Select(a => new AdminDeleteUiRow(
             a.Id,
             "artifacts",
@@ -436,17 +438,17 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(n => n.DeletedAt == null);
 
-        return await query
+        var rows = await query.ToListAsync(cancellationToken);
+        return rows
             .OrderByDescending(n => n.CreatedAt)
             .Select(n => new AdminDeleteUiRow(
-                n.Id,
-                "negotiations",
-                n.Id.ToString(),
-                n.Version,
-                n.DeletedAt,
-                n.Status.ToString(),
-                n.Status == NegotiationStatus.Open))
-            .ToListAsync(cancellationToken);
+            n.Id,
+            "negotiations",
+            n.Id.ToString("D"),
+            n.Version,
+            n.DeletedAt,
+            n.Status.ToString(),
+            n.Status == NegotiationStatus.Open)).ToList();
     }
 
     private async Task<IReadOnlyList<AdminDeleteUiRow>> ListOffersAsync(
@@ -457,17 +459,17 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(o => o.DeletedAt == null);
 
-        return await query
+        var rows = await query.ToListAsync(cancellationToken);
+        return rows
             .OrderByDescending(o => o.CreatedAt)
             .Select(o => new AdminDeleteUiRow(
-                o.Id,
-                "offers",
-                o.Id.ToString(),
-                o.Version,
-                o.DeletedAt,
-                o.Status.ToString(),
-                o.Status == OfferStatus.Open))
-            .ToListAsync(cancellationToken);
+            o.Id,
+            "offers",
+            o.Id.ToString("D"),
+            o.Version,
+            o.DeletedAt,
+            o.Status.ToString(),
+            o.Status == OfferStatus.Open)).ToList();
     }
 
     private string Snapshot(FieldPrincipal principal, FieldResourceContext resourceContext, DeleteTarget target)
