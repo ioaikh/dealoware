@@ -95,8 +95,10 @@ builder.Services.Configure<AdminHostOptions>(
 
 try
 {
+    var adminHostOptions = new AdminHostOptions { AllowedHosts = [] };
+    builder.Configuration.GetSection(AdminHostOptions.SectionName).Bind(adminHostOptions);
     AdminHostOptionsValidator.Validate(
-        builder.Configuration.GetSection(AdminHostOptions.SectionName).Get<AdminHostOptions>(),
+        adminHostOptions,
         isDevelopment: builder.Environment.IsDevelopment());
 }
 catch (InvalidOperationException ex)

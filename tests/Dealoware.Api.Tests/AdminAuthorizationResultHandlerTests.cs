@@ -20,9 +20,11 @@ public class AdminAuthorizationResultHandlerTests
     [Fact]
     public async Task PolicyFailureOnAdminPath_ReturnsGeneric401Not500()
     {
-        var builder = WebApplication.CreateBuilder();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Development
+        });
         builder.WebHost.UseTestServer();
-        builder.WebHost.UseEnvironment(Environments.Development);
         builder.Services.AddAuthorization(options =>
         {
             options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
