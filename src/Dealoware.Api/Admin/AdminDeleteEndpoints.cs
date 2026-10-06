@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Dealoware.Domain.Admin;
+using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
 
@@ -33,17 +34,31 @@ public static class AdminDeleteEndpoints
         pages.MapGet("/assets/admin-delete.css", () => AdminDeleteUiPages.Css());
         pages.MapGet("/assets/admin-delete.js", () => AdminDeleteUiPages.JavaScript());
 
-        AdminUiTestSeed.TrySeed(app);
+        var seed = app.Services.GetRequiredService<IOptions<AdminUiTestSeedOptions>>().Value;
+        if (AdminUiTestSeedGuard.IsAllowed(app.Environment, seed))
+        {
+            AdminUiTestSeed.Map(app);
+            AdminUiTestSeed.TrySeed(app);
+        }
     }
 
-    public static IServiceCollection AddAdminDelete(this IServiceCollection services)
+    public static IServiceCollection AddAdminDelete(
+        this IServiceCollection services,
+        IHostEnvironment environment,
+        IConfiguration configuration)
     {
+        var seedOptions = AdminUiTestSeedGuard.Resolve(configuration);
+        AdminUiTestSeedGuard.Validate(environment, seedOptions);
+        var seedAllowed = AdminUiTestSeedGuard.IsAllowed(environment, seedOptions);
+
         services.AddOptions<AdminDeleteConfirmOptions>()
             .BindConfiguration(AdminDeleteConfirmOptions.SectionName);
+        services.AddOptions<AdminUiTestSeedOptions>()
+            .BindConfiguration(AdminUiTestSeedOptions.SectionName)
+            .PostConfigure(options => AdminUiTestSeedGuard.ApplyResolvedEnabled(options, configuration));
         services.PostConfigure<Dealoware.Infrastructure.Admin.AdminHostOptions>(hosts =>
         {
-            var seed = Environment.GetEnvironmentVariable("ADMIN_UI_TEST_SEED");
-            if (!string.Equals(seed, "1", StringComparison.Ordinal))
+            if (!seedAllowed)
                 return;
             hosts.AllowedHosts ??= [];
             if (!hosts.AllowedHosts.Contains("127.0.0.1", StringComparer.OrdinalIgnoreCase))

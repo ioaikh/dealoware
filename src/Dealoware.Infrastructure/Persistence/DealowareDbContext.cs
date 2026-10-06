@@ -51,11 +51,6 @@ public class DealowareDbContext : DbContext
     {
     }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
-    }
-
     /// <summary>
     /// Incremental Step 10 migration is a single .cs file and must not edit
     /// PR #23's frozen model snapshot. EF 10 treats that drift as
@@ -64,6 +59,7 @@ public class DealowareDbContext : DbContext
     /// </summary>
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
+        optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
         optionsBuilder.ConfigureWarnings(w =>
             w.Ignore(RelationalEventId.PendingModelChangesWarning));
     }

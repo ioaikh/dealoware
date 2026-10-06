@@ -10,7 +10,9 @@
     "report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "1.48.0"
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "1.48.0",
+    "axe-core": "^4.10.2"
   },
   "engines": {
     "node": ">=18"

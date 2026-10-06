@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
@@ -35,6 +36,22 @@ public sealed class AdminSessionMiddleware
 
         // Route note r3 (b079a814): only /admin/auth/ static files may load signed out.
         // Signed-in shell assets are mapped after this gate, never via anonymous static files.
+        // Seed is registered only in Development/Testing with the flag; elsewhere 404.
+        if (AdminUiTestSeedGuard.IsSeedRoute(context.Request.Path))
+        {
+            var seedOptions = context.RequestServices
+                .GetRequiredService<IOptions<AdminUiTestSeedOptions>>().Value;
+            var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
+            if (!AdminUiTestSeedGuard.IsAllowed(environment, seedOptions))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            await _next(context);
+            return;
+        }
+
         if (IsAnonymousAuthStatic(context.Request))
         {
             await _next(context);

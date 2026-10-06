@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { runAxeAndSave } from "../helpers/axe";
-import { applyAdminSession, readSeed } from "../helpers/session";
-import { assertNotLiveAdminHost } from "../helpers/deny-live";
+import { runAxeAndSave } from "./helpers/axe";
+import { applyAdminSession, readSeed } from "./helpers/session";
+import { assertNotLiveAdminHost } from "./helpers/deny-live";
 
 assertNotLiveAdminHost();
 

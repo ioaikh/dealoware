@@ -607,6 +607,39 @@ public class AdminDeleteAssetGateTests
     }
 
     [Fact]
+    public async Task UiTestSeedRoute_Production_Returns404()
+    {
+        using var factory = new EnvironmentWebApplicationFactory(
+            "Production",
+            EnvironmentWebApplicationFactory.TestSigningKey64);
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, AdminUiTestSeedOptions.Route);
+        request.Headers.Host = "admin.core.dealoware.com";
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("confirmToken", body);
+        Assert.DoesNotContain("sessionId", body);
+    }
+
+    [Fact]
+    public void UiTestSeedFlag_Production_IsRefused()
+    {
+        using var factory = new ProductionSeedEnabledFactory();
+        var ex = Record.Exception(() => factory.CreateClient());
+        Assert.NotNull(ex);
+        Assert.Contains(AdminUiTestSeedGuard.RefusedMessage, Flatten(ex));
+    }
+
+    private static string Flatten(Exception ex)
+    {
+        var parts = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+            parts.Add(current.Message);
+        return string.Join(" ", parts);
+    }
+
+    [Fact]
     public void FrozenSpecs_DoNotIncludeConfirmTokenTable()
     {
         Assert.DoesNotContain("AdminDeleteConfirmTokens", DatabaseMigrationBaseline.BaselineTableNames);
@@ -626,5 +659,19 @@ public class AdminDeleteAssetGateTests
         }
 
         throw new InvalidOperationException("repo root");
+    }
+}
+
+public sealed class ProductionSeedEnabledFactory : EnvironmentWebApplicationFactory
+{
+    public ProductionSeedEnabledFactory()
+        : base("Production", TestSigningKey64)
+    {
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Admin:UiTestSeed:Enabled", "true");
     }
 }

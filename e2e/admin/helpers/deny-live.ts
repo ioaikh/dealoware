@@ -3,17 +3,21 @@ const LIVE_HOSTS = [
   "core.dealoware.com",
 ];
 
+export function adminBaseUrl(): string {
+  return (
+    process.env.ADMIN_BASE_URL ||
+    process.env.PLAYWRIGHT_BASE_URL ||
+    process.env.ADMIN_UI_BASE_URL ||
+    "http://127.0.0.1:4173"
+  );
+}
+
 export function assertNotLiveAdminHost(): void {
   if (process.env.ALLOW_LIVE_ADMIN_CORE === "1") {
     throw new Error("ALLOW_LIVE_ADMIN_CORE must never be set for this suite.");
   }
 
-  const raw =
-    process.env.ADMIN_BASE_URL ||
-    process.env.PLAYWRIGHT_BASE_URL ||
-    process.env.ADMIN_UI_BASE_URL ||
-    "http://127.0.0.1:5055";
-
+  const raw = adminBaseUrl();
   let hostname = "";
   try {
     hostname = new URL(raw).hostname.toLowerCase();

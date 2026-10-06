@@ -92,7 +92,21 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
-builder.Services.AddAdminDelete();
+try
+{
+    builder.Services.AddAdminDelete(builder.Environment, builder.Configuration);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
 
 builder.Services.AddAuthorization(options =>
 {

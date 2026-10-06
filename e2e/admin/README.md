@@ -8,13 +8,17 @@ End-to-end tests for the Dealoware Admin UI using Playwright.
 - **Task:** TD-ADM-UI-ci-01
 - **Decision:** Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate
 
-## Phase 0 Status
+## Step 10 delete suite
 
-No admin UI frontend exists yet. This directory contains the pipeline wiring and configuration for when specs are added. The workflow:
+Specs live here so **Admin UI CI** (PR #29, `.github/workflows/admin-ui-ci.yml`)
+runs them headless on Chromium for this PR:
 
-- Runs on PRs that touch `e2e/admin/**`, `e2e/playwright.config.ts`, `e2e/package.json`, or the workflow file
-- Fails closed when no specs exist (required for merge-blocking)
-- Is ready to run real tests once Playwright specs are added
+- `td-adm-ui-del.spec.ts` — TD-ADM-UI-del-01..06, TD-ADM-130, TD-ADM-131
+- `helpers/` — session cookie, deny-live, axe artifact writer
+
+`e2e/playwright.config.ts` starts a local Development API on
+`http://127.0.0.1:4173` with `ADMIN_UI_TEST_SEED=1`. Production refuses that
+flag; the seed route returns 404 outside Development/Testing.
 
 ## CI Behavior
 
@@ -87,13 +91,17 @@ webServer: {
 
 3. Tests will auto-start the server before running
 
-### Local Development (Phase 0)
+### Local Development
 
-Until webServer is configured, start the app manually:
+`playwright.config.ts` starts the API via `webServer` (`dotnet run` on
+`127.0.0.1:4173` with the seed flag). You can also start it yourself:
 
 ```bash
-# Terminal 1: Start the API
-cd src/Dealoware.Api && dotnet run
+# Terminal 1: Start the API (only if not using Playwright webServer)
+cd src/Dealoware.Api && \
+  ADMIN_UI_TEST_SEED=1 Admin__UiTestSeed__Enabled=true \
+  ASPNETCORE_ENVIRONMENT=Development \
+  dotnet run --urls http://127.0.0.1:4173 --no-launch-profile
 
 # Terminal 2: Run tests
 cd e2e && npm test

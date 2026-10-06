@@ -11,7 +11,7 @@ namespace Dealoware.Api.Tests;
 /// explicit JWT signing key setting. Host settings override process environment variables, so
 /// these tests do not depend on (or leak into) the runner's environment. No Postgres or DB_HOST needed.
 /// </summary>
-public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFactory
+public class EnvironmentWebApplicationFactory : IsolatedWebApplicationFactory
 {
     /// <summary>Test-only 64-character alphanumeric signing key. Not a real secret.</summary>
     public static readonly string TestSigningKey64 =

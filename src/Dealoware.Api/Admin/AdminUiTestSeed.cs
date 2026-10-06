@@ -4,26 +4,47 @@ using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Persistence;
+using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Local Playwright host only. Never enabled unless ADMIN_UI_TEST_SEED=1.
-/// Writes a seed manifest for specs. No secrets.
+/// Local Playwright host only. Registered only when the environment is
+/// Development or Testing and Admin:UiTestSeed:Enabled is set.
 /// </summary>
 public static class AdminUiTestSeed
 {
+    public static void Map(WebApplication app)
+    {
+        app.MapMethods(
+            AdminUiTestSeedOptions.Route,
+            [HttpMethods.Get, HttpMethods.Head],
+            (IHostEnvironment env, IOptions<AdminUiTestSeedOptions> options) =>
+            {
+                if (!AdminUiTestSeedGuard.IsAllowed(env, options.Value))
+                    return Results.NotFound();
+
+                var path = SeedFilePath(app);
+                if (!File.Exists(path))
+                    return Results.NotFound();
+
+                return Results.Text(File.ReadAllText(path), "application/json");
+            });
+    }
+
     public static void TrySeed(WebApplication app)
     {
-        var enabled = app.Configuration["ADMIN_UI_TEST_SEED"]
-                      ?? Environment.GetEnvironmentVariable("ADMIN_UI_TEST_SEED");
-        if (!string.Equals(enabled, "1", StringComparison.Ordinal))
+        var options = app.Services.GetRequiredService<IOptions<AdminUiTestSeedOptions>>().Value;
+        if (!AdminUiTestSeedGuard.IsAllowed(app.Environment, options))
             return;
 
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         if (db.AdminSessions.Any())
+        {
+            WriteExistingManifest(app, db);
             return;
+        }
 
         var alice = Participant.Create("Alice Example");
         var bob = Participant.Create("Bob Example");
@@ -49,7 +70,6 @@ public static class AdminUiTestSeed
         var (offer3, _) = Offer.Create(openNeg.Id, bob.Sub, alice.Sub, 12m, "USD", "counter");
         if (offer1 is null || offer2 is null || offer3 is null)
             throw new InvalidOperationException("Admin UI test seed failed to create offers.");
-        // one-open-per-side: supersede first before adding second on same negotiation
         offer1.Supersede();
         db.Offers.AddRange(offer1, offer2, offer3);
 
@@ -58,7 +78,7 @@ public static class AdminUiTestSeed
         db.AdminSessions.Add(session);
         db.SaveChanges();
 
-        var manifest = new Dictionary<string, string>
+        WriteManifest(app, new Dictionary<string, string>
         {
             ["sessionId"] = session.Id.ToString("D"),
             ["aliceId"] = alice.Id.ToString("D"),
@@ -76,12 +96,36 @@ public static class AdminUiTestSeed
             ["cascadeNegotiationId"] = cascadeNeg.Id.ToString("D"),
             ["offerId"] = offer3.Id.ToString("D"),
             ["offer2Id"] = offer2.Id.ToString("D")
-        };
+        });
+    }
 
-        var path = app.Configuration["ADMIN_UI_TEST_SEED_FILE"]
-                   ?? Environment.GetEnvironmentVariable("ADMIN_UI_TEST_SEED_FILE")
-                   ?? Path.Combine(Path.GetTempPath(), "dealoware-admin-ui-seed.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    private static void WriteExistingManifest(WebApplication app, DealowareDbContext db)
+    {
+        var path = SeedFilePath(app);
+        if (File.Exists(path))
+            return;
+
+        var session = db.AdminSessions.OrderBy(s => s.CreatedAt).FirstOrDefault();
+        if (session is null)
+            return;
+
+        WriteManifest(app, new Dictionary<string, string>
+        {
+            ["sessionId"] = session.Id.ToString("D")
+        });
+    }
+
+    private static void WriteManifest(WebApplication app, Dictionary<string, string> manifest)
+    {
+        var path = SeedFilePath(app);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         File.WriteAllText(path, JsonSerializer.Serialize(manifest));
     }
+
+    private static string SeedFilePath(WebApplication app)
+        => app.Configuration["ADMIN_UI_TEST_SEED_FILE"]
+           ?? Environment.GetEnvironmentVariable("ADMIN_UI_TEST_SEED_FILE")
+           ?? Path.Combine(Path.GetTempPath(), "dealoware-admin-ui-seed.json");
 }

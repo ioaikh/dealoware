@@ -4,9 +4,9 @@
 # SKIP stubs: reported as SKIP with Active hold reason when specs missing.
 # Decision: Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate.
 #
-# Phase 0: No admin UI frontend exists yet. Pipeline wiring only.
-# When specs land, they run against webServer defined in e2e/playwright.config.ts.
-# See e2e/admin/README.md for environment setup and local development.
+# Specs live under e2e/admin/. webServer in e2e/playwright.config.ts starts a
+# local Development API on 127.0.0.1:4173 with the Admin UI test seed flag.
+# See e2e/admin/README.md.
 #
 # SECURITY (public repo):
 # - Traces/screenshots disabled (playwright.config.ts) — artifacts are world-readable.
@@ -27,6 +27,8 @@ on:
       - 'e2e/package-lock.json'
       # This workflow
       - '.github/workflows/admin-ui-ci.yml'
+      # Step 10 delete UI (session-gated pages + seed gate)
+      - 'src/Dealoware.Api/Admin/**'
   workflow_dispatch:
     inputs:
       allow_skip_empty:
@@ -49,7 +51,7 @@ jobs:
   admin-ui-test:
     name: Admin UI Headless Tests (Chromium)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -114,6 +116,11 @@ jobs:
 
             console.log('✓ Deny-live guard passed: ADMIN_BASE_URL is localhost.');
           "
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -214,6 +221,11 @@ jobs:
         # are world-readable.
         env:
           ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
+          ADMIN_UI_TEST_SEED: '1'
+          ADMIN_UI_TEST_SEED_FILE: '/tmp/dealoware-admin-ui-seed.json'
+          Admin__UiTestSeed__Enabled: 'true'
+          Admin__DeleteConfirm__LifetimeSeconds: '2'
+          ASPNETCORE_ENVIRONMENT: 'Development'
           ADMIN_USER: ${{ secrets.ADMIN_USER || 'ci-test-admin' }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'ci-test-placeholder-not-real' }}
           COREOWNER_PASSWORD_ENV: ${{ secrets.COREOWNER_PASSWORD_ENV || 'ci-test-placeholder-not-real' }}
