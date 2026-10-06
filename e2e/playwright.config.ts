@@ -41,8 +41,10 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4173',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    // Public repo: traces and screenshots disabled to prevent credential leakage.
+    // Artifacts are world-readable on public repos.
+    trace: 'off',
+    screenshot: 'off',
   },
 
   projects: [

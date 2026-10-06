@@ -7,6 +7,12 @@
 # Phase 0: No admin UI frontend exists yet. Pipeline wiring only.
 # When specs land, they run against webServer defined in e2e/playwright.config.ts.
 # See e2e/admin/README.md for environment setup and local development.
+#
+# SECURITY (public repo):
+# - Traces/screenshots disabled (playwright.config.ts) — artifacts are world-readable.
+# - No artifact uploads until private artifact policy or private runner exists.
+# - Env placeholders are test-only stubs. Do NOT put real CoreOwner/admin passwords
+#   or TOTP seeds into this public repo's Actions secrets.
 
 name: Admin UI CI
 
@@ -35,16 +41,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: admin-ui-ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   admin-ui-test:
     name: Admin UI Headless Tests (Chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
-      - name: Deny-live guard — block admin.core.dealoware.com
+      - name: Deny-live guard — allow-list localhost only
         id: deny-live
         shell: bash
         # Scope ADMIN_BASE_URL here so deny-live checks the same URL Playwright uses.
@@ -52,32 +65,58 @@ jobs:
         env:
           ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
         run: |
-          # Check the resolved URL for live admin hosts.
-          # Do NOT echo secret values — only report pass/fail and blocked pattern.
-          BASE_URL="${ADMIN_BASE_URL:-http://127.0.0.1:4173}"
+          # Allow-list guard: only localhost/127.0.0.1/::1 with http(s) scheme.
+          # Uses Node.js URL parser for robust validation.
+          # Never echoes URL or secret values — only pass/fail + reason code.
 
-          # Extract hostname from URL (strips scheme and port/path)
-          extract_host() {
-            echo "$1" | sed -E 's|^https?://||' | sed -E 's|[:/].*||'
-          }
+          node --eval "
+            const raw = process.env.ADMIN_BASE_URL || '';
 
-          HOST=$(extract_host "$BASE_URL")
+            // REJECT: empty or missing
+            if (!raw.trim()) {
+              console.log('::error::DENY-LIVE: ADMIN_BASE_URL is empty or missing [E_EMPTY]');
+              process.exit(1);
+            }
 
-          # Deny pattern: admin.core.dealoware.com or admin*.dealoware.com
-          if [[ "$HOST" == "admin.core.dealoware.com" ]]; then
-            echo "::error::DENY-LIVE: ADMIN_BASE_URL resolves to admin.core.dealoware.com — forbidden."
-            exit 1
-          fi
+            let url;
+            try {
+              url = new URL(raw);
+            } catch {
+              console.log('::error::DENY-LIVE: ADMIN_BASE_URL is not a valid URL [E_PARSE]');
+              process.exit(1);
+            }
 
-          if [[ "$HOST" =~ ^admin.*\.dealoware\.com$ ]]; then
-            echo "::error::DENY-LIVE: ADMIN_BASE_URL matches admin*.dealoware.com pattern — forbidden."
-            exit 1
-          fi
+            // REJECT: userinfo present (user:pass@host)
+            if (url.username || url.password) {
+              console.log('::error::DENY-LIVE: ADMIN_BASE_URL contains userinfo [E_USERINFO]');
+              process.exit(1);
+            }
 
-          echo "✓ Deny-live guard passed: ADMIN_BASE_URL does not point to live admin dealoware hosts."
+            // REJECT: non-http(s) scheme
+            const scheme = url.protocol.toLowerCase();
+            if (scheme !== 'http:' && scheme !== 'https:') {
+              console.log('::error::DENY-LIVE: ADMIN_BASE_URL has disallowed scheme [E_SCHEME]');
+              process.exit(1);
+            }
+
+            // Normalize hostname: lowercase, strip trailing dot
+            let host = url.hostname.toLowerCase();
+            if (host.endsWith('.')) {
+              host = host.slice(0, -1);
+            }
+
+            // ALLOW-LIST: only localhost, 127.0.0.1, ::1
+            const allowed = ['localhost', '127.0.0.1', '::1'];
+            if (!allowed.includes(host)) {
+              console.log('::error::DENY-LIVE: ADMIN_BASE_URL hostname not in allow-list [E_HOST_DENY]');
+              process.exit(1);
+            }
+
+            console.log('✓ Deny-live guard passed: ADMIN_BASE_URL is localhost.');
+          "
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -170,7 +209,9 @@ jobs:
         if: steps.check-specs.outputs.specs_found != '0'
         working-directory: e2e
         # Secrets scoped to test step only — never exposed to npm install or other steps.
-        # Values below are CI test placeholders; configure real secrets in GitHub repo settings.
+        # PUBLIC REPO: Use test-only placeholder values. Do NOT put real CoreOwner/admin
+        # passwords or TOTP seeds into this repo's Actions secrets — artifacts and logs
+        # are world-readable.
         env:
           ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
           ADMIN_USER: ${{ secrets.ADMIN_USER || 'ci-test-admin' }}
@@ -183,30 +224,9 @@ jobs:
           npx playwright test \
             -c playwright.config.ts \
             --project=chromium \
-            --reporter=html \
             --reporter=list
 
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
-        if: always() && steps.check-specs.outputs.specs_found != '0'
-        with:
-          name: playwright-report
-          path: e2e/playwright-report/
-          retention-days: 14
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always() && steps.check-specs.outputs.specs_found != '0'
-        with:
-          name: test-results
-          path: e2e/test-results/
-          retention-days: 14
-
-      - name: Upload traces on failure
-        uses: actions/upload-artifact@v4
-        if: failure() && steps.check-specs.outputs.specs_found != '0'
-        with:
-          name: playwright-traces
-          path: e2e/test-results/**/trace.zip
-          retention-days: 7
-          if-no-files-found: ignore
+      # PUBLIC REPO: Artifact uploads disabled.
+      # Traces, screenshots, and test results may contain credentials, cookies, or
+      # session data. Do not upload until a private artifact policy or private runner
+      # is in place. See playwright.config.ts for trace/screenshot settings.

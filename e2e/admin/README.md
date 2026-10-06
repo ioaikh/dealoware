@@ -22,9 +22,32 @@ The `admin-ui-ci.yml` workflow enforces:
 
 1. **Fail-closed on pull_request:** If no Playwright specs exist (no `*.spec.*` or `*.e2e.*` files), the CI job fails.
 
-2. **Deny-live guard:** Tests will never run against `admin.core.dealoware.com` or any `admin*.dealoware.com` host. The workflow exits non-zero if a live admin host is detected.
+2. **Allow-list deny-live guard:** Tests can ONLY run against `localhost`, `127.0.0.1`, or `::1`. Any other hostname — including `*.dealoware.com`, live IPs, or external hosts — is rejected. The guard uses Node.js URL parsing and never echoes URL values.
 
 3. **Secrets scoping:** Credentials are only exposed to the test step, never to `npm install` or other steps.
+
+## Security — Public Repository
+
+**This repository is public.** GitHub Actions artifacts and logs are world-readable.
+
+### Credentials Policy
+
+**Do NOT put real CoreOwner/admin passwords or TOTP seeds into this repo's Actions secrets.**
+
+The workflow uses test-only placeholder values:
+- `ci-test-admin` / `ci-test-placeholder-not-real` for admin credentials
+- Cloudflare's public Turnstile test keys
+- A dummy TOTP seed
+
+These placeholders are intentional. Real credentials would be exposed in logs or artifacts.
+
+### Traces and Screenshots
+
+Playwright traces and screenshots are **disabled** in `playwright.config.ts`:
+- `trace: 'off'`
+- `screenshot: 'off'`
+
+The workflow does **not** upload `playwright-report/`, `test-results/`, or traces. These could contain login screens, session cookies, or other sensitive data.
 
 ## Adding Tests
 
@@ -78,17 +101,17 @@ cd e2e && npm test
 
 ## Environment Variables
 
-The CI workflow maps these secrets (configure in GitHub repository settings). Test-only placeholder values are used if secrets are not configured:
+The CI workflow uses these test-only placeholder values. **Do not override with real credentials in a public repo.**
 
-| Variable | Description | CI Default |
-|----------|-------------|------------|
+| Variable | Description | CI Placeholder |
+|----------|-------------|----------------|
 | `ADMIN_BASE_URL` | Base URL for admin UI | `http://127.0.0.1:4173` |
 | `ADMIN_USER` | Admin username | `ci-test-admin` |
-| `ADMIN_PASSWORD` | Admin password | placeholder |
-| `COREOWNER_PASSWORD_ENV` | Core owner password | placeholder |
-| `TOTP_SEED_ENV` | TOTP seed for 2FA | test seed |
-| `TURNSTILE_TEST_SITE_KEY` | Turnstile test site key | Cloudflare test key |
-| `TURNSTILE_TEST_SECRET_KEY` | Turnstile test secret | Cloudflare test secret |
+| `ADMIN_PASSWORD` | Admin password | `ci-test-placeholder-not-real` |
+| `COREOWNER_PASSWORD_ENV` | Core owner password | `ci-test-placeholder-not-real` |
+| `TOTP_SEED_ENV` | TOTP seed for 2FA | dummy test seed |
+| `TURNSTILE_TEST_SITE_KEY` | Turnstile test site key | Cloudflare public test key |
+| `TURNSTILE_TEST_SECRET_KEY` | Turnstile test secret | Cloudflare public test secret |
 
 ## Local Development
 
@@ -107,6 +130,6 @@ npm test
 # Run with headed browser
 npm run test:headed
 
-# View report
+# View report (local only — not generated in CI)
 npm run report
 ```
