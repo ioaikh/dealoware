@@ -127,7 +127,7 @@ public class AdminBootstrapTests
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         var ok = await first.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(ok.GetProperty("passwordSet").GetBoolean());
-        Assert.False(first.Headers.TryGetValues("Set-Cookie", out _));
+        AssertNoSessionCookie(first);
 
         using var reuse = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
@@ -183,12 +183,13 @@ public class AdminBootstrapTests
         using var before = await client.SendAsync(AdminRequest(HttpMethod.Get, "/admin/api/me"));
         await AssertGenericUnauthorized(before);
 
-        var token = await IssueTokenAsync();
+        var (token, af) = await IssueReadyAsync(client);
         var password = NewPassword();
         using var set = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
-            new { token, password, turnstileToken = FakeTurnstileVerifier.ValidToken }));
+            new { token, password, turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
 
         using (var scope = _factory.Services.CreateScope())
@@ -204,10 +205,15 @@ public class AdminBootstrapTests
         }
 
         var ruleRejectToken = await IssueFreshTokenAfterResetAsync();
+        using var ruleGet = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(ruleRejectToken)}"));
+        var ruleAf = (await ruleGet.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("antiForgeryToken").GetString();
         using var tooShort = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
-            new { token = ruleRejectToken, password = "short", turnstileToken = FakeTurnstileVerifier.ValidToken }));
+            new { token = ruleRejectToken, password = "short", turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = ruleAf },
+            antiForgery: ruleAf));
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
         var shortBody = await tooShort.Content.ReadAsStringAsync();
         Assert.Contains(AdminAuthMessages.PasswordTooShort, shortBody);
@@ -223,13 +229,14 @@ public class AdminBootstrapTests
     {
         await ResetAsync();
         var client = CreateClient();
-        var token = await IssueTokenAsync();
+        var (token, af) = await IssueReadyAsync(client);
         using var set = await client.SendAsync(AdminRequest(
             HttpMethod.Post,
             AdminSignedOutAccess.BootstrapApi,
-            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken }));
+            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken, antiForgeryToken = af },
+            antiForgery: af));
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
-        Assert.False(set.Headers.Contains("Set-Cookie"));
+        AssertNoSessionCookie(set);
 
         using var me = await client.SendAsync(AdminRequest(HttpMethod.Get, "/admin/api/me"));
         await AssertGenericUnauthorized(me);
@@ -240,14 +247,15 @@ public class AdminBootstrapTests
     {
         await ResetAsync();
         var client = CreateClient();
-        var token = await IssueTokenAsync();
+        var (token, af) = await IssueReadyAsync(client);
         var password = NewPassword();
 
         async Task<HttpResponseMessage> Post(string? turnstile)
             => await client.SendAsync(AdminRequest(
                 HttpMethod.Post,
                 AdminSignedOutAccess.BootstrapApi,
-                new { token, password, turnstileToken = turnstile }));
+                new { token, password, turnstileToken = turnstile, antiForgeryToken = af },
+                antiForgery: af));
 
         using var missing = await Post(null);
         using var invalid = await Post("forged");
@@ -324,12 +332,71 @@ public class AdminBootstrapTests
         var expiredBody = await expiredPage.Content.ReadAsStringAsync();
         Assert.Contains(AdminAuthMessages.InvalidOrExpiredLink, expiredBody);
 
+        using var trailing = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"/admin/bootstrap/?token={Uri.EscapeDataString(token)}"));
+        await AssertGenericUnauthorized(trailing);
+
+        using var encoded = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"/admin/bootstrap%2fextra?token={Uri.EscapeDataString(token)}"));
+        await AssertGenericUnauthorized(encoded);
+
+        using var dots = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"/admin/bootstrap/..?token={Uri.EscapeDataString(token)}"));
+        await AssertGenericUnauthorized(dots);
+
+        using var matrix = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"/admin/bootstrap;x?token={Uri.EscapeDataString(token)}"));
+        await AssertGenericUnauthorized(matrix);
+
+        using var missingAf = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            AdminSignedOutAccess.BootstrapApi,
+            new { token, password = NewPassword(), turnstileToken = FakeTurnstileVerifier.ValidToken }));
+        await AssertGenericUnauthorized(missingAf);
+
+        using var wrongHost = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}",
+            host: "core.dealoware.com"));
+        Assert.Equal(HttpStatusCode.NotFound, wrongHost.StatusCode);
+        Assert.True(string.IsNullOrEmpty(await wrongHost.Content.ReadAsStringAsync()));
+        Assert.DoesNotContain("Unauthorized", await wrongHost.Content.ReadAsStringAsync());
+
+        using var authStatic = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            "/admin/auth/placeholder.css"));
+        Assert.Equal(HttpStatusCode.OK, authStatic.StatusCode);
+
+        using var getTwice = await client.SendAsync(AdminRequest(
+            HttpMethod.Get,
+            $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
+        Assert.Equal(HttpStatusCode.OK, getTwice.StatusCode);
+
         var cookie = AdminSessionCookie.CreateOptions();
         Assert.True(cookie.HttpOnly);
         Assert.True(cookie.Secure);
         Assert.Equal(Microsoft.AspNetCore.Http.SameSiteMode.Strict, cookie.SameSite);
         Assert.Equal("/admin", cookie.Path);
         Assert.Null(cookie.Domain);
+        Assert.Equal("dw_admin_session", AdminSessionCookie.Name);
+        Assert.Equal("dw_admin_pending", AdminSessionCookie.PendingName);
+        Assert.Equal("dw_admin_af", AdminAntiForgery.CookieName);
+        Assert.DoesNotContain("__Host-", AdminSessionCookie.Name);
+        Assert.DoesNotContain("__Host-", AdminAntiForgery.CookieName);
+    }
+
+    private static void AssertNoSessionCookie(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            return;
+        }
+
+        Assert.DoesNotContain(cookies, c => c.StartsWith(AdminSessionCookie.Name + "=", StringComparison.Ordinal));
     }
 
     [Fact]
