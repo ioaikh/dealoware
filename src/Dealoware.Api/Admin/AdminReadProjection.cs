@@ -51,7 +51,10 @@ public static class AdminReadProjection
         if (Can(policy, principal, FieldClass.ParticipantActive, action, ctx))
             dto["isActive"] = participant.IsActive;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
+        {
             dto["createdAt"] = participant.CreatedAt;
+            dto["updatedAt"] = participant.UpdatedAt;
+        }
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = participant.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -99,7 +102,10 @@ public static class AdminReadProjection
         }
 
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
+        {
             dto["createdAt"] = artifact.CreatedAt;
+            dto["updatedAt"] = artifact.UpdatedAt;
+        }
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = artifact.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -134,7 +140,10 @@ public static class AdminReadProjection
         if (Can(policy, principal, FieldClass.NegotiationEndsAt, action, ctx))
             dto["endsAt"] = negotiation.EndsAt;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
+        {
             dto["createdAt"] = negotiation.CreatedAt;
+            dto["updatedAt"] = negotiation.UpdatedAt;
+        }
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = negotiation.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -169,7 +178,10 @@ public static class AdminReadProjection
         if (Can(policy, principal, FieldClass.OfferTerms, action, ctx))
             dto["terms"] = offer.Terms;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
+        {
             dto["createdAt"] = offer.CreatedAt;
+            dto["updatedAt"] = offer.UpdatedAt;
+        }
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = offer.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))

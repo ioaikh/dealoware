@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <title>Admin · Dealoware admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="top">
+        <p class="brand">Dealoware admin</p>
+        <button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="site-nav">Menu</button>
+        <nav id="site-nav" class="nav" aria-label="Admin">
+            <a href="/admin/" data-nav="stats">Stats</a>
+            <a href="/admin/participants" data-nav="participants">Participants</a>
+            <a href="/admin/artifacts" data-nav="artifacts">Artifacts</a>
+            <a href="/admin/negotiations" data-nav="negotiations">Negotiations</a>
+            <a href="/admin/offers" data-nav="offers">Offers</a>
+            <a href="/admin/audit" data-nav="audit">Audit log</a>
+            <a href="/admin/settings/security" data-nav="security">Security settings</a>
+            <form method="post" action="/admin/sign-out" class="sign-out-form">
+                <button type="submit">Sign out</button>
+            </form>
+        </nav>
+    </header>
+    <main id="main" tabindex="-1">
+        <h1 id="page-title">Admin</h1>
+        <div id="live" class="live" aria-live="polite"></div>
+        <div id="app"></div>
+    </main>
+    <script src="/admin/ui/admin.js"></script>
+</body>
+</html>

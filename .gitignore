@@ -40,6 +40,7 @@ artifacts/
 
 # Test results
 [Tt]est[Rr]esult*/
+test-results/
 [Bb]uild[Ll]og.*
 *.trx
 TestResult.xml

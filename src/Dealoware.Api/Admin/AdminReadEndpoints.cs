@@ -63,6 +63,16 @@ public static class AdminReadEndpoints
         if (!query.IncludeDeleted)
             rows = rows.Where(p => p.DeletedAt == null);
 
+        if (!string.IsNullOrEmpty(query.Status))
+        {
+            if (query.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                rows = rows.Where(p => p.IsActive);
+            else if (query.Status.Equals("Suspended", StringComparison.OrdinalIgnoreCase))
+                rows = rows.Where(p => !p.IsActive);
+            else
+                return AdminDeny.BadRequestResult();
+        }
+
         if (!string.IsNullOrEmpty(query.Participant))
         {
             var participant = query.Participant;

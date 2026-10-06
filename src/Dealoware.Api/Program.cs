@@ -226,8 +226,23 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Route-prefix note r3 §2.3: UseStaticFiles runs before the session gate.
+// Only /admin/auth/** may be served that way. Signed-in shell assets are
+// mapped after AdminSessionMiddleware (AdminUiEndpoints) and must never
+// sit where anonymous static-file middleware can reach them.
+app.UseWhen(
+    context =>
+    {
+        var path = context.Request.Path;
+        if (!path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
+            return true;
+        return path.StartsWithSegments(AdminUiRoutes.SignedOutAssetsPrefix);
+    },
+    branch =>
+    {
+        branch.UseDefaultFiles();
+        branch.UseStaticFiles();
+    });
 
 app.UseRateLimiter();
 
@@ -266,6 +281,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+await AdminUiTestHarness.ApplyAsync(app);
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .WithName("Health")
     .WithTags("Health")
@@ -283,6 +300,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminUiEndpoints();
 
 app.Run();
 
