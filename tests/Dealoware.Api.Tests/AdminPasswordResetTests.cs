@@ -322,7 +322,7 @@ public class AdminPasswordResetTests
     }
 
     [Fact]
-    public async Task TD_ADM_030_C1_TrailingSlash_Encoded_DotDot_SlashSlash_Matrix_Denied()
+    public async Task TD_ADM_030_C1_TrailingSlash_Encoded_SlashSlash_Matrix_Denied()
     {
         using var trailing = await SendAsync(HttpMethod.Get, "/admin/reset/");
         using var extraEncoded = await SendAsync(HttpMethod.Get, "/admin/reset%2fextra");
