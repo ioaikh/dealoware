@@ -1,0 +1,232 @@
+# Admin UI Headless CI — UX1-X08 / TD-ADM-UI-ci-01
+# Merge-blocking: failing non-SKIP UI case fails the check.
+# Empty suite: must fail closed on pull_request (never green empty).
+# SKIP stubs: reported as SKIP with Active hold reason when specs missing.
+# Decision: Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate.
+
+name: Admin UI CI
+
+on:
+  pull_request:
+    paths:
+      # Admin UI source paths
+      - '**/Admin/**'
+      - '**/admin/**'
+      - '**/Areas/Admin/**'
+      # Playwright / e2e paths
+      - '**/e2e/admin/**'
+      - '**/e2e/admin*/**'
+      - '**/playwright*/**'
+      - '**/admin-dashboard/**'
+      # This workflow itself
+      - '.github/workflows/admin-ui-ci.yml'
+  workflow_dispatch:
+    inputs:
+      allow_skip_empty:
+        description: 'Allow SKIP on empty suite (manual dry-run only, not for pull_request)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
+  ADMIN_USER: ${{ secrets.ADMIN_USER }}
+  ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+  COREOWNER_PASSWORD_ENV: ${{ secrets.COREOWNER_PASSWORD_ENV }}
+  TOTP_SEED_ENV: ${{ secrets.TOTP_SEED_ENV }}
+  TURNSTILE_TEST_SITE_KEY: ${{ secrets.TURNSTILE_TEST_SITE_KEY }}
+  TURNSTILE_TEST_SECRET_KEY: ${{ secrets.TURNSTILE_TEST_SECRET_KEY }}
+
+jobs:
+  admin-ui-test:
+    name: Admin UI Headless Tests (Chromium)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deny-live guard — block admin.core.dealoware.com
+        id: deny-live
+        shell: bash
+        run: |
+          # Resolve the base URL to check for live admin hosts
+          BASE_URL="${ADMIN_BASE_URL:-http://127.0.0.1:4173}"
+          PLAYWRIGHT_URL="${PLAYWRIGHT_BASE_URL:-$BASE_URL}"
+
+          echo "::group::Deny-live guard check"
+          echo "Resolved ADMIN_BASE_URL: $BASE_URL"
+          echo "Resolved PLAYWRIGHT_BASE_URL: $PLAYWRIGHT_URL"
+
+          # Extract hostname from URL
+          extract_host() {
+            echo "$1" | sed -E 's|^https?://||' | sed -E 's|[:/].*||'
+          }
+
+          ADMIN_HOST=$(extract_host "$BASE_URL")
+          PW_HOST=$(extract_host "$PLAYWRIGHT_URL")
+
+          echo "ADMIN_HOST: $ADMIN_HOST"
+          echo "PLAYWRIGHT_HOST: $PW_HOST"
+
+          # Deny pattern: admin.core.dealoware.com or admin*.dealoware.com
+          deny_if_live() {
+            local host="$1"
+            if [[ "$host" == "admin.core.dealoware.com" ]]; then
+              echo "::error::DENY-LIVE: Hostname '$host' is admin.core.dealoware.com — forbidden."
+              return 1
+            fi
+            if [[ "$host" =~ ^admin.*\.dealoware\.com$ ]]; then
+              echo "::error::DENY-LIVE: Hostname '$host' matches admin*.dealoware.com — forbidden."
+              return 1
+            fi
+            return 0
+          }
+
+          deny_if_live "$ADMIN_HOST" || exit 1
+          deny_if_live "$PW_HOST" || exit 1
+
+          echo "✓ Deny-live guard passed: no live admin dealoware hosts."
+          echo "::endgroup::"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check for Playwright specs
+        id: check-specs
+        shell: bash
+        run: |
+          echo "::group::Spec discovery"
+
+          # Search for Playwright spec files in admin UI test directories
+          SPEC_DIRS=(
+            "e2e/admin"
+            "tests/e2e/admin"
+            "playwright/admin"
+          )
+
+          SPEC_PATTERNS=(
+            "*.spec.ts"
+            "*.spec.js"
+            "*.e2e.ts"
+            "*.e2e.js"
+          )
+
+          FOUND_SPECS=0
+          for dir in "${SPEC_DIRS[@]}"; do
+            if [[ -d "$dir" ]]; then
+              for pattern in "${SPEC_PATTERNS[@]}"; do
+                count=$(find "$dir" -name "$pattern" 2>/dev/null | wc -l)
+                FOUND_SPECS=$((FOUND_SPECS + count))
+              done
+            fi
+          done
+
+          echo "Found $FOUND_SPECS spec file(s)"
+          echo "specs_found=$FOUND_SPECS" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+
+      - name: Fail-closed on empty suite (pull_request)
+        if: github.event_name == 'pull_request' && steps.check-specs.outputs.specs_found == '0'
+        shell: bash
+        run: |
+          echo "::error::FAIL-CLOSED: No Playwright specs found for admin UI."
+          echo ""
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo "  TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
+          echo "═══════════════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  This PR touches admin UI files but no Playwright specs exist yet."
+          echo "  Per UX1-X08 decision: empty suite must fail closed on pull_request."
+          echo ""
+          echo "  Next steps:"
+          echo "    1. Add Playwright specs under e2e/admin/"
+          echo "    2. Or wait for TD-ADM-UI-ci-01 completion"
+          echo ""
+          echo "  References:"
+          echo "    - Epic: UX1-X08"
+          echo "    - Task: TD-ADM-UI-ci-01"
+          echo "    - Decision: Chief QA AGREED"
+          echo ""
+          exit 1
+
+      - name: Skip on empty suite (workflow_dispatch with allow_skip_empty)
+        if: github.event_name == 'workflow_dispatch' && inputs.allow_skip_empty == 'true' && steps.check-specs.outputs.specs_found == '0'
+        shell: bash
+        run: |
+          echo "::warning::SKIP: No specs found; allow_skip_empty=true on workflow_dispatch."
+          echo ""
+          echo "TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
+          echo "Manual dry-run mode: skipping empty suite."
+          echo ""
+          # Exit 0 — allowed only for workflow_dispatch with explicit skip flag
+          exit 0
+
+      - name: Fail on empty suite (workflow_dispatch without allow_skip_empty)
+        if: github.event_name == 'workflow_dispatch' && inputs.allow_skip_empty != 'true' && steps.check-specs.outputs.specs_found == '0'
+        shell: bash
+        run: |
+          echo "::error::FAIL-CLOSED: No Playwright specs found for admin UI."
+          echo ""
+          echo "TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
+          echo "Use allow_skip_empty=true for manual dry-run if needed."
+          exit 1
+
+      - name: Install Playwright (Chromium only)
+        if: steps.check-specs.outputs.specs_found != '0'
+        shell: bash
+        run: |
+          # Check if playwright is already in package.json, otherwise install
+          if [[ -f "package.json" ]] && grep -q '"@playwright/test"' package.json; then
+            echo "Playwright found in package.json, installing dependencies..."
+            npm ci
+          else
+            echo "Installing Playwright as dev dependency..."
+            npm init -y 2>/dev/null || true
+            npm install -D @playwright/test
+          fi
+
+          # Install only Chromium browser
+          npx playwright install chromium --with-deps
+
+      - name: Run Playwright tests (Chromium)
+        if: steps.check-specs.outputs.specs_found != '0'
+        shell: bash
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.ADMIN_BASE_URL }}
+        run: |
+          npx playwright test \
+            --project=chromium \
+            --reporter=html \
+            --reporter=list \
+            e2e/admin/
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always() && steps.check-specs.outputs.specs_found != '0'
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always() && steps.check-specs.outputs.specs_found != '0'
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14
+
+      - name: Upload traces on failure
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.check-specs.outputs.specs_found != '0'
+        with:
+          name: playwright-traces
+          path: test-results/**/trace.zip
+          retention-days: 7
+          if-no-files-found: ignore
