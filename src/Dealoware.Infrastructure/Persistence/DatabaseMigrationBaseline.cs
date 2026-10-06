@@ -91,11 +91,13 @@ public static class DatabaseMigrationBaseline
 
     /// <summary>
     /// Pure decision over applied history, assembly migrations, and user tables.
+    /// PostgreSQL uses ordinal (quoted, case-sensitive) table names; SQLite does not.
     /// </summary>
     public static MigrationBaselinePlan Decide(
         IReadOnlyList<string> assemblyMigrations,
         IReadOnlyCollection<string> appliedMigrations,
-        IReadOnlyCollection<string> userTables)
+        IReadOnlyCollection<string> userTables,
+        bool postgres = false)
     {
         ArgumentNullException.ThrowIfNull(assemblyMigrations);
         ArgumentNullException.ThrowIfNull(appliedMigrations);
@@ -115,8 +117,9 @@ public static class DatabaseMigrationBaseline
             return new MigrationBaselinePlan(MigrationBaselineAction.ApplyMigrations, null);
         }
 
-        var tables = new HashSet<string>(userTables, StringComparer.OrdinalIgnoreCase);
-        var baseline = new HashSet<string>(BaselineTableNames, StringComparer.OrdinalIgnoreCase);
+        var names = postgres ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+        var tables = new HashSet<string>(userTables, names);
+        var baseline = new HashSet<string>(BaselineTableNames, names);
         var present = BaselineTableNames.Count(t => tables.Contains(t));
         var extras = tables.Count(t => !baseline.Contains(t));
 
@@ -155,7 +158,8 @@ public static class DatabaseMigrationBaseline
         var assembly = db.Database.GetMigrations().ToList();
         var applied = await ReadAppliedMigrationsSafeAsync(db, cancellationToken).ConfigureAwait(false);
         var userTables = await ListUserTablesAsync(db, cancellationToken).ConfigureAwait(false);
-        var plan = Decide(assembly, applied, userTables);
+        var postgres = db.Database.IsNpgsql();
+        var plan = Decide(assembly, applied, userTables, postgres);
 
         switch (plan.Action)
         {
@@ -167,7 +171,7 @@ public static class DatabaseMigrationBaseline
 
             case MigrationBaselineAction.StampBaselineThenMigrate:
                 var live = await ReadLiveSchemaAsync(db, cancellationToken).ConfigureAwait(false);
-                var comparison = BaselineSchema.Compare(live.Columns, live.PrimaryKeys);
+                var comparison = BaselineSchema.Compare(live.Columns, live.PrimaryKeys, postgres);
                 if (!comparison.Matches)
                 {
                     throw new InvalidOperationException(SchemaMismatchMessage);
@@ -308,7 +312,7 @@ public static class DatabaseMigrationBaseline
             }
         }
 
-        var keyColumns = new Dictionary<string, SortedDictionary<int, string>>(StringComparer.OrdinalIgnoreCase);
+        var keyColumns = new Dictionary<string, SortedDictionary<int, string>>(StringComparer.Ordinal);
         await using (var command = connection.CreateCommand())
         {
             command.CommandText =

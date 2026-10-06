@@ -158,23 +158,26 @@ public static class BaselineSchema
 
     public static BaselineSchemaComparison Compare(
         IReadOnlyCollection<BaselineLiveColumn> liveColumns,
-        IReadOnlyCollection<BaselineLivePrimaryKey> liveKeys)
+        IReadOnlyCollection<BaselineLivePrimaryKey> liveKeys,
+        bool postgres = false)
     {
         ArgumentNullException.ThrowIfNull(liveColumns);
         ArgumentNullException.ThrowIfNull(liveKeys);
 
-        var liveByTable = liveColumns
-            .GroupBy(c => c.Table, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+        var names = postgres ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
 
-        foreach (var tableGroup in Columns.GroupBy(c => c.Table, StringComparer.OrdinalIgnoreCase))
+        var liveByTable = liveColumns
+            .GroupBy(c => c.Table, names)
+            .ToDictionary(g => g.Key, g => g.ToList(), names);
+
+        foreach (var tableGroup in Columns.GroupBy(c => c.Table, names))
         {
             if (!liveByTable.TryGetValue(tableGroup.Key, out var actual))
             {
                 return new BaselineSchemaComparison(BaselineSchemaMismatchKind.Column, Matches: false);
             }
 
-            var actualByName = actual.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+            var actualByName = actual.ToDictionary(c => c.Name, names);
             if (actualByName.Count != tableGroup.Count())
             {
                 return new BaselineSchemaComparison(BaselineSchemaMismatchKind.Column, Matches: false);
@@ -184,18 +187,18 @@ public static class BaselineSchema
             {
                 if (!actualByName.TryGetValue(expected.Name, out var live)
                     || live.IsNullable != expected.IsNullable
-                    || !StoreTypeMatches(expected.Kind, live.StoreType))
+                    || !StoreTypeMatches(expected.Kind, live.StoreType, postgres))
                 {
                     return new BaselineSchemaComparison(BaselineSchemaMismatchKind.Column, Matches: false);
                 }
             }
         }
 
-        var liveKeyByTable = liveKeys.ToDictionary(k => k.Table, StringComparer.OrdinalIgnoreCase);
+        var liveKeyByTable = liveKeys.ToDictionary(k => k.Table, names);
         foreach (var expected in PrimaryKeys)
         {
             if (!liveKeyByTable.TryGetValue(expected.Table, out var live)
-                || !expected.Columns.SequenceEqual(live.Columns, StringComparer.OrdinalIgnoreCase))
+                || !expected.Columns.SequenceEqual(live.Columns, names))
             {
                 return new BaselineSchemaComparison(BaselineSchemaMismatchKind.PrimaryKey, Matches: false);
             }
@@ -204,7 +207,28 @@ public static class BaselineSchema
         return new BaselineSchemaComparison(BaselineSchemaMismatchKind.None, Matches: true);
     }
 
-    internal static bool StoreTypeMatches(BaselineColumnKind kind, string storeType)
+    internal static bool StoreTypeMatches(BaselineColumnKind kind, string storeType, bool postgres = false)
+        => postgres
+            ? PostgresStoreTypeMatches(kind, storeType)
+            : SqliteStoreTypeMatches(kind, storeType);
+
+    private static bool PostgresStoreTypeMatches(BaselineColumnKind kind, string storeType)
+    {
+        var t = storeType.Trim().ToLowerInvariant();
+        return kind switch
+        {
+            BaselineColumnKind.Guid => t is "uuid",
+            BaselineColumnKind.String => t is "text" or "character varying",
+            BaselineColumnKind.DateTimeOffset => t is "timestamp with time zone",
+            BaselineColumnKind.Boolean => t is "boolean",
+            BaselineColumnKind.Int32 => t is "integer",
+            BaselineColumnKind.Int64 => t is "bigint",
+            BaselineColumnKind.Decimal => t is "numeric",
+            _ => false
+        };
+    }
+
+    private static bool SqliteStoreTypeMatches(BaselineColumnKind kind, string storeType)
     {
         var t = storeType.Trim().ToUpperInvariant();
         return kind switch

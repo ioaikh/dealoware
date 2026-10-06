@@ -129,6 +129,76 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
+    public void Decide_Postgres_LowercaseTables_FailsClosed()
+    {
+        var tables = DatabaseMigrationBaseline.BaselineTableNames
+            .Select(t => t.ToLowerInvariant())
+            .ToArray();
+
+        var plan = DatabaseMigrationBaseline.Decide(
+            AssemblyWithBaseline,
+            appliedMigrations: Empty,
+            userTables: tables,
+            postgres: true);
+
+        Assert.Equal(MigrationBaselineAction.FailClosedUnknownSchema, plan.Action);
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, plan.FailureMessage);
+    }
+
+    [Fact]
+    public void Compare_Postgres_LowercaseTables_FailsClosed()
+    {
+        var columns = ExpectedAsPostgresLive()
+            .Select(c => c with { Table = c.Table.ToLowerInvariant() })
+            .ToList();
+        var keys = ExpectedPostgresKeys()
+            .Select(k => k with { Table = k.Table.ToLowerInvariant() })
+            .ToList();
+
+        var comparison = BaselineSchema.Compare(columns, keys, postgres: true);
+
+        Assert.False(comparison.Matches);
+    }
+
+    [Fact]
+    public void Compare_Postgres_TextForGuid_FailsClosed()
+    {
+        var columns = ExpectedAsPostgresLive();
+        var id = columns.FindIndex(c => c.Table == "Participants" && c.Name == "Id");
+        columns[id] = columns[id] with { StoreType = "text" };
+
+        var comparison = BaselineSchema.Compare(columns, ExpectedPostgresKeys(), postgres: true);
+
+        Assert.False(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.Column, comparison.Kind);
+    }
+
+    [Fact]
+    public void Compare_Postgres_TimestampWithoutTimeZone_FailsClosed()
+    {
+        var columns = ExpectedAsPostgresLive();
+        var created = columns.FindIndex(c => c.Table == "Participants" && c.Name == "CreatedAt");
+        columns[created] = columns[created] with { StoreType = "timestamp without time zone" };
+
+        var comparison = BaselineSchema.Compare(columns, ExpectedPostgresKeys(), postgres: true);
+
+        Assert.False(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.Column, comparison.Kind);
+    }
+
+    [Fact]
+    public void Compare_Postgres_FrozenSpec_Matches()
+    {
+        var comparison = BaselineSchema.Compare(
+            ExpectedAsPostgresLive(),
+            ExpectedPostgresKeys(),
+            postgres: true);
+
+        Assert.True(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.None, comparison.Kind);
+    }
+
+    [Fact]
     public async Task Apply_FreshDatabase_CreatesSchemaAndRecordsBaseline()
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_Fresh;Mode=Memory;Cache=Shared");
@@ -425,6 +495,14 @@ public class DatabaseMigrationBaselineTests
             .Select(k => new BaselineLivePrimaryKey(k.Table, k.Columns))
             .ToList();
 
+    private static List<BaselineLiveColumn> ExpectedAsPostgresLive()
+        => BaselineSchema.Columns
+            .Select(c => new BaselineLiveColumn(c.Table, c.Name, PostgresStoreTypeFor(c.Kind), c.IsNullable))
+            .ToList();
+
+    private static List<BaselineLivePrimaryKey> ExpectedPostgresKeys()
+        => ExpectedKeys();
+
     private static string StoreTypeFor(BaselineColumnKind kind)
         => kind switch
         {
@@ -432,6 +510,19 @@ public class DatabaseMigrationBaselineTests
                 or BaselineColumnKind.Decimal => "TEXT",
             BaselineColumnKind.Boolean or BaselineColumnKind.Int32 or BaselineColumnKind.Int64 => "INTEGER",
             _ => "TEXT"
+        };
+
+    private static string PostgresStoreTypeFor(BaselineColumnKind kind)
+        => kind switch
+        {
+            BaselineColumnKind.Guid => "uuid",
+            BaselineColumnKind.String => "character varying",
+            BaselineColumnKind.DateTimeOffset => "timestamp with time zone",
+            BaselineColumnKind.Boolean => "boolean",
+            BaselineColumnKind.Int32 => "integer",
+            BaselineColumnKind.Int64 => "bigint",
+            BaselineColumnKind.Decimal => "numeric",
+            _ => "text"
         };
 
     private static async Task<IReadOnlyList<string>> ListSqliteTablesAsync(SqliteConnection connection)
