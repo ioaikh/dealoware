@@ -202,6 +202,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 
 
 - [2026-10-05__qa__test-design__core-admin-dashboard.md](qa/2026-10-05__qa__test-design__core-admin-dashboard.md) — A6 Test design Core admin dashboard (**PASS**). Soft HOLD Stories/build until this PASS. Soft HOLD A7 until H4. Soft HOLD invent password/AWS. Soft HOLD invent deploy until Ivan OK. Host admin.core only. PoC $0.
+- [2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a03-r2.md](qa/2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a03-r2.md) — Test design QA PASS for Core admin A6 test design r2 (UX1 A03). Active holds: no passwords or AWS IDs; no deploy; no Stories or code until H4 live PASS. PoC $0.
 
 ## verification/
 

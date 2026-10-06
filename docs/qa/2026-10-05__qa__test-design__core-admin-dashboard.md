@@ -3,13 +3,40 @@
 | Field | Value |
 |-------|--------|
 | Written by | Dealoware Chief QA |
-| Date | 2026-10-05 (~2:06–2:15pm ET) |
-| Status | **PASS** — A6 Test design complete; Stories/build Soft HOLD until this PASS; Soft HOLD A7 until H4 live PASS; Soft HOLD deploy until Ivan OK |
+| Date | 2026-10-05 (~2:06–2:15pm ET); **revised r2 ~8:15pm ET** (UX1-A03 r2 + lockout note OQ1/OQ3 closures) |
+| Revision | **r2** — prior tip sha256 `870f348c61e2b3d88c2cd6a99e6ae4398186e96c1a7169a16c0b52e2bdd7bca7` (A6 PASS covered that hash only) |
+| Status | **Revised — awaiting Test design QA re-verify.** The A6 PASS on `870f348c…` does not cover this revision. Stories/build held until Test design QA confirms this tip; A7 held until H4 live PASS; deploy held until Ivan OK |
 | Host | `admin.core.dealoware.com` **only** (Core admin). Platform hosts are not Core and are not positive test targets. |
 | Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
 | PoC | **$0** |
 | DOC-FLOW | `qa/2026-10-05__qa__test-design__core-admin-dashboard.md` |
-| Constraints | Test design ONLY. Soft HOLD invent Stories / code / PRs / CDK / spend / provision / deploy. Soft HOLD invent passwords / AWS account IDs / region / SES identity / Turnstile site keys / HMAC key values. Soft HOLD A7 until H4 live PASS. Soft HOLD deploy until Ivan OK. Never MotorMarket buyer/seller sessions or Arctic Circle inventory. |
+| Constraints | Test design only. Do not invent Stories, code, PRs, CDK, spend, provision or deploy. Do not invent passwords, AWS account IDs, region, SES identity, Turnstile site keys or HMAC key values. A7 held until H4 live PASS. Deploy held until Ivan OK. Never MotorMarket buyer/seller sessions or Arctic Circle inventory. |
+
+---
+
+## 0. Revision r2 (2026-10-05 ~8:15pm ET)
+
+| Item | Change |
+|------|--------|
+| Why | Chief Security **UX1-A03 r2** decision (admin.core lockout message) + Chief Spec / CPM correction + lockout window note closing **OQ1 / OQ3** |
+| Changed cases | TD-ADM-010, TD-ADM-020, TD-ADM-030, TD-ADM-031, TD-ADM-040, TD-ADM-041, TD-ADM-050, TD-ADM-051, TD-ADM-100 |
+| Closed OQs | OQ1, OQ3 (lockout note); OQ5 (UX1-A03 r2: no Retry-After on admin.core). New: OQ7 (aligned, hash re-cite pending), OQ8 (v5.3 new scope, open) |
+| Case count | **53** unchanged (no split needed; audit-only throttle proof folded into TD-ADM-051) |
+| Wording | Old hold shorthand replaced by plain English and **Active holds** |
+| Core API H4 | **Unchanged.** Core API `/auth/register` and `/auth/token` still expect **HTTP 429 + Retry-After** (separate harden track). That pattern is **not** applied to admin.core, and admin.core Retry-After rules are **not** applied to Core API. |
+
+### Admin.core client rules locked in r2 (summary)
+
+| Situation | Status | Body | Headers / content |
+|-----------|--------|------|-------------------|
+| Wrong password, unknown email, wrong TOTP, wrong recovery code, **account locked** | **401** (identical for all) | Generic sign-in copy: “We couldn't sign you in. Check your details and try again later. You can also reset your password.” (byte-identical across these cases) | No `Retry-After`; no remaining time; no attempt count; never the word “locked” |
+| Login **IP throttle** active | **429** (MUST) | Same generic sign-in copy as the 401 | No `Retry-After`; no time / count / “locked” |
+| Reset-request, IP throttle active | **429** (MUST) | Same “If that account exists…” reply as non-throttled | **No email sent**; no `Retry-After` |
+| Bootstrap / reset link, bad or expired token (not throttled) | Generic invalid-link status | Same generic invalid-or-expired link reply for every bad/expired case | No `Retry-After` |
+| Bootstrap / reset link submit, IP throttle active | **429** (MUST) | Same generic sign-in copy as the 401 | No `Retry-After`; valid token not consumed |
+| Turnstile failed / expired / missing / unavailable | Verification-failed status (not counted) | May use own “Verification failed, please try again.” | Audit `captcha-failed`; no counter change |
+
+Server-side proof of lock / throttle is through the **audit log** (reason class `locked` / `rate-limited`) and through the correct password still being refused while the lock is active — never through client-visible text.
 
 ---
 
@@ -21,22 +48,25 @@
 | Spec QA PASS | `verification/2026-10-05__spec__verification__core-admin-dashboard.md` | Formal Spec gate PASS |
 | Dev Plan A5 | `plans/2026-10-05__devplan__plan__core-admin-dashboard.md` | `5fefb550e0c6565820d552dabe60356493d54474fd0871083884cee643bd4eaf` — **MATCH** |
 | Dev Plan QA PASS | `verification/2026-10-05__devplan__verification__core-admin-dashboard.md` | Dev Plan gate PASS |
-| Spec Security Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` | **PASS 15/15** |
+| Spec Security SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` | **PASS 15/15** |
 | Spec Security checklist v2 | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-checklist.md` | Pts **1–15** |
-| Dev Plan Security Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` | **PASS 14/14** |
+| Dev Plan Security SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` | **PASS 14/14** |
 | Dev Plan Security checklist | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md` | Pts **1–14** |
-| SA Soft HOLD SoR | `architecture/2026-10-05__sa__architecture__core-admin-dashboard.md` | Option A + §§3.1–3.9 |
+| SA SoR | `architecture/2026-10-05__sa__architecture__core-admin-dashboard.md` | Option A + §§3.1–3.9 |
 | Product scope 13:31 | `product/2026-10-05__product__note__core-admin-dashboard-scope.md` | AC1–AC9 binding |
-| CFO Soft HOLD estimate | `2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md` | Turnstile $0; SES under $0.01/mo assumed — estimate only |
+| UX1-A03 Security decision (r2) | `/workspace/security-out/2026-10-05-ux1-a03-admin-lockout-message-decision.md` | `0817b7676a0103d606197c07fb6ac48782c12fbd363304637e5340b86af6d3f0` at revision time — **binding** for admin.core client-facing auth responses |
+| Lockout window note (OQ1 / OQ3) | `specs/2026-10-05__spec__spec__core-admin-lockout-window-note.md` | **v5.3** on disk at revision time, sha256 `67686ce5044728db5cb754ffb65c68562e5ed38aea26161bf90988a145972b8b` (Draft for Spec QA + Security QA). Aligned with UX1-A03 r2: IP throttles MUST 429 + generic body, no Retry-After; completed reset does not lift a lock or clear counts. Senior Spec is still editing — Active hold: re-cite the final hash once Spec QA passes it |
+| Architecture Turnstile vs lockout | `architecture/2026-10-05__sa__architecture__core-admin-turnstile-lockout-note.md` | Binding for OQ1 (Turnstile reject counts toward nothing); Arch QA PASS `verification/2026-10-05__sa__verification__core-admin-turnstile-lockout-note.md` |
+| CFO estimate | `2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md` | Turnstile $0; SES under $0.01/mo assumed — estimate only |
 
 ### Gates (binding)
 
 | Gate | Rule |
 |------|------|
-| Stories / build | Soft HOLD until **this Test design PASS** |
-| A7 admin build | Soft HOLD until **H4 live PASS** (separate harden track; do not invent H4 steps here) |
-| Deploy | Soft HOLD until **Ivan OK** |
-| Secrets / AWS | Soft HOLD invent password values and AWS account details |
+| Stories / build | held until **this Test design PASS** |
+| A7 admin build | held until **H4 live PASS** (separate harden track; do not invent H4 steps here) |
+| Deploy | held until **Ivan OK** |
+| Secrets / AWS | Do not invent password values and AWS account details |
 | PoC | **$0** — not a spend/provision unlock |
 
 ### Scope
@@ -50,7 +80,7 @@
 - Writing Stories, code, PRs, CDK, provision, deploy, or spend.
 - Inventing passwords, AWS account IDs, SES identity/from-address, Turnstile keys, HMAC keys.
 - Platform admin hosts as positive targets; MotorMarket / DC4 / Arctic Circle inventory.
-- H1–H6 harden live re-verify (separate track). Note only: A7 Soft HOLD until H4 live PASS; admin Spec §8.6 requires HTTP **429 / equivalent** (Retry-After **not** mandated by Spec — Soft HOLD invent Retry-After as Spec requirement).
+- H1–H6 harden live re-verify (separate track). Note only: A7 held until H4 live PASS. **Core API H4 stays HTTP 429 + Retry-After** on `/auth/register` and `/auth/token`. Admin.core is different: IP throttle returns **429 with the generic body and never Retry-After**; account-level failures return 401 (UX1-A03 r2).
 - NAT / CDK / bot-platform internals / App Runner details.
 
 ---
@@ -66,28 +96,28 @@
 | API | Admin REST against host-bound routes | Newman / Postman collections + WebApplicationFactory |
 | E2E UI smoke | Minimal happy-path + unauth deny | Playwright (thin) |
 | Security / negative | Injection, IDOR/deny-by-default, secret-dump probes, CAPTCHA fail | API + review |
-| Process-review | Soft HOLD / OUT / gate pack / no-secret scan | Manual checklist |
+| Process-review | Active holds / OUT / gate pack / no-secret scan | Manual checklist |
 
 ### Environments
 
 | Env | When | Notes |
 |-----|------|-------|
-| Local | Story / PR development after Soft HOLDs lift | Fake mail adapter; Turnstile test keys via env name only |
+| Local | Story / PR development after Active holds lift | Fake mail adapter; Turnstile test keys via env name only |
 | CI | Every admin PR | Automated P0 API/integration; UI smoke optional in CI if headed runners available |
-| Live `admin.core.dealoware.com` | **Only after** Ivan deploy OK | Smoke subset; Soft HOLD invent AWS details in evidence |
+| Live `admin.core.dealoware.com` | **Only after** Ivan deploy OK | Smoke subset; do not invent AWS details in evidence |
 
 ### Test data rules
 
 - **Synthetic only** — no real customer data; no MotorMarket buyer/seller sessions; no Arctic Circle inventory.
 - CoreOwner login email under test is the Spec lock `io@aiknowhow.com`; **password / TOTP seed / recovery codes** live only in env or secret store, referenced **by name** (e.g. `COREOWNER_PASSWORD_ENV`, `TOTP_SEED_ENV`). **Never** write values into this design, fixtures committed to git, chat, or reports.
-- Mail: fake/in-memory mail interface adapter in tests; Soft HOLD invent SES account/region/identity.
-- CAPTCHA: Turnstile **test** keys via env; Soft HOLD invent production site keys in docs.
+- Mail: fake/in-memory mail interface adapter in tests; do not invent SES account/region/identity.
+- CAPTCHA: Turnstile **test** keys via env; do not invent production site keys in docs.
 
 ### Prefer
 
 1. Automated API / integration covering auth, RBAC, lists, edit, delete, audit.
 2. Minimal UI smoke for AC1 shell + confirm modal cancel.
-3. Manual process-review for Soft HOLD / OUT / no-secret scans.
+3. Manual process-review for Active holds / OUT / no-secret scans.
 
 ---
 
@@ -107,7 +137,7 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | AC6 | Not Participant UI; FieldPolicy; one superadmin | TD-ADM-002, TD-ADM-003, TD-ADM-005, TD-ADM-007, TD-ADM-131 |
 | AC7 | Required auth/confirm/audit/delete/lists designs | TD-ADM-002, TD-ADM-004, TD-ADM-010, TD-ADM-011, TD-ADM-012, TD-ADM-020, TD-ADM-021, TD-ADM-022, TD-ADM-030, TD-ADM-031, TD-ADM-040, TD-ADM-041, TD-ADM-050, TD-ADM-051, TD-ADM-052, TD-ADM-053, TD-ADM-080, TD-ADM-090, TD-ADM-091, TD-ADM-092, TD-ADM-093, TD-ADM-094, TD-ADM-095, TD-ADM-100, TD-ADM-101, TD-ADM-110, TD-ADM-130, TD-ADM-150, TD-ADM-161, TD-ADM-162 |
 | AC8 | Does not deliver inbound connector / platform admin / payments / tokens | TD-ADM-006, TD-ADM-007, TD-ADM-120, TD-ADM-160 |
-| AC9 | Build/deploy Soft HOLD; invent AWS Soft HOLD; PoC $0 | TD-ADM-110, TD-ADM-120, TD-ADM-121, TD-ADM-150 |
+| AC9 | Build/deploy held; AWS details not invented; PoC $0 | TD-ADM-110, TD-ADM-120, TD-ADM-121, TD-ADM-150 |
 
 ### 3.2 Spec Locked decisions #1–#7
 
@@ -119,7 +149,7 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | LOCK-4 | Overall stats | TD-ADM-070, TD-ADM-162 |
 | LOCK-5 | Must-cover auth/confirm/audit/delete/lists | TD-ADM-090, TD-ADM-161, TD-ADM-162 |
 | LOCK-6 | Inbound bot connector after this | TD-ADM-160 |
-| LOCK-7 | Build/deploy/Stories Soft HOLD; no password invent | TD-ADM-121 |
+| LOCK-7 | Build/deploy/Stories held; no password invent | TD-ADM-121 |
 
 ### 3.3 Spec requirement sections
 
@@ -139,9 +169,9 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | SPEC-S8.3 | §8.3 TOTP 2FA | TD-ADM-004, TD-ADM-012, TD-ADM-020, TD-ADM-021, TD-ADM-022 |
 | SPEC-S8.4 | §8.4 Password reset | TD-ADM-030, TD-ADM-031 |
 | SPEC-S8.5 | §8.5 CAPTCHA Turnstile | TD-ADM-040, TD-ADM-041 |
-| SPEC-S8.6 | §8.6 Lockout/rate + raw IP | TD-ADM-050, TD-ADM-051, TD-ADM-053 |
+| SPEC-S8.6 | §8.6 Lockout/rate + raw IP (as amended by lockout note + UX1-A03 r2) | TD-ADM-040, TD-ADM-050, TD-ADM-051, TD-ADM-053 |
 | SPEC-S8.7 | §8.7 Session lifetime | TD-ADM-003, TD-ADM-052 |
-| SPEC-S8.8 | §8.8 Auth audit events | TD-ADM-100 |
+| SPEC-S8.8 | §8.8 Auth audit events (+ `captcha-failed`, lockout note) | TD-ADM-040, TD-ADM-050, TD-ADM-051, TD-ADM-100 |
 | SPEC-S8.9 | §8.9 Mail SES interface | TD-ADM-110 |
 | SPEC-S8.10 | §8.10 Auth OUT | TD-ADM-011, TD-ADM-021, TD-ADM-150 |
 | SPEC-S9 | §9 Confirm before delete | TD-ADM-090, TD-ADM-130 |
@@ -169,7 +199,7 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | 11 | Lists/search/paging safe | TD-ADM-060, TD-ADM-061, TD-ADM-062, TD-ADM-063, TD-ADM-065, TD-ADM-066, TD-ADM-070 |
 | 12 | Edit write FieldPolicy-only | TD-ADM-005, TD-ADM-060, TD-ADM-080, TD-ADM-081, TD-ADM-141 |
 | 13 | SES + Turnstile dependency+cost only | TD-ADM-040, TD-ADM-054, TD-ADM-110, TD-ADM-150 |
-| 14 | OUT / Soft HOLD pack | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-120, TD-ADM-121, TD-ADM-150 |
+| 14 | OUT / Active holds pack | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-120, TD-ADM-121, TD-ADM-150 |
 | 15 | Traceability + re-QA handshake | TD-ADM-121, TD-ADM-122, TD-ADM-161 |
 
 ### 3.5 Dev Plan Steps 1–13
@@ -187,7 +217,7 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | 9 | Edit + concurrency | TD-ADM-005, TD-ADM-060, TD-ADM-061, TD-ADM-080, TD-ADM-081, TD-ADM-130, TD-ADM-141 |
 | 10 | Confirm-delete + soft-delete cascades | TD-ADM-060, TD-ADM-061, TD-ADM-090, TD-ADM-091, TD-ADM-092, TD-ADM-093, TD-ADM-094, TD-ADM-095, TD-ADM-130 |
 | 11 | Fail-closed non-CoreOwner | TD-ADM-002, TD-ADM-003, TD-ADM-004, TD-ADM-005, TD-ADM-131 |
-| 12 | Explicit Soft HOLD / OUT / gates | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-054, TD-ADM-120, TD-ADM-121, TD-ADM-150, TD-ADM-160 |
+| 12 | Explicit Active holds / OUT / gates | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-054, TD-ADM-120, TD-ADM-121, TD-ADM-150, TD-ADM-160 |
 | 13 | Self-verify before handoff | TD-ADM-121, TD-ADM-122, TD-ADM-161 |
 
 ### 3.6 Dev Plan Security points 1–14
@@ -200,14 +230,14 @@ Coverage rule: every source ID → ≥1 `TD-ADM-###`. Self-verify §8 confirms *
 | 4 | Reset = link + 2FA | TD-ADM-030, TD-ADM-031 |
 | 5 | Turnstile + lockout + session; no process-global limiter | TD-ADM-040, TD-ADM-041, TD-ADM-050, TD-ADM-051, TD-ADM-052, TD-ADM-054 |
 | 6 | Raw IP counters; audit HMAC IP | TD-ADM-053 |
-| 7 | SES mail interface; Soft HOLD invent AWS | TD-ADM-110, TD-ADM-150 |
+| 7 | SES mail interface; no invented AWS details | TD-ADM-110, TD-ADM-150 |
 | 8 | Audit auth+edit/delete; toggle not audited | TD-ADM-053, TD-ADM-064, TD-ADM-080, TD-ADM-100, TD-ADM-101, TD-ADM-102 |
 | 9 | Fail-closed FieldPolicy dual wall | TD-ADM-002, TD-ADM-003, TD-ADM-004, TD-ADM-005, TD-ADM-007, TD-ADM-141 |
 | 10 | Confirm-delete + soft-delete cascades | TD-ADM-064, TD-ADM-090, TD-ADM-091, TD-ADM-092, TD-ADM-093, TD-ADM-094, TD-ADM-095 |
 | 11 | Lists/search/paging safe | TD-ADM-060, TD-ADM-061, TD-ADM-062, TD-ADM-063, TD-ADM-064, TD-ADM-065, TD-ADM-066, TD-ADM-070 |
 | 12 | Edit + concurrency | TD-ADM-005, TD-ADM-060, TD-ADM-080, TD-ADM-081, TD-ADM-141 |
-| 13 | OUT / Soft HOLD / A7 gate pack | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-054, TD-ADM-120, TD-ADM-121, TD-ADM-150, TD-ADM-160 |
-| 14 | Traceability + handshake Soft HOLD SoR | TD-ADM-121, TD-ADM-122, TD-ADM-161 |
+| 13 | OUT / Active holds / A7 gate pack | TD-ADM-006, TD-ADM-007, TD-ADM-011, TD-ADM-021, TD-ADM-041, TD-ADM-054, TD-ADM-120, TD-ADM-121, TD-ADM-150, TD-ADM-160 |
+| 14 | Traceability + handshake SoR | TD-ADM-121, TD-ADM-122, TD-ADM-161 |
 
 ### 3.7 Coverage counts
 
@@ -312,17 +342,16 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 
 ### 4.2 Bootstrap
 
-#### TD-ADM-010 — Bootstrap link single-use and time-limited (≤24h)
+#### TD-ADM-010 — Bootstrap link single-use and time-limited (≤24h); generic invalid-link reply
 
 - **Traces-to:** AC7, SPEC-S8.2, SPEC-SEC-2, STEP-2, PLAN-SEC-2
 - **Layer:** integration
 - **Priority:** P0
 - **Automation:** auto
 - **Preconditions:** Test harness can mint bootstrap token via mail interface fake (no real SES).
-- **Steps:** 1) Consume bootstrap link — set first password + enroll TOTP. 2) Reuse same link. 3) Use expired (>24h) link.
-- **Expected:** First use succeeds; reuse fails; expired fails. Password never in email body/docs/fixtures.
-- **Negative / abuse variants:** Replay; expired; truncated token.
-
+- **Steps:** 1) Consume bootstrap link — set first password + enroll TOTP. 2) Reuse same link. 3) Use expired (>24h) link. 4) Use truncated / random token.
+- **Expected:** First use succeeds. Reuse, expired and bad tokens all get the **same** generic invalid-or-expired link reply (same status, same body) — no hint which case applied (UX1-A03 r2). Each bad/expired submission that passes Turnstile counts toward the reset/bootstrap per-IP counter (lockout note OQ3). Password never in email body/docs/fixtures.
+- **Negative / abuse variants:** Replay; expired; truncated token; response differences between reused vs expired vs random token (must be none).
 #### TD-ADM-011 — First password set only via bootstrap link; no seeded password
 
 - **Traces-to:** AC7, SPEC-S8.1, SPEC-S8.2, SPEC-S8.10, SPEC-SEC-2, SPEC-SEC-14, STEP-2, STEP-12, PLAN-SEC-2, PLAN-SEC-13
@@ -330,7 +359,7 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Priority:** P0
 - **Automation:** auto+manual
 - **Preconditions:** Fresh CoreOwner identity without password.
-- **Steps:** 1) Attempt login before bootstrap. 2) Set password only via bootstrap page with Turnstile. 3) Scan fixtures/docs/repo for password values (grep Soft HOLD invent).
+- **Steps:** 1) Attempt login before bootstrap. 2) Set password only via bootstrap page with Turnstile. 3) Scan fixtures/docs/repo for password values (grep for invented values).
 - **Expected:** No login before bootstrap; password set only via link; zero password values in code/docs/chat/fixtures (env-only).
 - **Negative / abuse variants:** Seeded password in appsettings; password in commit history fixtures.
 
@@ -354,10 +383,9 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Priority:** P0
 - **Automation:** auto
 - **Preconditions:** CoreOwner enrolled; synthetic TOTP secret in env/test store (name-only reference).
-- **Steps:** 1) Password OK, omit TOTP. 2) Password OK + wrong TOTP. 3) Password OK + valid TOTP.
-- **Expected:** Omit/wrong → fail (reason class bad_2FA); valid → session issued.
-- **Negative / abuse variants:** Reuse old TOTP code; clock skew beyond window.
-
+- **Steps:** 1) Password OK, omit TOTP. 2) Password OK + wrong TOTP. 3) Password OK + wrong recovery code. 4) Password OK + valid TOTP.
+- **Expected:** Omit / wrong TOTP / wrong recovery code → **401** with the **same body** as a wrong password (UX1-A03 r2); audit reason class bad 2FA; wrong recovery code counts as a bad 2FA failure toward account + login-IP counters (lockout note). Valid → session issued.
+- **Negative / abuse variants:** Reuse old TOTP code; clock skew beyond window; any client text distinguishing “bad code” from “bad password” (must be none).
 #### TD-ADM-021 — Email OTP fallback path absent
 
 - **Traces-to:** AC7, SPEC-S8.3, SPEC-S8.10, SPEC-S12-OUT, SPEC-SEC-3, SPEC-SEC-14, STEP-3, STEP-12, PLAN-SEC-3, PLAN-SEC-13
@@ -382,76 +410,102 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 
 ### 4.4 Password reset
 
-#### TD-ADM-030 — Password reset requires email link AND 2FA
+#### TD-ADM-030 — Password reset requires email link AND 2FA; generic reset-request reply
 
 - **Traces-to:** AC7, SPEC-S8.4, SPEC-SEC-4, STEP-4, PLAN-SEC-4
 - **Layer:** integration
 - **Priority:** P0
 - **Automation:** auto
 - **Preconditions:** Enrolled CoreOwner; mail interface fake captures reset link.
-- **Steps:** 1) Request reset (+ Turnstile). 2) Open link without 2FA — fail. 3) Open link + valid TOTP — set new password. 4) Attempt reset with password-only / skip-2FA path.
-- **Expected:** Both factors required; skip-2FA path absent; reset email carries link only (no password value).
-- **Negative / abuse variants:** Expired link (>1h); reused link; skip-2FA.
-
-#### TD-ADM-031 — Reset link single-use and expires in 1 hour
+- **Steps:** 1) Request reset (+ Turnstile) for the CoreOwner email, for an unknown email, and while the CoreOwner account is locked. 2) Open link without 2FA — fail. 3) Open link + valid TOTP — set new password. 4) Attempt reset with password-only / skip-2FA path. 5) After reset, sign in with new password but no TOTP.
+- **Expected:** Step 1 always returns the **same** “If that account exists, we've sent instructions” reply (status + body identical); email only for the real account. Both factors required; skip-2FA path absent; reset email carries link only (no password value). Step 5 refused — **TOTP still required after reset**; reset never bypasses or re-enrolls TOTP (UX1-A03 r2).
+- **Negative / abuse variants:** Expired link (>1h); reused link; skip-2FA; reply differences between known / unknown / locked accounts (must be none).
+#### TD-ADM-031 — Reset link single-use and expires in 1 hour; generic invalid-link reply
 
 - **Traces-to:** AC7, SPEC-S8.4, SPEC-SEC-4, STEP-4, PLAN-SEC-4
 - **Layer:** integration
 - **Priority:** P0
 - **Automation:** auto
 - **Preconditions:** Mail interface fake.
-- **Steps:** 1) Complete reset once. 2) Replay link. 3) Use link aged >1h.
-- **Expected:** Replay and expired fail safely.
-- **Negative / abuse variants:** Replay; expired.
-
+- **Steps:** 1) Complete reset once. 2) Replay link. 3) Use link aged >1h. 4) Use a random token.
+- **Expected:** Replay, expired and random tokens all get the **same** generic invalid-or-expired link reply (same status, same body). Each counts toward the reset/bootstrap per-IP counter (lockout note OQ3).
+- **Negative / abuse variants:** Replay; expired; reply differences between cases (must be none).
 ### 4.5 Turnstile
 
-#### TD-ADM-040 — Turnstile required on login, reset, and bootstrap password-set
+#### TD-ADM-040 — Turnstile required on login, reset, and bootstrap; reject before credential check; no counter; audit `captcha-failed`
 
-- **Traces-to:** AC7, SPEC-S8.5, SPEC-SEC-5, SPEC-SEC-13, STEP-2, STEP-5, PLAN-SEC-5
+- **Traces-to:** AC7, SPEC-S8.5, SPEC-S8.6, SPEC-S8.8, SPEC-SEC-5, SPEC-SEC-13, STEP-2, STEP-5, PLAN-SEC-5
 - **Layer:** API+UI-smoke
 - **Priority:** P0
 - **Automation:** auto
-- **Preconditions:** Turnstile test keys via env (Soft HOLD invent site keys in docs).
-- **Steps:** 1) Submit login/reset/bootstrap without Turnstile token. 2) Submit with invalid token. 3) Submit with valid test token.
-- **Expected:** Missing/invalid CAPTCHA rejected; valid proceeds to next auth step. Provider is Turnstile only.
-- **Negative / abuse variants:** Missing token; forged token.
-
-#### TD-ADM-041 — Non-Turnstile CAPTCHA providers absent (WAF CAPTCHA / reCAPTCHA OUT)
+- **Preconditions:** Turnstile test keys via env names only (no site keys in docs). Test access to counters and audit store. Binding: lockout note OQ1 + Architecture Turnstile vs lockout note.
+- **Steps:** 1) Submit login, reset-request and bootstrap/reset-link forms with Turnstile token **missing**, **invalid**, **expired**, and with Turnstile **unavailable** (test double). 2) For login, send the **correct** password and also a wrong one with the bad token. 3) Read account counter, login-IP counter, reset/bootstrap-IP counter. 4) Read audit. 5) Submit with valid test token.
+- **Expected:** Every bad-Turnstile submission is rejected **before** password / TOTP / recovery-code verification (correct password with bad token still does not sign in; no credential-check side effects). Response may use its own “Verification failed, please try again.” text; it reveals nothing about the account. **No counter changes** (account, login-IP, reset/bootstrap-IP). Audit row reason class **`captcha-failed`** with keyed HMAC-SHA256 IP only; Turnstile token never stored. 25+ bad-Turnstile submissions from one IP do **not** trigger lock or throttle. Valid token proceeds to the next auth step. Provider is Turnstile only.
+- **Negative / abuse variants:** Missing token; forged token; expired token; provider outage treated as pass (must fail closed); Turnstile token value in audit/logs.
+#### TD-ADM-041 — Non-Turnstile CAPTCHA providers absent (WAF CAPTCHA / reCAPTCHA OUT); verification-failed text stays account-neutral
 
 - **Traces-to:** AC7, SPEC-S8.5, SPEC-S12-OUT, SPEC-SEC-5, SPEC-SEC-14, STEP-5, STEP-12, PLAN-SEC-5, PLAN-SEC-13
 - **Layer:** review+API
 - **Priority:** P0
 - **Automation:** manual+auto
 - **Preconditions:** Code/config under review; auth pages available.
-- **Steps:** 1) Confirm only Turnstile widget/integration. 2) Grep/config scan for WAF CAPTCHA / reCAPTCHA providers.
-- **Expected:** Turnstile only; other CAPTCHA providers absent from delivery path.
-- **Negative / abuse variants:** N/A
-
+- **Steps:** 1) Confirm only Turnstile widget/integration. 2) Grep/config scan for WAF CAPTCHA / reCAPTCHA providers. 3) Compare the verification-failed response for a real CoreOwner email vs an unknown email vs a locked account.
+- **Expected:** Turnstile only; other CAPTCHA providers absent from delivery path. Verification-failed response is identical regardless of account (no enumeration); no `Retry-After`; never the word “locked”.
+- **Negative / abuse variants:** Second CAPTCHA provider; account-dependent verification-failed text.
 ### 4.6 Lockout / rate / session / IP
 
-#### TD-ADM-050 — Per-account lockout 5 fails / 15 min → 30 min lock
+#### TD-ADM-050 — Per-account lockout (5 in sliding 15 min → flat 30 min); client never sees the lock
 
-- **Traces-to:** AC7, SPEC-S8.6, SPEC-SEC-5, STEP-5, PLAN-SEC-5
+- **Traces-to:** AC7, SPEC-S8.6, SPEC-S8.8, SPEC-SEC-5, STEP-5, PLAN-SEC-5
 - **Layer:** API
 - **Priority:** P0
 - **Automation:** auto
-- **Preconditions:** Synthetic CoreOwner; Turnstile satisfied or bypassed only via test harness approved for lockout tests.
-- **Steps:** 1) Submit 5 failed password or 2FA attempts within 15 min. 2) Attempt further login. 3) Wait/simulate 30 min or complete reset unlock.
-- **Expected:** After 5 fails, account locked 30 min (or unlock via completed reset). Failures audited with reason class locked — no secrets.
-- **Negative / abuse variants:** Burst fails; lock persists across IP changes for same account.
+- **Preconditions:** Synthetic CoreOwner; valid Turnstile test token on every attempt (so attempts reach the credential check); controllable clock; test access to counters and audit store. Binding: UX1-A03 r2; lockout note v5.3 OQ3 + REPLACED unlock-by-reset.
+- **Steps:**
+  1) Baseline: capture status + body + headers for a wrong password, an unknown email, a wrong TOTP and a wrong recovery code.
+  2) Make 5 counted credential failures (mix bad password / bad TOTP / wrong recovery code) inside 15 minutes.
+  3) Submit the **correct** password + valid TOTP while locked.
+  4) Submit a wrong password while locked; read the account counter.
+  5) Sliding-window edge: on a fresh account make 4 failures, advance the clock so the oldest is **exactly 15 min** old, make 1 more failure → not locked; then 1 more inside the window → locked.
+  6) Complete a password reset (email link + 2FA) while the lock is active, then sign in with the new password + valid TOTP before 30 min.
+  7) Advance clock to 30 min after the lock started (attempts in between do not extend it); sign in with correct password + TOTP.
+  8) Read audit for all steps.
+- **Expected:**
+  - Steps 1–4: every failure, **including the locked ones and the refused correct password**, returns **401** with a body **byte-identical** to the wrong-password body (copy: “We couldn't sign you in. Check your details and try again later. You can also reset your password.”). No `Retry-After`; no remaining time; no attempt count; never the word “locked” in body or headers.
+  - Step 3: correct credentials **still refused** during the lock (the server-side proof of the lock).
+  - Step 4: attempt during lock is rejected and audited as reason class **`locked`** but **not counted** (account counter and both IP counters unchanged).
+  - Step 5: event exactly 15 min old is outside the window; lock starts at the 5th counted failure inside the window.
+  - Step 6: completed reset **does not** end the lock early, does **not** clear the account count, and does **not** reset either IP counter; sign-in still refused (401 generic) until the lock ends; after the lock ends TOTP is **still required** (UX1-A03 r2).
+  - Step 7: flat 30 min from lock start; sign-in succeeds after; account counter then starts from zero.
+  - No unlock control exists in the public admin UI; the only early unlock is the audited server-side ops (break-glass) command (lockout note v5.3) — out of scope for client tests, checked by review.
+  - Audit: failures with reason class bad password / bad 2FA; lock start event with account, keyed-HMAC IP, start time and duration; in-lock attempts as `locked`. No secrets, no raw IP.
+- **Negative / abuse variants:** Burst fails; lock persists across IP changes for the same account; timing gap between locked / unknown / wrong-password responses (hash check still runs — flag large gaps); “locked” or duration leaking via headers, body, or UI copy; reset used as a lock bypass.
+#### TD-ADM-051 — Per-IP throttle (20 in sliding 15 min → flat 30 min) → HTTP 429 with generic body, no Retry-After (login + reset/bootstrap)
 
-#### TD-ADM-051 — Per-IP throttle 20 fails / 15 min → 30 min HTTP 429 (login + reset-request)
-
-- **Traces-to:** AC7, SPEC-S8.6, SPEC-SEC-5, STEP-5, PLAN-SEC-5
+- **Traces-to:** AC7, SPEC-S8.6, SPEC-S8.8, SPEC-SEC-5, STEP-5, PLAN-SEC-5
 - **Layer:** API
 - **Priority:** P0
 - **Automation:** auto
-- **Preconditions:** Controllable client IP in test (or WebApplicationFactory). Note: live Core API H4 429+Retry-After Soft HOLD FAIL is a separate harden track; admin Spec requires HTTP 429 / equivalent — Retry-After not mandated by Spec §8.6.
-- **Steps:** 1) From one IP, 20 failed logins in 15 min. 2) Further login → 429. 3) Same window on reset-request → 429. 4) After 30 min throttle lifts.
-- **Expected:** HTTP 429 (or Spec-equivalent) for 30 min on login and reset-request. Soft HOLD invent process-global flood limiter.
-- **Negative / abuse variants:** Cross-IP account lock still applies; process-global limiter must be absent unless Chief Security approved.
-
+- **Preconditions:** Controllable client IP in test (WebApplicationFactory); valid Turnstile test token on every attempt; controllable clock; mail interface fake; test access to counters and audit store. Several synthetic accounts / unknown emails so the account lock (5) does not mask the IP throttle. Binding: UX1-A03 r2 + Chief Spec / CPM correction; lockout note v5.3 (separate reset/bootstrap IP counter; MUST 429). Core API H4 (429 **plus** Retry-After) is a separate track and is **not** the expectation here.
+- **Steps:**
+  1) **Login:** from one IP, 20 counted credential failures inside 15 minutes (spread across accounts/unknown emails).
+  2) From the same IP: further login with wrong credentials, then with a **correct** password + TOTP for a non-locked account.
+  3) Read login-IP counter after step 2.
+  4) **Reset-request:** from one IP, 20 reset-request submissions (passing Turnstile; mix of real and unknown emails) inside 15 minutes; then a 21st for the real CoreOwner email.
+  5) **Bootstrap / reset link:** from one IP, 20 bad or expired link submissions inside 15 minutes; then one more (bad and, separately, a valid token).
+  6) Check the login IP counter and the reset/bootstrap IP counter are separate (reset traffic does not throttle login and vice versa).
+  7) Advance clock 30 min from throttle start; retry each flow.
+  8) Read audit.
+- **Expected:**
+  - Step 2 (login throttled): **HTTP 429** with a body **byte-identical** to the 401 generic sign-in body (“We couldn't sign you in. Check your details and try again later. You can also reset your password.”), for both wrong and correct credentials (correct credentials still refused while throttled). **No `Retry-After` header.** No remaining time, attempt count, or the word “locked”.
+  - Step 3: attempts during the throttle are rejected and audited as reason class **`rate-limited`** but **not counted**; 30 min not extended.
+  - Step 4 (reset throttled): **HTTP 429** with the same “If that account exists, we've sent instructions” reply as a non-throttled request; **no email sent** (mail fake records zero sends); no `Retry-After`.
+  - Step 5 (bootstrap/reset link throttled): **HTTP 429** with the **same generic sign-in body** as the 401 (lockout note v5.3); no `Retry-After`; a valid token is not consumed while throttled. Before the throttle starts, bad/expired links get the generic invalid-or-expired link reply (TD-ADM-010 / TD-ADM-031).
+  - Step 6: counters independent per lockout note.
+  - Step 7: throttle lifts after a flat 30 min; that counter starts from zero. A completed password reset does **not** reset either IP counter.
+  - Audit: `rate-limited` rows with keyed-HMAC IP only; no raw IP, no secrets.
+- **Negative / abuse variants:** `Retry-After` present on any admin.core auth response (FAIL); 429 body differing from the 401 generic body or the generic reset / invalid-link reply (FAIL); account information in 429 responses; cross-IP account lock still applies; process-global limiter must be absent unless Chief Security approved (TD-ADM-054).
+- **Note:** UX1-A03 r2 accepts 429 or 401 for the IP throttle; lockout note v5.3 and Chief Spec / CPM lock **MUST 429**. This design asserts 429.
 #### TD-ADM-052 — Session idle 30m sliding + absolute 8h; cookie flags
 
 - **Traces-to:** AC7, SPEC-S8.7, SPEC-SEC-5, STEP-5, PLAN-SEC-5
@@ -471,10 +525,10 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Automation:** auto
 - **Preconditions:** Failed login producing audit row; access to counters/audit store in test.
 - **Steps:** 1) Trigger login_failure. 2) Inspect audit row IP field — keyed HMAC form, not raw IP, not unkeyed hash. 3) Inspect rate-limit counters — may hold raw IP briefly. 4) Inspect other logs/metrics — no raw IP.
-- **Expected:** Audit IP = keyed HMAC-SHA256 only + reason class; raw IP never in audit/logs/metrics; Soft HOLD invent HMAC key value in docs.
+- **Expected:** Audit IP = keyed HMAC-SHA256 only + reason class; raw IP never in audit/logs/metrics; do not invent HMAC key value in docs.
 - **Negative / abuse variants:** Unkeyed SHA of IP; raw IP in audit.
 
-#### TD-ADM-054 — Process-global auth flood limiter absent (Soft HOLD until Chief Security approves)
+#### TD-ADM-054 — Process-global auth flood limiter absent (held until Chief Security approves)
 
 - **Traces-to:** SPEC-SEC-5, SPEC-SEC-13, STEP-5, STEP-12, PLAN-SEC-5, PLAN-SEC-13
 - **Layer:** review+API
@@ -553,7 +607,7 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Expected:** offset/limit server-side; default 50; max 200; no client-only paging that loads whole tables.
 - **Negative / abuse variants:** limit=10000 dump attempt.
 
-#### TD-ADM-066 — Parameterized sort/filter/search — injection Soft HOLD
+#### TD-ADM-066 — Parameterized sort/filter/search — injection blocked
 
 - **Traces-to:** AC4, SPEC-S4.5, SPEC-S4.6, SPEC-SEC-11, STEP-7, PLAN-SEC-11
 - **Layer:** security
@@ -671,17 +725,16 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 
 ### 4.11 Audit
 
-#### TD-ADM-100 — Auth events audited (login/reset/TOTP/recovery)
+#### TD-ADM-100 — Auth events audited (login/reset/TOTP/recovery/captcha/lock/throttle)
 
 - **Traces-to:** AC7, SPEC-S8.8, SPEC-S10, SPEC-SEC-6, STEP-8, PLAN-SEC-8
 - **Layer:** integration
 - **Priority:** P0
 - **Automation:** auto
 - **Preconditions:** Mail/TOTP harness.
-- **Steps:** Trigger login_success, login_failure, reset_request, reset_complete, totp_enroll, totp_change, recovery_code_use; read audit.
-- **Expected:** Each event present with reason class where applicable; no password/TOTP secret/recovery plaintext/raw IP.
-- **Negative / abuse variants:** Secret material in audit.
-
+- **Steps:** Trigger login_success, login_failure (bad password, bad 2FA, `captcha-failed`, `locked`, `rate-limited`), reset_request, reset_complete, totp_enroll, totp_change, recovery_code_use; read audit.
+- **Expected:** Each event present with reason class where applicable (incl. `captcha-failed` added to §8.8 by the lockout note); lock events carry account, keyed-HMAC IP, start time and duration. Reason classes stay in the audit / superadmin view only and are **never** echoed to the admin.core client. No password/TOTP secret/recovery plaintext/raw IP/Turnstile token.
+- **Negative / abuse variants:** Secret material in audit; reason class leaked to client response.
 #### TD-ADM-101 — Edit/delete audit append-only; cannot edit/delete audit from admin
 
 - **Traces-to:** AC7, SPEC-S10, SPEC-SEC-6, STEP-8, PLAN-SEC-8
@@ -704,7 +757,7 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Expected:** Whole mutation rolled back; fail-closed.
 - **Negative / abuse variants:** Orphan mutation without audit.
 
-### 4.12 Mail / SES Soft HOLD
+### 4.12 Mail / SES
 
 #### TD-ADM-110 — Mail via interface only; no AWS SES SDK in Core app
 
@@ -713,8 +766,8 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Priority:** P0
 - **Automation:** manual+auto
 - **Preconditions:** Codebase / package refs; fake mail adapter in tests.
-- **Steps:** 1) Bootstrap/reset use mail interface. 2) Scan Core app for direct SES SDK PackageReference/types. 3) Confirm Soft HOLD invent AWS account IDs/region/identity/from-address/provision/spend.
-- **Expected:** Mail interface only; no SES SDK in Core; no account details in docs/plan/tests; CFO Soft HOLD cost cite only ($0 Turnstile; SES under $0.01/mo assumed) — not spend approval.
+- **Steps:** 1) Bootstrap/reset use mail interface. 2) Scan Core app for direct SES SDK PackageReference/types. 3) Confirm no invented AWS account IDs/region/identity/from-address/provision/spend.
+- **Expected:** Mail interface only; no SES SDK in Core; no account details in docs/plan/tests; CFO cost cite only ($0 Turnstile; SES under $0.01/mo assumed) — not spend approval.
 - **Negative / abuse variants:** Hard-coded account IDs; direct SES calls.
 
 ### 4.13 OUT / gates / process
@@ -727,32 +780,32 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Automation:** manual
 - **Preconditions:** Delivery notes / routes.
 - **Steps:** Confirm OUT items not delivered: platform admin hosts as targets, human-user list, Participant UI-as-admin, multi-admin, email OTP, WAF/reCAPTCHA, SSO/IdP as delivered, inbound bot connector, settlement/escrow/checkout, charts/warehouse, MotorMarket/DC4, .NET 10 retarget as this Story.
-- **Expected:** All OUT; Soft HOLD gates stated.
+- **Expected:** All OUT; gate holds stated.
 - **Negative / abuse variants:** N/A
 
-#### TD-ADM-121 — Gate Soft HOLDs respected: Stories/build until Test design PASS; A7 until H4 live PASS; deploy until Ivan OK
+#### TD-ADM-121 — Gate holds respected: Stories/build until Test design PASS; A7 until H4 live PASS; deploy until Ivan OK
 
 - **Traces-to:** AC9, LOCK-7, SPEC-S12-OUT, SPEC-SEC-14, SPEC-SEC-15, STEP-12, STEP-13, PLAN-SEC-13, PLAN-SEC-14
 - **Layer:** process-review
 - **Priority:** P0
 - **Automation:** manual
 - **Preconditions:** CPM/BM gate state.
-- **Steps:** 1) Confirm no Stories/code started before this Test design PASS. 2) Soft HOLD A7 until H4 live PASS (cite separate harden evidence; do not invent H4 steps). 3) Soft HOLD deploy until Ivan OK. 4) Soft HOLD invent password/AWS. 5) PoC $0.
+- **Steps:** 1) Confirm no Stories/code started before this Test design PASS. 2) A7 held until H4 live PASS (cite separate harden evidence; do not invent H4 steps). 3) Deploy held until Ivan OK. 4) Do not invent password/AWS values. 5) PoC $0.
 - **Expected:** Gates documented and held; not a build unlock from this design alone.
 - **Negative / abuse variants:** Premature Stories/build/deploy.
 
-#### TD-ADM-122 — Traceability handshake: Spec tip sha256 + Security Soft HOLD SoR cited
+#### TD-ADM-122 — Traceability handshake: Spec tip sha256 + Security SoR cited
 
 - **Traces-to:** SPEC-SEC-15, PLAN-SEC-14, STEP-13
 - **Layer:** process-review
 - **Priority:** P1
 - **Automation:** manual
 - **Preconditions:** This test design + binding sources.
-- **Steps:** Verify Spec sha256 MATCH; Spec Security PASS 15/15; Dev Plan Security PASS 14/14; SA Soft HOLD SoR cited; host admin.core only.
-- **Expected:** Trace complete; handshake qa-confirm only for Security Soft HOLD SoR.
-- **Negative / abuse variants:** Invent points-review Soft HOLD SoR.
+- **Steps:** Verify Spec sha256 MATCH; Spec Security PASS 15/15; Dev Plan Security PASS 14/14; SA SoR cited; host admin.core only.
+- **Expected:** Trace complete; handshake qa-confirm only for Security SoR.
+- **Negative / abuse variants:** Invent points-review SoR.
 
-#### TD-ADM-160 — Inbound bot connector Soft HOLD after this track (sequence lock)
+#### TD-ADM-160 — Inbound bot connector held until after this track (sequence lock)
 
 - **Traces-to:** LOCK-6, AC8, SPEC-S12-OUT, STEP-12, PLAN-SEC-13
 - **Layer:** process-review
@@ -780,7 +833,7 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Layer:** process-review
 - **Priority:** P1
 - **Automation:** manual
-- **Preconditions:** Delivery checklist after Soft HOLDs lift.
+- **Preconditions:** Delivery checklist after Active holds lift.
 - **Steps:** Walk Spec §12 IN against implemented surface.
 - **Expected:** All IN items present; no OUT items slipped in.
 - **Negative / abuse variants:** N/A
@@ -850,12 +903,12 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 
 | Phase | Entry | Exit | Evidence location |
 |-------|-------|------|-------------------|
-| Story-level (after Soft HOLDs lift) | A6 PASS; A7 unlocked after H4; Story assigned | Story P0 API/integration green for mapped TD-ADM IDs | `/workspace/qa/YYYY-MM-DD__qa__qa-report__core-admin-*.md` |
+| Story-level (after Active holds lift) | A6 PASS; A7 unlocked after H4; Story assigned | Story P0 API/integration green for mapped TD-ADM IDs | `/workspace/qa/YYYY-MM-DD__qa__qa-report__core-admin-*.md` |
 | PR CI | PR touches admin surface | CI: all P0 automated cases for changed area PASS; no secret invent in diff | CI logs + `/workspace/qa/...` report path |
-| Pre-deploy | CI green; CQ gate; Ivan deploy Soft HOLD still until Ivan OK | Pre-deploy checklist: TD-ADM-121 gates + TD-ADM-150 no-secret scan | `/workspace/qa/...__predeploy__...md` |
+| Pre-deploy | CI green; CQ gate; deploy held until Ivan OK | Pre-deploy checklist: TD-ADM-121 gates + TD-ADM-150 no-secret scan | `/workspace/qa/...__predeploy__...md` |
 | Post-deploy live smoke | **Ivan OK** deploy; host `admin.core.dealoware.com` | Live smoke: TD-ADM-001/003/070/130/131 (+ subset P0 auth if secrets available via env) PASS | `/workspace/qa/YYYY-MM-DD__qa__qa-report__core-admin-live-smoke.md` |
 
-KB twin of design: `dealoware-kb/qa/2026-10-05__qa__test-design__core-admin-dashboard.md`. Runtime evidence under `/workspace/qa/` (not invent AWS account IDs in evidence).
+KB twin of design: `dealoware-kb/qa/2026-10-05__qa__test-design__core-admin-dashboard.md`. Runtime evidence under `/workspace/qa/` (do not invent AWS account IDs in evidence).
 
 ---
 
@@ -863,12 +916,14 @@ KB twin of design: `dealoware-kb/qa/2026-10-05__qa__test-design__core-admin-dash
 
 | # | Item | Source | Disposition |
 |---|------|--------|-------------|
-| OQ1 | Do CAPTCHA (Turnstile) failures count toward the same per-account / per-IP lockout budgets? | Spec §8.6 “SA to confirm” | Soft HOLD invent — ask SA/CPM; tests treat CAPTCHA fail separately until answered |
-| OQ2 | TOTP digits/period and recovery-code count (Spec recommends 10) | Spec §8.3 “SA to confirm” | Soft HOLD invent — tests assert hashed single-use + show-once; exact count/params from SA Soft HOLD SoR when locked |
-| OQ3 | Sliding vs fixed window for lockout counters | Spec §8.6 “SA to confirm” | Soft HOLD invent — tests use Spec numbers (5/15→30; 20/15→30); window shape per SA |
-| OQ4 | Admin Host-header reject for non-`admin.core` at app vs edge | Spec §3 “served only as” | Soft HOLD invent edge details; TD-ADM-001 tests app binding if present; do not target platform hosts as positive cases |
-| OQ5 | Retry-After on admin auth 429 | Spec §8.6 says “HTTP 429 / equivalent”; harden H4 Soft HOLD FAIL is separate Core API track | Soft HOLD invent Retry-After as Spec must; TD-ADM-051 requires **429**; Retry-After asserted only if Spec/SA later locks it |
-| OQ6 | Validation error copy exact wording | Spec §5 SA residual | Soft HOLD invent copy; TD-ADM-141 asserts no denied-field/secret echo |
+| OQ1 | Do CAPTCHA (Turnstile) failures count toward the same per-account / per-IP lockout budgets? | Spec §8.6 “SA to confirm” | **Closed** by lockout note (`specs/2026-10-05__spec__spec__core-admin-lockout-window-note.md`, OQ1) + Architecture Turnstile note: Turnstile reject happens before any credential check, counts toward no counter, audited `captcha-failed`. Tested in TD-ADM-040 |
+| OQ2 | TOTP digits/period and recovery-code count (Spec recommends 10) | Spec §8.3 “SA to confirm” | Open — do not invent; tests assert hashed single-use + show-once; exact count/params from SA when locked |
+| OQ3 | Sliding vs fixed window for lockout counters | Spec §8.6 “SA to confirm” | **Closed** by lockout note OQ3: sliding 15-min window (event exactly 15 min old is outside), 5 per account / 20 per IP, flat 30-min lock/throttle, in-lock attempts rejected + audited but not counted, wrong recovery code = bad 2FA, separate reset/bootstrap per-IP counter. Tested in TD-ADM-050 / TD-ADM-051 |
+| OQ4 | Admin Host-header reject for non-`admin.core` at app vs edge | Spec §3 “served only as” | Open — do not invent edge details; TD-ADM-001 tests app binding if present; do not target platform hosts as positive cases |
+| OQ5 | Retry-After on admin auth 429 | Spec §8.6 “HTTP 429 / equivalent” | **Closed** by UX1-A03 r2: admin.core IP throttle may return **429** with the generic body; **no admin.core auth response ever carries `Retry-After`** (nor remaining time / attempt count / “locked”). TD-ADM-051 asserts 429 + absence of Retry-After. Core API H4 (429 + Retry-After) is separate and unchanged |
+| OQ6 | Validation error copy exact wording | Spec §5 SA residual | Open — do not invent copy; TD-ADM-141 asserts no denied-field/secret echo |
+| OQ7 | Lockout note vs UX1-A03 r2 on IP-throttle status, reset-unlock and copy | Lockout note v4 (`e45ffeac…`) conflicted; v5.3 (`67686ce5…`) aligns | **Aligned** on disk with v5.3 (MUST 429, reset does not lift lock, r2 copy). Active hold: v5.3 is still Draft for Spec QA + Security QA; re-cite final hash after their PASS |
+| OQ8 | New v5.3 scope: break-glass ops unlock, S-A12 recent sign-in activity panel, lock-notice email (SHOULD) | Lockout note v5.3 / Chief Security answers items 3–4 | Open — not covered by a dedicated case in r2 (53 cases kept). Proposed follow-up cases for the next revision once v5.3 passes Spec QA; do not invent behavior now |
 
 **Assumptions (from locked sources — not invent):** soft-delete marker `DeletedAt`; paging offset/limit 50/200; Withdrawn first-class; session cookie HttpOnly Secure SameSite=Strict; audit IP keyed HMAC-SHA256; Turnstile only; SES behind mail interface; email OTP OUT; hard delete deferred.
 
@@ -887,7 +942,9 @@ KB twin of design: `dealoware-kb/qa/2026-10-05__qa__test-design__core-admin-dash
 - [x] Host under test / positive target: `admin.core.dealoware.com` only
 - [x] Platform hosts not used as positive targets; no CDK / bot-platform / App Runner invent
 - [x] No MotorMarket / Arctic Circle test data
-- [x] Soft HOLD Stories/build until this PASS; Soft HOLD A7 until H4; Soft HOLD deploy until Ivan OK
+- [x] UX1-A03 r2 applied: account-level failures 401 identical; IP throttle 429 generic body; no Retry-After on admin.core; never “locked”; reset does not lift lock; TOTP after reset
+- [x] OQ1 / OQ3 / OQ5 closed with source refs; Core API H4 429 + Retry-After unchanged
+- [x] Active holds: Stories/build until Test design QA confirms this revision; A7 until H4 live PASS; deploy until Ivan OK
 - [x] PoC $0
 
 ---
@@ -906,10 +963,10 @@ Method: extract Product `AC[1-9]`, Spec Locked table rows `1–7`, Spec §13 MET
 | Test cases | 53 (P0=45, P1=6, P2=2) |
 | Secret/account-ID invent scan (this file) | PASS — no password values; no AWS account IDs; no SES/Turnstile/HMAC secret values |
 
-**Status: PASS** — programmatic coverage **0 gaps**. Soft HOLD invent Stories/build until this PASS is consumed by CPM. Soft HOLD A7 until H4 live PASS. Soft HOLD deploy until Ivan OK. Soft HOLD invent password/AWS. PoC $0.
+**Coverage: 0 gaps** (Chief QA self-check on r2; not a Test design QA stamp). Active holds: Stories/build until Test design QA confirms this tip; A7 until H4 live PASS; deploy until Ivan OK; lockout note v5.3 hash to re-cite after Spec QA. Do not invent password/AWS values. PoC $0.
 
 ---
 
 ## 9. Confirm
 
-**A6 Test design PASS.** Path `qa/2026-10-05__qa__test-design__core-admin-dashboard.md`. Cases **53** (P0 **45**). Sources: AC **9/9**, Spec Locked **7/7**, Spec sections **26/26**, Spec Security **15/15**, Plan Steps **13/13**, Plan Security **14/14**, Security points **29/29**. Host `admin.core.dealoware.com` only. No secrets / account IDs invented. Soft HOLD Stories/build; Soft HOLD A7 until H4; Soft HOLD deploy until Ivan OK. PoC $0.
+**A6 Test design r2 — revised, awaiting Test design QA re-verify.** Path `qa/2026-10-05__qa__test-design__core-admin-dashboard.md`. Cases **53** (P0 **45**). Sources: AC **9/9**, Spec Locked **7/7**, Spec sections **26/26**, Spec Security **15/15**, Plan Steps **13/13**, Plan Security **14/14**, Security points **29/29**. Host `admin.core.dealoware.com` only. No secrets / account IDs invented. Active holds: Stories/build until Test design QA confirms; A7 until H4; deploy until Ivan OK; lockout note v5.3 final hash. PoC $0.
