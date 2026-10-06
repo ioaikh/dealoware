@@ -104,7 +104,7 @@ try
     builder.Configuration.GetSection(AdminHostOptions.SectionName).Bind(adminHostOptions);
     AdminHostOptionsValidator.Validate(
         adminHostOptions,
-        isDevelopment: builder.Environment.IsDevelopment());
+        builder.Environment.EnvironmentName);
 }
 catch (InvalidOperationException ex)
 {

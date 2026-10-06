@@ -28,6 +28,18 @@ public sealed class AdminHostOptions
     public bool EnforceHostValidation { get; set; } = true;
 
     /// <summary>
+    /// Maps the test-only exception probe. Allowed only in Development or Testing.
+    /// </summary>
+    public bool EnableTestExceptionEndpoint { get; set; }
+
+    /// <summary>
+    /// The test-exception probe may be mapped only in Development or Testing.
+    /// </summary>
+    public static bool AllowsTestExceptionEndpoint(string? environmentName)
+        => string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Exact, case-insensitive host match against <see cref="AllowedHosts"/>.
     /// </summary>
     public bool IsAllowedHost(string? hostName)

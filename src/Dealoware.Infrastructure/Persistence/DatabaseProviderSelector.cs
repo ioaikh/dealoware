@@ -148,6 +148,7 @@ public static class DatabaseProviderSelector
         {
             builder.SslMode = SslMode.VerifyFull;
             builder.RootCertificate = RdsRootCertificatePath;
+            builder.IncludeErrorDetail = false;
         }
         else
         {
@@ -217,6 +218,7 @@ public static class DatabaseProviderSelector
         }
 
         builder.SslMode = SslMode.VerifyFull;
+        builder.IncludeErrorDetail = false;
 
         if (string.IsNullOrEmpty(builder.RootCertificate))
         {

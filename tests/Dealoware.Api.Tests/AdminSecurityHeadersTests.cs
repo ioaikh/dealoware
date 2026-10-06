@@ -4,8 +4,10 @@ using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Tests;
@@ -212,9 +214,11 @@ public class AdminUnhandledExceptionHeaderTests
         request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session.Id:D}");
         using var response = await factory.CreateClient().SendAsync(request);
 
+#if DEBUG
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.True(string.IsNullOrEmpty(body) || body == """{"error":"Internal Server Error"}""");
+        Assert.Contains(AdminSecurityHeadersMiddleware.GenericErrorMessage, body);
+        Assert.Contains("traceId", body);
         Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, body);
         Assert.DoesNotContain("InvalidOperationException", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stack", body, StringComparison.OrdinalIgnoreCase);
@@ -222,6 +226,62 @@ public class AdminUnhandledExceptionHeaderTests
         Assert.DoesNotContain("at Dealoware", body, StringComparison.Ordinal);
         AdminSecurityHeadersTests.AssertAdminHardeningHeaders(response, expectHsts: true);
         Assert.False(response.Headers.Contains("Server"));
+#else
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, body);
+#endif
+    }
+
+    [Fact]
+    public async Task UnhandledException_LogContainsTypeAndTraceId_NotMessageOrStack()
+    {
+        const string traceId = "admin-test-trace-id";
+        const string secretToken = "dw_admin_secret_token_value";
+        var logger = new CapturingLogger<AdminSecurityHeadersMiddleware>();
+        var options = Options.Create(new AdminHostOptions
+        {
+            AllowedHosts = [AdminHostOptions.ProductionAdminHost]
+        });
+        var middleware = new AdminSecurityHeadersMiddleware(
+            _ => throw new InvalidOperationException(AdminTestExceptionEndpoint.ProbeExceptionMessage));
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString(AdminHostOptions.ProductionAdminHost);
+        context.Request.Scheme = "https";
+        context.Request.Path = AdminTestExceptionEndpoint.Path;
+        context.Request.QueryString = new QueryString("?code=totp-secret-code&token=" + secretToken);
+        context.Request.Headers.Cookie = $"{AdminSessionCookie.Name}={secretToken}";
+        context.Request.Headers.Authorization = "Bearer " + secretToken;
+        context.TraceIdentifier = traceId;
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context, options, logger);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains(AdminSecurityHeadersMiddleware.GenericErrorMessage, body);
+        Assert.Contains(traceId, body);
+        Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, body);
+        Assert.DoesNotContain(secretToken, body);
+        Assert.DoesNotContain("totp-secret-code", body);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Null(entry.Exception);
+        Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, entry.Message);
+        Assert.DoesNotContain("at ", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("stack", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(secretToken, entry.Message);
+        Assert.DoesNotContain("totp-secret-code", entry.Message);
+        Assert.DoesNotContain("Cookie", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Authorization", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(AdminTestExceptionEndpoint.Path, entry.Message);
+        Assert.Contains(typeof(InvalidOperationException).FullName!, entry.Message);
+        Assert.Contains(traceId, entry.Message);
+        Assert.True(context.Response.Headers.ContainsKey("X-Content-Type-Options"));
+        Assert.Equal(AdminSecurityHeadersMiddleware.Nosniff, context.Response.Headers.XContentTypeOptions.ToString());
     }
 }
 
@@ -231,5 +291,24 @@ file sealed class AdminTestExceptionWebApplicationFactory : IsolatedWebApplicati
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting(AdminTestExceptionEndpoint.ConfigKey, "true");
+    }
+}
+
+file sealed class CapturingLogger<T> : ILogger<T>
+{
+    public List<(LogLevel Level, Exception? Exception, string Message)> Entries { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        Entries.Add((logLevel, exception, formatter(state, exception)));
     }
 }

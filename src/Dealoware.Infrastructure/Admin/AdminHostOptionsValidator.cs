@@ -16,18 +16,20 @@ public static class AdminHostOptionsValidator
         "Extra or replacement hosts are refused. Refusing to start.";
 
     /// <summary>
-    /// Validates bound admin-host options. Development is unrestricted.
+    /// Validates bound admin-host options. Development is unrestricted for the host
+    /// allowlist. The test-exception probe is compiled out of Release and is not
+    /// mapped outside Development/Testing, so this validator does not refuse the flag.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     /// Thrown outside Development when enforcement is off or the allowlist is not exactly
     /// <see cref="AdminHostOptions.ProductionAdminHost"/>.
     /// </exception>
-    public static void Validate(AdminHostOptions? options, bool isDevelopment)
+    public static void Validate(AdminHostOptions? options, string? environmentName)
     {
-        if (isDevelopment)
-            return;
-
         options ??= new AdminHostOptions();
+
+        if (IsDevelopment(environmentName))
+            return;
 
         if (!options.EnforceHostValidation)
             throw new InvalidOperationException(EnforceHostValidationMessage);
@@ -35,6 +37,9 @@ public static class AdminHostOptionsValidator
         if (!IsExactlyProductionAdminHost(options.AllowedHosts))
             throw new InvalidOperationException(AllowedHostsMessage);
     }
+
+    private static bool IsDevelopment(string? environmentName)
+        => string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsExactlyProductionAdminHost(IReadOnlyList<string>? hosts)
     {

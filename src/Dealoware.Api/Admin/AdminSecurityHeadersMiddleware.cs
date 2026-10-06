@@ -28,6 +28,7 @@ public sealed class AdminSecurityHeadersMiddleware
     public const string CacheControl = "no-store";
     public const string Nosniff = "nosniff";
     public const string FrameOptions = "DENY";
+    public const string GenericErrorMessage = "Internal Server Error";
 
     private readonly RequestDelegate _next;
 
@@ -57,8 +58,11 @@ public sealed class AdminSecurityHeadersMiddleware
         }
         catch (Exception ex) when (isAdminHost)
         {
-            // Do not log request path, query, cookies, or headers (tokens / emails).
-            logger.LogError(ex, "Unhandled exception on the admin host.");
+            // Type name and trace id only — never the exception object, message, or stack.
+            logger.LogError(
+                "Unhandled exception on the admin host. Type={ExceptionType} TraceId={TraceId}",
+                ex.GetType().FullName,
+                context.TraceIdentifier);
 
             if (context.Response.HasStarted)
             {
@@ -69,6 +73,11 @@ public sealed class AdminSecurityHeadersMiddleware
             context.Response.Clear();
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             Apply(context);
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = GenericErrorMessage,
+                traceId = context.TraceIdentifier
+            });
         }
     }
 
