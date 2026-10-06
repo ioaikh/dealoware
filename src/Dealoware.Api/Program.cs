@@ -92,6 +92,7 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
+builder.Services.AddAdminAuth(builder.Configuration);
 
 builder.Services.AddAuthorization(options =>
 {
@@ -283,6 +284,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminAuth();
 
 app.Run();
 

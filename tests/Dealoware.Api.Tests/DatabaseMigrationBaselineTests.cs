@@ -24,6 +24,14 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.UpdatedAtMigrationId
     ];
 
+    private static readonly string[] AppliedAfterFullMigrate =
+    [
+        DatabaseMigrationBaseline.BaselineMigrationId,
+        DatabaseMigrationBaseline.AdminTablesMigrationId,
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        "20261006000340_AdminLockoutState"
+    ];
+
     [Fact]
     public void Decide_FreshEmpty_AppliesMigrations()
     {
@@ -289,7 +297,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterFullMigrate, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
@@ -332,8 +340,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
-            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Equal(AppliedAfterFullMigrate, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -359,8 +366,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
-            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Equal(AppliedAfterFullMigrate, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -380,7 +386,7 @@ public class DatabaseMigrationBaselineTests
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterFullMigrate, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -588,8 +594,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminSessions.CountAsync());
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
-            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Equal(AppliedAfterFullMigrate, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));

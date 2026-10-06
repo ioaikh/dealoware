@@ -44,6 +44,14 @@ public sealed class AdminSessionRepository : IAdminSessionRepository
         }
     }
 
+    public async Task DeleteByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var sessions = await _context.AdminSessions
+            .Where(s => s.Email == email)
+            .ToListAsync(cancellationToken);
+        _context.AdminSessions.RemoveRange(sessions);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         await _context.SaveChangesAsync(cancellationToken);

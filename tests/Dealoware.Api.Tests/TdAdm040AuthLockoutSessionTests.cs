@@ -1,0 +1,484 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using Dealoware.Api.Admin;
+using Dealoware.Domain.Admin;
+using Dealoware.Infrastructure.Admin;
+using Dealoware.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Dealoware.Api.Tests;
+
+/// <summary>
+/// TD-ADM-040..054 plus r2 §2.2 session-gate rows this step owns.
+/// </summary>
+[Collection("AdminAuthTests")]
+public class TdAdm040AuthLockoutSessionTests
+{
+    private const string AdminHost = "admin.core.dealoware.com";
+    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string SignInBody =
+        "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
+    private const string CaptchaBody = "Verification failed, please try again.";
+
+    private readonly IsolatedWebApplicationFactory _factory;
+    private readonly string _password;
+    private readonly string _totp = "246813";
+
+    public TdAdm040AuthLockoutSessionTests(IsolatedWebApplicationFactory factory)
+    {
+        _factory = factory;
+        _password = "Pw-" + Guid.NewGuid().ToString("N") + "-xx";
+        var directory = _factory.Services.GetRequiredService<InMemoryAdminCredentialDirectory>();
+        directory.SetPasswordAsync(OwnerEmail, _password, CancellationToken.None).GetAwaiter().GetResult();
+        directory.SeedTotpCode(_totp);
+        ResetClock();
+    }
+
+    [Fact]
+    public async Task TdAdm040_MissingTurnstile_RejectsBeforeCredential_NoCounter_AuditsCaptchaFailed()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = "" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(CaptchaJson(), await response.Content.ReadAsStringAsync());
+        Assert.False(response.Headers.Contains("Retry-After"));
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthReason.CaptchaFailed);
+        Assert.DoesNotContain(await AuditAsync(), e => e.IpHmac == "127.0.0.1");
+    }
+
+    [Fact]
+    public async Task TdAdm040_InvalidAndUnavailableTurnstile_FailClosed()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var fake = _factory.Services.GetRequiredService<FakeTurnstileVerifier>();
+
+        using var invalid = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = "expired" });
+        Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        Assert.Equal(CaptchaJson(), await invalid.Content.ReadAsStringAsync());
+
+        fake.Unavailable = true;
+        try
+        {
+            using var down = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
+                new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, down.StatusCode);
+            Assert.Equal(CaptchaJson(), await down.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            fake.Unavailable = false;
+        }
+
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1"));
+    }
+
+    [Fact]
+    public void TdAdm041_NoNonTurnstileCaptchaProviders()
+    {
+        var root = RepoRoot();
+        foreach (var file in Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}docs{Path.DirectorySeparatorChar}"))
+            {
+                continue;
+            }
+
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("recaptcha", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("hcaptcha", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("WafCaptcha", text, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task TdAdm050_FiveFailuresLockAccount_Generic401_InLockNotCounted()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        HttpResponseMessage? baseline = null;
+        for (var i = 0; i < 5; i++)
+        {
+            baseline = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong-" + i, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, baseline.StatusCode);
+            Assert.Equal(SignInJson(), await baseline.Content.ReadAsStringAsync());
+            Assert.False(baseline.Headers.Contains("Retry-After"));
+            Assert.DoesNotContain("locked", await baseline.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        using var correctWhileLocked = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, correctWhileLocked.StatusCode);
+        Assert.Equal(await baseline!.Content.ReadAsStringAsync(), await correctWhileLocked.Content.ReadAsStringAsync());
+
+        var counted = await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant());
+        Assert.Equal(5, counted);
+        Assert.NotNull(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+        Assert.Contains(await AuditAsync(), e => e.Action == AdminAuthAction.LockStart);
+        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthReason.Locked);
+    }
+
+    [Fact]
+    public async Task TdAdm050_SlidingWindow_EventExactly15MinOldIsOutside()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var clock = _factory.Services.GetRequiredService<TestAdminClock>();
+        for (var i = 0; i < 4; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(15));
+        using var fifth = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Null(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+
+        using var sixth = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.NotNull(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+    }
+
+    [Fact]
+    public async Task TdAdm050_ResetDoesNotLiftLock()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        for (var i = 0; i < 5; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        }
+
+        using var reset = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
+            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        Assert.NotNull(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+
+        using var stillLocked = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, stillLocked.StatusCode);
+        Assert.Equal(SignInJson(), await stillLocked.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdm051_TwentyLoginFailures_Throttle429_NoRetryAfter()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        for (var i = 0; i < 20; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = "unknown" + i + "@example.com", password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        using var throttled = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
+        Assert.Equal(SignInJson(), await throttled.Content.ReadAsStringAsync());
+        Assert.False(throttled.Headers.Contains("Retry-After"));
+        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthReason.RateLimited);
+    }
+
+    [Fact]
+    public async Task TdAdm051_ResetThrottle_SameBody_NoMail()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        var before = mailer.SendCount;
+        for (var i = 0; i < 20; i++)
+        {
+            using var req = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
+                new { email = "other" + i + "@example.com", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.OK, req.StatusCode);
+        }
+
+        using var throttled = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
+            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
+        Assert.Equal(ResetJson(), await throttled.Content.ReadAsStringAsync());
+        Assert.False(throttled.Headers.Contains("Retry-After"));
+        Assert.Equal(before, mailer.SendCount);
+    }
+
+    [Fact]
+    public async Task TdAdm052_SessionIdleAbsoluteAndRotation()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var clock = _factory.Services.GetRequiredService<TestAdminClock>();
+        var firstId = await SignInFullAsync(client);
+        var options = AdminSessionCookie.CreateOptions();
+        Assert.True(options.HttpOnly);
+        Assert.True(options.Secure);
+        Assert.Equal(SameSiteMode.Strict, options.SameSite);
+        Assert.Equal("/admin", options.Path);
+        Assert.Null(options.Domain);
+
+        clock.Advance(TimeSpan.FromMinutes(31));
+        using var idle = await AdminGetAsync(client, "/admin/api/me", firstId);
+        Assert.Equal(HttpStatusCode.Unauthorized, idle.StatusCode);
+
+        ResetClock();
+        var rotated = await SignInFullAsync(client);
+        Assert.NotEqual(firstId, rotated);
+        using var oldDenied = await AdminGetAsync(client, "/admin/api/me", firstId);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldDenied.StatusCode);
+        using var newOk = await AdminGetAsync(client, "/admin/api/me", rotated);
+        Assert.Equal(HttpStatusCode.OK, newOk.StatusCode);
+
+        clock.Advance(TimeSpan.FromHours(8));
+        using var absolute = await AdminGetAsync(client, "/admin/api/me", rotated);
+        Assert.Equal(HttpStatusCode.Unauthorized, absolute.StatusCode);
+    }
+
+    [Fact]
+    public async Task TdAdm053_AuditIpIsKeyedHmac_RawIpOnlyInCounters()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var fail = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+
+        var audit = await AuditAsync();
+        Assert.All(audit, e =>
+        {
+            Assert.NotEqual("127.0.0.1", e.IpHmac);
+            Assert.DoesNotContain("127.0.0.1", e.IpHmac);
+        });
+        Assert.True(await CountFailuresAsync(AdminAuthScopes.LoginIp, "127.0.0.1") >= 1);
+    }
+
+    [Fact]
+    public void TdAdm054_NoProcessGlobalAuthFloodLimiter()
+    {
+        var names = typeof(Program).Assembly.GetTypes().Select(t => t.Name);
+        Assert.DoesNotContain(names, n => n.Contains("ProcessGlobal", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_SignInPost_IsExemptWithoutSession()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("second_factor", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_WrongMethod_IsDenied()
+    {
+        var client = CreateClient();
+        using var response = await SendAuthAsync(client, HttpMethod.Get, AdminAuthEndpoints.SignInPath, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Unauthorized", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_ExtraSegment_IsDenied()
+    {
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath + "/extra",
+            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Unauthorized", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_MissingPendingToken_IsDenied()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInCodePath,
+            new { totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Unauthorized", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_QueryStringDoesNotCreateExemption()
+    {
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client, HttpMethod.Post, "/admin/api/me?next=/admin/sign-in", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TdAdmSessionGate_ResetAndBootstrapPaths_MatchR2()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var reset = await SendAuthAsync(
+            client, HttpMethod.Post, "/admin/api/auth/reset",
+            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+
+        using var bootstrapMissing = await SendAuthAsync(
+            client, HttpMethod.Post, "/admin/api/auth/bootstrap",
+            new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, bootstrapMissing.StatusCode);
+
+        using var confirmMissing = await SendAuthAsync(
+            client, HttpMethod.Post, "/admin/api/auth/reset/confirm",
+            new { password = _password, totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, confirmMissing.StatusCode);
+    }
+
+    private HttpClient CreateClient() => _factory.CreateClient();
+
+    private void ResetClock()
+    {
+        _factory.Services.GetRequiredService<TestAdminClock>().UtcNow = DateTimeOffset.UtcNow;
+    }
+
+    private async Task ClearAuthStateAsync()
+    {
+        ResetClock();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.AdminAuthFailureEvents.RemoveRange(db.AdminAuthFailureEvents);
+        db.AdminAuthLockouts.RemoveRange(db.AdminAuthLockouts);
+        db.AdminAuthTokens.RemoveRange(db.AdminAuthTokens);
+        db.AdminAuditLog.RemoveRange(db.AdminAuditLog);
+        db.AdminSessions.RemoveRange(db.AdminSessions);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<int> CountFailuresAsync(string scope, string key)
+    {
+        using var scopeSvc = _factory.Services.CreateScope();
+        var auth = scopeSvc.ServiceProvider.GetRequiredService<AdminAuthService>();
+        return await auth.CountFailuresAsync(scope, key, CancellationToken.None);
+    }
+
+    private async Task<AdminAuthLockout?> ActiveLockAsync(string scope, string key)
+    {
+        using var scopeSvc = _factory.Services.CreateScope();
+        var auth = scopeSvc.ServiceProvider.GetRequiredService<AdminAuthService>();
+        return await auth.GetActiveLockoutAsync(scope, key, CancellationToken.None);
+    }
+
+    private async Task<List<AdminAuditEntry>> AuditAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        return db.AdminAuditLog.OrderBy(e => e.Timestamp).ToList();
+    }
+
+    private async Task<Guid> SignInFullAsync(HttpClient client)
+    {
+        using var step1 = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        using var step2 = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInCodePath,
+            new { totpCode = _totp, pendingToken = pending, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step2.EnsureSuccessStatusCode();
+        return Guid.Parse(ReadCookie(step2, AdminSessionCookie.Name)!);
+    }
+
+    private static async Task<HttpResponseMessage> SendAuthAsync(
+        HttpClient client,
+        HttpMethod method,
+        string path,
+        object? body)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Host = AdminHost;
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
+
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> AdminGetAsync(HttpClient client, string path, Guid sessionId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={sessionId:D}");
+        return await client.SendAsync(request);
+    }
+
+    private static string? ReadCookie(HttpResponseMessage response, string name)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            return null;
+        }
+
+        foreach (var cookie in cookies)
+        {
+            if (cookie.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = cookie[(name.Length + 1)..];
+                var end = value.IndexOf(';');
+                return end < 0 ? value : value[..end];
+            }
+        }
+
+        return null;
+    }
+
+    private static string SignInJson() => JsonSerializer.Serialize(new { error = SignInBody });
+
+    private static string CaptchaJson() => JsonSerializer.Serialize(new { error = CaptchaBody });
+
+    private static string ResetJson() => JsonSerializer.Serialize(new { error = AdminAuthCopy.ResetExists });
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Dealoware.sln")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Could not find Dealoware.sln");
+    }
+}
