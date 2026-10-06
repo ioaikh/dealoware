@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using Dealoware.Api.Admin;
+using Microsoft.AspNetCore.Http;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -109,23 +109,24 @@ public class TdAdm040AuthLockoutSessionTests
     {
         await ClearAuthStateAsync();
         var client = CreateClient();
-        HttpResponseMessage? baseline = null;
+        var failureBody = string.Empty;
         for (var i = 0; i < 5; i++)
         {
-            baseline = await SendAuthAsync(
+            using var baseline = await SendAuthAsync(
                 client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
                 new { email = OwnerEmail, password = "wrong-" + i, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            failureBody = await baseline.Content.ReadAsStringAsync();
             Assert.Equal(HttpStatusCode.Unauthorized, baseline.StatusCode);
-            Assert.Equal(SignInJson(), await baseline.Content.ReadAsStringAsync());
+            Assert.Equal(SignInJson(), failureBody);
             Assert.False(baseline.Headers.Contains("Retry-After"));
-            Assert.DoesNotContain("locked", await baseline.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("locked", failureBody, StringComparison.OrdinalIgnoreCase);
         }
 
         using var correctWhileLocked = await SendAuthAsync(
             client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
             new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.Unauthorized, correctWhileLocked.StatusCode);
-        Assert.Equal(await baseline!.Content.ReadAsStringAsync(), await correctWhileLocked.Content.ReadAsStringAsync());
+        Assert.Equal(failureBody, await correctWhileLocked.Content.ReadAsStringAsync());
 
         var counted = await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant());
         Assert.Equal(5, counted);
@@ -332,6 +333,68 @@ public class TdAdm040AuthLockoutSessionTests
     }
 
     [Fact]
+    public async Task TdAdmC1_TrailingSlash_IsNotExempt()
+    {
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath + "/",
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Unauthorized", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmC3_GetSignIn_HasNoLockoutSideEffect()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var get = await SendAuthAsync(client, HttpMethod.Get, "/admin/sign-in", null);
+        Assert.Equal(HttpStatusCode.NoContent, get.StatusCode);
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+        Assert.False(string.IsNullOrEmpty(ReadCookie(get, AdminAntiForgery.CookieName)));
+        Assert.DoesNotContain("__Host-", ReadCookie(get, AdminAntiForgery.CookieName) ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TdAdmC3_PostWithoutAntiForgery_IsDenied()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Post, AdminAuthEndpoints.SignInPath);
+        request.Headers.Host = AdminHost;
+        request.Content = JsonContent.Create(new
+        {
+            email = OwnerEmail,
+            password = _password,
+            turnstileToken = FakeTurnstileVerifier.ValidToken
+        });
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+    }
+
+    [Fact]
+    public void TdAdmC5_CookieNames_HaveNoHostPrefix()
+    {
+        Assert.Equal("dw_admin_session", AdminSessionCookie.Name);
+        Assert.Equal("dw_admin_pending", AdminSessionExemptions.PendingCookieName);
+        Assert.Equal("dw_admin_af", AdminAntiForgery.CookieName);
+        Assert.DoesNotContain("__Host-", AdminSessionCookie.Name, StringComparison.Ordinal);
+        Assert.Null(AdminSessionCookie.CreateOptions().Domain);
+    }
+
+    [Fact]
+    public void TdAdmC6_ReturnPathAllowlist()
+    {
+        Assert.True(AdminReturnPath.TryValidate("/admin/", out _));
+        Assert.True(AdminReturnPath.TryValidate("/admin/participants", out _));
+        Assert.Equal("/admin/", AdminReturnPath.Resolve("/admin/sign-in"));
+        Assert.Equal("/admin/", AdminReturnPath.Resolve("/admin/setup/authenticator"));
+        Assert.Equal("/admin/", AdminReturnPath.Resolve("https://evil.example/"));
+        Assert.StartsWith("https://admin.core.dealoware.com/admin/", AdminReturnPath.ToLocation("/nope"));
+    }
+
+    [Fact]
     public async Task TdAdmSessionGate_QueryStringDoesNotCreateExemption()
     {
         var client = CreateClient();
@@ -411,19 +474,51 @@ public class TdAdm040AuthLockoutSessionTests
         var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
         using var step2 = await SendAuthAsync(
             client, HttpMethod.Post, AdminAuthEndpoints.SignInCodePath,
-            new { totpCode = _totp, pendingToken = pending, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            new { totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminSessionExemptions.PendingCookieName}={pending}");
         step2.EnsureSuccessStatusCode();
         return Guid.Parse(ReadCookie(step2, AdminSessionCookie.Name)!);
     }
 
-    private static async Task<HttpResponseMessage> SendAuthAsync(
+    private static async Task<(string Cookie, string Token)> IssueAntiForgeryAsync(HttpClient client)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/admin/sign-in");
+        request.Headers.Host = AdminHost;
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var token = response.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
+            ? values.First()
+            : string.Empty;
+        var cookie = ReadCookie(response, AdminAntiForgery.CookieName) ?? string.Empty;
+        return (cookie, token);
+    }
+
+    private async Task<HttpResponseMessage> SendAuthAsync(
         HttpClient client,
         HttpMethod method,
         string path,
-        object? body)
+        object? body,
+        string? extraCookie = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
+        if (HttpMethod.Post.Equals(method))
+        {
+            var (afCookie, afToken) = await IssueAntiForgeryAsync(client);
+            request.Headers.TryAddWithoutValidation(AdminAntiForgery.HeaderName, afToken);
+            var cookies = $"{AdminAntiForgery.CookieName}={afCookie}";
+            if (!string.IsNullOrEmpty(extraCookie))
+            {
+                cookies += $"; {extraCookie}";
+            }
+
+            request.Headers.TryAddWithoutValidation("Cookie", cookies);
+        }
+        else if (!string.IsNullOrEmpty(extraCookie))
+        {
+            request.Headers.TryAddWithoutValidation("Cookie", extraCookie);
+        }
+
         if (body is not null)
         {
             request.Content = JsonContent.Create(body);
