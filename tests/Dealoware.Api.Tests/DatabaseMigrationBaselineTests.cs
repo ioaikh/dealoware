@@ -395,10 +395,10 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
         Assert.DoesNotContain(
