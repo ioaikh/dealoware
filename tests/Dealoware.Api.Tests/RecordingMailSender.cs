@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Dealoware.Domain.Admin;
+using Dealoware.Infrastructure.Mail;
 
 namespace Dealoware.Api.Tests;
 
@@ -13,9 +14,16 @@ public sealed class RecordingMailSender : IAdminMailSender
 
     public TimeSpan SendDelay { get; set; } = TimeSpan.Zero;
 
+    public bool FailWithDisabledSender { get; set; }
+
     public async Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
+        if (FailWithDisabledSender)
+        {
+            await new DisabledMailSender().SendAsync(message, cancellationToken);
+        }
+
         if (SendDelay > TimeSpan.Zero)
         {
             await Task.Delay(SendDelay, cancellationToken);
@@ -28,6 +36,7 @@ public sealed class RecordingMailSender : IAdminMailSender
     {
         Sent.Clear();
         SendDelay = TimeSpan.Zero;
+        FailWithDisabledSender = false;
     }
 
     public async Task WaitForSentAsync(int count, TimeSpan? timeout = null)

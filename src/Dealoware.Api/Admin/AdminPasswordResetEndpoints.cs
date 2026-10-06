@@ -130,7 +130,7 @@ public static class AdminPasswordResetEndpoints
         if (known)
         {
             await tokens.AddAsync(AdminPasswordResetToken.Create(ownerEmail, hash, now), ct);
-            mail.EnqueuePasswordReset(ownerEmail, raw);
+            mail.EnqueuePasswordReset(ownerEmail, raw, http.TraceIdentifier);
         }
 
         await audit.AddAsync(

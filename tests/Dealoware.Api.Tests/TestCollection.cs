@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -31,6 +32,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     public string RecoveryHmacKey { get; }
 
     public string IpHmacKey { get; }
+
+    public CollectingLoggerProvider LogCollector { get; } = new();
 
     public IsolatedWebApplicationFactory()
         : this(
@@ -108,6 +111,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, IpHmacKey);
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, TotpKey);
         builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, RecoveryHmacKey);
+
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddProvider(LogCollector);
+        });
 
         // After the app registers its provider (SQLite or Npgsql), replace it. The
         // default is isolated in-memory SQLite. When DB_HOST is set (postgres CI job)
