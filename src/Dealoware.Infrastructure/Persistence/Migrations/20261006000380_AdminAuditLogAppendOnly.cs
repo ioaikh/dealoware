@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -9,6 +10,7 @@ namespace Dealoware.Infrastructure.Persistence.Migrations;
 /// Provider-conditional — skipped on SQLite (test host). The frozen 13-table and
 /// 15-table stamp specs are unchanged; this migration applies after stamp via MigrateAsync.
 /// </summary>
+[DbContext(typeof(DealowareDbContext))]
 [Migration("20261006000380_AdminAuditLogAppendOnly")]
 public partial class AdminAuditLogAppendOnly : Migration
 {
