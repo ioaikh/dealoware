@@ -23,7 +23,7 @@ public partial class AdminAuditLogAppendOnly : Migration
 
         migrationBuilder.Sql(
             """
-            CREATE OR REPLACE FUNCTION dealoware_admin_audit_log_append_only()
+            CREATE OR REPLACE FUNCTION "dealoware_admin_audit_log_append_only"()
             RETURNS trigger
             LANGUAGE plpgsql
             AS $$
@@ -32,17 +32,17 @@ public partial class AdminAuditLogAppendOnly : Migration
             END;
             $$;
 
-            DROP TRIGGER IF EXISTS admin_audit_log_append_only_row ON "AdminAuditLog";
-            CREATE TRIGGER admin_audit_log_append_only_row
+            DROP TRIGGER IF EXISTS "admin_audit_log_append_only_row" ON "AdminAuditLog";
+            CREATE TRIGGER "admin_audit_log_append_only_row"
             BEFORE UPDATE OR DELETE ON "AdminAuditLog"
             FOR EACH ROW
-            EXECUTE PROCEDURE dealoware_admin_audit_log_append_only();
+            EXECUTE PROCEDURE "dealoware_admin_audit_log_append_only"();
 
-            DROP TRIGGER IF EXISTS admin_audit_log_append_only_truncate ON "AdminAuditLog";
-            CREATE TRIGGER admin_audit_log_append_only_truncate
+            DROP TRIGGER IF EXISTS "admin_audit_log_append_only_truncate" ON "AdminAuditLog";
+            CREATE TRIGGER "admin_audit_log_append_only_truncate"
             BEFORE TRUNCATE ON "AdminAuditLog"
             FOR EACH STATEMENT
-            EXECUTE PROCEDURE dealoware_admin_audit_log_append_only();
+            EXECUTE PROCEDURE "dealoware_admin_audit_log_append_only"();
             """);
     }
 
@@ -53,9 +53,9 @@ public partial class AdminAuditLogAppendOnly : Migration
 
         migrationBuilder.Sql(
             """
-            DROP TRIGGER IF EXISTS admin_audit_log_append_only_truncate ON "AdminAuditLog";
-            DROP TRIGGER IF EXISTS admin_audit_log_append_only_row ON "AdminAuditLog";
-            DROP FUNCTION IF EXISTS dealoware_admin_audit_log_append_only();
+            DROP TRIGGER IF EXISTS "admin_audit_log_append_only_truncate" ON "AdminAuditLog";
+            DROP TRIGGER IF EXISTS "admin_audit_log_append_only_row" ON "AdminAuditLog";
+            DROP FUNCTION IF EXISTS "dealoware_admin_audit_log_append_only"();
             """);
     }
 

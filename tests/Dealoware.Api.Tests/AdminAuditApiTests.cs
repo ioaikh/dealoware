@@ -76,7 +76,7 @@ public class AdminAuditApiTests
     {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("\"error\":\"Bad request\"", body);
+        Assert.Contains("\"error\":\"BadRequest\"", body);
         Assert.DoesNotContain(ClientIp, body);
     }
 
