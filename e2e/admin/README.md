@@ -8,13 +8,9 @@ End-to-end tests for the Dealoware Admin UI using Playwright.
 - **Task:** TD-ADM-UI-ci-01
 - **Decision:** Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate
 
-## Phase 0 Status
+## Status
 
-No admin UI frontend exists yet. This directory contains the pipeline wiring and configuration for when specs are added. The workflow:
-
-- Runs on PRs that touch `e2e/admin/**`, `e2e/playwright.config.ts`, `e2e/package.json`, or the workflow file
-- Fails closed when no specs exist (required for merge-blocking)
-- Is ready to run real tests once Playwright specs are added
+Step 14 auth-screen specs live here (`td-adm-ui-auth*.spec.ts`). The workflow starts the local API (`webServer` in `playwright.config.ts`) and runs Chromium headless against `127.0.0.1` only.
 
 ## CI Behavior
 
