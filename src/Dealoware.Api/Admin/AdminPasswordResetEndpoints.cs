@@ -38,13 +38,15 @@ public static class AdminPasswordResetEndpoints
             .WithName("AdminPasswordResetRequest")
             .WithTags("Admin")
             .AllowAnonymous()
-            .Produces(StatusCodes.Status200OK);
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         app.MapPost(RequestPagePath, RequestReset)
             .WithName("AdminPasswordResetRequestPage")
             .WithTags("Admin")
             .AllowAnonymous()
-            .Produces(StatusCodes.Status200OK);
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         app.MapPost(ConfirmApiPath, CompleteReset)
             .WithName("AdminPasswordResetConfirm")
@@ -52,7 +54,8 @@ public static class AdminPasswordResetEndpoints
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status303SeeOther);
+            .Produces(StatusCodes.Status303SeeOther)
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         app.MapPost(ConfirmPagePath, CompleteReset)
             .WithName("AdminPasswordResetConfirmPage")
@@ -60,7 +63,8 @@ public static class AdminPasswordResetEndpoints
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status303SeeOther);
+            .Produces(StatusCodes.Status303SeeOther)
+            .Produces(StatusCodes.Status429TooManyRequests);
     }
 
     private static IResult ConfirmPageGet(HttpContext http)
@@ -100,7 +104,8 @@ public static class AdminPasswordResetEndpoints
     private static async Task<IResult> RequestReset(
         ResetRequestBody? body,
         IAdminPasswordResetTokenRepository tokens,
-        IAdminMailSender mail,
+        IAdminMailDispatcher mail,
+        IAdminResetIpThrottle throttle,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
         IAdminClock clock,
@@ -111,30 +116,29 @@ public static class AdminPasswordResetEndpoints
         var submitted = NormalizeEmail(body?.Email);
         var ownerEmail = NormalizeEmail(coreOwner.Value.Email);
         var ipHmac = HashClientIp(ipHasher, http);
+        var ct = http.RequestAborted;
 
-        if (string.Equals(submitted, ownerEmail, StringComparison.Ordinal)
-            && !string.IsNullOrEmpty(ownerEmail))
+        if (await throttle.IsThrottledAsync(ipHmac, now, ct))
         {
-            await tokens.InvalidateUnusedForEmailAsync(ownerEmail, now, http.RequestAborted);
-
-            var raw = CreateRawToken();
-            var hash = AdminPasswordResetToken.HashRaw(raw);
-            var row = AdminPasswordResetToken.Create(ownerEmail, hash, now);
-            await tokens.AddAsync(row, http.RequestAborted);
-
-            await mail.SendAsync(
-                new AdminMailMessage(ownerEmail, MailSubject, BuildResetLink(raw)),
-                http.RequestAborted);
+            return ThrottledResult();
         }
-        else
+
+        var known = string.Equals(submitted, ownerEmail, StringComparison.Ordinal)
+                    && !string.IsNullOrEmpty(ownerEmail);
+        var raw = CreateRawToken();
+        var hash = AdminPasswordResetToken.HashRaw(raw);
+        await tokens.InvalidateUnusedForEmailAsync(known ? ownerEmail : submitted, now, ct);
+        if (known)
         {
-            _ = AdminPasswordResetToken.HashRaw(CreateRawToken());
+            await tokens.AddAsync(AdminPasswordResetToken.Create(ownerEmail, hash, now), ct);
+            mail.Enqueue(new AdminMailMessage(ownerEmail, MailSubject, BuildResetLink(raw)));
         }
 
         await audit.AddAsync(
             AdminAuditEntry.CreateAuthEvent("reset_request", submitted, ipHmac, timestamp: now),
-            http.RequestAborted);
-        await audit.SaveChangesAsync(http.RequestAborted);
+            ct);
+        await audit.SaveChangesAsync(ct);
+        await throttle.RecordFailureAsync(ipHmac, now, ct);
 
         return Results.Json(new { message = AdminPasswordResetCopy.RequestAccepted });
     }
@@ -157,6 +161,11 @@ public static class AdminPasswordResetEndpoints
         var now = clock.UtcNow;
         var ownerEmail = NormalizeEmail(coreOwner.Value.Email);
         var ipHmac = HashClientIp(ipHasher, http);
+        if (await throttle.IsThrottledAsync(ipHmac, now, http.RequestAborted))
+        {
+            return ThrottledResult();
+        }
+
         var presented = NullIfWhiteSpace(body?.Token)
                         ?? await AdminSignedOutExemptions.ReadResetTokenAsync(http, http.RequestAborted);
         var hash = string.IsNullOrWhiteSpace(presented)
@@ -249,12 +258,17 @@ public static class AdminPasswordResetEndpoints
                 timestamp: now),
             http.RequestAborted);
         await audit.SaveChangesAsync(http.RequestAborted);
-        await throttle.RecordFailureAsync(ipHmac, http.RequestAborted);
+        await throttle.RecordFailureAsync(ipHmac, now, http.RequestAborted);
 
         ApplyNoStoreNoReferrer(http);
         http.Response.Headers.Location = LinkExpiredPath;
         return Results.StatusCode(StatusCodes.Status303SeeOther);
     }
+
+    private static IResult ThrottledResult()
+        => Results.Json(
+            new { message = AdminPasswordResetCopy.Throttled },
+            statusCode: StatusCodes.Status429TooManyRequests);
 
     private static void ApplyNoStoreNoReferrer(HttpContext http)
     {

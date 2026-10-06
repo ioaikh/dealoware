@@ -6,9 +6,9 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Dealoware.Infrastructure.Persistence.Migrations;
 
 /// <summary>
-/// Password-reset tokens (hashed, 1h, single-use) and CoreOwner credential hash.
-/// Incremental after the frozen 15-table stamp. Do not add these tables to
-/// BaselineSchema / DatabaseMigrationBaseline table lists.
+/// Password-reset tokens (hashed, 1h, single-use), CoreOwner credential hash,
+/// and SC-6 reset IP counters. Incremental after the frozen 15-table stamp.
+/// Do not add these tables to BaselineSchema / DatabaseMigrationBaseline lists.
 /// </summary>
 [DbContext(typeof(DealowareDbContext))]
 [Migration("20261006000330_AdminPasswordResetTokens")]
@@ -60,11 +60,26 @@ public partial class AdminPasswordResetTokens : Migration
             {
                 table.PrimaryKey("PK_AdminCredentials", x => x.Email);
             });
+
+        migrationBuilder.CreateTable(
+            name: "AdminResetIpCounters",
+            columns: table => new
+            {
+                IpHmac = table.Column<string>(maxLength: 128, nullable: false),
+                WindowStartedAt = table.Column<DateTimeOffset>(nullable: false),
+                FailureCount = table.Column<int>(nullable: false),
+                LockedUntil = table.Column<DateTimeOffset>(nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_AdminResetIpCounters", x => x.IpHmac);
+            });
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.DropTable(name: "AdminPasswordResetTokens");
         migrationBuilder.DropTable(name: "AdminCredentials");
+        migrationBuilder.DropTable(name: "AdminResetIpCounters");
     }
 }

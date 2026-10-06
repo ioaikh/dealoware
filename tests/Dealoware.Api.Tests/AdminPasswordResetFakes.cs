@@ -7,6 +7,8 @@ public sealed class CapturingAdminMailSender : IAdminMailSender
     private readonly List<AdminMailMessage> _sent = [];
     private readonly object _gate = new();
 
+    public TimeSpan SendDelay { get; set; } = TimeSpan.Zero;
+
     public IReadOnlyList<AdminMailMessage> Sent
     {
         get
@@ -18,14 +20,32 @@ public sealed class CapturingAdminMailSender : IAdminMailSender
         }
     }
 
-    public Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken)
+    public async Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken)
     {
+        if (SendDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(SendDelay, cancellationToken);
+        }
+
         lock (_gate)
         {
             _sent.Add(message);
         }
+    }
 
-        return Task.CompletedTask;
+    public async Task WaitForSentAsync(int count, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
+        while (Sent.Count < count)
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException(
+                    $"Mail sender observed {Sent.Count} message(s); expected {count}.");
+            }
+
+            await Task.Delay(20, CancellationToken.None);
+        }
     }
 
     public void Clear()
@@ -34,6 +54,8 @@ public sealed class CapturingAdminMailSender : IAdminMailSender
         {
             _sent.Clear();
         }
+
+        SendDelay = TimeSpan.Zero;
     }
 }
 
@@ -94,39 +116,4 @@ public sealed class FakeAdminClock : IAdminClock
     }
 
     public void Advance(TimeSpan delta) => _utcNow = _utcNow.Add(delta);
-}
-
-public sealed class CapturingAdminResetIpThrottle : IAdminResetIpThrottle
-{
-    private readonly List<string> _failures = [];
-    private readonly object _gate = new();
-
-    public IReadOnlyList<string> Failures
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _failures.ToList();
-            }
-        }
-    }
-
-    public Task RecordFailureAsync(string ipHmac, CancellationToken cancellationToken)
-    {
-        lock (_gate)
-        {
-            _failures.Add(ipHmac);
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public void Clear()
-    {
-        lock (_gate)
-        {
-            _failures.Clear();
-        }
-    }
 }
