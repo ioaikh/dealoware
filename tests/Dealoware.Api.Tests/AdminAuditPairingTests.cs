@@ -150,13 +150,22 @@ public class AdminAuditPairingTests
     [Fact]
     public void TdAdm101_OversizedBody_TruncatesWithLengthAndHash()
     {
-        var original = new string('z', 5000);
+        var original = "{\"displayName\":\"" + new string('z', 5000) + "\"}";
         var truncated = AdminAuditSnapshots.Truncate(original);
-        Assert.Contains("TRUNCATED", truncated);
-        Assert.Contains("originalLength=5000", truncated);
-        Assert.Contains("sha256=", truncated);
-        Assert.True(truncated.Length < original.Length + 80);
-        Assert.StartsWith(original[..4000], truncated);
+        Assert.Contains("\"originalLength\":", truncated);
+        Assert.Contains("\"sha256\":", truncated);
+        Assert.Contains("_invalid", truncated);
+        Assert.Contains("\"_invalid\":true", truncated);
+        Assert.DoesNotContain(new string('z', 32), truncated);
+        Assert.DoesNotContain(original[..80], truncated);
+    }
+
+    [Fact]
+    public void TdAdm101_NonJsonSnapshot_StoresFailClosedPlaceholder()
+    {
+        var truncated = AdminAuditSnapshots.Truncate(new string('z', 5000));
+        Assert.Equal(AdminAuditSnapshots.FailClosedPlaceholder, truncated);
+        Assert.DoesNotContain("zzzz", truncated);
     }
 
     [Fact]

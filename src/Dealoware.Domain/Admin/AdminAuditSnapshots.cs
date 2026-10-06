@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Dealoware.Domain.FieldAcl;
 
 namespace Dealoware.Domain.Admin;
@@ -17,42 +16,45 @@ public static class AdminAuditSnapshots
     public const int MaxSnapshotChars = 4096;
     public const int TruncateKeepChars = 4000;
 
+    /// <summary>
+    /// Stored when the input is not valid JSON or truncation would break JSON.
+    /// Raw caller input is never persisted in that case.
+    /// </summary>
+    public const string FailClosedPlaceholder = """{"_invalid":true}""";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     /// <summary>
-    /// Property names that must never be stored on an audit row. Match is
-    /// case-insensitive and applies at any JSON depth, including arrays.
+    /// Normalized fragments. A key is stripped when its normalized form
+    /// contains any of these, or equals <c>code</c> / <c>key</c> exactly.
     /// </summary>
-    public static readonly IReadOnlySet<string> ForbiddenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly string[] ForbiddenFragments =
+    [
         "password",
-        "newPassword",
-        "currentPassword",
-        "passwordHash",
-        "token",
-        "accessToken",
-        "refreshToken",
-        "resetToken",
-        "bootstrapToken",
-        "pendingToken",
+        "passwd",
+        "pwd",
         "secret",
-        "totpSecret",
-        "totp",
-        "code",
-        "recoveryCode",
-        "recoveryCodes",
-        "otp",
-        "apiKey",
-        "key",
-        "hmacKey",
+        "token",
+        "jwt",
+        "bearer",
         "authorization",
         "cookie",
-        "setCookie",
-        "session"
-    };
+        "session",
+        "apikey",
+        "hmac",
+        "totp",
+        "otp",
+        "recovery",
+        "salt",
+        "hash",
+        "turnstile",
+        "credential",
+        "privatekey",
+        "signature"
+    ];
 
     /// <summary>
     /// Serializes FieldPolicy-readable fields only. Forbidden secret keys are dropped.
@@ -71,7 +73,7 @@ public static class AdminAuditSnapshots
         var allowed = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (field, value) in values)
         {
-            if (ForbiddenKeys.Contains(field.Name))
+            if (IsForbiddenKey(field.Name))
                 continue;
             if (!policy.Evaluate(principal, field, FieldAction.Read, context))
                 continue;
@@ -89,96 +91,155 @@ public static class AdminAuditSnapshots
     {
         ArgumentNullException.ThrowIfNull(values);
         var allowed = values
-            .Where(kv => !ForbiddenKeys.Contains(kv.Key))
+            .Where(kv => !IsForbiddenKey(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
         return Truncate(JsonSerializer.Serialize(allowed, JsonOptions));
     }
 
     /// <summary>
     /// Write-path sanitize: strip forbidden keys at any depth, then truncate.
+    /// Invalid JSON and truncation that breaks JSON store a fixed placeholder.
     /// </summary>
     public static string Truncate(string? snapshot)
     {
         if (snapshot is null)
             return string.Empty;
 
-        var stripped = StripForbiddenKeys(snapshot);
+        var stripped = StripForbiddenKeys(snapshot) ?? FailClosedPlaceholder;
         if (stripped.Length <= MaxSnapshotChars)
             return stripped;
 
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stripped)));
         var keep = Math.Min(TruncateKeepChars, stripped.Length);
-        return stripped[..keep]
-               + $"... [TRUNCATED, originalLength={stripped.Length}, sha256={hash}]";
+        var candidate = stripped[..keep]
+                        + $"... [TRUNCATED, originalLength={stripped.Length}, sha256={hash}]";
+        if (IsValidJson(candidate))
+            return candidate;
+
+        return $"{{\"_invalid\":true,\"originalLength\":{stripped.Length},\"sha256\":\"{hash}\"}}";
     }
 
     /// <summary>
-    /// Recursively drops forbidden keys (case-insensitive) from JSON objects
-    /// and from objects nested in arrays. Non-JSON that names a forbidden
-    /// property is replaced with an empty object so the raw secret cannot persist.
+    /// Recursively drops forbidden keys (normalized substring match) from JSON
+    /// objects and arrays, including JSON embedded in string values.
+    /// Non-JSON input is replaced with <see cref="FailClosedPlaceholder"/>.
     /// </summary>
-    public static string StripForbiddenKeys(string? snapshot)
+    public static string? StripForbiddenKeys(string? snapshot)
     {
-        if (string.IsNullOrEmpty(snapshot))
-            return snapshot ?? string.Empty;
+        if (snapshot is null)
+            return null;
 
         try
         {
             var node = JsonNode.Parse(snapshot);
-            StripNode(node);
-            return node?.ToJsonString() ?? string.Empty;
+            var cleaned = SanitizeNode(node);
+            return cleaned?.ToJsonString() ?? FailClosedPlaceholder;
         }
         catch (JsonException)
         {
-            return ContainsForbiddenPropertyName(snapshot) ? "{}" : snapshot;
+            return FailClosedPlaceholder;
         }
     }
 
     public static bool IsForbiddenKey(string? name)
-        => !string.IsNullOrEmpty(name) && ForbiddenKeys.Contains(name);
-
-    private static void StripNode(JsonNode? node)
     {
-        switch (node)
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        var normalized = NormalizeKey(name);
+        if (normalized.Length == 0)
+            return true;
+        if (normalized is "code" or "key")
+            return true;
+
+        foreach (var fragment in ForbiddenFragments)
         {
-            case JsonObject obj:
-                foreach (var key in obj.Select(p => p.Key).ToList())
-                {
-                    if (ForbiddenKeys.Contains(key))
-                    {
-                        obj.Remove(key);
-                        continue;
-                    }
-
-                    StripNode(obj[key]);
-                }
-
-                break;
-
-            case JsonArray array:
-                foreach (var item in array)
-                    StripNode(item);
-                break;
-        }
-    }
-
-    private static bool ContainsForbiddenPropertyName(string text)
-    {
-        foreach (var key in ForbiddenKeys)
-        {
-            if (ForbiddenPropertyName.IsMatch(text, key))
+            if (normalized.Contains(fragment, StringComparison.Ordinal))
                 return true;
         }
 
         return false;
     }
 
-    private static class ForbiddenPropertyName
+    internal static string NormalizeKey(string key)
     {
-        public static bool IsMatch(string text, string key)
-            => Regex.IsMatch(
-                text,
-                "\"" + Regex.Escape(key) + "\"\\s*:",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var trimmed = key.Trim();
+        var builder = new StringBuilder(trimmed.Length);
+        foreach (var ch in trimmed)
+        {
+            if (ch is '_' or '-' or '.' || char.IsWhiteSpace(ch))
+                continue;
+            builder.Append(char.ToLowerInvariant(ch));
+        }
+
+        return builder.ToString();
+    }
+
+    private static JsonNode? SanitizeNode(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var key in obj.Select(p => p.Key).ToList())
+                {
+                    if (IsForbiddenKey(key))
+                    {
+                        obj.Remove(key);
+                        continue;
+                    }
+
+                    var cleaned = SanitizeNode(obj[key]);
+                    if (!ReferenceEquals(cleaned, obj[key]))
+                        obj[key] = cleaned;
+                }
+
+                return obj;
+
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    var cleaned = SanitizeNode(array[i]);
+                    if (!ReferenceEquals(cleaned, array[i]))
+                        array[i] = cleaned;
+                }
+
+                return array;
+
+            case JsonValue value when value.TryGetValue<string>(out var text):
+                return SanitizeStringValue(text);
+
+            default:
+                return node;
+        }
+    }
+
+    private static JsonNode? SanitizeStringValue(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '['))
+            return JsonValue.Create(text);
+
+        try
+        {
+            var embedded = JsonNode.Parse(trimmed);
+            return SanitizeNode(embedded);
+        }
+        catch (JsonException)
+        {
+            return JsonValue.Create("[redacted]");
+        }
+    }
+
+    private static bool IsValidJson(string text)
+    {
+        try
+        {
+            JsonNode.Parse(text);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }

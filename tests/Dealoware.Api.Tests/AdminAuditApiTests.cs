@@ -163,7 +163,7 @@ public class AdminAuditApiTests
         {
             var recorder = scope.ServiceProvider.GetRequiredService<IAdminAuditRecorder>();
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            var huge = new string('x', 5000);
+            var huge = "{\"displayName\":\"" + new string('x', 5000) + "\"}";
             var entry = recorder.Entity(
                 AdminAuditActions.EntityEdit,
                 CoreOwnerEmail,
@@ -174,9 +174,10 @@ public class AdminAuditApiTests
                 afterSnapshot: huge);
             db.AdminAuditLog.Add(entry);
             await db.SaveChangesAsync();
-            Assert.Contains("TRUNCATED", entry.BeforeSnapshot);
-            Assert.Contains("originalLength=5000", entry.BeforeSnapshot);
-            Assert.Contains("sha256=", entry.BeforeSnapshot);
+            Assert.Contains("\"originalLength\":", entry.BeforeSnapshot);
+            Assert.Contains("\"sha256\":", entry.BeforeSnapshot);
+            Assert.Contains("_invalid", entry.BeforeSnapshot);
+            Assert.DoesNotContain(new string('x', 32), entry.BeforeSnapshot);
         }
 
         var id = await SeedSessionAsync();
@@ -185,9 +186,10 @@ public class AdminAuditApiTests
             AdminRequest(HttpMethod.Get, "/admin/api/audit?action=entity_edit", id));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("TRUNCATED", body);
-        Assert.Contains("originalLength=5000", body);
-        Assert.Contains("sha256=", body);
+        Assert.Contains("originalLength", body);
+        Assert.Contains("sha256", body);
+        Assert.Contains("_invalid", body);
+        Assert.DoesNotContain(new string('x', 32), body);
         Assert.DoesNotContain(ClientIp, body);
     }
 
