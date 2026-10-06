@@ -9,7 +9,7 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Password-reset API under /admin/api/auth/reset*. Page twins under
 /// /admin/reset* are owned by Step 14; this PR maps the POST twins so
-/// the §2.2 rows this step owns are live.
+/// the r3 §2.2 rows this step owns are live.
 /// </summary>
 public static class AdminPasswordResetEndpoints
 {

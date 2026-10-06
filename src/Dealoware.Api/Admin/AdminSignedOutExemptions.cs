@@ -4,9 +4,9 @@ using Dealoware.Domain.Admin;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// r2 §2 signed-out session exemptions owned by Step 4, plus the
-/// /admin/auth/ static-asset folder. Path match is ordinal
-/// case-insensitive equality. Query strings never create an exemption.
+/// r3 §2 signed-out session exemptions owned by Step 4, plus the
+/// /admin/auth/ static-file folder (C8). C1: canonicalise the raw path
+/// before any compare. Query strings never create an exemption.
 /// Token rows require a server-validated unused reset token.
 /// </summary>
 public static class AdminSignedOutExemptions
@@ -25,11 +25,14 @@ public static class AdminSignedOutExemptions
         IAdminClock clock,
         CancellationToken cancellationToken)
     {
-        var path = context.Request.Path.Value ?? string.Empty;
+        if (!TryGetCanonicalPath(context, out var path))
+        {
+            return false;
+        }
+
         var method = context.Request.Method;
 
-        if (HttpMethods.IsGet(method)
-            && path.StartsWith(AuthStaticPrefix + "/", StringComparison.OrdinalIgnoreCase))
+        if (HttpMethods.IsGet(method) && IsAuthStaticFile(path))
         {
             return true;
         }
@@ -71,6 +74,44 @@ public static class AdminSignedOutExemptions
         return false;
     }
 
+    public static bool TryGetCanonicalPath(HttpContext context, out string path)
+        => AdminPathCanonicalizer.TryCanonicalize(AdminPathCanonicalizer.RawPath(context), out path);
+
+    public static bool IsFormGet(HttpContext context)
+    {
+        if (!HttpMethods.IsGet(context.Request.Method)
+            || !TryGetCanonicalPath(context, out var path)
+            || IsAuthStaticFile(path))
+        {
+            return false;
+        }
+
+        return PathEquals(path, ResetPage)
+               || PathEquals(path, ResetSentPage)
+               || PathEquals(path, ResetConfirmPage)
+               || PathEquals(path, LinkExpiredPage);
+    }
+
+    public static bool IsAuthStaticFile(string canonicalPath)
+    {
+        if (!canonicalPath.StartsWith(AuthStaticPrefix + "/", StringComparison.OrdinalIgnoreCase)
+            || canonicalPath.EndsWith('/'))
+        {
+            return false;
+        }
+
+        var relative = canonicalPath[(AuthStaticPrefix.Length + 1)..];
+        if (string.IsNullOrEmpty(relative))
+        {
+            return false;
+        }
+
+        var lastSlash = relative.LastIndexOf('/');
+        var fileName = lastSlash >= 0 ? relative[(lastSlash + 1)..] : relative;
+        var dot = fileName.LastIndexOf('.');
+        return dot > 0 && dot < fileName.Length - 1;
+    }
+
     public static bool PathEquals(string path, string expected)
         => string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
 
@@ -82,6 +123,12 @@ public static class AdminSignedOutExemptions
             && !string.IsNullOrWhiteSpace(queryToken))
         {
             return queryToken.ToString();
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method)
+            && context.Request.ContentLength is > 0)
+        {
+            context.Request.EnableBuffering();
         }
 
         if (context.Request.HasFormContentType)
