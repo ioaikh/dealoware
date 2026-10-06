@@ -65,8 +65,8 @@ public sealed class AdminAuditRecorder : IAdminAuditRecorder
             _ipHasher.Hash(clientIp),
             entityType,
             entityId,
-            beforeSnapshot,
-            afterSnapshot,
+            AdminAuditSnapshots.StripForbiddenKeys(beforeSnapshot),
+            AdminAuditSnapshots.StripForbiddenKeys(afterSnapshot),
             correlationId,
             timestamp);
 }
