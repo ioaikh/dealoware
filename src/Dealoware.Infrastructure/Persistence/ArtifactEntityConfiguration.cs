@@ -29,6 +29,8 @@ public class ArtifactEntityConfiguration : IEntityTypeConfiguration<Artifact>
         builder.Property(e => e.CreatedAt)
             .IsRequired();
 
+        builder.Property(e => e.UpdatedAt);
+
         builder.HasMany(e => e.Entities)
             .WithOne()
             .HasForeignKey("ArtifactId")
