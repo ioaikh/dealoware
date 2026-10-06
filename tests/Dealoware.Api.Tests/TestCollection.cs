@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 
@@ -54,6 +55,13 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             {
                 options.UseSqlite(_connection);
             });
+
+            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IAdminMailSender)).ToList())
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddSingleton<IAdminMailSender, RecordingMailSender>();
         });
     }
 
