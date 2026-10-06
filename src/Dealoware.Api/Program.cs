@@ -92,6 +92,21 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
+try
+{
+    builder.Services.AddAdminDelete(builder.Environment, builder.Configuration);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
 
 builder.Services.AddAuthorization(options =>
 {
@@ -226,8 +241,17 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Route note r3 (b079a814): signed-in /admin shells are never anonymous static files.
+// Only /admin/auth/** may be served without a session. Other /admin files go through
+// AdminSessionMiddleware and MapAdminDelete (HTML/JS/CSS after the gate).
+app.UseWhen(
+    ctx => !ctx.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix)
+           || AdminSessionMiddleware.IsAnonymousAuthStatic(ctx.Request),
+    branch =>
+    {
+        branch.UseDefaultFiles();
+        branch.UseStaticFiles();
+    });
 
 app.UseRateLimiter();
 
@@ -283,6 +307,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminDelete();
 
 app.Run();
 

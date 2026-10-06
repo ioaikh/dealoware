@@ -59,6 +59,18 @@ public static class DatabaseMigrationBaseline
 
     public const string UpdatedAtMigrationId = "20261006000200_AddUpdatedAtToAdminEntities";
 
+    /// <summary>
+    /// Incremental Step 10 migration. Not part of the frozen 13- or 15-table specs.
+    /// Ordered after <see cref="UpdatedAtMigrationId"/>.
+    /// </summary>
+    public const string ConfirmTokenMigrationId = "20261006000400_AdminDeleteConfirmTokens";
+
+    /// <summary>
+    /// Table created by <see cref="ConfirmTokenMigrationId"/>. Kept out of
+    /// <see cref="BaselineTableNames"/> / <see cref="Pre20TableNames"/>.
+    /// </summary>
+    public const string ConfirmTokenTableName = "AdminDeleteConfirmTokens";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =
@@ -158,7 +170,7 @@ public static class DatabaseMigrationBaseline
             return new MigrationBaselinePlan(MigrationBaselineAction.ApplyMigrations, null);
         }
 
-        if (tables.SetEquals(current))
+        if (tables.SetEquals(current) || tables.SetEquals(CurrentPlusConfirmToken(names)))
         {
             return new MigrationBaselinePlan(MigrationBaselineAction.StampCurrentThenMigrate, null);
         }
@@ -212,11 +224,14 @@ public static class DatabaseMigrationBaseline
                         BaselineSchema.Pre20Columns,
                         BaselineSchema.Pre20PrimaryKeys,
                         stampAdminMigration: false,
+                        stampConfirmTokenMigration: false,
                         cancellationToken)
                     .ConfigureAwait(false);
                 break;
 
             case MigrationBaselineAction.StampCurrentThenMigrate:
+                var names = postgres ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+                var confirmTableAlreadyPresent = userTables.Contains(ConfirmTokenTableName, names);
                 await CompareAndStampAsync(
                         db,
                         assembly,
@@ -224,6 +239,7 @@ public static class DatabaseMigrationBaseline
                         BaselineSchema.Columns,
                         BaselineSchema.PrimaryKeys,
                         stampAdminMigration: true,
+                        stampConfirmTokenMigration: confirmTableAlreadyPresent,
                         cancellationToken)
                     .ConfigureAwait(false);
                 break;
@@ -422,6 +438,7 @@ public static class DatabaseMigrationBaseline
         IReadOnlyList<BaselineColumnSpec> expectedColumns,
         IReadOnlyList<BaselinePrimaryKeySpec> expectedKeys,
         bool stampAdminMigration,
+        bool stampConfirmTokenMigration,
         CancellationToken cancellationToken)
     {
         var live = await ReadLiveSchemaAsync(db, cancellationToken).ConfigureAwait(false);
@@ -442,7 +459,7 @@ public static class DatabaseMigrationBaseline
         var applied = (await db.Database.GetAppliedMigrationsAsync(cancellationToken).ConfigureAwait(false))
             .ToList();
 
-        foreach (var migrationId in StampIds(assemblyMigrations, stampAdminMigration))
+        foreach (var migrationId in StampIds(assemblyMigrations, stampAdminMigration, stampConfirmTokenMigration))
         {
             if (applied.Contains(migrationId, StringComparer.Ordinal))
             {
@@ -457,7 +474,8 @@ public static class DatabaseMigrationBaseline
 
     private static IEnumerable<string> StampIds(
         IReadOnlyList<string> assemblyMigrations,
-        bool stampAdminMigration)
+        bool stampAdminMigration,
+        bool stampConfirmTokenMigration = false)
     {
         yield return ResolveBaselineId(assemblyMigrations);
         if (stampAdminMigration
@@ -465,5 +483,18 @@ public static class DatabaseMigrationBaseline
         {
             yield return AdminTablesMigrationId;
         }
+
+        if (stampConfirmTokenMigration
+            && assemblyMigrations.Contains(ConfirmTokenMigrationId, StringComparer.Ordinal))
+        {
+            yield return ConfirmTokenMigrationId;
+        }
+    }
+
+    private static HashSet<string> CurrentPlusConfirmToken(StringComparer names)
+    {
+        var tables = new HashSet<string>(BaselineTableNames, names);
+        tables.Add(ConfirmTokenTableName);
+        return tables;
     }
 }

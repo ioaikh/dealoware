@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
@@ -33,6 +34,30 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
+        // Route note r3 (b079a814): only /admin/auth/ static files may load signed out.
+        // Signed-in shell assets are mapped after this gate, never via anonymous static files.
+        // Seed is registered only in Development/Testing with the flag; elsewhere 404.
+        if (AdminUiTestSeedGuard.IsSeedRoute(context.Request.Path))
+        {
+            var seedOptions = context.RequestServices
+                .GetRequiredService<IOptions<AdminUiTestSeedOptions>>().Value;
+            var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
+            if (!AdminUiTestSeedGuard.IsAllowed(environment, seedOptions))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            await _next(context);
+            return;
+        }
+
+        if (IsAnonymousAuthStatic(context.Request))
+        {
+            await _next(context);
+            return;
+        }
+
         if (!TryGetSessionId(context, out var sessionId))
         {
             await AdminDeny.WriteUnauthorizedAsync(context);
@@ -58,7 +83,8 @@ public sealed class AdminSessionMiddleware
                 new Claim(ClaimTypes.Email, session.Email),
                 new Claim(ClaimTypes.Role, CoreOwnerRole),
                 new Claim("role", CoreOwnerRole),
-                new Claim("principal", CoreOwnerRole)
+                new Claim("principal", CoreOwnerRole),
+                new Claim("admin_session_id", session.Id.ToString("D"))
             ],
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
@@ -74,6 +100,15 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    public const string AuthStaticPrefix = "/admin/auth";
+
+    internal static bool IsAnonymousAuthStatic(HttpRequest request)
+    {
+        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
+            return false;
+        return request.Path.StartsWithSegments(AuthStaticPrefix);
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)

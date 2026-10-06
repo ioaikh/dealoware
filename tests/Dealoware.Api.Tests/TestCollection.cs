@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -35,6 +36,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(
             IpHasher.KeyEnvironmentVariable,
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        // Unit tests must never honor a leftover ADMIN_UI_TEST_SEED=1 from the runner.
+        builder.UseSetting("Admin:UiTestSeed:Enabled", "false");
+        builder.UseSetting(AdminUiTestSeedOptions.EnvironmentVariableName, "0");
 
         // After the app registers its provider (SQLite or Npgsql), replace with this
         // factory's in-memory SQLite so Production Host= selection does not leave Npgsql

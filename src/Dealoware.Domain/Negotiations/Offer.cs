@@ -203,4 +203,18 @@ public sealed class Offer
         UpdatedAt = DateTimeOffset.UtcNow;
         return true;
     }
+
+    /// <summary>
+    /// Soft-deletes this offer. Sets DeletedAt and bumps Version.
+    /// Already-deleted rows are left unchanged.
+    /// </summary>
+    public void SoftDelete(DateTimeOffset deletedAt)
+    {
+        if (DeletedAt is not null)
+            return;
+
+        DeletedAt = deletedAt;
+        UpdatedAt = deletedAt;
+        Version++;
+    }
 }

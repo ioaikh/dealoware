@@ -29,6 +29,9 @@ public static class SqliteDateTimeOffsetRewrite
     [
         ("AcceptGrants", "CreatedAt"),
         ("AdminAuditLog", "Timestamp"),
+        ("AdminDeleteConfirmTokens", "ConsumedAt"),
+        ("AdminDeleteConfirmTokens", "CreatedAt"),
+        ("AdminDeleteConfirmTokens", "ExpiresAt"),
         ("AdminSessions", "AbsoluteExpiresAt"),
         ("AdminSessions", "CreatedAt"),
         ("AdminSessions", "LastActivityAt"),
