@@ -1,24 +1,28 @@
 # Dev Plan — Core admin dashboard (A5)
 
-**Status:** Wording-only scrub 2026-10-05 retiring the old hold phrase (CEO 2:17pm ET / ORG-OPS): every former hold label is now plain English; steps, scope, mappings, binds and tip cites unchanged; tip sha256 changes; not a build unlock. Earlier: amended 2026-10-05 for UX1-A11/A14 (15 steps), then Security QA bounce fix on tip `abfa672a…`: Step 14 binds UX1-A16 (two-step conditions 1–8), UX1-A03 generic lockout copy, and password answers tip `a87e293b…` (plus password-rules / lockout-window Spec notes); Step 15 wording aligned to **HMAC IP prefix**. **CPM Spec tip refresh:** lockout-window v5.5 `8a194eb9…` and password-rules v2.3 `1a7b342c…` are binding (v5.4 / v5.3 void; v2.2 superseded); sign-in steps Spec note v1 `0a3db5f4…` cited on Step 14. **Dev Plan QA pre-diff nits:** Step 5 A16 cross-cite; Step 8 `signin.second_factor_failed`; answers tip `a87e293b…` explicit (`f03a82c9…` void). Tip sha256 changes with this amend; new hash reported on READY. Dev Plan QA / Security QA reconfirm still required at `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md`. Stories and code still wait for Test design PASS; UI lanes also wait for Chief UI/UX approval of UX1. PoC **$0**. Not a build unlock. See **Active holds** below.  
+**Status:** Amended 2026-10-05 ~8:45pm ET on base tip `21535e66…` (prior tip `3385872a…` void): **Steps 7 and 9 scope amend** plus the **CPM 8:41pm ET holds refresh**. Step 7 locks `OfferStatus.Withdrawn = 5` with filter and badge, and a maker-only domain method, but no writer: no endpoint or admin path sets Withdrawn until the backlog maker-withdraw Story ships on `api.core.dealoware.com`. Step 9 locks the SA UX1 redlines note §4 edit paths (no narrowing) through Chief Developer coverage items E1–E12. Step 7 cites coverage items W1–W5. Sources add the Product decision, Product QA PASS, SA redlines note, Chief Developer coverage list, Test design PASS, H4 live retest PASS (primary), H4 Debug-off redeploy DevOps QA PASS (separate) and the maker-withdraw Story. Holds refresh: the A6 Test design gate is closed (design tip `8df39255…` PASS), and the A7 gate on H4 live is closed (primary evidence: Chief QA H4 live retest PASS `4911b08…`, token and register limiters return 429 with Retry-After; the Debug-off redeploy `11c35ee7…` is cited separately and does not by itself close H4). **H4 cite bounce fix (Dev Plan QA on `bd814d40…`):** primary A7-on-H4 evidence is now the live retest `4911b08`; `11c35ee7…` stays only as the Debug-off redeploy cite. UI lanes, deploy, secrets, H1 and the flood limiter holds stay. The retired hold phrase scrub (CEO 2:17pm ET / ORG-OPS) remains in force; its count stays 0. Tip sha256 changes with this amend; new hash reported on READY. Dev Plan QA delta and Security QA reconfirm still required on the new tip. PoC **$0**. Not a build unlock. See **Active holds** below.  
+**Status history:** Wording-only scrub 2026-10-05 retiring the old hold phrase (CEO 2:17pm ET / ORG-OPS): every former hold label is now plain English; steps, scope, mappings, binds and tip cites unchanged; tip sha256 changes; not a build unlock. Earlier: amended 2026-10-05 for UX1-A11/A14 (15 steps), then Security QA bounce fix on tip `abfa672a…`: Step 14 binds UX1-A16 (two-step conditions 1–8), UX1-A03 generic lockout copy, and password answers tip `a87e293b…` (plus password-rules / lockout-window Spec notes); Step 15 wording aligned to **HMAC IP prefix**. **CPM Spec tip refresh:** lockout-window v5.5 `8a194eb9…` and password-rules v2.3 `1a7b342c…` are binding (v5.4 / v5.3 void; v2.2 superseded); sign-in steps Spec note v1 `0a3db5f4…` cited on Step 14. **Dev Plan QA pre-diff nits:** Step 5 A16 cross-cite; Step 8 `signin.second_factor_failed`; answers tip `a87e293b…` explicit (`f03a82c9…` void). Dev Plan QA / Security QA reconfirm was required at `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` on each tip.  
 **Date:** 2026-10-05  
 **Author:** Dealoware Senior Dev Planner  
-**Brief:** Chief Dev Planner → Senior — DRAFT A5 Core admin dashboard Dev Plan (CPM formal unlock confirms A5). Executable plan only. Do not invent Stories/code until Dev Plan QA + Test design PASS. A7 waits for H4 live PASS. Do not invent password / AWS account IDs. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. PoC **$0**. App target .NET 10 — plan assumes TFM `net10.0`; do **not** schedule .NET 10 retarget as this Story's work.  
+**Brief:** Chief Dev Planner → Senior — DRAFT A5 Core admin dashboard Dev Plan (CPM formal unlock confirms A5). Executable plan only. As briefed then: Stories/code waited for Dev Plan QA + Test design PASS, and A7 waited for H4 live PASS (both of those gates have since closed; see Active holds). Do not invent password / AWS account IDs. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. PoC **$0**. App target .NET 10 — plan assumes TFM `net10.0`; do **not** schedule .NET 10 retarget as this Story's work.  
 **DOC-FLOW:** `plans/2026-10-05__devplan__plan__core-admin-dashboard.md`  
 **Host:** `admin.core.dealoware.com` only (Core admin — **not** `admin.platform.dealoware.com`)  
 **Principal:** **CoreOwner** = single system superadmin `io@aiknowhow.com`  
-**Constraints:** Do not invent Stories/build until Dev Plan QA + Test design PASS · A7 waits for H4 live PASS · Do not invent password / AWS account IDs · Deploy waits for Ivan's OK · Do not invent process-global auth flood limiter until Chief Security explicitly approves · H1 harden redeploy is a separate track · PoC **$0** · No Cognito invent · No MM/DC4 · No password values anywhere · No AWS account / CDK / bot-platform internals in this plan · After Dev Plan QA PASS, **A6 Test design** goes to Chief QA **before** Stories/code · Cost/critical (LLM if any) → COO → CEO (do not provision)
+**Constraints:** Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip (A6 Test design gate closed: design tip `8df39255…` PASS) · A7 gate on H4 live closed (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` cited separately) · Do not invent password / AWS account IDs · Deploy waits for Ivan's OK · Do not invent process-global auth flood limiter until Chief Security explicitly approves · H1 harden redeploy is a separate track · PoC **$0** · No Cognito invent · No MM/DC4 · No password values anywhere · No AWS account / CDK / bot-platform internals in this plan · Cost/critical (LLM if any) → COO → CEO (do not provision)
 
-**Active holds** (UX1 amendment; plain English; real gates unchanged):
+**Active holds** (refreshed per CPM 8:41pm ET; plain English):
 
-- No Stories or code from this plan until Dev Plan QA PASS and A6 Test design PASS (Chief QA).
+- No Stories or code from this plan alone until Dev Plan QA PASS on this tip.
 - UI lanes (UI parts of Steps 2–5, Steps 7–11 UI cases, Steps 14 and 15) wait for Chief UI/UX approval of UX1 plus a UI/UX QA PASS file, per the CPM decision gate order.
-- A7 waits for H4 live PASS.
 - Deploy waits for Ivan's OK.
 - H1 harden redeploy is a separate track.
+- The process-global auth flood limiter stays paused until Chief Security approves it.
+- Nothing writes `OfferStatus.Withdrawn` from this plan. Its only writer is the backlog maker-withdraw Story on `api.core.dealoware.com`, which is outside admin scope and does not block UX1.
 - No password values, AWS account IDs, or keys are written anywhere, including UI copy, fixtures and examples.
 - Binding Spec notes: lockout-window v5.5 `8a194eb9…`, password-rules v2.3 `1a7b342c…`, sign-in steps v1 `0a3db5f4…`. Spec QA PASS files on disk cover exactly these tips (lockout ~8:30pm ET, password-rules ~8:31pm ET, sign-in steps ~8:29pm ET). Any newer note hash voids that PASS and needs a fresh Spec QA PASS before this plan cites it.
 - PoC **$0**. This plan is not a build unlock.
+
+**Closed gates (no longer holds):** A6 Test design: design `qa/2026-10-05__qa__test-design__core-admin-dashboard.md` tip `8df392554ed887322bd7dc3f6633933bca26209c3bcfbb29321bf055f89814c9` PASS, Product QA verify `/workspace/qa/2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a16-final-cites.md` (`1d086eb0…`). A7 on H4 live: Chief QA H4 live retest PASS `/workspace/qa/2026-10-05__qa__PASS__h4-live-retest-4911b08.path` (`331d2c63…`) → report `/workspace/qa/2026-10-05__qa__qa-report__h4-live-retest-4911b08.md` (`521e3bcc…`) + register addendum `/workspace/qa/2026-10-05__qa__qa-report__h4-live-retest-4911b08-addendum-register.md` (`71bde564…`); overall PASS, 429 with Retry-After on `/auth/token` and `/auth/register`, H4 live gate cleared. Separate cite only: Debug-off redeploy (PR #10, tip `11c35ee7…`) DevOps QA PASS `/workspace/qa/2026-10-05__qa__devops-qa-PASS__h4-redeploy-11c35ee7.path`; that redeploy alone does not close H4. Only the H4 test-participant cleanup is left, and it does not gate A7.
 
 ---
 
@@ -52,10 +56,19 @@
 | Password-rules Spec note (binding) | `specs/2026-10-05__spec__spec__core-admin-password-rules-note.md` — **v2.3** sha256 `1a7b342c46721d7c585623fc5a90371c67b99c2dbce1c733a4f50c376074c521` (CPM: v2.2 superseded) | UX1-A17 rules; cites answers `a87e293b…`. Spec QA PASS on v2.3: `verification/2026-10-05__spec__verification__core-admin-password-rules-note.md`; Security QA: `verification/2026-10-05__security__verification__core-admin-password-rules-note-confirm.md` |
 | Lockout-window Spec note (binding) | `specs/2026-10-05__spec__spec__core-admin-lockout-window-note.md` — **v5.5** sha256 `8a194eb9d04ccde2f4403e25a1b9c6037bee2490c9fa3304db6d68dea81f87d3` (CPM: v5.4 and v5.3 void) | OQ1/OQ3 + A16 C4 carry. Spec QA PASS on v5.5: `verification/2026-10-05__spec__verification__core-admin-lockout-window-note.md`; Security QA pt 5: `verification/2026-10-05__security__verification__core-admin-lockout-window-note-pt5-confirm.md` |
 | Sign-in steps Spec note v1 (binding Spec bind for A16) | `specs/2026-10-05__spec__spec__core-admin-signin-steps-note.md` — **v1** sha256 `0a3db5f489ccb8017e4631193429841ab7c21b994a2ff644485d348c4b5b4da4` | Spec bind for UX1-A16 conditions 1–8 (A16 decision `bb0bcaa2…` stays the Security decision cite). Security QA PASS: `verification/2026-10-05__security__verification__core-admin-signin-steps-note-confirm.md`; Spec QA PASS: `verification/2026-10-05__spec__verification__core-admin-signin-steps-note.md` |
+| Product decision: UX1 Withdrawn + edit paths (binding) | `product/2026-10-05__product__decision__ux1-withdrawn-and-edit-paths.md` (sha256 `6ea05ddb799c44bddb52273214b9ccb3e4865e521b1a26d9edbb302ee3819d2e`) | Outcome 1: keep offer Withdrawn; enum in the Step 7 PR; admin cannot set it. Outcome 2: keep the SA §4 editable set; add missing write paths; do not narrow the form |
+| Product QA PASS on that decision | `verification/2026-10-05__product__verification__ux1-withdrawn-and-edit-paths.md` (sha256 `4926813ff411bc7a58d2966ede8378620bd89ffa7343ca75884539a21d450e65`) | Requirements check PASS (~8:42pm ET); not a build PASS |
+| SA UX1 redlines note r3 (§4 editable set) | `architecture/2026-10-05__sa__architecture__core-admin-ux1-redlines-note.md` (sha256 `0286c68eb3ab372db91a6afe7e2fb359c063447d5ba3e5d6786cfab82ee5f72b`) | §4 editable fields and allowed status changes (UX1-B10); §4 domain gap: `Withdrawn` missing from `OfferStatus`; §5 `UpdatedAt` in the Step 7 PR; §8 row 5 server-enforced transitions |
+| Status-list note (Product AGREED 8:00pm ET) | `specs/2026-10-05__spec__spec__core-admin-status-list-note.md` (sha256 `0a5ff57b2c55059373494e8452ad2d0931f055aae830c1704336859bbcfaa910`) | Offer Withdrawn is a first-class Core value, offer only; negotiations stay Open / Closed / Expired |
+| Chief Developer coverage list (Withdrawn + edit paths) | `/workspace/a7/2026-10-05__dev__coverage__withdrawn-and-edit-paths.md` (sha256 `6026d046d5251b7c969388b9f6a2f467ccf9b4c173c2d2f2b1f254f5f0410895`; code read at PR #20 tip `1f315ef`) | W1–W5 carried by the Step 7 PR; E1–E12 carried by the Step 9 PR; migrations none except the related `UpdatedAt` change in the Step 7 PR |
+| Maker-withdraw backlog Story | `product/2026-10-05__product__story__maker-withdraw-open-offer.md` (sha256 `8a11faa841d92db70cde868d33c55a6c1043a4677e50a9a6564fef17032799e0`); Product QA PASS `verification/2026-10-05__product__verification__maker-withdraw-open-offer.md` | Only writer of offer Withdrawn; on `api.core.dealoware.com`; backlog, outside admin scope; does not block UX1. Cited so Step 7 does not invent a writer |
+| A6 Test design PASS | `qa/2026-10-05__qa__test-design__core-admin-dashboard.md` (design tip `8df392554ed887322bd7dc3f6633933bca26209c3bcfbb29321bf055f89814c9`); Product QA verify `/workspace/qa/2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a16-final-cites.md` (sha256 `1d086eb000ab596125d07716465f57e4124dd6c80fea06c9a4659ef5ceb42548`) | A6 gate closed (CPM 8:41pm ET) |
+| H4 live retest PASS (primary) | `/workspace/qa/2026-10-05__qa__PASS__h4-live-retest-4911b08.path` (sha256 `331d2c634b322185bc3bcaebcd45e8fc8af13fc53190e97c742e441f75108512`) → report `/workspace/qa/2026-10-05__qa__qa-report__h4-live-retest-4911b08.md` (sha256 `521e3bccff9e1ff4ddb8573f287966558db105b2c3b35a977b80eb9947983601`) + register addendum `/workspace/qa/2026-10-05__qa__qa-report__h4-live-retest-4911b08-addendum-register.md` (sha256 `71bde564610390adea474edb7858bf6d2be8b2d3f15c43edb58d5e2dc7a309a4`) | Primary evidence that the A7 gate on H4 live is closed: overall PASS; 429 with Retry-After on `/auth/token` and `/auth/register`; H4 live gate cleared. Test-participant cleanup left, does not gate A7 |
+| H4 Debug-off redeploy DevOps QA PASS (separate) | `/workspace/qa/2026-10-05__qa__devops-qa-PASS__h4-redeploy-11c35ee7.path` (PR #10, tip `11c35ee7…`) | Debug-off redeploy cite only; does not by itself close H4 |
 
 **Product alignment:** Binding Product **13:31** (includes 1:27pm patch + 1:30pm CEO final). Conflicts → PM → Product → CEO. Cost/critical → **COO → CEO**. PoC **$0**.
 
-**Distinct tracks (cross-ref only — do not merge):** Platform admin (`admin.platform.dealoware.com`); Stage C bot-isolation Stories (#66/#67/#68/#69/#18); inbound bot connector (after this); H1–H6 harden track; A6 Test design; A7 admin build.
+**Distinct tracks (cross-ref only — do not merge):** Platform admin (`admin.platform.dealoware.com`); Stage C bot-isolation Stories (#66/#67/#68/#69/#18); inbound bot connector (after this); H1–H6 harden track; A6 Test design; A7 admin build; maker-withdraw backlog Story on `api.core.dealoware.com`.
 
 ---
 
@@ -63,7 +76,7 @@
 
 Executable plan for **SD only** (after holds lift): deliver Core owner admin dashboard at **`admin.core.dealoware.com`** inside the same Negotiation Core modular monolith (separate admin route surface; Option A). Single system superadmin **`io@aiknowhow.com`** → principal **`CoreOwner`**; auth = email + password + required TOTP; **Cloudflare Turnstile only**; bootstrap/reset mail via **SES behind mail interface** (no AWS SDK in Core app). Entities: **Participants / Artifacts / negotiations / offers** — list/view/edit/delete; all-status lists; sort/filter; server-side paging; name search; stats; confirm-before-delete; soft-delete + cascades; append-only audit (auth + edit/delete; hashed IP). FieldPolicy dual wall; **no** parallel admin ACL; **no** human users list. App assumes TFM **`net10.0`** — **do not** schedule .NET 10 retarget as this Story's work.
 
-**This artifact is design planning only.** Do not invent Stories/code until Dev Plan QA + Test design PASS. A7 waits for H4 live PASS. Deploy waits for Ivan's OK. Do not invent password values and AWS account IDs. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. PoC **$0**. Not a build unlock.
+**This artifact is design planning only.** Do not invent Stories/code from this plan until Dev Plan QA PASS on this tip (A6 Test design gate closed). The A7 gate on H4 live is closed. Deploy waits for Ivan's OK. Do not invent password values and AWS account IDs. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. PoC **$0**. Not a build unlock.
 
 ---
 
@@ -82,16 +95,18 @@ Executable plan for **SD only** (after holds lift): deliver Core owner admin das
 | 9 | Confirm / soft-delete | Modal + API confirm token; soft-delete `DeletedAt`; hard delete deferred; cascades per Spec §11 / SA §3.6 | Steps 9–10; Sec pt 10 |
 | 10 | Audit | Append-only; auth + edit/delete; soft-deleted toggle not audited; same-txn pairing | Step 8; Sec pt 8 |
 | 11 | TFM | Assume `net10.0`; **do not** schedule .NET 10 retarget as this Story's work | Step 1; Explicit OUT |
-| 12 | Gates | Do not invent Stories/build until Dev Plan QA + Test design PASS; A7 waits for H4 live PASS; deploy waits for Ivan's OK; H1 harden redeploy is a separate track; after Dev Plan QA PASS → **A6 Test design** to Chief QA before Stories/code | Steps 12–13; Explicit OUT; Sec pts 13–14 |
+| 12 | Gates | Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip; A6 Test design gate closed (`8df39255…` PASS); A7 gate on H4 live closed (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` separate); deploy waits for Ivan's OK; H1 harden redeploy is a separate track | Steps 12–13; Explicit OUT; Sec pts 13–14 |
 | 13 | Cost | PoC **$0**; CFO cost cite only; do not invent spend; LLM if any → COO → CEO | Cost/critical; Sec pt 13 |
 | 14 | Secrets | Do not invent password values; do not invent AWS account IDs; do not invent HMAC/Turnstile/SES secrets in plan/docs/chat | All steps; Sec pts 2, 6, 7, 13 |
 | 15 | UI deliverables + auth UI ownership (UX1-A11/A14) | Steps 2–5 own auth machinery and cite addendum UXR / S-A IDs for their screens. Step 14 builds the auth screens UI; Step 15 builds the audit log viewer. Chief Developer accountable, Senior Developer implements (CPM decision). UI lanes wait for Chief UI/UX approval of UX1 | Steps 2–5, 13, 14, 15; Sec pts 1–6, 8, 9, 11, 13, 14 (existing; no new points) |
+| 16 | Offer Withdrawn (Product decision outcome 1; coverage W1–W5) | `OfferStatus.Withdrawn = 5` plus filter and badge in the Step 7 PR under Dev Code QA PASS; maker-only from Open, final; admin cannot set it (Open → Cancelled only); no writer until the backlog maker-withdraw Story ships on `api.core.dealoware.com`; no migration | Step 7; Explicit OUT; Sec pts 8, 9, 11, 12 |
+| 17 | SA §4 edit paths (Product decision outcome 2; coverage E1–E12) | Every field the edit form shows as editable has a working FieldPolicy Write path; do not narrow the form; no fabricated Accepted / Declined / Withdrawn / Superseded; 409 concurrency plus before/after audit kept; no migration for E1–E12 | Step 9; Sec pts 8, 9, 12 |
 
 ---
 
 ## 4. Itemized SD execution steps (numbered, runnable)
 
-**Prerequisite holds (do not skip):** Dev Plan QA PASS + SoR qa-confirm CLEAR + Chief unlock · A6 Test design PASS via Chief QA · A7 waits for H4 live PASS · Deploy waits for Ivan's OK · H1 harden redeploy is a separate track · Do not invent password / AWS account IDs · Do not invent process-global auth flood limiter until Chief Security explicitly approves.
+**Prerequisite holds (do not skip):** Dev Plan QA PASS on this tip + SoR qa-confirm CLEAR + Chief unlock · UI lanes wait for Chief UI/UX UX1 approval plus UI/UX QA PASS · Deploy waits for Ivan's OK · H1 harden redeploy is a separate track · Do not invent password / AWS account IDs · Do not invent process-global auth flood limiter until Chief Security explicitly approves. (Closed, no longer prerequisites: A6 Test design PASS `8df39255…`; A7 gate on H4 live, Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` cited separately.)
 
 **Step count:** 15 steps. Steps 1–13 are the original plan; Steps 14 and 15 were added by the CPM decision (UX1-A14). A7 Story files, Brief 4 and the PM checklist are owned by CPM / Senior PM; this plan does not create them.
 
@@ -253,7 +268,7 @@ Per Spec §8.9; SA §3.3; CFO estimate; Sec pt 7:
 
 ### Step 7 — Lists, sort/filter, paging, name search, stats (safe)
 
-Per Spec §4.5–§4.6, §6; SA §3.8–§3.9; Product IN 5–7; Sec pt 11:
+Per Spec §4.5–§4.6, §6; SA §3.8–§3.9; SA UX1 redlines note §4–§5; status-list note; Product IN 5–7; Product decision outcome 1; Sec pt 11:
 
 | Item | Plan lock |
 |------|-----------|
@@ -265,9 +280,25 @@ Per Spec §4.5–§4.6, §6; SA §3.8–§3.9; Product IN 5–7; Sec pt 11:
 | FieldPolicy | Result payloads never include denied fields |
 | Stats | Participants; open negotiations (`Status = Open` AND `DeletedAt IS NULL`); offers; accepts; declines — all exclude soft-deleted. Do not invent charts/warehouse |
 
+**Offer Withdrawn lock (Product decision outcome 1; SA redlines note §4; coverage list W1–W5):**
+
+| ID | Item | Plan lock |
+|----|------|-----------|
+| W1 | Enum value | SD adds `OfferStatus.Withdrawn = 5` in the Step 7 PR under its own Dev Code QA PASS. Current values Open=0, Accepted=1, Declined=2, Superseded=3, Cancelled=4 (coverage list, PR #20 tip `1f315ef`) |
+| W2 | Domain rule | `Offer.Withdraw(callerParticipantId)`: only the maker (`FromParticipantId`), only from Open; Withdrawn is final |
+| W3 | Admin | The admin cannot set Withdrawn. The server rejects any admin attempt with the generic deny. The admin's only offer change stays Open → Cancelled (Step 9, E12) |
+| W4 | Filter and badge | The kept Withdrawn filter and badge are offer-only; negotiations never carry Withdrawn (status-list note) |
+| W5 | Tests | Maker withdraw from Open succeeds; non-maker withdraw denied; withdraw from a final state denied; admin attempt gets the generic deny; filter returns Withdrawn rows |
+| — | Migration | None for Withdrawn: status is stored as an int with no check constraint (coverage list). Do not invent any other schema, AWS or password change for this value |
+| — | No writer in Step 7 | No public maker endpoint calls `Withdraw` yet. The writer is the backlog Story `product/2026-10-05__product__story__maker-withdraw-open-offer.md` (`8a11faa8…`) on `api.core.dealoware.com`, outside admin scope, and it does not block UX1. Step 7 must not invent that endpoint or any admin or Core writer. Until it ships, Withdrawn shows only through the filter and badge |
+| — | Related schema change only | `UpdatedAt` on the four admin entities goes in the Step 7 PR with an EF migration ordered after the H3 baseline `20261005000000_Baseline` and PR #20's `20261006000100` (coverage list; SA redlines note §5). No other order is invented here |
+
 **Verify checklist:**
 
 - [ ] All-status lists + CoreOwner-only soft-deleted toggle; toggle not audited (Sec pts 8, 11)
+- [ ] W1–W5 delivered in the Step 7 PR under Dev Code QA PASS; `Withdrawn = 5`; filter and badge offer-only (Sec pt 11)
+- [ ] Admin attempt to set Withdrawn gets the generic deny; no endpoint or admin control writes Withdrawn in Step 7 (Sec pts 9, 12)
+- [ ] No migration for Withdrawn; only the cited `UpdatedAt` migration in this PR
 - [ ] Server-side paging 50/200; no client full-table dump (Sec pt 11)
 - [ ] Name search per Product on all four tables; parameterized; FieldPolicy on hits (Sec pt 11)
 - [ ] Stats predicates exclude soft-deleted; no charts/warehouse (Sec pt 11)
@@ -299,7 +330,7 @@ Per Spec §8.8, §10; SA §3.5; Sec pts 6, 8:
 
 ### Step 9 — Edit write surface + concurrency
 
-Per Spec §5; SA §3.7–§3.8; Sec pt 12:
+Per Spec §5; SA §3.7–§3.8; SA UX1 redlines note §4; Product decision outcome 2; Sec pt 12:
 
 | Item | Plan lock |
 |------|-----------|
@@ -309,8 +340,35 @@ Per Spec §5; SA §3.7–§3.8; Sec pt 12:
 | Secrets | Do not invent password/secret fields in edit forms, errors, or audit snapshots |
 | Fail-closed | Missing CoreOwner → unauthorized; denied FieldClass → no write and no dump |
 
+**SA §4 edit paths (Product decision outcome 2; SA redlines note §4 `0286c68e…`; coverage list E1–E12 `6026d046…`). Do not narrow.** Every field the edit form shows as editable must have a working FieldPolicy Write path. FieldPolicy Write for CoreOwner is already registered in PR #20 for each field below; the Step 9 PR adds the missing domain mutators and wires each one into the edit API. A field renders as an input only when FieldPolicy allows Write for CoreOwner.
+
+| ID | Entity | Field or change | Path in the Step 9 PR | Rule (SA §4) |
+|----|--------|-----------------|-----------------------|--------------|
+| E1 | Participant | `IsActive` Suspended → Active | add `Activate()` (today only `Deactivate()`) | Active ↔ Suspended |
+| E2 | Participant | `DisplayName` | wire existing `UpdateDisplayName()` | optional, 256 characters |
+| E3 | Artifact | subject entity `Name` | add `SubjectEntity.UpdateName()` | required, 4096 characters |
+| E4 | Artifact | subject entity `Description` | add `SubjectEntity.UpdateDescription()` | optional, may be empty, 4096 characters |
+| E5 | Artifact | `OwnerParticipantId` | add `Artifact.ReassignOwner()` | existing Participant that is not soft-deleted |
+| E6 | Negotiation | `EndsAt` | add `Negotiation.UpdateEndsAt()` | while Open; later than `StartsAt` when both are set |
+| E7 | Negotiation | Open → Closed | wire existing `Close()`; verify it cancels open child offers in the same transaction | final, no reopen |
+| E8 | Negotiation | Open → Expired | add explicit `Expire()` (today clock-only via `CheckAndApplyExpiration`) that cancels open child offers in the same transaction | final, no reopen |
+| E9 | Offer | `Amount` | add `Offer.UpdateTerms(amount, currency, terms)` | while Open; decimal(18,2), 0 or more |
+| E10 | Offer | `Currency` | same method as E9 | 3 characters; required when `Amount` is set |
+| E11 | Offer | `Terms` | same method as E9 | while Open; 2000 characters; at least one of `Amount` or `Terms`; no contact details or other personal data added by admin |
+| E12 | Offer | Open → Cancelled | wire existing `Cancel()` | the admin's only offer change |
+
+- **No fabricated outcomes:** the admin never sets Accepted, Declined, Withdrawn or Superseded. Disallowed changes are not offered in the form, and the server rejects them with the generic deny and no state detail (SA §8 row 5).
+- **Read-only by design:** Participant `Id`, `Sub`, `LoginEmail` (separate rotation flow), `ContactEmail`, `CreatedAt`; Artifact `Id`, `Intent`, values, properties, time periods, `CreatedAt`; Negotiation `Id`, `ArtifactId`, parties A and B, party intents, `StartsAt`, `CreatedAt`; Offer `Id`, `NegotiationId`, `FromParticipantId`, `ToParticipantId`, `CreatedAt`.
+- **Migrations:** none for E1–E12 (coverage list). Neither Spec nor SA requires a schema change for these paths; the only related schema change is the Step 7 `UpdatedAt` migration.
+- **Kept:** If-Match / 409 concurrency (SA §3.8) and the before/after audit row with FieldPolicy-allowed, non-secret fields only, on every E1–E12 write.
+- **Tests per edit ID (coverage list):** valid edit succeeds and writes an audit row; rule violation gets the generic deny; stale If-Match returns 409; disallowed change gets the generic deny with no state detail.
+
 **Verify checklist:**
 
+- [ ] E1–E12 each have a working FieldPolicy Write path; no editable field in the form lacks one; form not narrowed (Sec pts 9, 12)
+- [ ] E7 and E8 cancel open child offers in the same transaction; Closed and Expired stay final (Sec pts 8, 12)
+- [ ] Offer status change from admin is Open → Cancelled only; no fabricated Accepted / Declined / Withdrawn / Superseded (Sec pts 9, 12)
+- [ ] No migration added for E1–E12 (Sec pt 12)
 - [ ] Only FieldPolicy-allowed fields writable; no parallel matrix (Sec pts 9, 12)
 - [ ] Edit before/after audited FieldPolicy-only (Sec pts 8, 12)
 - [ ] Stale write → 409 safe conflict; no silent overwrite (Sec pt 12)
@@ -356,8 +414,8 @@ SD must **not** deliver or unlock any of:
 
 | OUT / hold | Note |
 |-----------------|------|
-| Do not invent Stories / build | Until **Dev Plan QA + Test design PASS** |
-| A7 held | Until **H4 live PASS** (separate track — do not invent H4 steps here) |
+| Do not invent Stories / build | From this plan until **Dev Plan QA PASS** on this tip (A6 Test design gate closed, `8df39255…` PASS) |
+| A7 gate on H4 live | **Closed** (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` separate); test-participant cleanup does not gate A7; do not invent H4 steps here |
 | Deploy held | Until **Ivan OK** |
 | H1 harden redeploy | **Separate** until H1–H6(+H6b) PASS + CEO OK — do not invent H1 steps here |
 | Do not invent password values | Forbidden in plan/docs/chat/code/commit history |
@@ -378,16 +436,17 @@ SD must **not** deliver or unlock any of:
 | .NET 10 retarget as this Story | Held — assume `net10.0`; do not schedule retarget here |
 | Hard delete this slice | Deferred |
 | Process-global auth flood limiter | Held until Chief Security approves |
-| After Dev Plan QA PASS | **A6 Test design** → Chief QA **before** Stories/code |
+| A6 Test design | **Closed**: PASS on design tip `8df39255…` (Product QA verify `1d086eb0…`) |
+| Admin or Core writer of offer Withdrawn | OUT of this plan; writer is the backlog maker-withdraw Story on `api.core.dealoware.com` |
 
 **Verify checklist:**
 
-- [ ] Do not invent Stories/build until Dev Plan QA + Test design PASS stated (Sec pts 13, 14)
-- [ ] A7 waits for H4 live PASS stated; no invented H4 steps (Sec pts 13, 14)
+- [ ] Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip stated (Sec pts 13, 14)
+- [ ] A6 Test design and the A7 gate on H4 live shown as closed with cites; no invented H4 steps (Sec pts 13, 14)
 - [ ] Deploy waits for Ivan's OK; H1 harden redeploy is a separate track (Sec pt 13)
 - [ ] Do not invent password / AWS / process-global flood limiter stated (Sec pts 5, 13)
 - [ ] Turnstile only; SES behind mail interface; platform admin OUT (Sec pts 5, 7, 13)
-- [ ] A6 Test design gate noted after Dev Plan QA PASS (Sec pt 14)
+- [ ] No Withdrawn writer scheduled in this plan (Sec pt 13)
 - [ ] PoC $0; not a build unlock (Sec pts 13, 14)
 
 ### Step 13 — Self-verify before any handoff (after holds lift)
@@ -399,7 +458,8 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 - [ ] Raw IP counters only; audit IP keyed HMAC-SHA256; SES via mail interface; no AWS SDK in Core
 - [ ] Lists/search/paging/stats/edit/delete/confirm/soft-delete/cascades/audit per Spec
 - [ ] No password values; no AWS account IDs; no process-global flood limiter without approval
-- [ ] A7 / deploy / H1 gates respected; A6 Test design done before Stories/code
+- [ ] Deploy / H1 / UI-lane gates respected (A6 Test design and the A7 gate on H4 live already closed)
+- [ ] Step 7 W1–W5 and Step 9 E1–E12 delivered per coverage list; no Withdrawn writer; no migration beyond the cited `UpdatedAt` change
 - [ ] Zero MM/DC4; PoC $0; no Cognito invent; LLM if any → COO → CEO (do not provision)
 - [ ] Security Dev Plan-step pts 1–14 evidence ready for SoR qa-confirm
 - [ ] UI Definition of Done (UX1-A11): each Story with a UI part includes UI AC mapped to UX1-A01–A10 through the UXR IDs cited in Steps 2–5, and those cases are green. Backend security/API gates in Steps 2–5 still apply unchanged
@@ -492,6 +552,8 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 | Dev Plan Security checklist 1–14 | Dev Plan-step handshake | §6 woven |
 | UX1-A11 | UI deliverables cited in Steps 2–5 (UXR / S-A IDs); Story DoD maps UI AC to UX1-A01–A10 | Steps 2–5, 13 |
 | UX1-A14 + CPM decision | Auth screens UI ownership: Step 14; audit log viewer: Step 15 | Steps 14, 15 |
+| Product decision outcome 1 + SA §4 offer rule + coverage W1–W5 | Offer Withdrawn enum, filter and badge; maker-only; admin cannot set; no writer in this plan | Step 7 |
+| Product decision outcome 2 + SA §4 editable set + coverage E1–E12 | Every editable field has a FieldPolicy Write path; allowed status changes only | Step 9 |
 | UX1-A01–A10 (auth UI AC) | Screen inventory, error copy, lockout message, Turnstile states, TOTP enrol, recovery codes, reset, session, control states, WCAG 2.2 AA | Steps 2–5 cites; Step 14 build |
 
 ---
@@ -503,7 +565,7 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 **Upstream Spec Security SoR:** `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` (**PASS** 15/15)  
 **Upstream SA Security SoR:** `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` (**PASS** 14/14)  
 **Expected SoR (qa-confirm only):** `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` — **do not invent points-review SoR**  
-**Status:** Pts **1–14 woven** below. Dev Plan QA waits until SoR qa-confirm CLEAR. Do not invent Stories/code/deploy from this plan alone. A7 waits for H4. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. Not a build unlock. PoC **$0**.
+**Status:** Pts **1–14 woven** below. Dev Plan QA waits until SoR qa-confirm CLEAR. Do not invent Stories/code/deploy from this plan alone. A6 Test design and the A7 gate on H4 live are closed (CPM 8:41pm ET). Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. Not a build unlock. PoC **$0**.
 
 | # | Security point (Dev Plan checklist) | How plan addresses it | Plan section / SD step |
 |---|-------------------------------------|----------------------|------------------------|
@@ -519,14 +581,16 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 | 10 | **Confirm-before-delete + soft-delete cascades** — UI modal + API confirm token; soft-delete `DeletedAt`; hard delete deferred; cascades per Spec §11 / SA; do not invent settlement cascades | Step 10 confirm + soft-delete + cascades | Step 10; Locked #9 |
 | 11 | **Lists / search / paging safe** — all-status; CoreOwner soft-deleted toggle; server-side sort/filter/paging 50/200; name search; parameterized; FieldPolicy on results; stats exclude soft-deleted; do not invent client dump / charts/warehouse | Step 7 lists/search/paging/stats | Step 7; Locked #7 |
 | 12 | **Edit write surface + concurrency** — FieldPolicy-only writes; before/after audit; optimistic concurrency 409; do not invent password/secret in edit/audit | Step 9 edit + concurrency | Step 9; Locked #8 |
-| 13 | **OUT / holds / A7 gate pack** — do not invent Stories/code/CDK/spend/provision/**deploy**; A7 waits for **H4 live PASS**; H1 harden redeploy is a separate track; do not invent password / AWS IDs / process-global flood limiter; platform admin / human users / Participant UI-as-admin / multi-admin / email OTP / WAF CAPTCHA / reCAPTCHA / inbound connector / settlement / SSO OUT; PoC $0; Cost/critical → COO → CEO | Step 12 Explicit holds / OUT; Cost/critical; Status | Step 12; Locked #12–#14; Explicit OUT; Cost/critical |
-| 14 | **Traceability + handshake SoR** — cite Spec v2.2 sha256 + Spec Security SoR PASS 15/15 + SA SoR PASS 14/14 + this Dev Plan checklist; Dev Plan QA must **not** PASS until SoR qa-confirm CLEAR at `…devplan-qa-confirm.md`; handshake = qa-confirm only; do not invent Stories/code/deploy from checklist; A7 waits for H4; not build unlock; PoC $0 | This §6; Sources; Status; Done-list; Next gate note (A6 Test design after Dev Plan QA PASS) | §6; Sources; Status; Done-list Dev Plan QA; Explicit OUT |
+| 13 | **OUT / holds / A7 gate pack** — do not invent Stories/code/CDK/spend/provision/**deploy**; A7 gate on **H4 live** (checklist wording; closed per CPM 8:41pm ET); H1 harden redeploy is a separate track; do not invent password / AWS IDs / process-global flood limiter; platform admin / human users / Participant UI-as-admin / multi-admin / email OTP / WAF CAPTCHA / reCAPTCHA / inbound connector / settlement / SSO OUT; PoC $0; Cost/critical → COO → CEO | Step 12 Explicit holds / OUT; Cost/critical; Status. A7 gate on H4 live now closed with cite (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` separate); no Withdrawn writer in this plan | Step 12; Locked #12–#14, #16; Explicit OUT; Cost/critical |
+| 14 | **Traceability + handshake SoR** — cite Spec v2.2 sha256 + Spec Security SoR PASS 15/15 + SA SoR PASS 14/14 + this Dev Plan checklist; Dev Plan QA must **not** PASS until SoR qa-confirm CLEAR at `…devplan-qa-confirm.md`; handshake = qa-confirm only; do not invent Stories/code/deploy from checklist; A7 gate on H4 (closed per CPM 8:41pm ET); not build unlock; PoC $0 | This §6; Sources; Status; Done-list; A6 Test design gate closed with cite (`8df39255…` PASS) | §6; Sources; Status; Done-list Dev Plan QA; Explicit OUT |
 
 ### Handshake note (point 14)
 
-**Dev Plan QA must not PASS** until Senior Security → Security QA SoR qa-confirm CLEAR at `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md`. Handshake SoR = **qa-confirm only** — do **not** invent points-review SoR. Do not invent Stories/code/deploy from this plan alone. A7 waits for H4 live PASS. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. After Dev Plan QA PASS, **A6 Test design** goes to Chief QA **before** Stories/code. Do not skip Chief. Not a build unlock. PoC **$0**.
+**Dev Plan QA must not PASS** until Senior Security → Security QA SoR qa-confirm CLEAR at `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md`. Handshake SoR = **qa-confirm only** — do **not** invent points-review SoR. Do not invent Stories/code/deploy from this plan alone. A6 Test design PASS and the A7 gate on H4 live are both closed. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. Do not skip Chief. Not a build unlock. PoC **$0**.
 
 **UX1 amendment note:** no new Security Dev Plan-step points were added. Steps 14 and 15 and the UI deliverable cites in Steps 2–5 trace to existing pts 1–14 (mainly pts 1–6, 8, 9, 11, 13, 14). Step 14 now cites UX1-A16 / UX1-A03 / password answers under those existing points (no new checklist invent). UI cites contain no passwords, AWS account IDs or keys.
+
+**Steps 7 and 9 amendment note:** no new Security points. The Withdrawn lock (W1–W5) and the SA §4 edit paths (E1–E12) trace to existing pts 8 (edit audit), 9 (FieldPolicy, generic deny), 11 (lists, filter and badge) and 12 (edit surface, 409). No passwords, AWS account IDs or keys added.
 
 ---
 
@@ -534,8 +598,8 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 
 | OUT / hold | Note |
 |-----------------|------|
-| Do not invent Stories / build | Until Dev Plan QA + Test design PASS |
-| A7 held | Until H4 live PASS (do not invent H4 steps) |
+| Do not invent Stories / build | From this plan until Dev Plan QA PASS on this tip (A6 Test design gate closed) |
+| A7 gate on H4 live | Closed (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` separate); do not invent H4 steps |
 | Deploy held | Until Ivan OK |
 | H1 harden redeploy | Separate track — do not invent H1 steps |
 | Do not invent password values | Forbidden |
@@ -557,7 +621,9 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 | .NET 10 retarget as this Story's work | Held — assume `net10.0` |
 | Hard delete this slice | Deferred |
 | Stage C bot-isolation Stories merge | Cross-ref only — do not merge |
-| A6 Test design | After Dev Plan QA PASS → Chief QA **before** Stories/code |
+| A6 Test design | Closed: PASS on design tip `8df39255…` |
+| Admin or Core writer of offer Withdrawn; public maker withdraw endpoint | OUT — backlog Story `product/2026-10-05__product__story__maker-withdraw-open-offer.md` on `api.core.dealoware.com` |
+| Migrations beyond the Withdrawn enum need and the cited Step 7 `UpdatedAt` change | Not invented (none for Withdrawn or E1–E12) |
 | UI lanes (UX1) | Wait for Chief UI/UX approval of UX1 plus UI/UX QA PASS. Stories with a UI part must carry UI AC mapped to UX1-A01–A10 via the cited UXR IDs, with cases green |
 | A7 Story files / Brief 4 / PM checklist | Owned by CPM / Senior PM. This plan does not create the Step 14 Story file, the Brief 4 fix or checklist files |
 | S-A12 security settings + UXR-A41–A44 | Build only once Spec adopts them (UX1-A21); not added by this plan |
@@ -566,7 +632,7 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 
 ## 8. Cost/critical
 
-PoC **$0**. This plan schedules **no** AWS account create, CDK apply, SES provision, Turnstile account invent, spend unlock, or LLM provider provision. Cite CFO estimate (`finance/2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md`) + Finance QA PASS (`verification/2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md`): Turnstile **$0/mo**; SES **under $0.01/mo** assumed — **estimate only**, do not invent spend, **not** spend/provision approval. Do not invent AWS account IDs. A7 waits for H4 live PASS. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. Any named **LLM/API spend** → escalate **COO → CEO** (do **not** provision). Other paid provision → escalate **CPM → COO → CEO**. Do not invent password. Not a build unlock.
+PoC **$0**. This plan schedules **no** AWS account create, CDK apply, SES provision, Turnstile account invent, spend unlock, or LLM provider provision. Cite CFO estimate (`finance/2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md`) + Finance QA PASS (`verification/2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md`): Turnstile **$0/mo**; SES **under $0.01/mo** assumed — **estimate only**, do not invent spend, **not** spend/provision approval. Do not invent AWS account IDs. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. Any named **LLM/API spend** → escalate **COO → CEO** (do **not** provision). Other paid provision → escalate **CPM → COO → CEO**. Do not invent password. Not a build unlock.
 
 ---
 
@@ -578,26 +644,29 @@ PoC **$0**. This plan schedules **no** AWS account create, CDK apply, SES provis
 - [x] SA SoR + SA Security SoR PASS 14/14 cited
 - [x] Itemized steps executable by SD without inventing requirements (holds explicit)
 - [x] Host only `admin.core.dealoware.com`; CoreOwner `io@aiknowhow.com`; Turnstile only; SES mail interface; FieldPolicy dual wall; entities + lists/search/paging/stats/confirm/audit/soft-delete
-- [x] Do not invent Stories/build until Dev Plan QA + Test design PASS; A7 waits for H4; deploy waits for Ivan's OK; do not invent password / AWS IDs; do not invent process-global flood limiter; H1 harden redeploy is a separate track; A6 Test design gate after Dev Plan QA PASS
+- [x] Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip; A6 Test design gate and A7 gate on H4 live closed with cites (CPM 8:41pm ET); deploy waits for Ivan's OK; do not invent password / AWS IDs; do not invent process-global flood limiter; H1 harden redeploy is a separate track
 - [x] Assume `net10.0`; no retarget steps; no password values; no AWS account IDs; no platform-admin host
 - [x] **Security Dev Plan-step points 1–14 all woven** with cites (table §6) — Dev Plan QA waits until SoR qa-confirm CLEAR
 - [ ] SoR qa-confirm CLEAR at `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` (handshake = qa-confirm only)
 - [ ] **Security QA confirm required** on Dev Plan-step pts 1–14 **before** Dev Plan QA PASS to Chief Dev Planner
-- [ ] **SD HOLD** until Dev Plan QA + SoR CLEAR + Chief unlock (+ CPM per ops); then A6 Test design before Stories/code; A7 waits for H4
+- [ ] SD waits for Dev Plan QA + SoR CLEAR + Chief unlock (+ CPM per ops); A6 Test design and the H4 gate already closed
 - [ ] No product code in this artifact (SD instructions only)
 - [x] UX1-A11: UI deliverables cited in Steps 2–5 (S-A / UXR IDs only); Story DoD note in Step 13 and Explicit OUT
 - [x] UX1-A14: Step 14 (auth screens UI) and Step 15 (audit log viewer) added; owners per CPM decision; step count 15
 - [x] Security QA bounce fix: Step 14 cites A16 tip `bb0bcaa2…` conditions 1–8, A03 tip `0817b767…`, password answers tip `a87e293b…`, password-rules v2.3 `1a7b342c…`, lockout-window v5.5 `8a194eb9…`; Step 15 HMAC IP prefix wording; Sec pt lists aligned (11 + 14)
 - [x] CPM Spec tip refresh: lockout-window v5.5 `8a194eb9…` and password-rules v2.3 `1a7b342c…` binding (v5.4/v5.3 void, v2.2 superseded); sign-in steps note v1 `0a3db5f4…` added to Sources, Step 14 item 6, and verify list
 - [x] UX1 sources cited (findings, addendum, routing r2, CPM decision) with sha256
+- [x] Steps 7 and 9 scope amend: Step 7 W1–W5 (`OfferStatus.Withdrawn = 5`, maker-only, admin generic deny, filter and badge offer-only, tests, no migration, no writer until the backlog Story); Step 9 E1–E12 SA §4 edit paths, not narrowed, no migrations, 409 + audit kept; Locked #16–#17
+- [x] Sources add Product decision `6ea05ddb…`, Product QA PASS `4926813f…`, SA redlines note `0286c68e…`, status-list note `0a5ff57b…`, coverage list `6026d046…`, maker-withdraw Story `8a11faa8…`, Test design PASS `8df39255…` + verify `1d086eb0…`, H4 live retest PASS `331d2c63…` / report `521e3bcc…` / register addendum `71bde564…` (primary), H4 Debug-off redeploy DevOps QA PASS `11c35ee7…` (separate)
+- [x] Active holds refreshed (CPM 8:41pm ET): Test design and A7/H4 holds removed with cites; UI lanes, deploy, secrets, H1, flood limiter kept; Withdrawn no-writer line added
 
-**Next:** Dev Plan QA waits until SoR qa-confirm CLEAR → Dev Plan QA verify with evidence → ask Senior Security → Security QA SoR qa-confirm → Chief Security PASS/HOLD to Chief Dev Planner + CPM. **Dev Plan QA must NOT PASS until SoR qa-confirm CLEAR.** After Dev Plan QA PASS, **A6 Test design** → Chief QA **before** Stories/code. A7 waits for H4 live PASS. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. Do not invent password / AWS / process-global flood limiter. Not a build unlock. PoC **$0**.
+**Next:** Dev Plan QA waits until SoR qa-confirm CLEAR → Dev Plan QA verify with evidence → ask Senior Security → Security QA SoR qa-confirm → Chief Security PASS/HOLD to Chief Dev Planner + CPM. **Dev Plan QA must NOT PASS until SoR qa-confirm CLEAR.** A6 Test design PASS and the A7 gate on H4 live are closed. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. Do not invent password / AWS / process-global flood limiter. Not a build unlock. PoC **$0**.
 
 **Next (UX1):** UI lanes, including Steps 14 and 15, start only after Chief UI/UX approves UX1 and a UI/UX QA PASS file exists. Stories with a UI part must include UI AC mapped to UX1-A01–A10 via the UXR IDs cited in Steps 2–5, with cases green.
 
 ---
 
-## 10. Done-list for SD (only after Dev Plan QA PASS, Chief unlock, A6 Test design PASS, A7 unlock after H4 live PASS, and for UI lanes Chief UI/UX UX1 approval)
+## 10. Done-list for SD (only after Dev Plan QA PASS on this tip and Chief unlock; A6 Test design and the H4 gate are closed; UI lanes also need Chief UI/UX UX1 approval)
 
 - [ ] Step 1: Host / CoreOwner / FieldPolicy / TFM assume
 - [ ] Step 2: Bootstrap + Turnstile on bootstrap; no invent password
@@ -605,9 +674,9 @@ PoC **$0**. This plan schedules **no** AWS account create, CDK apply, SES provis
 - [ ] Step 4: Reset = email link + 2FA
 - [ ] Step 5: Turnstile + lockout/rate + session; raw IP counters only; no process-global flood limiter without approval
 - [ ] Step 6: SES via mail interface; do not invent AWS
-- [ ] Step 7: Lists / search / paging / stats
+- [ ] Step 7: Lists / search / paging / stats; W1–W5 Withdrawn enum, filter and badge (no writer); `UpdatedAt` migration
 - [ ] Step 8: Audit + keyed HMAC IP
-- [ ] Step 9: Edit + concurrency
+- [ ] Step 9: Edit + concurrency; E1–E12 SA §4 edit paths (no migrations)
 - [ ] Step 10: Confirm-delete + soft-delete cascades
 - [ ] Step 11: Fail-closed non-CoreOwner
 - [ ] Step 12: Respect Explicit holds / OUT / gates
