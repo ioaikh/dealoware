@@ -175,7 +175,8 @@ public static class AdminAuditSnapshots
 
     internal static string NormalizeKey(string key)
     {
-        var trimmed = key.Trim();
+        var nfkc = key.Normalize(NormalizationForm.FormKC);
+        var trimmed = nfkc.Trim();
         var builder = new StringBuilder(trimmed.Length);
         foreach (var ch in trimmed)
         {
@@ -424,8 +425,9 @@ public static class AdminAuditSnapshots
     }
 
     /// <summary>
-    /// Linear scan (no backtracking) for a quoted, single-quoted, or bare name
-    /// followed by ':' or '=' and a value. Names use the same normalization as keys.
+    /// Linear scan (no backtracking). Quotes never stop the scan: an unclosed
+    /// quote is a normal character, and quoted prose is still searched for
+    /// assignments. Separators are NFKC-normalized and %3D/%3A are decoded.
     /// </summary>
     private static string RedactForbiddenAssignments(string text)
     {
@@ -438,75 +440,68 @@ public static class AdminAuditSnapshots
         var copyFrom = 0;
         while (i < span.Length)
         {
-            var ch = span[i];
-            if (ch is '"' or '\'')
+            if (!IsBareNameStart(span[i]))
             {
-                var tokenStart = i;
-                var quote = ch;
                 i++;
-                var nameStart = i;
-                while (i < span.Length)
-                {
-                    if (span[i] == '\\' && i + 1 < span.Length)
-                    {
-                        i += 2;
-                        continue;
-                    }
-
-                    if (span[i] == quote)
-                        break;
-                    i++;
-                }
-
-                if (i >= span.Length)
-                    break;
-
-                var name = span[nameStart..i];
-                i++;
-                var afterName = SkipWhiteSpace(span, i);
-                if (afterName < span.Length
-                    && span[afterName] is ':' or '='
-                    && IsForbiddenKey(name.ToString()))
-                {
-                    var valueEnd = ConsumeAssignmentValue(span, afterName + 1);
-                    builder.Append(text, copyFrom, tokenStart - copyFrom);
-                    builder.Append("[redacted]");
-                    copyFrom = valueEnd;
-                    i = valueEnd;
-                    continue;
-                }
-
                 continue;
             }
 
-            if (IsBareNameStart(ch))
-            {
-                var tokenStart = i;
-                i++;
-                while (i < span.Length && IsBareNameContinue(span[i]))
-                    i++;
-
-                var afterName = SkipWhiteSpace(span, i);
-                if (afterName < span.Length
-                    && span[afterName] is ':' or '='
-                    && IsForbiddenKey(span[tokenStart..i].ToString()))
-                {
-                    var valueEnd = ConsumeAssignmentValue(span, afterName + 1);
-                    builder.Append(text, copyFrom, tokenStart - copyFrom);
-                    builder.Append("[redacted]");
-                    copyFrom = valueEnd;
-                    i = valueEnd;
-                    continue;
-                }
-
-                continue;
-            }
-
+            var nameStart = i;
             i++;
+            while (i < span.Length && IsBareNameContinue(span[i]))
+                i++;
+            var nameEnd = i;
+
+            var look = nameEnd;
+            if (look < span.Length && span[look] is '"' or '\'')
+                look++;
+            look = SkipWhiteSpace(span, look);
+
+            if (!TryReadSeparator(span, look, out var afterSep)
+                || !IsForbiddenKey(span[nameStart..nameEnd].ToString()))
+                continue;
+
+            var valueEnd = ConsumeAssignmentValue(span, afterSep);
+            var redactFrom = nameStart;
+            if (redactFrom > 0 && span[redactFrom - 1] is '"' or '\'')
+                redactFrom--;
+            builder.Append(text, copyFrom, redactFrom - copyFrom);
+            builder.Append("[redacted]");
+            copyFrom = valueEnd;
+            i = valueEnd;
         }
 
         builder.Append(text, copyFrom, text.Length - copyFrom);
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// True when the next token is '=', ':', their NFKC equivalents, or
+    /// percent-encoded <c>%3D</c>/<c>%3A</c> (any case).
+    /// </summary>
+    private static bool TryReadSeparator(ReadOnlySpan<char> span, int index, out int after)
+    {
+        after = index;
+        if (index >= span.Length)
+            return false;
+
+        if (index + 2 < span.Length
+            && span[index] == '%'
+            && char.ToUpperInvariant(span[index + 1]) == '3'
+            && char.ToUpperInvariant(span[index + 2]) is 'D' or 'A')
+        {
+            after = index + 3;
+            return true;
+        }
+
+        var nfkc = span[index].ToString().Normalize(NormalizationForm.FormKC);
+        if (nfkc is "=" or ":")
+        {
+            after = index + 1;
+            return true;
+        }
+
+        return false;
     }
 
     private static int ConsumeAssignmentValue(ReadOnlySpan<char> span, int index)
@@ -554,7 +549,7 @@ public static class AdminAuditSnapshots
         => char.IsLetter(ch) || ch == '_';
 
     private static bool IsBareNameContinue(char ch)
-        => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.' || char.IsWhiteSpace(ch);
+        => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.';
 
     private static bool LooksLikeSecretValue(string text)
         => text.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)

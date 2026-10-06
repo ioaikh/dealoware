@@ -35,6 +35,13 @@ public class AdminAuditSecretStripTests
     private const string ColonSecret = "LEAK-colon-v1";
     private const string PasswordEqSecret = "LEAK-password-eq";
     private const string PasswordColonSecret = "LEAK-password-colon";
+    private const string DontShareSecret = "LEAK-dont-share";
+    private const string SayHiSecret = "LEAK-say-hi";
+    private const string LogQuoteSecret = "LEAK-log-quote";
+    private const string ApostropheKeySecret = "LEAK-apostrophe-key";
+    private const string QuoteWrappedSecret = "LEAK-quote-wrapped";
+    private const string PercentEqSecret = "LEAK-percent-eq";
+    private const string FullwidthEqSecret = "LEAK-fullwidth-eq";
     private const string SingleQuoteSecret = "LEAK-singlequote-v1";
     private const string UnquotedSecret = "LEAK-unquoted-v1";
 
@@ -239,6 +246,36 @@ public class AdminAuditSecretStripTests
         using var doc = JsonDocument.Parse(stored);
         Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
         Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_ProseQuotesAndEncodedSeparators_RedactedInDbAndGet()
+    {
+        var cases = new (string Note, string Leak)[]
+        {
+            ("don't share password=" + DontShareSecret, DontShareSecret),
+            ("say \"hi password: " + SayHiSecret, SayHiSecret),
+            ("log: \"password=" + LogQuoteSecret, LogQuoteSecret),
+            ("x'" + "password=" + ApostropheKeySecret, ApostropheKeySecret),
+            ("\"password=" + QuoteWrappedSecret + "\"", QuoteWrappedSecret),
+            ("password%3D" + PercentEqSecret, PercentEqSecret),
+            ("password＝" + FullwidthEqSecret, FullwidthEqSecret)
+        };
+
+        foreach (var (note, leak) in cases)
+        {
+            var raw = new JsonObject
+            {
+                ["note"] = note,
+                ["displayName"] = VisibleMarker
+            }.ToJsonString();
+
+            var (stored, body) = await WriteAndReadAsync(raw);
+            Assert.DoesNotContain(leak, stored, StringComparison.Ordinal);
+            Assert.DoesNotContain(leak, body, StringComparison.Ordinal);
+            Assert.Contains(VisibleMarker, stored);
+            Assert.Contains("[redacted]", stored);
+        }
     }
 
     [Fact]
@@ -457,6 +494,13 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(ColonSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(PasswordEqSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(PasswordColonSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(DontShareSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(SayHiSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(LogQuoteSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ApostropheKeySecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(QuoteWrappedSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(PercentEqSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(FullwidthEqSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(SingleQuoteSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(UnquotedSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(ClientIp, text, StringComparison.Ordinal);
