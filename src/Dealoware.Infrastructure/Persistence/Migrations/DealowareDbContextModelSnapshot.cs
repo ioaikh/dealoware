@@ -129,6 +129,15 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("FactorAttemptWindowStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("FactorLockedUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailedFactorAttempts")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("LastUsedTotpTimestep")
                         .HasColumnType("INTEGER");
 

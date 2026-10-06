@@ -110,6 +110,9 @@ public class AdminCoreOwnerAccountEntityConfiguration : IEntityTypeConfiguration
         builder.Property(a => a.RecoveryCodesIssued)
             .IsRequired();
 
+        builder.Property(a => a.FailedFactorAttempts)
+            .IsRequired();
+
         builder.Property(a => a.CreatedAt)
             .IsRequired();
     }

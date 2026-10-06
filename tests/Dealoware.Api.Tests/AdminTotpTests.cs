@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
@@ -34,22 +35,25 @@ public class AdminTotpTests
         _factory = factory;
     }
 
-    private HttpClient CreateClient() =>
-        _factory.CreateClient(new WebApplicationFactoryClientOptions
+    private HttpClient CreateClient(IsolatedWebApplicationFactory? factory = null) =>
+        (factory ?? _factory).CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost")
         });
 
     private async Task<(string Password, byte[]? Secret, IReadOnlyList<string>? Codes)> SeedAccountAsync(
-        bool enrolled)
+        bool enrolled,
+        IsolatedWebApplicationFactory? factory = null)
     {
+        factory ??= _factory;
         var password = $"Pw-{Guid.NewGuid():N}-xY9!";
         byte[]? secret = null;
         IReadOnlyList<string>? codes = null;
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
+        var hasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
 
         var existing = db.AdminCoreOwnerAccounts.SingleOrDefault(a => a.Email == CoreOwnerEmail);
         if (existing is not null)
@@ -69,7 +73,7 @@ public class AdminTotpTests
             codes = AdminRecoveryCodes.Generate();
             foreach (var code in codes)
             {
-                db.AdminRecoveryCodes.Add(AdminRecoveryCode.Create(account.Id, AdminRecoveryCodes.Hash(code)));
+                db.AdminRecoveryCodes.Add(AdminRecoveryCode.Create(account.Id, hasher.Hash(code)));
             }
 
             account.MarkRecoveryCodesIssued();
@@ -117,12 +121,18 @@ public class AdminTotpTests
         HttpMethod method,
         string path,
         object? body = null,
-        bool includeCsrf = true)
+        bool includeCsrf = true,
+        string? csrf = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
         if (includeCsrf && HttpMethod.Post.Equals(method))
-            request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, await IssueCsrfAsync(client));
+        {
+            request.Headers.TryAddWithoutValidation(
+                AdminAntiForgeryCookie.HeaderName,
+                csrf ?? await IssueCsrfAsync(client));
+        }
+
         if (body is not null)
             request.Content = JsonContent.Create(body);
         return request;
@@ -149,12 +159,17 @@ public class AdminTotpTests
     private static async Task AssertGenericSignIn(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(response.Headers.RetryAfter);
+        Assert.False(response.Headers.Contains("Retry-After"));
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains(GenericSignInCopy, body);
         Assert.DoesNotContain("TOTP", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("recovery", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("locked", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2FA", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Retry-After", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attempt", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("remaining", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -203,7 +218,8 @@ public class AdminTotpTests
         var next = await step1Again.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("totp", next.GetProperty("next").GetString());
 
-        var loginCode = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret!), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        var loginStep = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow) + 1;
+        var loginCode = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret!), loginStep);
         using var verify = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = loginCode }));
         Assert.Equal(HttpStatusCode.OK, verify.StatusCode);
 
@@ -406,7 +422,7 @@ public class AdminTotpTests
         using var step1 = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
-        for (var i = 0; i < AdminPendingAuth.MaxFailedCodeAttempts; i++)
+        for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts; i++)
         {
             using var wrong = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }));
             await AssertGenericSignIn(wrong);
@@ -628,5 +644,367 @@ public class AdminTotpTests
         using var request = await JsonAsync(client, HttpMethod.Post, "/admin/auth/app.js", new { x = 1 });
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SecR1_RecoveryCodesAreHmacSha256NotBareSha256()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: false);
+        var client = CreateClient();
+        using var step1 = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        using var setup = await client.SendAsync(AdminGet(SetupPath));
+        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var totp = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var confirm = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SetupPath, new { code = totp }));
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+
+        using var reveal = await client.SendAsync(AdminGet(RecoveryCodesPath));
+        var codes = (await reveal.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("recoveryCodes").EnumerateArray().Select(e => e.GetString()!).ToList();
+
+        using var scope = _factory.Services.CreateScope();
+        var hasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        foreach (var stored in db.AdminRecoveryCodes)
+        {
+            foreach (var plain in codes)
+            {
+                var sha256 = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(AdminRecoveryCodes.Normalize(plain))));
+                Assert.False(AdminRecoveryCodes.FixedTimeEquals(stored.CodeHash, sha256));
+            }
+        }
+
+        Assert.Contains(db.AdminRecoveryCodes, c => hasher.FixedTimeEquals(c.CodeHash, codes[0]));
+    }
+
+    [Fact]
+    public async Task SecR2_ParallelRedeemOfSameCode_SucceedsOnce()
+    {
+        var (password, _, codes) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        var first = await JsonAsync(client, HttpMethod.Post, RecoveryPath, new { recoveryCode = codes![0] }, csrf: csrf);
+        var second = await JsonAsync(client, HttpMethod.Post, RecoveryPath, new { recoveryCode = codes[0] }, csrf: csrf);
+        var results = await Task.WhenAll(client.SendAsync(first), client.SendAsync(second));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(1, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        Assert.Equal(1, db.AdminRecoveryCodes.Count(c => c.UsedAt != null));
+    }
+
+    [Fact]
+    public async Task SecR2_ParallelBadAttempts_CannotExceedFive()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        var requests = Enumerable.Range(0, 8)
+            .Select(_ => JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }, csrf: csrf));
+        var messages = await Task.WhenAll(requests);
+        var responses = await Task.WhenAll(messages.Select(client.SendAsync));
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
+        Assert.True(account.IsFactorLocked());
+        Assert.Equal(0, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail);
+        Assert.Equal(AdminPendingAuth.MaxFailedCodeAttempts, pending.FailedCodeAttempts);
+        Assert.NotNull(pending.ConsumedAt);
+    }
+
+    [Fact]
+    public async Task SecR2a_ParallelPendingFailureCount_StopsAtFive()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        var messages = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ => JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }, csrf: csrf)));
+        var responses = await Task.WhenAll(messages.Select(client.SendAsync));
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail);
+        Assert.Equal(AdminPendingAuth.MaxFailedCodeAttempts, pending.FailedCodeAttempts);
+        Assert.True(pending.FailedCodeAttempts <= AdminPendingAuth.MaxFailedCodeAttempts);
+        Assert.NotNull(pending.ConsumedAt);
+    }
+
+    [Fact]
+    public async Task SecR2b_ParallelConsumePending_MintsOneSession()
+    {
+        var (password, _, codes) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        var first = await JsonAsync(client, HttpMethod.Post, RecoveryPath, new { recoveryCode = codes![0] }, csrf: csrf);
+        var second = await JsonAsync(client, HttpMethod.Post, RecoveryPath, new { recoveryCode = codes[1] }, csrf: csrf);
+        var results = await Task.WhenAll(client.SendAsync(first), client.SendAsync(second));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(1, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        Assert.Equal(1, db.AdminPendingAuths.Count(p => p.Email == CoreOwnerEmail && p.ConsumedAt != null));
+    }
+
+    [Fact]
+    public async Task SecR2c_ParallelSameTotpStep_SucceedsOnce()
+    {
+        var (password, secret, _) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        var step = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
+        var code = Rfc6238Totp.ComputeCode(secret!, step);
+        var first = await JsonAsync(client, HttpMethod.Post, CodePath, new { code }, csrf: csrf);
+        var second = await JsonAsync(client, HttpMethod.Post, CodePath, new { code }, csrf: csrf);
+        var results = await Task.WhenAll(client.SendAsync(first), client.SendAsync(second));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(1, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        Assert.Equal(step, db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail).LastUsedTotpTimestep);
+    }
+
+    [Fact]
+    public async Task SecR5_ParallelEnrollConfirm_LeavesExactlyTenCodes()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: false);
+        var client = CreateClient();
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        using var setup = await client.SendAsync(AdminGet(SetupPath));
+        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var csrf = await IssueCsrfAsync(client);
+        var code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        var first = await JsonAsync(client, HttpMethod.Post, SetupPath, new { code }, csrf: csrf);
+        var second = await JsonAsync(client, HttpMethod.Post, SetupPath, new { code }, csrf: csrf);
+        var results = await Task.WhenAll(client.SendAsync(first), client.SendAsync(second));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(AdminRecoveryCodes.Count, db.AdminRecoveryCodes.Count());
+        Assert.Equal(AdminRecoveryCodes.Count, db.AdminRecoveryCodes.Count(c => c.UsedAt == null));
+        Assert.True(db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail).IsTotpEnrolled);
+    }
+
+    [Fact]
+    public async Task SecR3_PasswordLoginDoesNotResetFactorLock()
+    {
+        var (password, secret, _) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        using var step1 = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts; i++)
+        {
+            using var wrong = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }));
+            await AssertGenericSignIn(wrong);
+        }
+
+        using var step1Again = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
+        Assert.True(account.IsFactorLocked());
+
+        var valid = Rfc6238Totp.ComputeCode(secret!, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var stillLocked = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = valid }));
+        await AssertGenericSignIn(stillLocked);
+        using var me = await client.SendAsync(AdminGet("/admin/api/me"));
+        Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
+    }
+
+    [Fact]
+    public async Task SecR4_EnrollConfirmRecordsTimestep_SameCodeFailsAtLogin()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: false);
+        var client = CreateClient();
+        using var step1 = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        using var setup = await client.SendAsync(AdminGet(SetupPath));
+        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var bytes = Rfc6238Totp.FromBase32(secret);
+        var step = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
+        var code = Rfc6238Totp.ComputeCode(bytes, step);
+        using var confirm = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SetupPath, new { code }));
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(step, db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail).LastUsedTotpTimestep);
+
+        using var step1Again = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
+        using var replay = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code }));
+        await AssertGenericSignIn(replay);
+    }
+
+    [Fact]
+    public async Task SecSc6_NewServiceInstanceKeepsFactorLock()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"dw-sc6-{Guid.NewGuid():N}.db");
+        var connectionString = $"Data Source={dbPath}";
+        var totpKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var recoveryKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var ipKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        string? password = null;
+        byte[]? secret = null;
+
+        try
+        {
+            using (var first = new SharedStoreWebApplicationFactory(connectionString, totpKey, recoveryKey, ipKey))
+            {
+                (password, secret, _) = await SeedAccountAsync(enrolled: true, first);
+                var client = CreateClient(first);
+                using var step1 = await client.SendAsync(
+                    await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+                Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+                for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts; i++)
+                {
+                    using var wrong = await client.SendAsync(
+                        await JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }));
+                    await AssertGenericSignIn(wrong);
+                }
+
+                using var scope = first.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+                var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+                Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
+                Assert.True(account.IsFactorLocked());
+            }
+
+            using var restarted = new SharedStoreWebApplicationFactory(connectionString, totpKey, recoveryKey, ipKey);
+            using (var scope = restarted.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+                var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+                Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
+                Assert.True(account.IsFactorLocked());
+            }
+
+            var client2 = CreateClient(restarted);
+            using var step1Again = await client2.SendAsync(
+                await JsonAsync(client2, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+            Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
+
+            Assert.False(string.IsNullOrEmpty(password));
+            Assert.NotNull(secret);
+            var valid = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+            using var stillLocked = await client2.SendAsync(
+                await JsonAsync(client2, HttpMethod.Post, CodePath, new { code = valid }));
+            await AssertGenericSignIn(stillLocked);
+            using var me = await client2.SendAsync(AdminGet("/admin/api/me"));
+            Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
+        }
+        finally
+        {
+            foreach (var leftover in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+            {
+                if (File.Exists(leftover))
+                    File.Delete(leftover);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SecSc6_LockEndsPendingAndEverySession()
+    {
+        var (password, secret, _) = await SeedAccountAsync(enrolled: true);
+        Guid existingSessionId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var session = AdminSession.Create(CoreOwnerEmail, "test-ip-hmac");
+            session.MarkTotpVerified();
+            db.AdminSessions.Add(session);
+            await db.SaveChangesAsync();
+            existingSessionId = session.Id;
+        }
+
+        var client = CreateClient();
+        using (var meBefore = await client.SendAsync(AdminGet("/admin/api/me", existingSessionId)))
+            Assert.Equal(HttpStatusCode.OK, meBefore.StatusCode);
+
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        HttpResponseMessage? last = null;
+        for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts; i++)
+        {
+            last?.Dispose();
+            last = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = "000000" }));
+            await AssertGenericSignIn(last);
+        }
+
+        Assert.NotNull(last);
+        await AssertGenericSignIn(last);
+        last.Dispose();
+
+        using var scopeAfter = _factory.Services.CreateScope();
+        var dbAfter = scopeAfter.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var account = dbAfter.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        Assert.True(account.IsFactorLocked());
+        Assert.Equal(0, dbAfter.AdminPendingAuths.Count(p => p.Email == CoreOwnerEmail && p.ConsumedAt == null));
+        Assert.Equal(0, dbAfter.AdminSessions.Count(s => s.Email == CoreOwnerEmail));
+
+        using var meAfter = await client.SendAsync(AdminGet("/admin/api/me", existingSessionId));
+        Assert.Equal(HttpStatusCode.Unauthorized, meAfter.StatusCode);
+        Assert.Null(meAfter.Headers.RetryAfter);
+        var meBody = await meAfter.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("locked", meBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attempt", meBody, StringComparison.OrdinalIgnoreCase);
+
+        var valid = Rfc6238Totp.ComputeCode(secret!, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var replayPending = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = valid }));
+        Assert.Equal(HttpStatusCode.Unauthorized, replayPending.StatusCode);
+        Assert.Null(replayPending.Headers.RetryAfter);
+        var replayBody = await replayPending.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("locked", replayBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Retry-After", replayBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attempt", replayBody, StringComparison.OrdinalIgnoreCase);
     }
 }

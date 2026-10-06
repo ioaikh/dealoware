@@ -22,5 +22,49 @@ public interface IAdminCoreOwnerAccountRepository
 
     Task ConsumeOutstandingPendingAsync(string email, DateTimeOffset now, CancellationToken cancellationToken = default);
 
+    Task<bool> TryIncrementPendingFailureAsync(
+        Guid pendingId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryConsumePendingAsync(
+        Guid pendingId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryRedeemRecoveryCodeAsync(
+        Guid accountId,
+        string codeHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryRecordTotpTimestepAsync(
+        Guid accountId,
+        long step,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryCompleteEnrollmentAsync(
+        Guid accountId,
+        string totpSecretCipher,
+        string? recoveryCodesRevealCipher,
+        long step,
+        DateTimeOffset now,
+        IReadOnlyList<AdminRecoveryCode> codes,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryRecordFailedFactorAttemptAsync(
+        Guid accountId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task ClearFactorLockAsync(Guid accountId, CancellationToken cancellationToken = default);
+
+    Task ClearRecoveryCodesRevealAsync(Guid accountId, CancellationToken cancellationToken = default);
+
+    Task<bool> IsFactorLockedAsync(
+        Guid accountId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

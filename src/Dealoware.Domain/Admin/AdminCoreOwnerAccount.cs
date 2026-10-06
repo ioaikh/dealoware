@@ -25,6 +25,24 @@ public sealed class AdminCoreOwnerAccount
     /// <summary>Last TOTP time-step that succeeded, to reject same-window replay.</summary>
     public long? LastUsedTotpTimestep { get; private set; }
 
+    /// <summary>
+    /// Failed TOTP/recovery attempts in the current factor window. Durable account
+    /// row (SC-6); never an in-process counter. Not reset by password login.
+    /// </summary>
+    public int FailedFactorAttempts { get; private set; }
+
+    /// <summary>Start of the 15-minute factor-attempt window. Stored on this row.</summary>
+    public DateTimeOffset? FactorAttemptWindowStartedAt { get; private set; }
+
+    /// <summary>When set and in the future, step 2 is locked (30-minute lockout). Survives restart.</summary>
+    public DateTimeOffset? FactorLockedUntil { get; private set; }
+
+    public const int MaxFailedFactorAttempts = 5;
+
+    public const int FactorAttemptWindowMinutes = 15;
+
+    public const int FactorLockoutMinutes = 30;
+
     /// <summary>Encrypted pending secret held between enroll/start and enroll/confirm.</summary>
     public string? PendingTotpSecretCipher { get; private set; }
 
@@ -93,6 +111,19 @@ public sealed class AdminCoreOwnerAccount
     public void RecordTotpTimestep(long timestep)
     {
         LastUsedTotpTimestep = timestep;
+    }
+
+    public bool IsFactorLocked(DateTimeOffset? now = null)
+    {
+        var timestamp = now ?? DateTimeOffset.UtcNow;
+        return FactorLockedUntil is { } until && timestamp < until;
+    }
+
+    public void ClearFactorFailures()
+    {
+        FailedFactorAttempts = 0;
+        FactorAttemptWindowStartedAt = null;
+        FactorLockedUntil = null;
     }
 
     public void ClearPendingEnrollment()

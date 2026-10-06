@@ -44,6 +44,16 @@ public sealed class AdminSessionRepository : IAdminSessionRepository
         }
     }
 
+    public async Task DeleteByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            DELETE FROM AdminSessions
+            WHERE Email = {email}
+            """,
+            cancellationToken);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         await _context.SaveChangesAsync(cancellationToken);

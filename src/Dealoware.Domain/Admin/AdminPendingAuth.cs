@@ -25,7 +25,7 @@ public sealed class AdminPendingAuth
 
     public int FailedCodeAttempts { get; private set; }
 
-    /// <summary>Validated return path from r3 §5 / C6. Never a raw query value.</summary>
+    /// <summary>Validated return path from r5 / C6. Never a raw query value.</summary>
     public string ReturnPath { get; private set; } = "/admin/";
 
     private AdminPendingAuth() { }
@@ -53,20 +53,11 @@ public sealed class AdminPendingAuth
     public bool IsUsable(DateTimeOffset? now = null)
     {
         var timestamp = now ?? DateTimeOffset.UtcNow;
-        return ConsumedAt is null
-               && timestamp < ExpiresAt
-               && FailedCodeAttempts < MaxFailedCodeAttempts;
+        return ConsumedAt is null && timestamp < ExpiresAt;
     }
 
     public void Consume(DateTimeOffset? now = null)
     {
         ConsumedAt = now ?? DateTimeOffset.UtcNow;
-    }
-
-    public void IncrementFailedCodeAttempt(DateTimeOffset? now = null)
-    {
-        FailedCodeAttempts++;
-        if (FailedCodeAttempts >= MaxFailedCodeAttempts)
-            Consume(now);
     }
 }

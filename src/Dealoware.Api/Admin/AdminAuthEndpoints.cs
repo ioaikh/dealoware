@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r3 §2.2 paths.
+/// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r5 §2.2 paths.
 /// No HTML pages (Step 14). Session stays unverified until TOTP or a recovery code passes.
 /// </summary>
 public static class AdminAuthEndpoints
@@ -165,7 +165,9 @@ public static class AdminAuthEndpoints
         IAdminCoreOwnerAccountRepository accounts,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
-        TotpSecretProtector protector)
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher,
+        IAdminSessionRepository sessions)
     {
         SetNoStore(context);
         var pending = await LoadUsablePendingAsync(context, accounts);
@@ -179,7 +181,8 @@ public static class AdminAuthEndpoints
         if (string.IsNullOrWhiteSpace(body?.Code))
             return ReadEnrollmentSecret(account, protector);
 
-        return await EnrollConfirmAsync(body, account, pending, context, accounts, audit, ipHasher, protector);
+        return await EnrollConfirmAsync(
+            body, account, pending, context, accounts, sessions, audit, ipHasher, protector, recoveryHasher);
     }
 
     private static IResult ReadEnrollmentSecret(AdminCoreOwnerAccount account, TotpSecretProtector protector)
@@ -218,9 +221,11 @@ public static class AdminAuthEndpoints
         AdminPendingAuth pending,
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
-        TotpSecretProtector protector)
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher)
     {
         if (string.IsNullOrEmpty(account.PendingTotpSecretCipher))
             return AdminSignInDeny.Failure();
@@ -236,33 +241,31 @@ public static class AdminAuthEndpoints
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (!Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
+        if (account.IsFactorLocked(now)
+            || !Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
         {
             CryptographicClear(secret);
-            pending.IncrementFailedCodeAttempt(now);
-            await accounts.SaveChangesAsync(context.RequestAborted);
-            await WriteAuthEventAsync(
-                audit,
-                AdminAuthEvents.SecondFactorFailed,
-                account.Email,
-                HashIp(ipHasher, context),
-                AdminAuthEvents.ReasonBad2Fa,
-                context.RequestAborted);
+            await RecordFailedSecondFactorAsync(
+                pending, account, now, context, accounts, sessions, audit, HashIp(ipHasher, context));
             return AdminSignInDeny.Failure();
         }
 
         var plaintextCodes = AdminRecoveryCodes.Generate();
         var hashed = plaintextCodes
-            .Select(code => AdminRecoveryCode.Create(account.Id, AdminRecoveryCodes.Hash(code)))
+            .Select(code => AdminRecoveryCode.Create(account.Id, recoveryHasher.Hash(code)))
             .ToList();
-        await accounts.AddRecoveryCodesAsync(hashed, context.RequestAborted);
-
         var revealJson = JsonSerializer.Serialize(plaintextCodes);
         var revealCipher = protector.Encrypt(Encoding.UTF8.GetBytes(revealJson));
-        account.CompleteEnrollment(protector.Encrypt(secret), revealCipher, now);
-        account.MarkRecoveryCodesIssued();
+        var totpCipher = protector.Encrypt(secret);
         CryptographicClear(secret);
-        await accounts.SaveChangesAsync(context.RequestAborted);
+
+        if (!await accounts.TryCompleteEnrollmentAsync(
+                account.Id, totpCipher, revealCipher, step, now, hashed, context.RequestAborted))
+        {
+            return AdminSignInDeny.Failure();
+        }
+
+        await accounts.ClearFactorLockAsync(account.Id, context.RequestAborted);
         await WriteAuthEventAsync(
             audit,
             AdminAuthEvents.TotpEnroll,
@@ -312,7 +315,8 @@ public static class AdminAuthEndpoints
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
-        TotpSecretProtector protector)
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher)
         => CompleteSecondFactorAsync(
             body,
             useRecovery: false,
@@ -321,7 +325,8 @@ public static class AdminAuthEndpoints
             sessions,
             audit,
             ipHasher,
-            protector);
+            protector,
+            recoveryHasher);
 
     private static Task<IResult> VerifyRecovery(
         [FromBody] TotpCodeRequest? body,
@@ -330,7 +335,8 @@ public static class AdminAuthEndpoints
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
-        TotpSecretProtector protector)
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher)
         => CompleteSecondFactorAsync(
             body,
             useRecovery: true,
@@ -339,7 +345,8 @@ public static class AdminAuthEndpoints
             sessions,
             audit,
             ipHasher,
-            protector);
+            protector,
+            recoveryHasher);
 
     private static async Task<IResult> CompleteSecondFactorAsync(
         TotpCodeRequest? body,
@@ -349,7 +356,8 @@ public static class AdminAuthEndpoints
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
-        TotpSecretProtector protector)
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher)
     {
         var pending = await LoadUsablePendingAsync(context, accounts);
         if (pending is null)
@@ -364,49 +372,9 @@ public static class AdminAuthEndpoints
         var accepted = false;
         var usedRecovery = false;
 
-        if (!useRecovery)
+        if (account.IsFactorLocked(now))
         {
-            byte[] secret;
-            try
-            {
-                secret = protector.Decrypt(account.TotpSecretCipher);
-            }
-            catch
-            {
-                return AdminSignInDeny.Failure();
-            }
-
-            if (Rfc6238Totp.TryVerify(secret, body?.Code ?? string.Empty, now, account.LastUsedTotpTimestep, out var step))
-            {
-                account.RecordTotpTimestep(step);
-                accepted = true;
-            }
-
-            CryptographicClear(secret);
-        }
-        else
-        {
-            var presentedHash = AdminRecoveryCodes.Hash(body?.RecoveryCode ?? body?.Code ?? string.Empty);
-            var codes = await accounts.GetRecoveryCodesAsync(account.Id, context.RequestAborted);
-            foreach (var stored in codes)
-            {
-                if (stored.IsUsed || !AdminRecoveryCodes.FixedTimeEquals(stored.CodeHash, presentedHash))
-                    continue;
-
-                if (stored.TryMarkUsed(now))
-                {
-                    accepted = true;
-                    usedRecovery = true;
-                }
-
-                break;
-            }
-        }
-
-        if (!accepted)
-        {
-            pending.IncrementFailedCodeAttempt(now);
-            await accounts.SaveChangesAsync(context.RequestAborted);
+            await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
             await WriteAuthEventAsync(
                 audit,
                 AdminAuthEvents.SecondFactorFailed,
@@ -424,9 +392,59 @@ public static class AdminAuthEndpoints
             return AdminSignInDeny.Failure();
         }
 
-        pending.Consume(now);
-        account.ClearRecoveryCodesReveal();
-        await accounts.SaveChangesAsync(context.RequestAborted);
+        if (!useRecovery)
+        {
+            byte[] secret;
+            try
+            {
+                secret = protector.Decrypt(account.TotpSecretCipher);
+            }
+            catch
+            {
+                return AdminSignInDeny.Failure();
+            }
+
+            if (Rfc6238Totp.TryVerify(secret, body?.Code ?? string.Empty, now, account.LastUsedTotpTimestep, out var step)
+                && await accounts.TryRecordTotpTimestepAsync(account.Id, step, context.RequestAborted))
+            {
+                accepted = true;
+            }
+
+            CryptographicClear(secret);
+        }
+        else
+        {
+            var presentedHash = recoveryHasher.Hash(body?.RecoveryCode ?? body?.Code ?? string.Empty);
+            var codes = await accounts.GetRecoveryCodesAsync(account.Id, context.RequestAborted);
+            string? matchedHash = null;
+            foreach (var stored in codes)
+            {
+                if (!AdminRecoveryCodes.FixedTimeEquals(stored.CodeHash, presentedHash))
+                    continue;
+                if (!stored.IsUsed)
+                    matchedHash = stored.CodeHash;
+            }
+
+            if (matchedHash is not null
+                && await accounts.TryRedeemRecoveryCodeAsync(account.Id, matchedHash, now, context.RequestAborted))
+            {
+                accepted = true;
+                usedRecovery = true;
+            }
+        }
+
+        if (!accepted)
+        {
+            await RecordFailedSecondFactorAsync(
+                pending, account, now, context, accounts, sessions, audit, ipHmac);
+            return AdminSignInDeny.Failure();
+        }
+
+        if (!await accounts.TryConsumePendingAsync(pending.Id, now, context.RequestAborted))
+            return AdminSignInDeny.Failure();
+
+        await accounts.ClearRecoveryCodesRevealAsync(account.Id, context.RequestAborted);
+        await accounts.ClearFactorLockAsync(account.Id, context.RequestAborted);
 
         var session = AdminSession.Create(account.Email, ipHmac, now);
         session.MarkTotpVerified();
@@ -476,6 +494,52 @@ public static class AdminAuthEndpoints
         context.Response.Cookies.Delete(AdminPendingAuthCookie.Name, AdminPendingAuthCookie.ExpiredOptions());
         context.Response.Cookies.Delete(AdminAntiForgeryCookie.Name, AdminAntiForgeryCookie.ExpiredOptions());
         return Results.Json(new { signedOut = true });
+    }
+
+    private static async Task RecordFailedSecondFactorAsync(
+        AdminPendingAuth pending,
+        AdminCoreOwnerAccount account,
+        DateTimeOffset now,
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions,
+        IAdminAuditRepository audit,
+        string ipHmac)
+    {
+        await accounts.TryIncrementPendingFailureAsync(pending.Id, now, context.RequestAborted);
+        await accounts.TryRecordFailedFactorAttemptAsync(account.Id, now, context.RequestAborted);
+        await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
+        await WriteAuthEventAsync(
+            audit,
+            AdminAuthEvents.SecondFactorFailed,
+            account.Email,
+            ipHmac,
+            AdminAuthEvents.ReasonBad2Fa,
+            context.RequestAborted);
+        await WriteAuthEventAsync(
+            audit,
+            AdminAuthEvents.LoginFailure,
+            account.Email,
+            ipHmac,
+            AdminAuthEvents.ReasonBad2Fa,
+            context.RequestAborted);
+    }
+
+    private static async Task EndSignInIfFactorLockedAsync(
+        AdminCoreOwnerAccount account,
+        DateTimeOffset now,
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions)
+    {
+        if (!account.IsFactorLocked(now)
+            && !await accounts.IsFactorLockedAsync(account.Id, now, context.RequestAborted))
+        {
+            return;
+        }
+
+        await accounts.ConsumeOutstandingPendingAsync(account.Email, now, context.RequestAborted);
+        await sessions.DeleteByEmailAsync(account.Email, context.RequestAborted);
     }
 
     private static async Task<AdminPendingAuth?> LoadUsablePendingAsync(

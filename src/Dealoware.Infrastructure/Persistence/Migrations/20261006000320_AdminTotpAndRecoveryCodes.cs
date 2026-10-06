@@ -28,6 +28,9 @@ public partial class AdminTotpAndRecoveryCodes : Migration
                 LastUsedTotpTimestep = table.Column<long>(nullable: true),
                 PendingTotpSecretCipher = table.Column<string>(maxLength: 512, nullable: true),
                 RecoveryCodesRevealCipher = table.Column<string>(maxLength: 4000, nullable: true),
+                FailedFactorAttempts = table.Column<int>(nullable: false, defaultValue: 0),
+                FactorAttemptWindowStartedAt = table.Column<DateTimeOffset>(nullable: true),
+                FactorLockedUntil = table.Column<DateTimeOffset>(nullable: true),
                 CreatedAt = table.Column<DateTimeOffset>(nullable: false)
             },
             constraints: table =>

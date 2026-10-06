@@ -4,8 +4,8 @@ using System.Text;
 namespace Dealoware.Infrastructure.Admin;
 
 /// <summary>
-/// One-time recovery codes: 10 codes, shown once, stored as SHA-256 of the
-/// normalized form (case-insensitive, spaces and dashes ignored).
+/// One-time recovery codes: 10 codes, shown once. Storage hash is HMAC-SHA256
+/// via <see cref="AdminRecoveryCodeHasher"/> (never bare SHA-256).
 /// Count follows the Spec §8.3 recommendation (10).
 /// </summary>
 public static class AdminRecoveryCodes
@@ -44,13 +44,6 @@ public static class AdminRecoveryCodes
         }
 
         return builder.ToString();
-    }
-
-    public static string Hash(string code)
-    {
-        var normalized = Normalize(code);
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
-        return Convert.ToHexString(bytes);
     }
 
     public static bool FixedTimeEquals(string leftHash, string rightHash)
