@@ -2,7 +2,7 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Fail-closed gate for the Playwright seed. The flag is refused outside
-/// Development and Testing so production never maps seed routes.
+/// Development and Testing so Production never maps or serves seed routes.
 /// </summary>
 public static class AdminUiTestSeedGuard
 {
