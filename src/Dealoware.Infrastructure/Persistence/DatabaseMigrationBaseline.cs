@@ -59,6 +59,8 @@ public static class DatabaseMigrationBaseline
 
     public const string UpdatedAtMigrationId = "20261006000200_AddUpdatedAtToAdminEntities";
 
+    public const string AdminPasswordResetMigrationId = "20261006000330_AdminPasswordResetTokens";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =

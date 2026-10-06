@@ -25,9 +25,18 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
+        IAdminPasswordResetTokenRepository resetTokens,
+        IAdminClock clock,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (await AdminSignedOutExemptions.IsExemptAsync(
+                context, resetTokens, clock, context.RequestAborted))
         {
             await _next(context);
             return;

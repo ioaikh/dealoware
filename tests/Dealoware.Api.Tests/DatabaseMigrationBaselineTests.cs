@@ -21,7 +21,8 @@ public class DatabaseMigrationBaselineTests
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
-        DatabaseMigrationBaseline.UpdatedAtMigrationId
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        DatabaseMigrationBaseline.AdminPasswordResetMigrationId
     ];
 
     [Fact]

@@ -93,6 +93,8 @@ builder.Services.Configure<CoreOwnerOptions>(
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
 
+builder.Services.AddAdminPasswordReset();
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
@@ -283,6 +285,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminPasswordReset();
 
 app.Run();
 
