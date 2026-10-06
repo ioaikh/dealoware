@@ -93,6 +93,13 @@ builder.Services.Configure<CoreOwnerOptions>(
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireRole(AdminSessionMiddleware.CoreOwnerRole));
+});
+
 
 var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
@@ -203,6 +210,8 @@ app.UseStaticFiles();
 
 app.UseRateLimiter();
 
+app.UseMiddleware<AdminSessionMiddleware>();
+
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
 using (var scope = app.Services.CreateScope())
@@ -226,6 +235,7 @@ app.MapStrategyEndpoints();
 app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
+app.MapAdminMeEndpoints();
 
 app.Run();
 
