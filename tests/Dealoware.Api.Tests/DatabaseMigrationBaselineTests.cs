@@ -17,11 +17,16 @@ public class DatabaseMigrationBaselineTests
     private static IReadOnlyList<string> AssemblyWithBaseline =>
         [DatabaseMigrationBaseline.BaselineMigrationId, DatabaseMigrationBaseline.AdminTablesMigrationId];
 
-    private static readonly string[] FrozenSchemaMigrationIds =
+    /// <summary>
+    /// After stamp, MigrateAsync applies later incremental migrations (TOTP/recovery).
+    /// Frozen 13/15-table specs stay unchanged.
+    /// </summary>
+    private static readonly string[] AllAppliedMigrationIds =
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
-        DatabaseMigrationBaseline.UpdatedAtMigrationId
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        DatabaseMigrationBaseline.TotpRecoveryMigrationId
     ];
 
     [Fact]
@@ -289,7 +294,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
@@ -332,7 +337,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -359,8 +364,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -380,8 +386,9 @@ public class DatabaseMigrationBaselineTests
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -588,8 +595,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminSessions.CountAsync());
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -698,6 +706,8 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
+        Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
+        Assert.Equal(DatabaseMigrationBaseline.TotpRecoveryMigrationId, migrations[3]);
     }
 
     [Fact]

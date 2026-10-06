@@ -56,5 +56,10 @@ public class AdminOutPackTests
         var source = File.ReadAllText(hasherPath);
         Assert.Contains("DEALOWARE_ADMIN_IP_HMAC_KEY", source);
         Assert.DoesNotContain("Turnstile", source, StringComparison.OrdinalIgnoreCase);
+
+        var totpPath = Path.Combine(RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "TotpSecretProtector.cs");
+        var totpSource = File.ReadAllText(totpPath);
+        Assert.Contains("DEALOWARE_ADMIN_TOTP_KEY", totpSource);
+        Assert.DoesNotContain("otpauth://", totpSource, StringComparison.OrdinalIgnoreCase);
     }
 }
