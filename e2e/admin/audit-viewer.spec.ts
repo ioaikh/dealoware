@@ -17,9 +17,11 @@ function readSessionId(): string {
   while (Date.now() < deadline) {
     for (const file of candidates) {
       if (!fs.existsSync(file)) continue;
-      const info = JSON.parse(fs.readFileSync(file, "utf8")) as { sessionId?: string };
-      if (info.sessionId) return info.sessionId;
+      const info = JSON.parse(fs.readFileSync(file, "utf8")) as { sessionId?: string; SessionId?: string };
+      const sessionId = info.sessionId || info.SessionId;
+      if (sessionId) return sessionId;
     }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
   throw new Error("admin-ui-host.json was not written; the local test host did not start.");
 }
@@ -31,7 +33,7 @@ async function addSessionCookie(page: Page): Promise<void> {
     {
       name: "dw_admin_session",
       value: sessionId,
-      url: base.origin,
+      domain: base.hostname,
       path: "/admin",
       httpOnly: true,
       secure: false,
@@ -119,7 +121,7 @@ test.describe("Admin audit viewer", () => {
     await expect(page.locator("body")).not.toContainText("should-never-render");
     await expect(page.locator("body")).not.toContainText("203.0.113.10");
     await expect(page.locator("body")).not.toContainText("passwordHash");
-    await expect(page.getByText("Changed")).toBeVisible();
+    await expect(page.getByText("Changed").first()).toBeVisible();
     await expect(page.getByText("a1b2c3d4e5f6")).toBeVisible();
     await expect(page.getByRole("button", { name: /edit|delete|save/i })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Back to audit log" })).toHaveAttribute("href", /\/admin\/audit/);
@@ -149,7 +151,7 @@ test.describe("Admin audit viewer", () => {
       await route.continue();
     });
     const loading = page.goto("/admin/audit");
-    await expect(page.locator(".skeleton")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".skeleton").first()).toBeVisible({ timeout: 5_000 });
     await runAxeAndSave(page, "td-adm-ui-na-axe-s-d1-loading");
     holdList = false;
     await loading;
@@ -177,7 +179,7 @@ test.describe("Admin audit viewer", () => {
 
     await page.goto(`/admin/audit/${EDIT_ID}`);
     await expect(page.getByRole("heading", { name: "Audit entry" })).toBeVisible();
-    await expect(page.getByText("Before")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Before", exact: true })).toBeVisible();
     await runAxeAndSave(page, "td-adm-ui-na-axe-s-d2-default");
 
     await page.goto("/admin/audit/99999999-9999-9999-9999-999999999999");

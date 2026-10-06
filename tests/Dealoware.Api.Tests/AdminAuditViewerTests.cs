@@ -230,14 +230,21 @@ public class AdminAuditViewerTests
         Assert.Contains("data-admin-screen=\"S-D2\"", detailHtml);
         Assert.Contains("Audit entry · Dealoware admin", detailHtml);
 
+        // Route note r3 (b079a814; r2 void): Spec §5 return paths are the two pages only.
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit"));
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/"));
+        Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit?action=entity_edit"));
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath($"/admin/audit/{AdminAuditApiStub.EditId:D}"));
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath($"/admin/audit/{AdminAuditApiStub.EditId:D}?from=2026-10-01"));
         Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath(AdminAuditViewerEndpoints.ShellJsPath));
         Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/shell/audit.css"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/shell"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/not-a-guid"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/api/audit"));
         Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin"));
         Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/audit"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath(null));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath(""));
     }
 
     [Fact]

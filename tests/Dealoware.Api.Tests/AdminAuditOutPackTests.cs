@@ -50,6 +50,8 @@ public class AdminAuditOutPackTests
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit"));
         Assert.True(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
         Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/shell/audit.js"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/audit/not-a-guid"));
+        Assert.False(AdminAuditViewerEndpoints.IsAllowedReturnPath("/admin/api/audit"));
         Assert.Equal("/admin", AdminSessionCookie.CreateOptions().Path);
     }
 }

@@ -1,9 +1,10 @@
 using System.Text.Json;
 using Dealoware.Api.Tests;
+using Dealoware.Domain.Admin;
+using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -23,7 +24,7 @@ public static class Program
 
         await using var factory = new PlaywrightAdminUiFactory(listen);
         _ = factory.Services;
-        var sessionId = await factory.SeedCoreOwnerSessionAsync();
+        var sessionId = await factory.SeedKestrelSessionAsync();
         var info = new HostInfo(factory.ListenUrl, sessionId.ToString("D"), AdminUiWebApplicationFactory.AdminHost);
         var json = JsonSerializer.Serialize(info);
         var infoPath = Path.Combine(AppContext.BaseDirectory, "admin-ui-host.json");
@@ -50,9 +51,23 @@ public sealed class PlaywrightAdminUiFactory : AdminUiWebApplicationFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.UseKestrel();
-        builder.UseUrls(ListenUrl);
+        builder.UseContentRoot(FindApiContentRoot());
         builder.UseSetting(WebHostDefaults.ServerUrlsKey, ListenUrl);
+        var dbPath = Path.Combine(Path.GetTempPath(), $"admin-ui-host-{Guid.NewGuid():N}.db");
+        builder.ConfigureTestServices(services =>
+        {
+            foreach (var descriptor in services
+                         .Where(d => d.ServiceType == typeof(DbContextOptions<DealowareDbContext>)
+                                     || d.ServiceType == typeof(DbContextOptions)
+                                     || d.ServiceType == typeof(DealowareDbContext))
+                         .ToList())
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddDbContext<DealowareDbContext>(options =>
+                options.UseSqlite($"Data Source={dbPath};Cache=Shared;Mode=ReadWriteCreate"));
+        });
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -61,22 +76,50 @@ public sealed class PlaywrightAdminUiFactory : AdminUiWebApplicationFactory
         {
             web.UseKestrel();
             web.UseUrls(ListenUrl);
+            web.UseContentRoot(FindApiContentRoot());
         });
 
         _kestrel = builder.Build();
         _kestrel.Start();
 
-        var addresses = _kestrel.Services.GetRequiredService<IServer>()
-            .Features.Get<IServerAddressesFeature>()?.Addresses;
-        if (addresses is { Count: > 0 })
-        {
-            ListenUrlObserved = addresses.First();
-        }
-
-        return _kestrel;
+        var dummy = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(web =>
+            {
+                web.UseTestServer();
+                web.Configure(_ => { });
+            })
+            .Build();
+        dummy.Start();
+        return dummy;
     }
 
-    public string ListenUrlObserved { get; private set; } = "";
+    public async Task<Guid> SeedKestrelSessionAsync()
+    {
+        if (_kestrel is null)
+            throw new InvalidOperationException("Kestrel host is not started.");
+
+        using var scope = _kestrel.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var session = AdminSession.Create(AdminUiWebApplicationFactory.CoreOwnerEmail, ipHmac: "testhmac-not-an-ip");
+        session.MarkTotpVerified();
+        db.AdminSessions.Add(session);
+        await db.SaveChangesAsync();
+        return session.Id;
+    }
+
+    private static string FindApiContentRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "src", "Dealoware.Api");
+            if (File.Exists(Path.Combine(candidate, "Dealoware.Api.csproj")))
+                return candidate;
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate src/Dealoware.Api for the admin UI host.");
+    }
 
     protected override void Dispose(bool disposing)
     {

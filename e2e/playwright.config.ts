@@ -24,9 +24,6 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4173',
-    extraHTTPHeaders: {
-      Host: 'admin.core.dealoware.com',
-    },
     trace: 'off',
     screenshot: 'off',
   },
