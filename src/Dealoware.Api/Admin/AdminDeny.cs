@@ -7,7 +7,6 @@ namespace Dealoware.Api.Admin;
 public static class AdminDeny
 {
     public const string GenericError = "Unauthorized";
-
     public const string GenericBadRequest = "BadRequest";
     public const string GenericNotFound = "NotFound";
 

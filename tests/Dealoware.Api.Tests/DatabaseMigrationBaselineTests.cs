@@ -1,5 +1,6 @@
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Persistence;
+using Dealoware.Infrastructure.Persistence.Migrations;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -22,6 +23,18 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
         DatabaseMigrationBaseline.UpdatedAtMigrationId
+    ];
+
+    /// <summary>
+    /// Stamp set is unchanged (PR #23 frozen + #27 UpdatedAt). Migration 380
+    /// applies after stamp via MigrateAsync.
+    /// </summary>
+    private static readonly string[] AppliedAfterMigrate =
+    [
+        DatabaseMigrationBaseline.BaselineMigrationId,
+        DatabaseMigrationBaseline.AdminTablesMigrationId,
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        AdminAuditLogAppendOnly.MigrationId
     ];
 
     [Fact]
@@ -289,7 +302,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrate, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
@@ -332,7 +345,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrate, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -359,7 +372,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrate, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -380,7 +393,7 @@ public class DatabaseMigrationBaselineTests
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrate, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -588,7 +601,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminSessions.CountAsync());
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrate, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -698,6 +711,7 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
+        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[2]);
     }
 
     [Fact]

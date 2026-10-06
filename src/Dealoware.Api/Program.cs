@@ -283,6 +283,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminAuditEndpoints();
 
 app.Run();
 
