@@ -27,7 +27,7 @@ public enum MigrationBaselineAction
     /// <summary>Non-empty database that is not the baseline app schema.</summary>
     FailClosedUnknownSchema,
 
-    /// <summary>All 13 table names exist but columns or primary keys do not match.</summary>
+    /// <summary>Expected table names exist but columns or primary keys do not match.</summary>
     FailClosedSchemaMismatch
 }
 
@@ -49,6 +49,8 @@ public static class DatabaseMigrationBaseline
 {
     public const string BaselineMigrationId = "20261005000000_Baseline";
 
+    public const string AdminTablesMigrationId = "20261006000100_AddAdminTablesAndSoftDelete";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =
@@ -68,13 +70,15 @@ public static class DatabaseMigrationBaseline
 
     /// <summary>
     /// Tables created by Development <c>EnsureCreated</c> / schema bootstrap
-    /// before any EF migration existed. Frozen for detection; do not replace
-    /// with the current model (later migrations such as A7 admin tables are
-    /// incremental after this baseline).
+    /// for the current model (baseline plus A7 PR #20 admin tables). Frozen
+    /// for stamp detection. Incremental migrations after
+    /// <see cref="AdminTablesMigrationId"/> still apply after a successful stamp.
     /// </summary>
     public static readonly IReadOnlyList<string> BaselineTableNames =
     [
         "AcceptGrants",
+        "AdminAuditLog",
+        "AdminSessions",
         "ApiKeyCredentials",
         "ArtifactValues",
         "Artifacts",
@@ -177,7 +181,7 @@ public static class DatabaseMigrationBaseline
                     throw new InvalidOperationException(SchemaMismatchMessage);
                 }
 
-                await StampBaselineAsync(db, ResolveBaselineId(assembly), cancellationToken)
+                await StampFrozenSchemaAsync(db, assembly, cancellationToken)
                     .ConfigureAwait(false);
                 break;
         }
@@ -371,22 +375,40 @@ public static class DatabaseMigrationBaseline
     /// <summary>
     /// CREATE / INSERT on <c>__EFMigrationsHistory</c>. Call only as
     /// <c>dealoware_migrate</c> from the one-shot. Idempotent if the row exists.
+    /// Stamps every migration embodied by the frozen stamp schema (baseline
+    /// plus #20 admin / soft-delete) so <c>MigrateAsync</c> does not re-apply
+    /// ALTERs against an already-current EnsureCreated database.
     /// </summary>
-    private static async Task StampBaselineAsync(
+    private static async Task StampFrozenSchemaAsync(
         DealowareDbContext db,
-        string baselineId,
+        IReadOnlyList<string> assemblyMigrations,
         CancellationToken cancellationToken)
     {
         var history = db.GetService<IHistoryRepository>();
         await history.CreateIfNotExistsAsync(cancellationToken).ConfigureAwait(false);
 
-        var applied = await db.Database.GetAppliedMigrationsAsync(cancellationToken).ConfigureAwait(false);
-        if (applied.Contains(baselineId, StringComparer.Ordinal))
-        {
-            return;
-        }
+        var applied = (await db.Database.GetAppliedMigrationsAsync(cancellationToken).ConfigureAwait(false))
+            .ToList();
 
-        var sql = history.GetInsertScript(new HistoryRow(baselineId, ProductInfo.GetVersion()));
-        await db.Database.ExecuteSqlRawAsync(sql, cancellationToken).ConfigureAwait(false);
+        foreach (var migrationId in FrozenSchemaMigrationIds(assemblyMigrations))
+        {
+            if (applied.Contains(migrationId, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            var sql = history.GetInsertScript(new HistoryRow(migrationId, ProductInfo.GetVersion()));
+            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken).ConfigureAwait(false);
+            applied.Add(migrationId);
+        }
+    }
+
+    private static IEnumerable<string> FrozenSchemaMigrationIds(IReadOnlyList<string> assemblyMigrations)
+    {
+        yield return ResolveBaselineId(assemblyMigrations);
+        if (assemblyMigrations.Contains(AdminTablesMigrationId, StringComparer.Ordinal))
+        {
+            yield return AdminTablesMigrationId;
+        }
     }
 }

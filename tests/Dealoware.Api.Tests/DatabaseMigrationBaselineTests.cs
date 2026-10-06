@@ -14,7 +14,13 @@ public class DatabaseMigrationBaselineTests
     private static readonly string[] Empty = [];
 
     private static IReadOnlyList<string> AssemblyWithBaseline =>
-        [DatabaseMigrationBaseline.BaselineMigrationId, "20261006000100_AddAdminTablesAndSoftDelete"];
+        [DatabaseMigrationBaseline.BaselineMigrationId, DatabaseMigrationBaseline.AdminTablesMigrationId];
+
+    private static readonly string[] FrozenSchemaMigrationIds =
+    [
+        DatabaseMigrationBaseline.BaselineMigrationId,
+        DatabaseMigrationBaseline.AdminTablesMigrationId
+    ];
 
     [Fact]
     public void Decide_FreshEmpty_AppliesMigrations()
@@ -214,7 +220,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Contains(DatabaseMigrationBaseline.BaselineMigrationId, applied);
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
         }
     }
@@ -248,7 +254,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal([DatabaseMigrationBaseline.BaselineMigrationId], applied);
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
         }
     }
 
@@ -272,7 +278,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal([DatabaseMigrationBaseline.BaselineMigrationId], applied);
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
         }
     }
 
@@ -293,7 +299,7 @@ public class DatabaseMigrationBaselineTests
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal([DatabaseMigrationBaseline.BaselineMigrationId], applied);
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
         }
     }
 
@@ -395,7 +401,9 @@ public class DatabaseMigrationBaselineTests
                   LoginEmail TEXT,
                   ContactEmail TEXT,
                   CreatedAt TEXT NOT NULL,
-                  IsActive INTEGER NOT NULL
+                  IsActive INTEGER NOT NULL,
+                  DeletedAt TEXT,
+                  Version INTEGER NOT NULL
                 );
                 """;
             await cmd.ExecuteNonQueryAsync();
@@ -464,6 +472,7 @@ public class DatabaseMigrationBaselineTests
         using var db = new DealowareDbContext(options);
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
+        Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
     }
 
     [Fact]
