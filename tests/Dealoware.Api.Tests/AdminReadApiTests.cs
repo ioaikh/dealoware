@@ -442,7 +442,7 @@ public class AdminReadApiTests
                  {
                      $"/admin/api/artifacts?includeDeleted=true&q={prefix}-GoneWidget",
                      $"/admin/api/negotiations?includeDeleted=true&negotiationId={graph.DeletedNegotiation.Id:D}",
-                     $"/admin/api/offers?includeDeleted=true&q={prefix}-deleted-terms"
+                     $"/admin/api/offers?includeDeleted=true&negotiationId={graph.DeletedNegotiation.Id:D}"
                  })
         {
             using var response = await client.SendAsync(AdminGet(path, session));
