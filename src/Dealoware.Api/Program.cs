@@ -93,6 +93,22 @@ builder.Services.Configure<CoreOwnerOptions>(
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
 
+try
+{
+    builder.Services.AddAdminBootstrap(builder.Configuration, builder.Environment);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
@@ -282,6 +298,7 @@ app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
+app.MapAdminBootstrap();
 
 app.Run();
 

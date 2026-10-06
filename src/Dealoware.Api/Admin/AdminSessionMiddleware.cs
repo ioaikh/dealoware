@@ -8,6 +8,8 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Fail-closed session gate for all /admin routes.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
+/// Signed-out exemptions are the exact path+method pairs in route-prefix note r2 §2.2
+/// that this step owns, plus /admin/auth/ static files (§2.3).
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -25,9 +27,16 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
+        IAdminBootstrapService bootstrap,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (await IsSignedOutExemptAsync(context, bootstrap))
         {
             await _next(context);
             return;
@@ -74,6 +83,34 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    private static async Task<bool> IsSignedOutExemptAsync(HttpContext context, IAdminBootstrapService bootstrap)
+    {
+        if (!AdminPathCanonicalizer.TryCanonicalize(context, out var canonical))
+        {
+            return false;
+        }
+
+        var method = context.Request.Method;
+
+        if (HttpMethods.IsGet(method) && AdminSignedOutAccess.IsAuthStatic(canonical))
+        {
+            return true;
+        }
+
+        if (AdminSignedOutAccess.IsLinkExpiredGet(canonical, method))
+        {
+            return true;
+        }
+
+        if (AdminSignedOutAccess.IsBootstrapPage(canonical, method)
+            || AdminSignedOutAccess.IsBootstrapApiPost(canonical, method))
+        {
+            return await AdminSignedOutAccess.HasUsableBootstrapTokenAsync(context, bootstrap);
+        }
+
+        return false;
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)

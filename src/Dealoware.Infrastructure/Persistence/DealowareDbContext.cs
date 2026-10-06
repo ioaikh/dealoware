@@ -41,6 +41,16 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
 
+    /// <summary>
+    /// A7 Step 2: CoreOwner credential (password hash set only via bootstrap).
+    /// </summary>
+    public DbSet<AdminCredential> AdminCredentials => Set<AdminCredential>();
+
+    /// <summary>
+    /// A7 Step 2: hashed single-use bootstrap tokens.
+    /// </summary>
+    public DbSet<AdminBootstrapToken> AdminBootstrapTokens => Set<AdminBootstrapToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -85,5 +95,7 @@ public class DealowareDbContext : DbContext
         // A7: Admin session and audit tables
         modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminBootstrapTokenEntityConfiguration());
     }
 }
