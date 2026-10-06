@@ -79,6 +79,28 @@ export async function openSecuritySettings(page: Page) {
   await page.goto("/admin/settings/security", { waitUntil: "domcontentloaded" });
 }
 
+export function watchLinkTokenRequests(page: Page, apiPath: string) {
+  const bodies: { token?: string }[] = [];
+  const leaks: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    const headers = request.headers();
+    const referer = headers.referer || headers.referrer || "";
+    const headerValues = Object.entries(headers)
+      .filter(([name]) => name.toLowerCase() !== "cookie")
+      .map(([, value]) => value)
+      .join("\n");
+    const isApiPost = request.method() === "POST" && url.includes(apiPath);
+    if (isApiPost) bodies.push(request.postDataJSON() as { token?: string });
+    const urlHasToken = /[?#]token=/i.test(url) || /\/opaque(?:[/?#]|$)/i.test(url);
+    const refererHasToken = /[?#]token=|token=opaque/i.test(referer);
+    const headerHasToken = /token=opaque/i.test(headerValues);
+    if (urlHasToken || refererHasToken || headerHasToken)
+      leaks.push(`${request.method()} ${url} referer=${referer}`);
+  });
+  return { bodies, leaks };
+}
+
 export async function expectAxe(page: Page, caseId: string) {
   fs.mkdirSync(AXE_DIR, { recursive: true });
   const results = await new AxeBuilder({ page })

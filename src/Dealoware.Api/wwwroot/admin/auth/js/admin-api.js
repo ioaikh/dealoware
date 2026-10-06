@@ -1,9 +1,12 @@
 /**
  * Single client module for Steps 2–5 auth API routes and JSON shapes.
- * Paths follow route-prefix note r3 (b079a814) §2.2 optional auth JSON.
+ * Paths follow route-prefix note r5 (sha c5e9d232; r3 and r4 VOID).
  * Every exempt POST sends X-CSRF-TOKEN (C3). Return path is never put in a
- * sign-in query string (C6). Bootstrap and reset-confirm link tokens travel
- * only in the URL fragment (COMMON 942df099); GET takes no token.
+ * sign-in query string (C6). r5 §10 C4.3 / COMMON 1a9aabc5: a token never
+ * appears in a URL path, query string, request line, header, Referer, or log.
+ * The emailed bootstrap or reset token is the only exception: #token= only,
+ * then POST body only. GET /admin/bootstrap and GET /admin/reset/confirm
+ * take no token and have no side effects.
  *
  * Assumed endpoints (admin host only; listed exemptions only):
  *   POST /admin/api/auth/sign-in

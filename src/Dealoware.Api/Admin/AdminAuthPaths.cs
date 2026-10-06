@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Http.Features;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Locked r3 inventory (tip b079a814). Exact path+method session exemptions.
-/// §10 C1–C8 win over §§2–5.
+/// Locked r5 inventory (sha c5e9d232; r3 and r4 VOID). Exact path+method
+/// session exemptions. §10 C1–C8 win over §§2–5.
 /// </summary>
 public static class AdminAuthPaths
 {
@@ -51,8 +51,8 @@ public static class AdminAuthPaths
         new(SignInRecovery, ["GET", "POST"], TokenCondition.PendingSignIn),
         new(Reset, ["GET", "POST"], TokenCondition.None),
         new(ResetSent, ["GET"], TokenCondition.None),
-        // COMMON 942df099: GET has no token and no side effects. The link token
-        // is fragment-only on the client and reaches the server in the POST body.
+        // r5 §10 C4.3 / COMMON 1a9aabc5: GET takes no token and has no side
+        // effects. The emailed link token is #token= only, then POST body only.
         new(Bootstrap, ["GET", "POST"], TokenCondition.None),
         new(ResetConfirm, ["GET", "POST"], TokenCondition.None),
         new(LinkExpired, ["GET"], TokenCondition.None),

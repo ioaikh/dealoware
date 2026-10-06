@@ -1,7 +1,7 @@
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// r3 §2.4 / §10 C5: dw_admin_session, dw_admin_pending, dw_admin_af.
+/// r5 sha c5e9d232 §10 C5: dw_admin_session, dw_admin_pending, dw_admin_af.
 /// Host-only, Secure, HttpOnly, SameSite=Strict, Path=/admin. No __Host- prefix.
 /// </summary>
 public static class AdminAuthCookies

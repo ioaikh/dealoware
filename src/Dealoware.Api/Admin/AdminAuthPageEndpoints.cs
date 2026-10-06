@@ -4,7 +4,8 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Serves S-A1–S-A12 HTML after the session gate. Pages live outside wwwroot
-/// so they are never served as anonymous static files except via §2.2.
+/// so they are never served as anonymous static files except via r5 exemptions.
+/// C4.3: GET /admin/bootstrap and /admin/reset/confirm take no token.
 /// </summary>
 public static class AdminAuthPageEndpoints
 {

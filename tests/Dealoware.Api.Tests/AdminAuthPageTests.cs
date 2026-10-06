@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Dealoware.Api.Tests;
 
 /// <summary>
-/// r3 §2 / §10 C1–C8 exemptions, denies, AF, cookies, and no-data HTML.
+/// r5 sha c5e9d232 §10 C1–C8 exemptions, denies, AF, cookies, and no-data HTML.
 /// Token rows use the Development gate.
 /// </summary>
 [Collection("WebAppTests")]
@@ -205,6 +205,28 @@ public class AdminAuthPageTests
         var client = CreateClient();
         using var response = await client.SendAsync(Req(HttpMethod.Get, path + "?token=opaque", AdminHost));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            var setCookie = string.Join(" ", cookies);
+            Assert.DoesNotContain("opaque", setCookie, StringComparison.Ordinal);
+            Assert.DoesNotContain("token=", setCookie, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Theory]
+    [InlineData("/admin/bootstrap")]
+    [InlineData("/admin/reset/confirm")]
+    public async Task LinkPages_TokenHeader_IsIgnoredAndNotStored(string path)
+    {
+        var client = CreateClient();
+        using var request = Req(HttpMethod.Get, path, AdminHost);
+        request.Headers.TryAddWithoutValidation("Token", "opaque");
+        request.Headers.TryAddWithoutValidation("X-Link-Token", "opaque");
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
         if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
         {
             var setCookie = string.Join(" ", cookies);
@@ -229,6 +251,8 @@ public class AdminAuthPageTests
     [InlineData("/admin/sign-in/extra")]
     [InlineData("/admin/sign-in/code/extra")]
     [InlineData("/admin/reset/sent/extra")]
+    [InlineData("/admin/bootstrap/opaque")]
+    [InlineData("/admin/reset/confirm/opaque")]
     [InlineData("/admin/auth")]
     [InlineData("/admin/sign-in/")]
     [InlineData("/admin/sign-in;x")]

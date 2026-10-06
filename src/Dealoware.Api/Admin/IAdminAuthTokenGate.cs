@@ -1,7 +1,7 @@
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Server-side token checks for r3 §2.2 / §10 C2 extra conditions.
+/// Server-side token checks for r5 §10 C2 extra conditions (sha c5e9d232).
 /// Steps 2–5 replace the Development/fail-closed stand-ins with store validation.
 /// </summary>
 public interface IAdminAuthTokenGate
@@ -30,7 +30,7 @@ public sealed class FailClosedAdminAuthTokenGate : IAdminAuthTokenGate
 /// <summary>
 /// Development / test stand-in until Steps 2–5 land stores.
 /// Pending token is cookie-only (C2). Enrol pending reuses dw_admin_pending=enrol (C5: no extra name).
-/// Bootstrap/reset link tokens are not on GET (COMMON 942df099: fragment then POST body).
+/// Bootstrap/reset link tokens are not on GET (r5 C4.3 / COMMON 1a9aabc5).
 /// </summary>
 public sealed class DevelopmentAdminAuthTokenGate : IAdminAuthTokenGate
 {

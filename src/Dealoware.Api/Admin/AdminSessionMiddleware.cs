@@ -7,7 +7,9 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Fail-closed session gate for /admin routes after the host gate (C7).
-/// r3 §2 + §10 C1–C8: exact exemptions, AF on POST, generic 401 otherwise.
+/// r5 sha c5e9d232 (r3 and r4 VOID) §10 C1–C8: exact exemptions, AF on POST,
+/// generic 401 otherwise. C4.3: GET /admin/bootstrap and /admin/reset/confirm
+/// take no token and have no side effects.
 /// </summary>
 public sealed class AdminSessionMiddleware
 {

@@ -4,7 +4,8 @@ using System.Text;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// §10 C3 / C5: exempt POSTs require dw_admin_af. GET may issue the cookie (no other side effects).
+/// r5 sha c5e9d232 §10 C3 / C5: exempt POSTs require dw_admin_af. GET may
+/// issue the cookie (no other side effects).
 /// </summary>
 public static class AdminAntiForgery
 {

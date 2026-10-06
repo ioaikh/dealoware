@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { expectAxe, mockAuthApi, openAdmin, screenshotScreen, serveStatsLanding } from "../helpers";
+import { expectAxe, mockAuthApi, openAdmin, screenshotScreen, serveStatsLanding, watchLinkTokenRequests } from "../helpers";
 
 const pending = [{ name: "dw_admin_pending", value: "valid" }];
 const enrol = [{ name: "dw_admin_pending", value: "enrol" }];
@@ -168,11 +168,7 @@ test("TD-ADM-UI-auth-16 recovery banner with S-A12 link @TD-ADM-UI-auth-16", asy
 });
 
 test("bootstrap fragment token is stripped and posted @TD-ADM-UI-auth-bootstrap-fragment", async ({ page }) => {
-  const bodies: { token?: string }[] = [];
-  page.on("request", (request) => {
-    if (request.method() === "POST" && request.url().includes("/admin/api/auth/bootstrap"))
-      bodies.push(request.postDataJSON() as { token?: string });
-  });
+  const watched = watchLinkTokenRequests(page, "/admin/api/auth/bootstrap");
   await mockAuthApi(page);
   await openAdmin(page, "/admin/bootstrap#token=opaque");
   await expect(page).toHaveURL(/\/admin\/bootstrap$/);
@@ -183,16 +179,13 @@ test("bootstrap fragment token is stripped and posted @TD-ADM-UI-auth-bootstrap-
   await page.locator("#new-password").fill("x".repeat(16));
   await page.locator("#confirm-password").fill("x".repeat(16));
   await page.getByRole("button", { name: "Set password" }).click();
-  await expect.poll(() => bodies.length).toBe(1);
-  expect(bodies[0].token).toBe("opaque");
+  await expect.poll(() => watched.bodies.length).toBe(1);
+  expect(watched.bodies[0].token).toBe("opaque");
+  expect(watched.leaks).toEqual([]);
 });
 
 test("reset-confirm fragment token is stripped and posted @TD-ADM-UI-auth-reset-fragment", async ({ page }) => {
-  const bodies: { token?: string }[] = [];
-  page.on("request", (request) => {
-    if (request.method() === "POST" && request.url().includes("/admin/api/auth/reset/confirm"))
-      bodies.push(request.postDataJSON() as { token?: string });
-  });
+  const watched = watchLinkTokenRequests(page, "/admin/api/auth/reset/confirm");
   await mockAuthApi(page);
   await openAdmin(page, "/admin/reset/confirm#token=opaque");
   await expect(page).toHaveURL(/\/admin\/reset\/confirm$/);
@@ -204,8 +197,9 @@ test("reset-confirm fragment token is stripped and posted @TD-ADM-UI-auth-reset-
   await page.locator("#confirm-password").fill("x".repeat(16));
   await page.locator("#code").fill("123456");
   await page.getByRole("button", { name: "Set password" }).click();
-  await expect.poll(() => bodies.length).toBe(1);
-  expect(bodies[0].token).toBe("opaque");
+  await expect.poll(() => watched.bodies.length).toBe(1);
+  expect(watched.bodies[0].token).toBe("opaque");
+  expect(watched.leaks).toEqual([]);
 });
 
 test("query token on bootstrap is refused @TD-ADM-UI-auth-bootstrap-query-refused", async ({ page }) => {
