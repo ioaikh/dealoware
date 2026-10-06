@@ -3,6 +3,7 @@ namespace Dealoware.Application.Admin;
 /// <summary>
 /// Builds reset and bootstrap token links. Callers pass the raw token only.
 /// Paths match route note r3 b079a814: /admin/reset/confirm and /admin/bootstrap.
+/// Token placement waits on Chief Security (query is banned by r3 / C4.3).
 /// </summary>
 public static class AdminMailPagePaths
 {
@@ -18,7 +19,7 @@ public static class AdminMailPagePaths
             throw new ArgumentException("Token is required and must be 512 characters or fewer.", nameof(token));
 
         var path = PathFor(kind);
-        var url = Origin + path + "?token=" + Uri.EscapeDataString(token);
+        var url = AttachToken(Origin + path, token);
         EnsureBuiltLink(url, path);
         return url;
     }
@@ -29,6 +30,13 @@ public static class AdminMailPagePaths
         MailLinkKind.Bootstrap => BootstrapPath,
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
+
+    /// <summary>
+    /// Token placement placeholder until Chief Security rules. Query strings are banned
+    /// (route note r3 / C4.3). One line to change after the ruling.
+    /// </summary>
+    private static string AttachToken(string pageUrl, string token)
+        => pageUrl + "#token=" + Uri.EscapeDataString(token);
 
     private static void EnsureBuiltLink(string url, string expectedPath)
     {
@@ -43,8 +51,10 @@ public static class AdminMailPagePaths
             throw new InvalidOperationException("Mail links must not include a port.");
         if (!string.IsNullOrEmpty(uri.UserInfo))
             throw new InvalidOperationException("Mail links must not include userinfo.");
-        if (!string.IsNullOrEmpty(uri.Fragment))
-            throw new InvalidOperationException("Mail links must not include a fragment.");
+        if (!string.IsNullOrEmpty(uri.Query))
+            throw new InvalidOperationException("Mail links must not include a query string.");
+        if (!uri.Fragment.StartsWith("#token=", StringComparison.Ordinal))
+            throw new InvalidOperationException("Mail links must carry the token in the placeholder fragment.");
         if (!string.Equals(uri.AbsolutePath, expectedPath, StringComparison.Ordinal))
             throw new InvalidOperationException("Mail link path must be " + expectedPath + ".");
         if (!string.Equals(uri.GetLeftPart(UriPartial.Authority), Origin, StringComparison.OrdinalIgnoreCase))

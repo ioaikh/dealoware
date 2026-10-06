@@ -45,10 +45,10 @@ public class AdminMailInterfaceTests
     public void TD_ADM_110_MailLayer_BuildsFixedOriginPaths()
     {
         Assert.Equal(
-            "https://admin.core.dealoware.com/admin/reset/confirm?token=fixture",
+            ExpectedLink(MailLinkKind.Reset, FixtureToken),
             AdminMailPagePaths.Build(MailLinkKind.Reset, FixtureToken));
         Assert.Equal(
-            "https://admin.core.dealoware.com/admin/bootstrap?token=fixture",
+            ExpectedLink(MailLinkKind.Bootstrap, FixtureToken),
             AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken));
         Assert.Throws<ArgumentOutOfRangeException>(() => AdminMailPagePaths.Build((MailLinkKind)0, FixtureToken));
         Assert.Throws<ArgumentException>(() => AdminMailPagePaths.Build(MailLinkKind.Reset, ""));
@@ -79,8 +79,7 @@ public class AdminMailInterfaceTests
         foreach (var message in recorder.Sent)
         {
             var uri = AssertBuiltLink(message.TextBody, expectReset: message.Purpose == MailPurpose.PasswordReset, token);
-            Assert.Equal(Uri.EscapeDataString(token), TokenQueryValue(uri));
-            Assert.True(string.IsNullOrEmpty(uri.Fragment));
+            Assert.Equal(Uri.EscapeDataString(token), TokenPlacementValue(uri));
             Assert.True(string.IsNullOrEmpty(uri.UserInfo));
             Assert.True(uri.IsDefaultPort);
             Assert.DoesNotContain(":" + uri.Port, message.TextBody, StringComparison.Ordinal);
@@ -276,22 +275,28 @@ public class AdminMailInterfaceTests
         Assert.Equal(AdminMailPagePaths.Host, uri.Host);
         Assert.True(uri.IsDefaultPort);
         Assert.True(string.IsNullOrEmpty(uri.UserInfo));
-        Assert.True(string.IsNullOrEmpty(uri.Fragment));
         Assert.Equal(
             expectReset ? AdminMailPagePaths.ResetConfirmPath : AdminMailPagePaths.BootstrapPath,
             uri.AbsolutePath);
         Assert.Equal(AdminMailPagePaths.Origin, uri.GetLeftPart(UriPartial.Authority));
-        Assert.Equal(token, Uri.UnescapeDataString(TokenQueryValue(uri)));
+        Assert.True(string.IsNullOrEmpty(uri.Query));
+        Assert.Equal(token, Uri.UnescapeDataString(TokenPlacementValue(uri)));
         return uri;
     }
 
-    private static string TokenQueryValue(Uri uri)
+    /// <summary>
+    /// Token placement placeholder until Chief Security rules. One line to change after the ruling.
+    /// </summary>
+    private static string ExpectedLink(MailLinkKind kind, string token)
+        => AdminMailPagePaths.Origin + AdminMailPagePaths.PathFor(kind) + "#token=" + Uri.EscapeDataString(token);
+
+    private static string TokenPlacementValue(Uri uri)
     {
-        var query = uri.Query.TrimStart('?');
+        var fragment = uri.Fragment.TrimStart('#');
         const string prefix = "token=";
-        Assert.StartsWith(prefix, query);
-        Assert.DoesNotContain('&', query);
-        return query[prefix.Length..];
+        Assert.StartsWith(prefix, fragment);
+        Assert.True(string.IsNullOrEmpty(uri.Query));
+        return fragment[prefix.Length..];
     }
 
     private static string RepoRoot()
