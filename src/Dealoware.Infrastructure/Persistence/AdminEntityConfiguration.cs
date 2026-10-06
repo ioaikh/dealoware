@@ -103,7 +103,10 @@ public class AdminAuthLockoutEntityConfiguration : IEntityTypeConfiguration<Admi
         builder.Property(e => e.SubjectKey).IsRequired().HasMaxLength(256);
         builder.Property(e => e.StartedAt).IsRequired();
         builder.Property(e => e.ExpiresAt).IsRequired();
-        builder.HasIndex(e => new { e.Scope, e.SubjectKey, e.ExpiresAt });
+        builder.Property(e => e.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
+        builder.HasIndex(e => new { e.Scope, e.SubjectKey }).IsUnique();
     }
 }
 

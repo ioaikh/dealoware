@@ -5,7 +5,7 @@ using Dealoware.Infrastructure.Admin;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Exact signed-out exemptions (route note r2 §2.2). Path equality is
+/// Exact signed-out exemptions (route note r5 sha c5e9d232). Path equality is
 /// ordinal case-insensitive. No prefix or query matching.
 /// </summary>
 public static class AdminSessionExemptions

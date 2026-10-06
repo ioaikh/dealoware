@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Dealoware.Api.Admin;
 
-/// <summary>r3 §10 C1: canonicalise before any session-gate exemption compare.</summary>
+/// <summary>r5 §10 C1 (sha c5e9d232): canonicalise before any session-gate exemption compare.</summary>
 public static class AdminPathCanonicalizer
 {
     public static bool TryCanonicalize(string? rawPath, out string canonical)

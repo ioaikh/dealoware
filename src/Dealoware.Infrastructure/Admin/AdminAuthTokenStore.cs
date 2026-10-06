@@ -39,5 +39,8 @@ public sealed class AdminAuthTokenStore : IAdminAuthTokenStore
         }
     }
 
+    public Task ConsumeOutstandingPendingAsync(string email, DateTimeOffset now, CancellationToken ct)
+        => CancelUnusedAsync(AdminAuthToken.KindPending, email, now, ct);
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }

@@ -342,63 +342,55 @@ public sealed class AdminAuthService
         var isOwner = _credentials.IsOwnerEmail(email);
         if (isOwner)
         {
-            await _lockouts.AddFailureAsync(
-                    AdminAuthFailureEvent.Create(AdminAuthScopes.Account, email, now), ct)
+            var account = await _lockouts.TryIncrementFailureAsync(
+                    AdminAuthScopes.Account,
+                    email,
+                    now,
+                    FailureWindow,
+                    AccountFailureLimit,
+                    LockDuration,
+                    ct)
                 .ConfigureAwait(false);
+            if (account.LockCreated)
+            {
+                await AuditAsync(AdminAuthAction.LockStart, email, ipHmac, AdminAuthReason.Locked, ct)
+                    .ConfigureAwait(false);
+                await _tokens.ConsumeOutstandingPendingAsync(email, now, ct).ConfigureAwait(false);
+                await _sessions.DeleteByEmailAsync(email, ct).ConfigureAwait(false);
+                await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
+            }
+
+            if (!account.Incremented)
+            {
+                await AuditAsync(AdminAuthAction.LoginFailure, email, ipHmac, AdminAuthReason.Locked, ct)
+                    .ConfigureAwait(false);
+                return;
+            }
         }
 
-        await _lockouts.AddFailureAsync(AdminAuthFailureEvent.Create(ipScope, ip, now), ct)
+        await _lockouts.TryIncrementFailureAsync(
+                ipScope,
+                ip,
+                now,
+                FailureWindow,
+                IpFailureLimit,
+                LockDuration,
+                ct)
             .ConfigureAwait(false);
-        await _lockouts.SaveChangesAsync(ct).ConfigureAwait(false);
-
         await AuditAsync(AdminAuthAction.LoginFailure, email, ipHmac, reason, ct).ConfigureAwait(false);
-
-        if (isOwner)
-        {
-            await MaybeLockAsync(AdminAuthScopes.Account, email, AccountFailureLimit, ipHmac, now, ct)
-                .ConfigureAwait(false);
-        }
-
-        await MaybeLockAsync(ipScope, ip, IpFailureLimit, ipHmac, now, ct).ConfigureAwait(false);
     }
 
     private async Task CountIpOnlyAsync(string ipScope, string ip, DateTimeOffset now, CancellationToken ct)
     {
-        await _lockouts.AddFailureAsync(AdminAuthFailureEvent.Create(ipScope, ip, now), ct)
+        await _lockouts.TryIncrementFailureAsync(
+                ipScope,
+                ip,
+                now,
+                FailureWindow,
+                IpFailureLimit,
+                LockDuration,
+                ct)
             .ConfigureAwait(false);
-        await _lockouts.SaveChangesAsync(ct).ConfigureAwait(false);
-        await MaybeLockAsync(ipScope, ip, IpFailureLimit, HashIp(ip), now, ct).ConfigureAwait(false);
-    }
-
-    private async Task MaybeLockAsync(
-        string scope,
-        string subjectKey,
-        int limit,
-        string ipHmac,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        if (await IsLockedAsync(scope, subjectKey, now, ct).ConfigureAwait(false))
-        {
-            return;
-        }
-
-        var count = await _lockouts
-            .CountFailuresAsync(scope, subjectKey, now - FailureWindow, ct)
-            .ConfigureAwait(false);
-        if (count < limit)
-        {
-            return;
-        }
-
-        var lockout = AdminAuthLockout.Create(scope, subjectKey, now, LockDuration);
-        await _lockouts.AddLockoutAsync(lockout, ct).ConfigureAwait(false);
-        await _lockouts.SaveChangesAsync(ct).ConfigureAwait(false);
-        if (scope == AdminAuthScopes.Account)
-        {
-            await AuditAsync(AdminAuthAction.LockStart, subjectKey, ipHmac, AdminAuthReason.Locked, ct)
-                .ConfigureAwait(false);
-        }
     }
 
     private Task<bool> IsLockedAsync(string scope, string subjectKey, DateTimeOffset now, CancellationToken ct)

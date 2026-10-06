@@ -139,6 +139,38 @@ public class TdAdm040AuthLockoutSessionTests
     }
 
     [Fact]
+    public async Task TdAdmSc5_AccountLock_ConsumesPending_EndsSessions()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var sessionId = await SignInFullAsync(client);
+        using var step1 = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong-" + i, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        Assert.NotNull(await ActiveLockAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
+        using var oldSession = await AdminGetAsync(client, "/admin/api/me", sessionId);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSession.StatusCode);
+
+        using var code = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInCodePath,
+            new { totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminSessionExemptions.PendingCookieName}={pending}");
+        Assert.Equal(HttpStatusCode.Unauthorized, code.StatusCode);
+    }
+
+    [Fact]
     public async Task TdAdm050_SlidingWindow_EventExactly15MinOldIsOutside()
     {
         await ClearAuthStateAsync();
@@ -287,6 +319,21 @@ public class TdAdm040AuthLockoutSessionTests
             Assert.DoesNotContain("127.0.0.1", e.IpHmac);
         });
         Assert.True(await CountFailuresAsync(AdminAuthScopes.LoginIp, "127.0.0.1") >= 1);
+    }
+
+    [Fact]
+    public async Task TdAdmSc6_SpoofedLeftMostXff_DoesNotChangeIpKey()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        using var spoofed = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken },
+            forwardedFor: "203.0.113.88, 127.0.0.1");
+        Assert.Equal(HttpStatusCode.Unauthorized, spoofed.StatusCode);
+        Assert.Equal(1, await CountFailuresAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.LoginIp, "203.0.113.88"));
+        Assert.Equal(1, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
     }
 
     [Fact]
@@ -700,11 +747,12 @@ public class TdAdm040AuthLockoutSessionTests
         HttpMethod method,
         string path,
         object? body,
-        string? extraCookie = null)
+        string? extraCookie = null,
+        string? forwardedFor = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
-        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor ?? "127.0.0.1");
         if (HttpMethod.Post.Equals(method))
         {
             var (afCookie, afToken) = await IssueAntiForgeryAsync(client);

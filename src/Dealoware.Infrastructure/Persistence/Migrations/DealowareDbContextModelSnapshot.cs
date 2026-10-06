@@ -163,9 +163,16 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0u);
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Scope", "SubjectKey", "ExpiresAt");
+                    b.HasIndex("Scope", "SubjectKey")
+                        .IsUnique();
 
                     b.ToTable("AdminAuthLockouts", (string)null);
                 });

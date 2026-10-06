@@ -45,7 +45,8 @@ public partial class AdminLockoutState : Migration
                 Scope = table.Column<string>(maxLength: 32, nullable: false),
                 SubjectKey = table.Column<string>(maxLength: 256, nullable: false),
                 StartedAt = table.Column<DateTimeOffset>(nullable: false),
-                ExpiresAt = table.Column<DateTimeOffset>(nullable: false)
+                ExpiresAt = table.Column<DateTimeOffset>(nullable: false),
+                Version = table.Column<uint>(nullable: false, defaultValue: 0u)
             },
             constraints: table =>
             {
@@ -53,9 +54,10 @@ public partial class AdminLockoutState : Migration
             });
 
         migrationBuilder.CreateIndex(
-            name: "IX_AdminAuthLockouts_Scope_SubjectKey_ExpiresAt",
+            name: "IX_AdminAuthLockouts_Scope_SubjectKey",
             table: "AdminAuthLockouts",
-            columns: new[] { "Scope", "SubjectKey", "ExpiresAt" });
+            columns: new[] { "Scope", "SubjectKey" },
+            unique: true);
 
         migrationBuilder.CreateTable(
             name: "AdminAuthTokens",

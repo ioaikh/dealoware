@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Dealoware.Api.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
 using Microsoft.AspNetCore.Hosting;
@@ -20,6 +21,9 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
     /// <summary>Runtime-generated HMAC key for Production test hosts. Not a real secret.</summary>
     public static readonly string TestIpHmacKey =
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>Test-only CIDR so non-Development hosts pass F3. Not a deploy value.</summary>
+    public const string TestKnownNetworks = "10.0.0.0/8";
 
     private readonly string _environment;
     private readonly string? _signingKey;
@@ -47,6 +51,8 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
             builder.UseSetting(
                 "ConnectionStrings:DefaultConnection",
                 "Host=127.0.0.1;Port=5432;Database=dealoware_test;Username=test;Password=test");
+            // Test-only RFC 1918 CIDR so Production hosts pass F3. Not a deploy value.
+            builder.UseSetting(ForwardedHeadersTrust.ConfigurationKey, TestKnownNetworks);
         }
     }
 }

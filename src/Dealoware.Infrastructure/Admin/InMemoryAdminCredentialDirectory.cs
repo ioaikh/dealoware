@@ -5,7 +5,9 @@ using Dealoware.Domain.Admin;
 namespace Dealoware.Infrastructure.Admin;
 
 /// <summary>
-/// Process-local CoreOwner credentials. Passwords are hashed at runtime; none are committed.
+/// Stand-in password/TOTP directory for this PR and tests. Step 2/3 own the
+/// real adapters. This is not the lockout store: account/IP counters and
+/// locks live only in the AdminLockoutState tables.
 /// </summary>
 public sealed class InMemoryAdminCredentialDirectory : IAdminCredentialDirectory
 {
