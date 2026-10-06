@@ -203,6 +203,8 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 
 - [2026-10-05__qa__test-design__core-admin-dashboard.md](qa/2026-10-05__qa__test-design__core-admin-dashboard.md) — A6 Test design Core admin dashboard (**PASS**). Soft HOLD Stories/build until this PASS. Soft HOLD A7 until H4. Soft HOLD invent password/AWS. Soft HOLD invent deploy until Ivan OK. Host admin.core only. PoC $0.
 - [2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a03-r2.md](qa/2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a03-r2.md) — Test design QA PASS for Core admin A6 test design r2 (UX1 A03). Active holds: no passwords or AWS IDs; no deploy; no Stories or code until H4 live PASS. PoC $0.
+- [2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a16-final-cites.md](qa/2026-10-05__qa__productqa-verify__test-design-core-admin-ux1-a16-final-cites.md) — Test design QA PASS for the final Core admin A6 test design (UX1 A16 final cites, design sha256 8df39255). Active holds: no passwords or AWS IDs; no deploy; no Stories or code until H4 live PASS. PoC $0.
+- [2026-10-05__qa__revision-note__test-design-core-admin-ux1-a16-final-cites.md](qa/2026-10-05__qa__revision-note__test-design-core-admin-ux1-a16-final-cites.md) — Revision note for the Core admin A6 test design update from r2 to the UX1 A16 final cites version. PoC $0.
 
 ## verification/
 
