@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Recovery codes · Dealoware admin</title>
+  <link rel="stylesheet" href="/admin/auth/css/admin-auth.css">
+</head>
+<body data-screen="S-A7">
+  <main class="auth-shell">
+    <div class="auth-card">
+      <h1>Recovery codes</h1>
+      <p class="lede">Save these codes now. They are shown once.</p>
+      <pre id="codes" class="codes"></pre>
+      <div class="actions">
+        <button type="button" id="copy-all" class="secondary">Copy all</button>
+        <button type="button" id="download-codes" class="secondary">Download</button>
+      </div>
+      <p id="copy-live" class="live" aria-live="polite"></p>
+      <div class="check">
+        <input id="codes-saved" type="checkbox">
+        <label for="codes-saved">I have saved these recovery codes.</label>
+      </div>
+      <button type="button" id="continue" disabled>Continue</button>
+    </div>
+  </main>
+  <script src="/admin/auth/js/admin-dom.js"></script>
+  <script src="/admin/auth/js/admin-copy.js"></script>
+  <script src="/admin/auth/js/admin-api.js"></script>
+  <script src="/admin/auth/js/admin-password.js"></script>
+  <script src="/admin/auth/js/admin-turnstile.js"></script>
+  <script src="/admin/auth/js/admin-app.js"></script>
+</body>
+</html>

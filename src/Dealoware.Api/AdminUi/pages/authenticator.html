@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Authenticator setup · Dealoware admin</title>
+  <link rel="stylesheet" href="/admin/auth/css/admin-auth.css">
+</head>
+<body data-screen="S-A6">
+  <main class="auth-shell">
+    <div class="auth-card">
+      <h1>Authenticator setup</h1>
+      <p class="lede">Scan the QR code with your authenticator app, or enter the key by hand. Then enter a 6-digit code to confirm.</p>
+      <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+      <img id="totp-qr" class="qr" alt="Authenticator QR code for Dealoware admin. Scan with your authenticator app.">
+      <div class="field">
+        <span id="manual-key-label">Manual key</span>
+        <p id="manual-key" class="codes" aria-labelledby="manual-key-label"></p>
+        <button type="button" id="copy-key" class="secondary">Copy key</button>
+        <p id="copy-live" class="live" aria-live="polite"></p>
+      </div>
+      <form id="totp-form" novalidate>
+        <div class="field">
+          <label for="code">Authenticator code</label>
+          <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="code-error" required>
+          <span id="code-error" class="field-error" hidden></span>
+        </div>
+        <button type="submit" data-submit>Confirm</button>
+      </form>
+    </div>
+  </main>
+  <script src="/admin/auth/js/admin-dom.js"></script>
+  <script src="/admin/auth/js/admin-copy.js"></script>
+  <script src="/admin/auth/js/admin-api.js"></script>
+  <script src="/admin/auth/js/admin-password.js"></script>
+  <script src="/admin/auth/js/admin-turnstile.js"></script>
+  <script src="/admin/auth/js/admin-app.js"></script>
+</body>
+</html>

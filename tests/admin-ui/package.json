@@ -1,0 +1,15 @@
+{
+  "name": "dealoware-admin-ui-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright specs for A7 Step 14 admin auth screens. Local instance only.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.49.0",
+    "axe-core": "^4.10.2"
+  }
+}
