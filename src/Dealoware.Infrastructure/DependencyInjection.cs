@@ -1,3 +1,4 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Domain.AgentGateway;
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Assistant;
@@ -6,6 +7,7 @@ using Dealoware.Domain.FieldAcl;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.AgentGateway;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
@@ -97,6 +99,9 @@ public static class DependencyInjection
         // Primary consumer: #66; metered path wall-bound (#67)
         services.AddScoped<IBudgetRepository, BudgetRepository>();
         services.AddScoped<IBudgetService, BudgetService>();
+
+        services.AddScoped<IAdminSessionRepository, AdminSessionRepository>();
+        services.AddScoped<IAdminAuditRepository, AdminAuditRepository>();
 
         return services;
     }

@@ -55,6 +55,12 @@ public class ArtifactEntityConfiguration : IEntityTypeConfiguration<Artifact>
                     c => c.ToList()));
 
         builder.HasIndex(e => e.OwnerParticipantId);
+        
+        builder.Property(e => e.DeletedAt);
+        
+        builder.Property(e => e.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }
 

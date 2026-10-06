@@ -42,5 +42,11 @@ public class OfferEntityConfiguration : IEntityTypeConfiguration<Offer>
         builder.HasIndex(o => o.FromParticipantId);
         builder.HasIndex(o => o.ToParticipantId);
         builder.HasIndex(o => o.Status);
+        
+        builder.Property(o => o.DeletedAt);
+        
+        builder.Property(o => o.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }

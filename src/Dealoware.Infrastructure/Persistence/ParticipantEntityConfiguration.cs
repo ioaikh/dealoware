@@ -33,6 +33,12 @@ public class ParticipantEntityConfiguration : IEntityTypeConfiguration<Participa
         
         builder.Property(p => p.IsActive)
             .IsRequired();
+        
+        builder.Property(p => p.DeletedAt);
+        
+        builder.Property(p => p.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }
 

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -5,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 
 namespace Dealoware.Api.Tests;
@@ -28,6 +30,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Runtime-generated key so Production test hosts pass IIpHasher fail-closed.
+        builder.UseSetting(
+            IpHasher.KeyEnvironmentVariable,
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+
         // After the app registers its provider (SQLite or Npgsql), replace with this
         // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
         // registered alongside SQLite.

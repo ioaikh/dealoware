@@ -1,6 +1,8 @@
 using Dealoware.Api;
+using Dealoware.Api.Admin;
 using Dealoware.Api.Endpoints;
 using Dealoware.Infrastructure;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -85,6 +87,37 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddAuthServices(jwtSettings);
+
+builder.Services.Configure<CoreOwnerOptions>(
+    builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
+builder.Services.Configure<AdminHostOptions>(
+    builder.Configuration.GetSection(AdminHostOptions.SectionName));
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireRole(AdminSessionMiddleware.CoreOwnerRole));
+});
+
+try
+{
+    var ipHasher = IpHasher.Create(
+        name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
+        isDevelopment: builder.Environment.IsDevelopment());
+    builder.Services.AddSingleton<IIpHasher>(ipHasher);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
 
 
 var rateLimitOptions = builder.Configuration
@@ -177,6 +210,10 @@ var app = builder.Build();
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 
+// Two-way admin host gate: admin paths only on the allowlist host; that host
+// serves only /admin/* and /health.
+app.UseMiddleware<AdminHostMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -191,6 +228,9 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseRateLimiter();
+
+app.UseMiddleware<AdminSessionMiddleware>();
+app.UseAuthorization();
 
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
@@ -215,6 +255,7 @@ app.MapStrategyEndpoints();
 app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
+app.MapAdminMeEndpoints();
 
 app.Run();
 
