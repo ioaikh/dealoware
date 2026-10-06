@@ -22,13 +22,13 @@ export function readSessionId(): string {
 
 export const test = base.extend({
   context: async ({ browser, baseURL }, use) => {
-    const origin = baseURL ?? 'http://127.0.0.1:4173';
+    const host = new URL(baseURL ?? 'http://127.0.0.1:4173').hostname;
     const context = await browser.newContext();
     await context.addCookies([
       {
         name: 'dw_admin_session',
         value: readSessionId(),
-        url: `${origin.replace(/\/$/, '')}/admin/`,
+        domain: host,
         path: '/admin',
         httpOnly: true,
         secure: false,

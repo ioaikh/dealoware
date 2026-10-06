@@ -277,13 +277,13 @@ unsigned('TD-ADM-UI-ci-01 unsigned assets stay denied', async ({ page, browser, 
   expect(js?.status()).toBe(401);
   const css = await page.goto('/admin/ui/admin.css');
   expect(css?.status()).toBe(401);
-  const origin = baseURL ?? 'http://127.0.0.1:4173';
+  const host = new URL(baseURL ?? 'http://127.0.0.1:4173').hostname;
   const context = await browser.newContext();
   await context.addCookies([
     {
       name: 'dw_admin_session',
       value: readSessionId(),
-      url: `${origin.replace(/\/$/, '')}/admin/`,
+      domain: host,
       path: '/admin',
       httpOnly: true,
       secure: false,
