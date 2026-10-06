@@ -64,6 +64,7 @@ public static class AdminPathCanonicalizer
 
     internal static bool IsSafeRawPath(string path)
         => !ContainsForbiddenCharacters(path)
+           && !ContainsRemainingEncodedSeparator(path)
            && TryDecodeOnce(path, out var decoded)
            && !ContainsRemainingEncodedSeparator(decoded)
            && IsSafeDecodedPath(decoded);

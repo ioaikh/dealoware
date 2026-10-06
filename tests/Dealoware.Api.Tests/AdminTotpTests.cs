@@ -5,6 +5,7 @@ using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,7 +34,11 @@ public class AdminTotpTests
         _factory = factory;
     }
 
-    private HttpClient CreateClient() => _factory.CreateClient();
+    private HttpClient CreateClient() =>
+        _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
 
     private async Task<(string Password, byte[]? Secret, IReadOnlyList<string>? Codes)> SeedAccountAsync(
         bool enrolled)
@@ -469,8 +474,12 @@ public class AdminTotpTests
         using var step1 = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
-        using var get = await client.SendAsync(AdminGet(CodePath));
-        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        using var getPage = await client.SendAsync(AdminGet(AdminSignedOutExemptions.SignInCode));
+        Assert.Equal(HttpStatusCode.OK, getPage.StatusCode);
+
+        using var getApi = await client.SendAsync(AdminGet(CodePath));
+        Assert.Equal(HttpStatusCode.Unauthorized, getApi.StatusCode);
+        Assert.Contains("\"error\":\"Unauthorized\"", await getApi.Content.ReadAsStringAsync());
 
         using var delete = await client.SendAsync(await JsonAsync(client, new HttpMethod("DELETE"), CodePath));
         Assert.Equal(HttpStatusCode.Unauthorized, delete.StatusCode);

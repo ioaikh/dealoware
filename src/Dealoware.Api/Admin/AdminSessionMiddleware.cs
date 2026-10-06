@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
@@ -30,7 +29,7 @@ public sealed class AdminSessionMiddleware
         HttpContext context,
         IAdminSessionRepository sessions,
         IAdminCoreOwnerAccountRepository accounts,
-        IAntiforgery antiforgery,
+        AdminAntiForgeryService antiforgery,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
@@ -94,7 +93,7 @@ public sealed class AdminSessionMiddleware
     internal static async Task<bool> IsSignedOutExemptAsync(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        IAntiforgery antiforgery)
+        AdminAntiForgeryService antiforgery)
     {
         if (!AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical))
             return false;
@@ -129,26 +128,21 @@ public sealed class AdminSessionMiddleware
     private static async Task<bool> HasValidAntiForgeryAsync(
         HttpContext context,
         string canonical,
-        IAntiforgery antiforgery)
+        AdminAntiForgeryService antiforgery)
     {
         var hasSessionCookie = !string.IsNullOrWhiteSpace(context.Request.Cookies[AdminSessionCookie.Name]);
         if (AdminSignedOutExemptions.IsSignOut(canonical) && !hasSessionCookie)
             return true;
 
-        try
-        {
-            await antiforgery.ValidateRequestAsync(context);
+        if (antiforgery.TryValidate(context))
             return true;
-        }
-        catch (AntiforgeryValidationException)
-        {
-            if (AdminSignedOutExemptions.IsAuthPost(canonical))
-                await AdminSignInDeny.WriteFailureAsync(context);
-            else
-                await AdminDeny.WriteUnauthorizedAsync(context);
-            context.Items[AntiForgeryDeniedKey] = true;
-            return false;
-        }
+
+        if (AdminSignedOutExemptions.IsAuthPost(canonical))
+            await AdminSignInDeny.WriteFailureAsync(context);
+        else
+            await AdminDeny.WriteUnauthorizedAsync(context);
+        context.Items[AntiForgeryDeniedKey] = true;
+        return false;
     }
 
     internal const string AntiForgeryDeniedKey = "AdminAntiForgeryDenied";

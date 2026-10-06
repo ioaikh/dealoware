@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -68,14 +67,14 @@ public static class AdminAuthEndpoints
 
     private sealed record TotpCodeRequest(string? Code, string? RecoveryCode);
 
-    private static IResult GetSignInPage(HttpContext context, IAntiforgery antiforgery)
-        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in");
+    private static IResult GetSignInPage(HttpContext context, AdminAntiForgeryService antiforgery)
+        => antiforgery.IssuePage(context, "sign-in");
 
-    private static IResult GetSignInCodePage(HttpContext context, IAntiforgery antiforgery)
-        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in-code");
+    private static IResult GetSignInCodePage(HttpContext context, AdminAntiForgeryService antiforgery)
+        => antiforgery.IssuePage(context, "sign-in-code");
 
-    private static IResult GetSignInRecoveryPage(HttpContext context, IAntiforgery antiforgery)
-        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in-recovery");
+    private static IResult GetSignInRecoveryPage(HttpContext context, AdminAntiForgeryService antiforgery)
+        => antiforgery.IssuePage(context, "sign-in-recovery");
 
     private static async Task<IResult> SignIn(
         [FromBody] SignInRequest? body,
@@ -143,11 +142,11 @@ public static class AdminAuthEndpoints
     private static async Task<IResult> GetSetupAuthenticator(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        IAntiforgery antiforgery,
+        AdminAntiForgeryService antiforgery,
         TotpSecretProtector protector)
     {
         SetNoStore(context);
-        AdminAntiForgeryCookie.IssuePage(context, antiforgery, "setup-authenticator");
+        antiforgery.Issue(context);
 
         var pending = await LoadUsablePendingAsync(context, accounts);
         if (pending is null)
@@ -262,7 +261,6 @@ public static class AdminAuthEndpoints
         var revealCipher = protector.Encrypt(Encoding.UTF8.GetBytes(revealJson));
         account.CompleteEnrollment(protector.Encrypt(secret), revealCipher, now);
         account.MarkRecoveryCodesIssued();
-        account.RecordTotpTimestep(step);
         CryptographicClear(secret);
         await accounts.SaveChangesAsync(context.RequestAborted);
         await WriteAuthEventAsync(
