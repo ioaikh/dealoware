@@ -120,9 +120,7 @@ public sealed class AdminAuditEntry
     private static string? TruncateSnapshot(string? snapshot)
     {
         if (snapshot is null) return null;
-        if (snapshot.Length <= 4096) return snapshot;
-        
-        // Truncate and add metadata indicating truncation
-        return snapshot[..4000] + $"... [TRUNCATED, original length: {snapshot.Length}]";
+        var truncated = AdminAuditSnapshots.Truncate(snapshot);
+        return truncated.Length == 0 ? null : truncated;
     }
 }

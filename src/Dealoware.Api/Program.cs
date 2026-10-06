@@ -316,6 +316,7 @@ app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
+app.MapAdminAuditEndpoints();
 
 app.Run();
 

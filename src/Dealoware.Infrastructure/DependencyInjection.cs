@@ -103,6 +103,8 @@ public static class DependencyInjection
         services.AddScoped<IAdminSessionRepository, AdminSessionRepository>();
         services.AddScoped<IAdminAuditRepository, AdminAuditRepository>();
         services.AddScoped<IAdminCoreOwnerAccountRepository, AdminCoreOwnerAccountRepository>();
+        services.AddScoped<IAdminAuditUnitOfWork, AdminAuditUnitOfWork>();
+        services.AddScoped<IAdminAuditRecorder, AdminAuditRecorder>();
 
         return services;
     }

@@ -1,5 +1,6 @@
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Persistence;
+using Dealoware.Infrastructure.Persistence.Migrations;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -26,7 +27,8 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
         DatabaseMigrationBaseline.UpdatedAtMigrationId,
-        DatabaseMigrationBaseline.TotpRecoveryMigrationId
+        DatabaseMigrationBaseline.TotpRecoveryMigrationId,
+        AdminAuditLogAppendOnly.MigrationId
     ];
 
     [Fact]
@@ -710,6 +712,7 @@ public class DatabaseMigrationBaselineTests
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
         Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
         Assert.Equal(DatabaseMigrationBaseline.TotpRecoveryMigrationId, migrations[3]);
+        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[4]);
     }
 
     [Fact]
