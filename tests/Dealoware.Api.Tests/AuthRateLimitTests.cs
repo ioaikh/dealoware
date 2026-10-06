@@ -329,6 +329,9 @@ public sealed class RateLimitedWebApplicationFactory : IsolatedWebApplicationFac
             // Provide a valid JWT key for non-Development
             builder.UseSetting("DEALOWARE_JWT_SIGNING_KEY", 
                 string.Concat(Enumerable.Repeat("TestOnlyNotSecret0123456789", 3))[..64]);
+            builder.UseSetting(
+                Dealoware.Api.Admin.ForwardedHeadersTrust.ConfigurationKey,
+                EnvironmentWebApplicationFactory.TestKnownNetworks);
         }
     }
 

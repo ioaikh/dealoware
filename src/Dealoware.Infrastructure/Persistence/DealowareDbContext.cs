@@ -41,6 +41,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
 
+    public DbSet<AdminAuthFailureEvent> AdminAuthFailureEvents => Set<AdminAuthFailureEvent>();
+
+    public DbSet<AdminAuthLockout> AdminAuthLockouts => Set<AdminAuthLockout>();
+
+    public DbSet<AdminAuthToken> AdminAuthTokens => Set<AdminAuthToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -100,5 +106,8 @@ public class DealowareDbContext : DbContext
         // A7: Admin session and audit tables
         modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthFailureEventEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthLockoutEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthTokenEntityConfiguration());
     }
 }
