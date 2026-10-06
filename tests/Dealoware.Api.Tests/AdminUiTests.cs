@@ -104,11 +104,12 @@ public class AdminUiTests
     }
 
     [Fact]
-    public async Task RouteNoteR3_AdminWithoutSlash_Unsigned_Is401_NotRedirect()
+    public async Task RouteNoteR3_AdminWithoutSlash_Unsigned_StillRedirectsToCanonical()
     {
         var client = CreateClient(allowRedirect: false);
         using var response = await client.SendAsync(AdminReq(HttpMethod.Get, "/admin"));
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(AdminUiRoutes.Stats, response.Headers.Location?.ToString());
     }
 
     [Fact]

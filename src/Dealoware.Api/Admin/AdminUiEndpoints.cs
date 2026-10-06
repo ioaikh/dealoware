@@ -18,7 +18,6 @@ public static class AdminUiEndpoints
 
     public static void MapAdminUiEndpoints(this WebApplication app)
     {
-        app.MapGet("/admin", RedirectToCanonicalStats).WithName("AdminUiStatsRedirect");
         app.MapGet("/admin/", ServePage).WithName("AdminUiStats");
         app.MapGet("/admin/participants", ServePage).WithName("AdminUiParticipants");
         app.MapGet("/admin/artifacts", ServePage).WithName("AdminUiArtifacts");
@@ -31,13 +30,9 @@ public static class AdminUiEndpoints
         app.MapGet("/admin/ui/{file}", ServeAsset).WithName("AdminUiAsset");
         app.MapGet("/admin/sign-out", ServePage).WithName("AdminUiSignOutGet");
         app.MapPost("/admin/sign-out", SignOut).WithName("AdminUiSignOutPost");
-        app.MapGet("/admin/{*rest}", ServeUnknownPage).WithName("AdminUiUnknown");
-    }
-
-    private static IResult RedirectToCanonicalStats(HttpContext context)
-    {
-        ApplyNoStore(context);
-        return Results.Redirect(AdminUiRoutes.Stats, permanent: false);
+        // One extra segment or more — never `/admin` or `/admin/` (those collide with stats).
+        app.MapGet("/admin/{first}", ServeUnknownOne).WithName("AdminUiUnknownOne");
+        app.MapGet("/admin/{first}/{*rest}", ServeUnknownMore).WithName("AdminUiUnknownMore");
     }
 
     private static IResult ServePage(HttpContext context)
@@ -49,13 +44,19 @@ public static class AdminUiEndpoints
         return Results.File(file, "text/html; charset=utf-8");
     }
 
-    private static IResult ServeUnknownPage(HttpContext context, string rest)
+    private static IResult ServeUnknownOne(HttpContext context, string first)
+        => ServeUnknownPage(context, first);
+
+    private static IResult ServeUnknownMore(HttpContext context, string first, string rest)
+        => ServeUnknownPage(context, first);
+
+    private static IResult ServeUnknownPage(HttpContext context, string first)
     {
-        if (rest.StartsWith("api", StringComparison.OrdinalIgnoreCase))
+        if (first.Equals("api", StringComparison.OrdinalIgnoreCase))
             return AdminDeny.NotFoundResult();
         // Signed-out auth assets live under /admin/auth/ only (Step 14). Never serve the
         // signed-in shell there.
-        if (rest.StartsWith("auth", StringComparison.OrdinalIgnoreCase))
+        if (first.Equals("auth", StringComparison.OrdinalIgnoreCase))
             return AdminDeny.NotFoundResult();
 
         ApplyNoStore(context);

@@ -216,6 +216,22 @@ app.UseForwardedHeaders();
 // serves only /admin/* and /health.
 app.UseMiddleware<AdminHostMiddleware>();
 
+// Route-prefix note r3: /admin without a trailing slash is not a stored path.
+// Redirect to canonical /admin/ before routing so /admin and /admin/ do not
+// share one endpoint table (AmbiguousMatchException).
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method)
+        && string.Equals(context.Request.Path.Value, "/admin", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Redirect(AdminUiRoutes.Stats, permanent: false);
+        return;
+    }
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
