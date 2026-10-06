@@ -415,7 +415,7 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,

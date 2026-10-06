@@ -253,7 +253,7 @@ public class TdAdm040AuthLockoutSessionTests
     {
         await ClearAuthStateAsync();
         var client = CreateClient();
-        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        var mailer = _factory.Services.GetRequiredService<RecordingMailSender>();
         var before = mailer.SendCount;
         for (var i = 0; i < 20; i++)
         {
@@ -592,7 +592,7 @@ public class TdAdm040AuthLockoutSessionTests
         var client = CreateClient();
         var first = await RequestResetTokenAsync(client);
         var second = await RequestResetTokenAsync(client);
-        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        var mailer = _factory.Services.GetRequiredService<RecordingMailSender>();
         Assert.StartsWith(AdminAuthLinks.ResetConfirm(second), mailer.Last!.TextBody);
         Assert.DoesNotContain("?token=", mailer.Last.TextBody, StringComparison.Ordinal);
         Assert.True(second.Length >= 32);
@@ -813,7 +813,7 @@ public class TdAdm040AuthLockoutSessionTests
             client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
             new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
         reset.EnsureSuccessStatusCode();
-        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        var mailer = _factory.Services.GetRequiredService<RecordingMailSender>();
         var token = AdminAuthLinks.TryReadFragmentToken(mailer.Last?.TextBody);
         Assert.False(string.IsNullOrEmpty(token));
         Assert.True(token!.Length >= 32);
