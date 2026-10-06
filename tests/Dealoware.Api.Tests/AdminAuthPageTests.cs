@@ -177,21 +177,45 @@ public class AdminAuthPageTests
     }
 
     [Theory]
+    [InlineData("/admin/bootstrap", "Set password · Dealoware admin", "S-A4")]
+    [InlineData("/admin/reset/confirm", "Set a new password · Dealoware admin", "S-A10")]
+    public async Task LinkPages_GetWithoutToken_ServeHtml_NoStore_NoReferrer(string path, string title, string screen)
+    {
+        var client = CreateClient();
+        using var response = await client.SendAsync(Req(HttpMethod.Get, path, AdminHost));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains($"<title>{title}</title>", html, StringComparison.Ordinal);
+        Assert.Contains($"data-screen=\"{screen}\"", html, StringComparison.Ordinal);
+        if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            var setCookie = string.Join(" ", cookies);
+            Assert.DoesNotContain("token=", setCookie, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(AdminAuthCookies.PendingSignIn + "=", setCookie, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
     [InlineData("/admin/bootstrap")]
     [InlineData("/admin/reset/confirm")]
-    public async Task TokenRows_WithQueryToken_ServeHtml(string path)
+    public async Task LinkPages_QueryToken_IsNotRequiredAndNotStored(string path)
     {
         var client = CreateClient();
         using var response = await client.SendAsync(Req(HttpMethod.Get, path + "?token=opaque", AdminHost));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            var setCookie = string.Join(" ", cookies);
+            Assert.DoesNotContain("opaque", setCookie, StringComparison.Ordinal);
+            Assert.DoesNotContain("token=", setCookie, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Theory]
     [InlineData("/admin/sign-in/code")]
     [InlineData("/admin/sign-in/recovery")]
-    [InlineData("/admin/bootstrap")]
-    [InlineData("/admin/reset/confirm")]
     [InlineData("/admin/setup/authenticator")]
     [InlineData("/admin/setup/recovery-codes")]
     public async Task TokenRows_MissingToken_Generic401(string path)

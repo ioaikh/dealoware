@@ -226,7 +226,11 @@ export async function mockAuthApi(page: Page, options: { passwordDelayMs?: numbe
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ next: "authenticator" })
+        body: JSON.stringify({ next: "authenticator" }),
+        headers: {
+          "Content-Type": "application/json",
+          "Set-Cookie": "dw_admin_pending=enrol; Path=/admin; SameSite=Strict"
+        }
       });
       return;
     }

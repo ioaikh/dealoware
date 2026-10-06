@@ -9,13 +9,13 @@ const screens: { id: string; path: string; title: string; cookies?: { name: stri
   { id: "S-A11", path: "/admin/sign-in", title: "Sign in · Dealoware admin", query: "?status=expired" },
   { id: "S-A2", path: "/admin/sign-in/code", title: "Enter code · Dealoware admin", cookies: pending },
   { id: "S-A3", path: "/admin/sign-in/recovery", title: "Recovery code · Dealoware admin", cookies: pending },
-  { id: "S-A4", path: "/admin/bootstrap", title: "Set password · Dealoware admin", query: "?token=opaque" },
+  { id: "S-A4", path: "/admin/bootstrap", title: "Set password · Dealoware admin", query: "#token=opaque" },
   { id: "S-A5", path: "/admin/link-expired", title: "Link no longer works · Dealoware admin" },
   { id: "S-A6", path: "/admin/setup/authenticator", title: "Authenticator setup · Dealoware admin", cookies: enrol },
   { id: "S-A7", path: "/admin/setup/recovery-codes", title: "Recovery codes · Dealoware admin", cookies: enrol },
   { id: "S-A8", path: "/admin/reset", title: "Reset password · Dealoware admin" },
   { id: "S-A9", path: "/admin/reset/sent", title: "Check your email · Dealoware admin" },
-  { id: "S-A10", path: "/admin/reset/confirm", title: "Set a new password · Dealoware admin", query: "?token=opaque" }
+  { id: "S-A10", path: "/admin/reset/confirm", title: "Set a new password · Dealoware admin", query: "#token=opaque" }
 ];
 
 test.describe("TD-ADM-UI-auth screens @TD-ADM-UI-auth-06 @TD-ADM-UI-auth-20", () => {
@@ -123,7 +123,7 @@ test("TD-ADM-UI-auth-09 link expired variants @TD-ADM-UI-auth-09", async ({ page
 
 test("TD-ADM-UI-auth-10 password length only @TD-ADM-UI-auth-10 @TD-ADM-UI-auth-08", async ({ page }) => {
   await mockAuthApi(page);
-  await openAdmin(page, "/admin/bootstrap?token=opaque");
+  await openAdmin(page, "/admin/bootstrap#token=opaque");
   await expect(page.locator("#password-helper")).toContainText("15 to 128");
   await page.locator("#new-password").fill("x".repeat(14));
   await page.locator("#new-password").blur();
@@ -165,6 +165,63 @@ test("TD-ADM-UI-auth-16 recovery banner with S-A12 link @TD-ADM-UI-auth-16", asy
     "/admin/settings/security"
   );
   await expectAxe(page, "TD-ADM-UI-auth-16");
+});
+
+test("bootstrap fragment token is stripped and posted @TD-ADM-UI-auth-bootstrap-fragment", async ({ page }) => {
+  const bodies: { token?: string }[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/admin/api/auth/bootstrap"))
+      bodies.push(request.postDataJSON() as { token?: string });
+  });
+  await mockAuthApi(page);
+  await openAdmin(page, "/admin/bootstrap#token=opaque");
+  await expect(page).toHaveURL(/\/admin\/bootstrap$/);
+  expect(page.url()).not.toContain("#");
+  expect(page.url()).not.toContain("?token");
+  expect(page.url()).not.toContain("token=");
+  await expectAxe(page, "TD-ADM-UI-auth-bootstrap-fragment");
+  await page.locator("#new-password").fill("x".repeat(16));
+  await page.locator("#confirm-password").fill("x".repeat(16));
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies[0].token).toBe("opaque");
+});
+
+test("reset-confirm fragment token is stripped and posted @TD-ADM-UI-auth-reset-fragment", async ({ page }) => {
+  const bodies: { token?: string }[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/admin/api/auth/reset/confirm"))
+      bodies.push(request.postDataJSON() as { token?: string });
+  });
+  await mockAuthApi(page);
+  await openAdmin(page, "/admin/reset/confirm#token=opaque");
+  await expect(page).toHaveURL(/\/admin\/reset\/confirm$/);
+  expect(page.url()).not.toContain("#");
+  expect(page.url()).not.toContain("?token");
+  expect(page.url()).not.toContain("token=");
+  await expectAxe(page, "TD-ADM-UI-auth-reset-fragment");
+  await page.locator("#new-password").fill("x".repeat(16));
+  await page.locator("#confirm-password").fill("x".repeat(16));
+  await page.locator("#code").fill("123456");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies[0].token).toBe("opaque");
+});
+
+test("query token on bootstrap is refused @TD-ADM-UI-auth-bootstrap-query-refused", async ({ page }) => {
+  await mockAuthApi(page);
+  await openAdmin(page, "/admin/bootstrap?token=opaque");
+  await expect(page).toHaveURL(/\/admin\/link-expired/);
+  expect(page.url()).not.toContain("token=");
+  await expectAxe(page, "TD-ADM-UI-auth-bootstrap-query-refused");
+});
+
+test("query token on reset-confirm is refused @TD-ADM-UI-auth-reset-query-refused", async ({ page }) => {
+  await mockAuthApi(page);
+  await openAdmin(page, "/admin/reset/confirm?token=opaque");
+  await expect(page).toHaveURL(/\/admin\/link-expired/);
+  expect(page.url()).not.toContain("token=");
+  await expectAxe(page, "TD-ADM-UI-auth-reset-query-refused");
 });
 
 test("TD-ADM-UI-auth-21 pending token not in URL @TD-ADM-UI-auth-21", async ({ page }) => {

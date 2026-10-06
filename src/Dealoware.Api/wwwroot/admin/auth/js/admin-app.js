@@ -272,7 +272,7 @@
     bindDoubleSubmit(form);
     holdSubmitUntilTurnstile(form);
     focusFirstField();
-    var token = AdminApi.queryToken();
+    var token = AdminApi.takeLinkToken();
     if (!token) {
       AdminApi.go(AdminApi.PAGES.linkExpired + "?variant=bootstrap");
       return;
@@ -292,14 +292,14 @@
             AdminApi.go(AdminApi.PAGES.authenticator);
             return;
           }
-          if (result.payload && result.payload.next === "link-expired") {
-            AdminApi.go(AdminApi.PAGES.linkExpired + "?variant=bootstrap");
+          if (result.payload && result.payload.reason) {
+            applyPasswordReason(result);
             return;
           }
-          applyPasswordReason(result);
+          AdminApi.go(AdminApi.PAGES.linkExpired + "?variant=bootstrap");
         }, function () {
           setBusy(form, false);
-          showAlert(AdminCopy.signInFailure);
+          AdminApi.go(AdminApi.PAGES.linkExpired + "?variant=bootstrap");
         });
       }
     });
@@ -466,7 +466,7 @@
     if (!form) return;
     bindDoubleSubmit(form);
     focusFirstField();
-    var token = AdminApi.queryToken();
+    var token = AdminApi.takeLinkToken();
     if (!token) {
       AdminApi.go(AdminApi.PAGES.linkExpired + "?variant=reset");
       return;

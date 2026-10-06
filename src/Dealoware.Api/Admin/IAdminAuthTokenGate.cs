@@ -30,6 +30,7 @@ public sealed class FailClosedAdminAuthTokenGate : IAdminAuthTokenGate
 /// <summary>
 /// Development / test stand-in until Steps 2–5 land stores.
 /// Pending token is cookie-only (C2). Enrol pending reuses dw_admin_pending=enrol (C5: no extra name).
+/// Bootstrap/reset link tokens are not on GET (COMMON 942df099: fragment then POST body).
 /// </summary>
 public sealed class DevelopmentAdminAuthTokenGate : IAdminAuthTokenGate
 {
@@ -42,14 +43,10 @@ public sealed class DevelopmentAdminAuthTokenGate : IAdminAuthTokenGate
     }
 
     public Task<bool> HasValidBootstrapTokenAsync(HttpContext context, CancellationToken cancellationToken) =>
-        Task.FromResult(
-            context.Request.Query.TryGetValue("token", out var token)
-            && !string.IsNullOrWhiteSpace(token));
+        Task.FromResult(false);
 
     public Task<bool> HasValidResetTokenAsync(HttpContext context, CancellationToken cancellationToken) =>
-        Task.FromResult(
-            context.Request.Query.TryGetValue("token", out var token)
-            && !string.IsNullOrWhiteSpace(token));
+        Task.FromResult(false);
 
     public Task<bool> HasEnrolPendingAsync(HttpContext context, CancellationToken cancellationToken) =>
         Task.FromResult(string.Equals(

@@ -2,7 +2,8 @@
  * Single client module for Steps 2–5 auth API routes and JSON shapes.
  * Paths follow route-prefix note r3 (b079a814) §2.2 optional auth JSON.
  * Every exempt POST sends X-CSRF-TOKEN (C3). Return path is never put in a
- * sign-in query string (C6).
+ * sign-in query string (C6). Bootstrap and reset-confirm link tokens travel
+ * only in the URL fragment (COMMON 942df099); GET takes no token.
  *
  * Assumed endpoints (admin host only; listed exemptions only):
  *   POST /admin/api/auth/sign-in
@@ -133,8 +134,16 @@
     });
   }
 
-  function queryToken() {
-    return new URLSearchParams(window.location.search).get("token") || "";
+  function takeLinkToken() {
+    var search = window.location.search || "";
+    var hash = window.location.hash || "";
+    var queryHasToken = /(?:^|[?&])token=/i.test(search);
+    var params = new URLSearchParams(hash.charAt(0) === "#" ? hash.slice(1) : hash);
+    var token = queryHasToken ? "" : (params.get("token") || "");
+    if (hash || search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    return token;
   }
 
   function queryParam(name) {
@@ -171,7 +180,7 @@
     PAGES: PAGES,
     request: request,
     readError: readError,
-    queryToken: queryToken,
+    takeLinkToken: takeLinkToken,
     queryParam: queryParam,
     safeReturnPath: safeReturnPath,
     go: go,

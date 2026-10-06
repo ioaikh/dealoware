@@ -51,8 +51,10 @@ public static class AdminAuthPaths
         new(SignInRecovery, ["GET", "POST"], TokenCondition.PendingSignIn),
         new(Reset, ["GET", "POST"], TokenCondition.None),
         new(ResetSent, ["GET"], TokenCondition.None),
-        new(Bootstrap, ["GET", "POST"], TokenCondition.Bootstrap),
-        new(ResetConfirm, ["GET", "POST"], TokenCondition.Reset),
+        // COMMON 942df099: GET has no token and no side effects. The link token
+        // is fragment-only on the client and reaches the server in the POST body.
+        new(Bootstrap, ["GET", "POST"], TokenCondition.None),
+        new(ResetConfirm, ["GET", "POST"], TokenCondition.None),
         new(LinkExpired, ["GET"], TokenCondition.None),
         new(Authenticator, ["GET", "POST"], TokenCondition.Enrol),
         new(RecoveryCodes, ["GET"], TokenCondition.Enrol),
@@ -65,8 +67,8 @@ public static class AdminAuthPaths
         new(ApiSignInCode, ["POST"], TokenCondition.PendingSignIn),
         new(ApiSignInRecovery, ["POST"], TokenCondition.PendingSignIn),
         new(ApiReset, ["POST"], TokenCondition.None),
-        new(ApiBootstrap, ["POST"], TokenCondition.Bootstrap),
-        new(ApiResetConfirm, ["POST"], TokenCondition.Reset),
+        new(ApiBootstrap, ["POST"], TokenCondition.None),
+        new(ApiResetConfirm, ["POST"], TokenCondition.None),
         new(ApiSignOut, ["POST"], TokenCondition.None)
     ];
 
