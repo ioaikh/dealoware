@@ -20,7 +20,8 @@ public class DatabaseMigrationBaselineTests
     private static readonly string[] FrozenSchemaMigrationIds =
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
-        DatabaseMigrationBaseline.AdminTablesMigrationId
+        DatabaseMigrationBaseline.AdminTablesMigrationId,
+        DatabaseMigrationBaseline.UpdatedAtMigrationId
     ];
 
     [Fact]
@@ -290,7 +291,10 @@ public class DatabaseMigrationBaselineTests
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
             Assert.Equal(FrozenSchemaMigrationIds, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
+            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
+
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
     }
 
     [Fact]
@@ -298,20 +302,26 @@ public class DatabaseMigrationBaselineTests
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_Bootstrapped;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
-
-        await using (var db = new DealowareDbContext(options))
+        await CreateFrozen15TableSchemaAsync(connection);
+        await using (var insert = connection.CreateCommand())
         {
-            await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, "Development");
-            db.Participants.Add(Participant.Create("baseline-keep"));
-            await db.SaveChangesAsync();
+            insert.CommandText =
+                """
+                INSERT INTO "Participants"
+                  ("Id", "Sub", "DisplayName", "LoginEmail", "ContactEmail", "CreatedAt", "IsActive", "DeletedAt", "Version")
+                VALUES
+                  ('00000000-0000-0000-0000-0000000000b1', 'baseline-keep', 'baseline-keep', NULL, NULL, '2026-01-01T00:00:00+00:00', 1, NULL, 0);
+                """;
+            await insert.ExecuteNonQueryAsync();
         }
 
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,
             await ListSqliteTablesAsync(connection),
             StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
 
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
         await using (var db = new DealowareDbContext(options))
         {
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
@@ -323,7 +333,10 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
             Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
+
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
     }
 
     [Fact]
@@ -347,13 +360,37 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
             Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
+
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
     }
 
     [Fact]
     public async Task Apply_BootstrappedThenMigrateTwice_IsIdempotent()
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_StampTwice;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        await CreateFrozen15TableSchemaAsync(connection);
+        Assert.DoesNotContain("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+        await using (var db = new DealowareDbContext(options))
+        {
+            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
+            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+        }
+
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
+    }
+
+    [Fact]
+    public async Task Apply_EnsureCreatedWithUpdatedAtAndNoHistory_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_CurrentUpdatedAt;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
@@ -362,13 +399,22 @@ public class DatabaseMigrationBaselineTests
             await db.Database.EnsureCreatedAsync();
         }
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
-            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
-            var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
-        }
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+
+        await using var apply = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
+
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -420,12 +466,8 @@ public class DatabaseMigrationBaselineTests
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_ColumnMismatch;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
+        await CreateFrozen15TableSchemaAsync(connection);
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
-
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -450,12 +492,8 @@ public class DatabaseMigrationBaselineTests
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_PkMismatch;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
+        await CreateFrozen15TableSchemaAsync(connection);
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
-
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -490,12 +528,8 @@ public class DatabaseMigrationBaselineTests
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_ExtraTable;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
+        await CreateFrozen15TableSchemaAsync(connection);
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
-
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -555,7 +589,10 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
             Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
+
+        Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
     }
 
     [Fact]
@@ -741,6 +778,22 @@ public class DatabaseMigrationBaselineTests
             BaselineColumnKind.Decimal => "numeric",
             _ => "text"
         };
+
+    private static Task CreateFrozen15TableSchemaAsync(SqliteConnection connection)
+        => CreateTablesFromSpecAsync(connection, BaselineSchema.Columns, BaselineSchema.PrimaryKeys);
+
+    private static async Task<IReadOnlyList<string>> ListSqliteColumnsAsync(
+        SqliteConnection connection,
+        string table)
+    {
+        var columns = new List<string>();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info(\"{table}\");";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            columns.Add(reader.GetString(1));
+        return columns;
+    }
 
     private static async Task CreateTablesFromSpecAsync(
         SqliteConnection connection,
