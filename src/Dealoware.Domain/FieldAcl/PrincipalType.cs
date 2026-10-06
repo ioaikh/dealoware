@@ -32,5 +32,11 @@ public enum PrincipalType
     /// <summary>
     /// Unauthenticated request - always deny, return 401.
     /// </summary>
-    Unauthenticated
+    Unauthenticated,
+
+    /// <summary>
+    /// Single Core system superadmin. Distinct from Participant User.
+    /// Bound to the configured CoreOwner email; not remapped by resource ownership.
+    /// </summary>
+    CoreOwner
 }

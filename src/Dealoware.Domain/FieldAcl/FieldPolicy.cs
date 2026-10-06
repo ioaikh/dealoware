@@ -25,7 +25,24 @@ public sealed class FieldPolicy : IFieldPolicy
         FieldClass.LoginEmail.Name,
         FieldClass.ContactEmail.Name,
         FieldClass.DisplayName.Name,
-        FieldClass.StrategyBody.Name
+        FieldClass.StrategyBody.Name,
+        FieldClass.ParticipantActive.Name,
+        FieldClass.ArtifactName.Name,
+        FieldClass.ArtifactDescription.Name,
+        FieldClass.ArtifactOwnerParticipantId.Name,
+        FieldClass.NegotiationStatus.Name,
+        FieldClass.NegotiationEndsAt.Name,
+        FieldClass.NegotiationPartyA.Name,
+        FieldClass.NegotiationPartyB.Name,
+        FieldClass.NegotiationArtifactId.Name,
+        FieldClass.OfferAmount.Name,
+        FieldClass.OfferCurrency.Name,
+        FieldClass.OfferTerms.Name,
+        FieldClass.OfferStatus.Name,
+        FieldClass.OfferNegotiationId.Name,
+        FieldClass.SoftDeletedAt.Name,
+        FieldClass.EntityVersion.Name,
+        FieldClass.EntityCreatedAt.Name
     };
 
     public bool IsRegistered(FieldClass fieldClass)
@@ -38,18 +55,70 @@ public sealed class FieldPolicy : IFieldPolicy
         if (principal.Type == PrincipalType.Unauthenticated)
             return false;
 
+        if (!IsRegistered(fieldClass))
+            return false;
+
+        // CoreOwner is not remapped by resource ownership (not a Participant).
+        if (principal.Type == PrincipalType.CoreOwner)
+            return EvaluateCoreOwner(fieldClass, action);
+
         var effectiveType = principal.GetTypeForContext(resourceContext);
         
         if (effectiveType == PrincipalType.Unauthenticated)
-            return false;
-
-        if (!IsRegistered(fieldClass))
             return false;
 
         if (action == FieldAction.ShareOutbound)
             return EvaluateShareOutbound(effectiveType, fieldClass, resourceContext);
 
         return EvaluateRegisteredField(effectiveType, fieldClass, action);
+    }
+
+    /// <summary>
+    /// CoreOwner dual-wall rules (SA §3.7). Unregistered classes already denied above.
+    /// StrategyBody and auth secrets: deny. LoginEmail write is not a generic edit.
+    /// </summary>
+    private static bool EvaluateCoreOwner(FieldClass fieldClass, FieldAction action)
+    {
+        if (action == FieldAction.ShareOutbound)
+            return false;
+
+        if (fieldClass == FieldClass.StrategyBody)
+            return false;
+
+        if (fieldClass == FieldClass.LoginEmail || fieldClass == FieldClass.ContactEmail)
+            return action is FieldAction.Read or FieldAction.List;
+
+        if (fieldClass == FieldClass.DisplayName || fieldClass == FieldClass.ParticipantActive)
+            return action is FieldAction.Read or FieldAction.Write or FieldAction.List;
+
+        if (fieldClass == FieldClass.ArtifactName
+            || fieldClass == FieldClass.ArtifactDescription
+            || fieldClass == FieldClass.ArtifactOwnerParticipantId)
+            return action is FieldAction.Read or FieldAction.Write or FieldAction.List;
+
+        if (fieldClass == FieldClass.NegotiationStatus || fieldClass == FieldClass.NegotiationEndsAt)
+            return action is FieldAction.Read or FieldAction.Write or FieldAction.List;
+
+        if (fieldClass == FieldClass.NegotiationPartyA
+            || fieldClass == FieldClass.NegotiationPartyB
+            || fieldClass == FieldClass.NegotiationArtifactId)
+            return action is FieldAction.Read or FieldAction.List;
+
+        if (fieldClass == FieldClass.OfferAmount
+            || fieldClass == FieldClass.OfferCurrency
+            || fieldClass == FieldClass.OfferTerms
+            || fieldClass == FieldClass.OfferStatus)
+            return action is FieldAction.Read or FieldAction.Write or FieldAction.List;
+
+        if (fieldClass == FieldClass.OfferNegotiationId)
+            return action is FieldAction.Read or FieldAction.List;
+
+        if (fieldClass == FieldClass.SoftDeletedAt
+            || fieldClass == FieldClass.EntityVersion
+            || fieldClass == FieldClass.EntityCreatedAt)
+            return action is FieldAction.Read or FieldAction.List;
+
+        return false;
     }
     
     /// <summary>
