@@ -8,9 +8,11 @@ namespace Dealoware.Api;
 /// <summary>
 /// One-shot migrate entrypoint: <c>dotnet Dealoware.Api.dll migrate</c>
 /// (or <c>dotnet run --project src/Dealoware.Api -- migrate</c>).
-/// Uses the same DB_* / connection-string path as the API. The operator must
-/// inject migrations-capable credentials into those variables for this task only;
-/// the long-lived API task must keep DML-only credentials and must not run this path.
+/// Uses the same DB_* / connection-string path as the API. Inject
+/// <c>dealoware_migrate</c> credentials for this task only — this path may
+/// CREATE / INSERT <c>__EFMigrationsHistory</c> (baseline stamp + later
+/// migrations). The long-lived API (<c>dealoware_app</c>) is DML-only and
+/// SELECT-only on the history table and must not run this path.
 /// </summary>
 public static class DatabaseMigrateCommand
 {

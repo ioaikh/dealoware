@@ -238,6 +238,30 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
     await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, app.Environment.EnvironmentName);
+
+    // Long-lived API only (this path is after the migrate early-return). PostgreSQL
+    // outside Development: fail closed if the current login is privileged.
+    try
+    {
+        var allowPrivilegedRuntimeLogin = app.Configuration.GetValue(
+            RuntimeLoginPrivilegeGuard.AllowPrivilegedRuntimeLoginKey,
+            false);
+        await RuntimeLoginPrivilegeGuard.EnforceAsync(
+            db,
+            app.Environment.EnvironmentName,
+            allowPrivilegedRuntimeLogin);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+        if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+        {
+            Environment.Exit(1);
+        }
+
+        throw;
+    }
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
