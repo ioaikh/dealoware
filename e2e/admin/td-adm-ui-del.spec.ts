@@ -72,16 +72,18 @@ test.describe("TD-ADM-UI-del signed-in delete modal", () => {
     await page.getByRole("button", { name: "Delete offer" }).click();
     await expect(page.getByRole("dialog")).toContainText("This confirmation expired. Review the details again.");
     await expect(page.getByRole("button", { name: "Delete offer" })).toBeEnabled();
+    await runAxeAndSave(page, "TD-ADM-UI-del-03");
 
     let deletes = 0;
     page.on("request", (req) => {
       if (req.method() === "DELETE" && req.url().includes("/admin/api/offers/")) deletes += 1;
     });
-    const confirm = page.getByRole("button", { name: "Delete offer" });
-    await Promise.all([confirm.click(), confirm.click()]);
-    await page.waitForTimeout(500);
-    expect(deletes).toBeLessThanOrEqual(1);
-    await runAxeAndSave(page, "TD-ADM-UI-del-03");
+    await page.locator("#confirm-delete").evaluate((btn) => {
+      (btn as HTMLButtonElement).click();
+      (btn as HTMLButtonElement).click();
+    });
+    await expect(page).toHaveURL(/\/admin\/offers\/?$/);
+    expect(deletes).toBe(1);
   });
 
   test("TD-ADM-UI-del-04 blocked artifact lists negotiation links @TD-ADM-UI-del-04", async ({ page }) => {
