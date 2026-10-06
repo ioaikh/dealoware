@@ -52,6 +52,8 @@ public static class AdminReadProjection
             dto["isActive"] = participant.IsActive;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
             dto["createdAt"] = participant.CreatedAt;
+        if (detail)
+            dto["updatedAt"] = participant.UpdatedAt;
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = participant.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -100,6 +102,8 @@ public static class AdminReadProjection
 
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
             dto["createdAt"] = artifact.CreatedAt;
+        if (detail)
+            dto["updatedAt"] = artifact.UpdatedAt;
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = artifact.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -112,7 +116,8 @@ public static class AdminReadProjection
         Negotiation negotiation,
         IFieldPolicy policy,
         FieldPrincipal principal,
-        bool detail)
+        bool detail,
+        int? openOfferCount = null)
     {
         var ctx = FieldResourceContext.ForNegotiation(
             negotiation.PartyAParticipantId,
@@ -133,12 +138,18 @@ public static class AdminReadProjection
             dto["status"] = negotiation.Status.ToString();
         if (Can(policy, principal, FieldClass.NegotiationEndsAt, action, ctx))
             dto["endsAt"] = negotiation.EndsAt;
+        if (detail)
+            dto["startsAt"] = negotiation.StartsAt;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
             dto["createdAt"] = negotiation.CreatedAt;
+        if (detail)
+            dto["updatedAt"] = negotiation.UpdatedAt;
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = negotiation.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
             dto["version"] = negotiation.Version;
+        if (detail && openOfferCount.HasValue)
+            dto["openOfferCount"] = openOfferCount.Value;
 
         return dto;
     }
@@ -170,6 +181,8 @@ public static class AdminReadProjection
             dto["terms"] = offer.Terms;
         if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
             dto["createdAt"] = offer.CreatedAt;
+        if (detail)
+            dto["updatedAt"] = offer.UpdatedAt;
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = offer.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))

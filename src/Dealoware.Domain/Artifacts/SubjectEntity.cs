@@ -46,4 +46,29 @@ public sealed class SubjectEntity
 
         return entity;
     }
+
+    /// <summary>
+    /// E3: required subject name, at most 4096 characters.
+    /// </summary>
+    public bool UpdateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 4096)
+            return false;
+
+        Name = name.Trim();
+        return true;
+    }
+
+    /// <summary>
+    /// E4: optional subject description, may be empty, at most 4096 characters.
+    /// </summary>
+    public bool UpdateDescription(string? description)
+    {
+        description ??= string.Empty;
+        if (description.Length > 4096)
+            return false;
+
+        Description = description;
+        return true;
+    }
 }

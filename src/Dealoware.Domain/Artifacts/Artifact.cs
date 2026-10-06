@@ -94,4 +94,23 @@ public sealed class Artifact
 
         return artifact;
     }
+
+    /// <summary>
+    /// E5: reassign owner to an existing, non-deleted participant id (Sub).
+    /// Caller must enforce existence / soft-delete / active rules.
+    /// </summary>
+    public void ReassignOwner(string ownerParticipantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerParticipantId);
+        OwnerParticipantId = ownerParticipantId;
+    }
+
+    /// <summary>
+    /// Records an admin edit: bump Version and set UpdatedAt (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
 }

@@ -274,8 +274,15 @@ public static class AdminReadEndpoints
         if (negotiation is null)
             return AdminDeny.NotFoundResult();
 
+        var openOfferCount = await db.Offers.CountAsync(
+            o => o.NegotiationId == id
+                 && o.DeletedAt == null
+                 && o.Status == OfferStatus.Open,
+            cancellationToken);
+
         var principal = AdminReadProjection.CoreOwnerFrom(context);
-        return Results.Json(AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true));
+        return Results.Json(AdminReadProjection.Negotiation(
+            negotiation, fieldPolicy, principal, detail: true, openOfferCount));
     }
 
     private static async Task<IResult> ListOffers(
