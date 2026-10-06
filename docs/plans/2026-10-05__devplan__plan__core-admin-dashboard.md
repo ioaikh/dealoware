@@ -45,8 +45,8 @@
 | Expected SoR (qa-confirm only) | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` | Handshake SoR — **do not invent points-review SoR** |
 | FieldPolicy dual wall (cite) | `architecture/2026-09-21__sa__architecture__mvp-participant-secrets-acl-integration.md` §3a/§3b | Cite; do not rewrite; no parallel admin ACL |
 | CEO host standing rule | COO / Product / Spec Sources | `admin.core.dealoware.com` = Core admin; platform hosts ≠ Core; Core may stay public / non-AWS; never put AWS account info in public docs/issues/PRs/messages |
-| UX1 findings (rows UX1-A11, UX1-A14) | `ux/2026-10-05__ux__findings__ux1-admin-requirements.md` (sha256 at amend `168db839a1a8ef709f46f8639cc1faab357101f17bf1d405dcb944f8004179d0`) | A11: Dev Plan Steps 2–5 had no UI deliverables. A14: auth screen ownership conflict. UX1-A01–A10 = auth UI AC used in the Story DoD |
-| UX1 UI requirements addendum | `ux/2026-10-05__ux__addendum__ux1-admin-ui-requirements.md` (sha256 at amend `dd847e702ce628838c22a78dd4491b4047e52aaabfd9b526cfb73509bf2937a7`; brief expected `5183af82304333bd6e35c83b7e66c18a768aaf71e2e0619c1a8931250cd05287`, file changed 8:19pm ET to add Parts B–D) | Shared UI reference. Plan cites UXR IDs and screen IDs (S-A*, S-D*) only; UI detail is not copied here. Draft, not yet approved by Chief UI/UX |
+| UX1 findings (rows UX1-A11, UX1-A14) | `ux/2026-10-05__ux__findings__ux1-admin-requirements.md` (sha256 `8efb1d30f9107844b635494718c8f2ba06d5f061d6c056191dc51d9637bfcfe4`) | A11: Dev Plan Steps 2–5 had no UI deliverables. A14: auth screen ownership conflict. UX1-A01–A10 = auth UI AC used in the Story DoD |
+| UX1 UI requirements addendum | `ux/2026-10-05__ux__addendum__ux1-admin-ui-requirements.md` (sha256 `599d6a182fe1f894352a91afe1774f9f6334599bb5c10eb10e07d0ac0509b799`; UI/UX QA PASS on this tip: `verification/2026-10-05__ux-qa__verification__ux1-admin-requirements.md` sha256 `ca16d61e6ac785674958529d8dc2f7d59641ab34f7270dfd60f403219901759a`) | Shared UI reference. Plan cites UXR IDs and screen IDs (S-A*, S-D*) only; UI detail is not copied here. |
 | UX1 redline routing r2 | `ux/2026-10-05__ux__redlines__ux1-routing.md` (sha256 `fde55fbae19ee3a0f97d27734f902ba3694cb2d6e4f7cd42a2742e0ec0854b4d`) | Routes A11 + A14 to Dev Plan (A5). UI build lanes held until Chief UI/UX approves UX1 |
 | CPM decision: A7 UI gates | `ops/2026-10-05__cpm__decision__core-admin-dashboard-a7-ui-gates.md` (sha256 `322cfa0e2b2b1f1258b0ff0b150f4e4d328381b9549dd4060b3f4a95f80311ec`) | Adds Step 14 (auth screens UI) and Step 15 (audit log viewer); Chief Developer accountable, Senior Developer implements. UI-gated Steps 2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15; Phase A / Phase B gate order |
 | UX1-A16 sign-in step shape (Chief Security) | `/workspace/security-out/2026-10-05-ux1-a16-signin-step-shape-decision.md` (tip sha256 `bb0bcaa28577189ca7fba1a22a5e95d4fcc77a22b7b6bebebc7bfff694688d34`) | Two-step sign-in; binding conditions **1–8** for Step 14 |
@@ -157,7 +157,7 @@ Per Spec §8.1–§8.2, §8.5; SA §3.3; Sec pts 2, 5:
 **UI deliverables (UX1-A11; cite only, built in Step 14):**
 
 - Screens S-A4 (bootstrap: set first password) and S-A5 (link no longer works); requirements UXR-A21–A26; Turnstile states UXR-A03.
-- Password rules UXR-A22 are decided by Security but not yet locked in Spec; S-A4 cannot pass UI/UX QA until the password-rules note passes (addendum Active holds).
+- Password rules UXR-A22 follow password-rules Spec note **v2.3** `specs/2026-10-05__spec__spec__core-admin-password-rules-note.md` sha256 `1a7b342c46721d7c585623fc5a90371c67b99c2dbce1c733a4f50c376074c521` (**binding**; Spec QA + Security QA PASS; matches Step 14 / Sources).
 - Step 2 supplies the server behaviour these screens call (single-use timed link, one message for expired or used link, server-side password checks). No password value appears in UI copy, examples or fixtures (Sec pt 2).
 
 - [ ] Story for Step 2 cites S-A4, S-A5, UXR-A21–A26, UXR-A03 and maps them to UX1-A01–A10 UI AC (cases green)
@@ -363,10 +363,13 @@ Per Spec §5; SA §3.7–§3.8; SA UX1 redlines note §4; Product decision outco
 - **Kept:** If-Match / 409 concurrency (SA §3.8) and the before/after audit row with FieldPolicy-allowed, non-secret fields only, on every E1–E12 write.
 - **Tests per edit ID (coverage list):** valid edit succeeds and writes an audit row; rule violation gets the generic deny; stale If-Match returns 409; disallowed change gets the generic deny with no state detail.
 
+**UI cases (cite only; addendum Part B; do not copy UI detail):** UXR-B14 (edit fields + Expire negotiation confirmation dialog) and UXR-B15 (Save/Cancel / discard guard). Cite `ux/2026-10-05__ux__addendum__ux1-admin-ui-requirements.md` tip sha256 `599d6a182fe1f894352a91afe1774f9f6334599bb5c10eb10e07d0ac0509b799`. Aligns with E8 Expire path already locked. Story UI AC / verify checklist must name B14/B15.
+
 **Verify checklist:**
 
 - [ ] E1–E12 each have a working FieldPolicy Write path; no editable field in the form lacks one; form not narrowed (Sec pts 9, 12)
 - [ ] E7 and E8 cancel open child offers in the same transaction; Closed and Expired stay final (Sec pts 8, 12)
+- [ ] Story UI AC / verify checklist name UXR-B14 and UXR-B15 (addendum Part B tip `599d6a18…`); E8 Expire aligns with UXR-B14 Expire confirmation (Sec pts 8, 12)
 - [ ] Offer status change from admin is Open → Cancelled only; no fabricated Accepted / Declined / Withdrawn / Superseded (Sec pts 9, 12)
 - [ ] No migration added for E1–E12 (Sec pt 12)
 - [ ] Only FieldPolicy-allowed fields writable; no parallel matrix (Sec pts 9, 12)
