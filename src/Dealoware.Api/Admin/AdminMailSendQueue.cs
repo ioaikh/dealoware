@@ -5,28 +5,31 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// SC-9: <see cref="AdminMailDispatcher"/> runs after the HTTP request returns.
+/// N4: dispatch failures log exception type and trace id only.
 /// </summary>
 public sealed class AdminMailSendQueue : IHostedService
 {
-    private readonly Channel<(string To, string Token)> _channel =
-        Channel.CreateUnbounded<(string To, string Token)>(new UnboundedChannelOptions
+    private readonly Channel<(string To, string Token, string TraceId)> _channel =
+        Channel.CreateUnbounded<(string To, string Token, string TraceId)>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
 
     private readonly AdminMailDispatcher _mail;
+    private readonly ILogger<AdminMailSendQueue> _log;
     private CancellationTokenSource? _run;
     private Task? _loop;
 
-    public AdminMailSendQueue(AdminMailDispatcher mail)
+    public AdminMailSendQueue(AdminMailDispatcher mail, ILogger<AdminMailSendQueue> log)
     {
         _mail = mail;
+        _log = log;
     }
 
-    public void EnqueuePasswordReset(string to, string token)
+    public void EnqueuePasswordReset(string to, string token, string? traceId)
     {
-        _channel.Writer.TryWrite((to, token));
+        _channel.Writer.TryWrite((to, token, string.IsNullOrWhiteSpace(traceId) ? "-" : traceId));
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -60,15 +63,18 @@ public sealed class AdminMailSendQueue : IHostedService
     {
         try
         {
-            await foreach (var (to, token) in _channel.Reader.ReadAllAsync(stoppingToken))
+            await foreach (var (to, token, traceId) in _channel.Reader.ReadAllAsync(stoppingToken))
             {
                 try
                 {
                     await _mail.SendPasswordResetLinkAsync(to, token, stoppingToken);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // The HTTP request already returned; do not surface sender faults.
+                    _log.LogError(
+                        "Admin mail dispatch failed. ExceptionType={ExceptionType} TraceId={TraceId}",
+                        ex.GetType().FullName,
+                        traceId);
                 }
             }
         }

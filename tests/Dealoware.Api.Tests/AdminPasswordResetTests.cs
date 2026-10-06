@@ -548,6 +548,37 @@ public class AdminPasswordResetTests
     }
 
     [Fact]
+    public async Task TD_ADM_030_N4_MailDispatchFailure_SameReply_LogsTypeAndTraceOnly()
+    {
+        await SeedCredentialAsync();
+        var mail = Mail();
+        mail.Clear();
+        mail.FailWithDisabledSender = true;
+        _factory.LogCollector.Clear();
+
+        using var known = await PostRequestAsync(CoreOwnerEmail);
+        using var unknown = await PostRequestAsync("nobody@example.com");
+        var knownBody = await known.Content.ReadAsStringAsync();
+        var unknownBody = await unknown.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, known.StatusCode);
+        Assert.Equal(known.StatusCode, unknown.StatusCode);
+        Assert.Equal(knownBody, unknownBody);
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, knownBody);
+        Assert.Empty(mail.Sent);
+
+        var dispatch = await WaitForDispatchFailureLogAsync();
+        Assert.Contains("ExceptionType=System.InvalidOperationException", dispatch, StringComparison.Ordinal);
+        Assert.Contains("TraceId=", dispatch, StringComparison.Ordinal);
+        var all = string.Join("\n", _factory.LogCollector.Lines);
+        Assert.DoesNotContain(CoreOwnerEmail, all, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("nobody@example.com", all, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("#token=", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("/admin/reset/confirm", all, StringComparison.Ordinal);
+        mail.FailWithDisabledSender = false;
+    }
+
+    [Fact]
     public async Task TD_ADM_030_SC6_Request_TwentyEventsThen429_PersistedAtomically()
     {
         await SeedCredentialAsync();
@@ -653,6 +684,24 @@ public class AdminPasswordResetTests
 
     private RecordingMailSender Mail()
         => _factory.Services.GetRequiredService<RecordingMailSender>();
+
+    private async Task<string> WaitForDispatchFailureLogAsync()
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            var hit = _factory.LogCollector.Lines.FirstOrDefault(l =>
+                l.Contains("Admin mail dispatch failed", StringComparison.Ordinal));
+            if (hit is not null)
+            {
+                return hit;
+            }
+
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException("Dispatch failure was not logged.");
+    }
 
     private FakeAdminSecondFactorVerifier Factor()
         => _factory.Services.GetRequiredService<FakeAdminSecondFactorVerifier>();

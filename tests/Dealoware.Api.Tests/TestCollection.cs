@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -22,6 +23,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     private readonly SqliteConnection _connection;
     private readonly string _dbName;
 
+    public CollectingLoggerProvider LogCollector { get; } = new();
+
     public IsolatedWebApplicationFactory()
     {
         _dbName = $"TestDb_{Guid.NewGuid():N}";
@@ -35,6 +38,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(
             IpHasher.KeyEnvironmentVariable,
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddProvider(LogCollector);
+        });
 
         // After the app registers its provider (SQLite or Npgsql), replace with this
         // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
