@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -22,11 +23,16 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     private readonly SqliteConnection _connection;
     private readonly string _dbName;
 
+    public CollectingLoggerProvider LogCollector { get; } = new();
+
     public IsolatedWebApplicationFactory()
     {
         _dbName = $"TestDb_{Guid.NewGuid():N}";
         _connection = new SqliteConnection($"Data Source={_dbName};Mode=Memory;Cache=Shared");
         _connection.Open();
+        using var busy = _connection.CreateCommand();
+        busy.CommandText = "PRAGMA busy_timeout = 5000;";
+        busy.ExecuteNonQuery();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -35,6 +41,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(
             IpHasher.KeyEnvironmentVariable,
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddProvider(LogCollector);
+        });
 
         // After the app registers its provider (SQLite or Npgsql), replace with this
         // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
@@ -56,13 +67,23 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
                 options.UseSqlite(_connection);
             });
 
-            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IAdminMailSender)).ToList())
-            {
-                services.Remove(descriptor);
-            }
-
-            services.AddSingleton<IAdminMailSender, RecordingMailSender>();
+            ReplaceSingleton<IAdminMailSender, RecordingMailSender>(services);
+            ReplaceSingleton<IAdminSecondFactorVerifier, FakeAdminSecondFactorVerifier>(services);
+            ReplaceSingleton<IAdminClock, FakeAdminClock>(services);
         });
+    }
+
+    private static void ReplaceSingleton<TService, TImpl>(IServiceCollection services)
+        where TService : class
+        where TImpl : class, TService
+    {
+        foreach (var descriptor in services.Where(d => d.ServiceType == typeof(TService)).ToList())
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddSingleton<TImpl>();
+        services.AddSingleton<TService>(sp => sp.GetRequiredService<TImpl>());
     }
 
     protected override void Dispose(bool disposing)

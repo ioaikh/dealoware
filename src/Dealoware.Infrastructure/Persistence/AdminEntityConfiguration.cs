@@ -79,3 +79,74 @@ public class AdminAuditEntryEntityConfiguration : IEntityTypeConfiguration<Admin
         builder.HasIndex(e => e.CorrelationId);
     }
 }
+
+public class AdminPasswordResetTokenEntityConfiguration : IEntityTypeConfiguration<AdminPasswordResetToken>
+{
+    public void Configure(EntityTypeBuilder<AdminPasswordResetToken> builder)
+    {
+        builder.ToTable("AdminPasswordResetTokens");
+
+        builder.HasKey(t => t.Id);
+
+        builder.Property(t => t.Email)
+            .IsRequired()
+            .HasMaxLength(256);
+
+        builder.Property(t => t.TokenHash)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.Property(t => t.CreatedAt)
+            .IsRequired();
+
+        builder.Property(t => t.ExpiresAt)
+            .IsRequired();
+
+        builder.HasIndex(t => t.TokenHash)
+            .IsUnique();
+
+        builder.HasIndex(t => t.Email);
+        builder.HasIndex(t => t.ExpiresAt);
+    }
+}
+
+public class AdminCredentialEntityConfiguration : IEntityTypeConfiguration<AdminCredential>
+{
+    public void Configure(EntityTypeBuilder<AdminCredential> builder)
+    {
+        builder.ToTable("AdminCredentials");
+
+        builder.HasKey(c => c.Email);
+
+        builder.Property(c => c.Email)
+            .IsRequired()
+            .HasMaxLength(256);
+
+        builder.Property(c => c.PasswordHash)
+            .IsRequired()
+            .HasMaxLength(512);
+
+        builder.Property(c => c.PasswordUpdatedAt)
+            .IsRequired();
+    }
+}
+
+public class AdminResetIpCounterEntityConfiguration : IEntityTypeConfiguration<AdminResetIpCounter>
+{
+    public void Configure(EntityTypeBuilder<AdminResetIpCounter> builder)
+    {
+        builder.ToTable("AdminResetIpCounters");
+
+        builder.HasKey(c => c.IpHmac);
+
+        builder.Property(c => c.IpHmac)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.Property(c => c.WindowStartedAt)
+            .IsRequired();
+
+        builder.Property(c => c.FailureCount)
+            .IsRequired();
+    }
+}

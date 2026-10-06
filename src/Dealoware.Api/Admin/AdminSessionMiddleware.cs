@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Fail-closed session gate for all /admin routes.
+/// Fail-closed session gate for all /admin routes (r3 §2 + §10).
+/// Exemptions run only after the host gate. C1 canonicalises first.
+/// C3: GET form pages issue dw_admin_af; exempt POSTs must present it.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
 /// </summary>
 public sealed class AdminSessionMiddleware
@@ -29,6 +31,24 @@ public sealed class AdminSessionMiddleware
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
         {
+            await _next(context);
+            return;
+        }
+
+        if (await AdminSignedOutExemptions.IsExemptAsync(context, context.RequestAborted))
+        {
+            if (HttpMethods.IsPost(context.Request.Method)
+                && !AdminAntiForgery.TryValidate(context))
+            {
+                await AdminDeny.WriteUnauthorizedAsync(context);
+                return;
+            }
+
+            if (AdminSignedOutExemptions.IsFormGet(context))
+            {
+                AdminAntiForgery.Issue(context);
+            }
+
             await _next(context);
             return;
         }
