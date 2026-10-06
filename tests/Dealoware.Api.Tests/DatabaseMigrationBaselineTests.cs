@@ -416,7 +416,9 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        // Current-model EnsureCreated includes TOTP tables that are not in the
+        // frozen 15-table stamp set, so the one-shot refuses as an unknown schema.
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,

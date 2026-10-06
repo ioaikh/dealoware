@@ -241,12 +241,19 @@ public static class AdminAuthEndpoints
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (account.IsFactorLocked(now)
-            || !Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
+        var ipHmac = HashIp(ipHasher, context);
+        if (!await TryClaimSecondFactorSlotAsync(
+                pending, account, now, context, accounts, sessions, audit, ipHmac))
+        {
+            CryptographicClear(secret);
+            return AdminSignInDeny.Failure();
+        }
+
+        if (!Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
         {
             CryptographicClear(secret);
             await RecordFailedSecondFactorAsync(
-                pending, account, now, context, accounts, sessions, audit, HashIp(ipHasher, context));
+                account, now, context, accounts, sessions, audit, ipHmac);
             return AdminSignInDeny.Failure();
         }
 
@@ -372,23 +379,9 @@ public static class AdminAuthEndpoints
         var accepted = false;
         var usedRecovery = false;
 
-        if (account.IsFactorLocked(now))
+        if (!await TryClaimSecondFactorSlotAsync(
+                pending, account, now, context, accounts, sessions, audit, ipHmac))
         {
-            await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
-            await WriteAuthEventAsync(
-                audit,
-                AdminAuthEvents.SecondFactorFailed,
-                account.Email,
-                ipHmac,
-                AdminAuthEvents.ReasonBad2Fa,
-                context.RequestAborted);
-            await WriteAuthEventAsync(
-                audit,
-                AdminAuthEvents.LoginFailure,
-                account.Email,
-                ipHmac,
-                AdminAuthEvents.ReasonBad2Fa,
-                context.RequestAborted);
             return AdminSignInDeny.Failure();
         }
 
@@ -414,6 +407,7 @@ public static class AdminAuthEndpoints
         }
         else
         {
+            Rfc6238Totp.RecordEvaluation();
             var presentedHash = recoveryHasher.Hash(body?.RecoveryCode ?? body?.Code ?? string.Empty);
             var codes = await accounts.GetRecoveryCodesAsync(account.Id, context.RequestAborted);
             string? matchedHash = null;
@@ -436,7 +430,7 @@ public static class AdminAuthEndpoints
         if (!accepted)
         {
             await RecordFailedSecondFactorAsync(
-                pending, account, now, context, accounts, sessions, audit, ipHmac);
+                account, now, context, accounts, sessions, audit, ipHmac);
             return AdminSignInDeny.Failure();
         }
 
@@ -496,7 +490,7 @@ public static class AdminAuthEndpoints
         return Results.Json(new { signedOut = true });
     }
 
-    private static async Task RecordFailedSecondFactorAsync(
+    private static async Task<bool> TryClaimSecondFactorSlotAsync(
         AdminPendingAuth pending,
         AdminCoreOwnerAccount account,
         DateTimeOffset now,
@@ -506,8 +500,39 @@ public static class AdminAuthEndpoints
         IAdminAuditRepository audit,
         string ipHmac)
     {
-        await accounts.TryIncrementPendingFailureAsync(pending.Id, now, context.RequestAborted);
-        await accounts.TryRecordFailedFactorAttemptAsync(account.Id, now, context.RequestAborted);
+        if (await accounts.TryReserveSecondFactorAttemptAsync(
+                pending.Id, account.Id, now, context.RequestAborted))
+        {
+            return true;
+        }
+
+        await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
+        await WriteAuthEventAsync(
+            audit,
+            AdminAuthEvents.SecondFactorFailed,
+            account.Email,
+            ipHmac,
+            AdminAuthEvents.ReasonBad2Fa,
+            context.RequestAborted);
+        await WriteAuthEventAsync(
+            audit,
+            AdminAuthEvents.LoginFailure,
+            account.Email,
+            ipHmac,
+            AdminAuthEvents.ReasonBad2Fa,
+            context.RequestAborted);
+        return false;
+    }
+
+    private static async Task RecordFailedSecondFactorAsync(
+        AdminCoreOwnerAccount account,
+        DateTimeOffset now,
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions,
+        IAdminAuditRepository audit,
+        string ipHmac)
+    {
         await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
         await WriteAuthEventAsync(
             audit,

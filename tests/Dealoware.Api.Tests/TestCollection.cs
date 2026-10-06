@@ -22,7 +22,8 @@ namespace Dealoware.Api.Tests;
 public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly SqliteConnection? _keeper;
-    private readonly string _sqliteConnectionString;
+    private readonly string? _sqliteConnectionString;
+    private readonly string? _postgresConnectionString;
 
     /// <summary>Stable per-factory keys so a restarted host can decrypt the same rows.</summary>
     public string TotpKey { get; }
@@ -41,7 +42,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     /// <param name="sqliteConnectionString">
-    /// File-backed store for SC-6 restart tests. Null uses an isolated in-memory database.
+    /// File-backed store for SC-6 restart tests. Null uses isolated in-memory SQLite,
+    /// or the process DB_* PostgreSQL when <c>DB_HOST</c> is set (CI postgres job).
     /// </param>
     internal IsolatedWebApplicationFactory(
         string? sqliteConnectionString,
@@ -53,7 +55,15 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         RecoveryHmacKey = recoveryHmacKey;
         IpHmacKey = ipHmacKey;
 
-        if (string.IsNullOrWhiteSpace(sqliteConnectionString))
+        if (!string.IsNullOrWhiteSpace(sqliteConnectionString))
+        {
+            _sqliteConnectionString = sqliteConnectionString;
+        }
+        else if (TryBuildTestPostgresConnectionString(out var postgres))
+        {
+            _postgresConnectionString = postgres;
+        }
+        else
         {
             var dbName = $"TestDb_{Guid.NewGuid():N}";
             _keeper = new SqliteConnection($"Data Source={dbName};Mode=Memory;Cache=Shared");
@@ -63,10 +73,33 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             pragma.ExecuteNonQuery();
             _sqliteConnectionString = _keeper.ConnectionString;
         }
-        else
+    }
+
+    /// <summary>
+    /// CI postgres:16 has no TLS. Build a throwaway SSL Mode=Disable string from DB_*.
+    /// </summary>
+    internal static bool TryBuildTestPostgresConnectionString(out string connectionString)
+    {
+        var host = Environment.GetEnvironmentVariable("DB_HOST");
+        if (string.IsNullOrWhiteSpace(host))
         {
-            _sqliteConnectionString = sqliteConnectionString;
+            connectionString = string.Empty;
+            return false;
         }
+
+        var port = Environment.GetEnvironmentVariable("DB_PORT");
+        if (string.IsNullOrWhiteSpace(port))
+            port = "5432";
+        var database = Environment.GetEnvironmentVariable("DB_NAME");
+        if (string.IsNullOrWhiteSpace(database))
+            database = "dealoware_ci";
+        var username = Environment.GetEnvironmentVariable("DB_USERNAME");
+        if (string.IsNullOrWhiteSpace(username))
+            username = "dealoware_ci";
+        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? string.Empty;
+        connectionString =
+            $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Disable";
+        return true;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -76,10 +109,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, TotpKey);
         builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, RecoveryHmacKey);
 
-        // After the app registers its provider (SQLite or Npgsql), replace with this
-        // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
-        // registered alongside SQLite. Use the shared-memory connection string so each
-        // scope can open its own connection (needed for atomic parallel redeem tests).
+        // After the app registers its provider (SQLite or Npgsql), replace it. The
+        // default is isolated in-memory SQLite. When DB_HOST is set (postgres CI job)
+        // use that server with SSL Mode=Disable. An explicit sqlite path (SC-6) wins.
         builder.ConfigureTestServices(services =>
         {
             foreach (var descriptor in services
@@ -94,6 +126,12 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<DealowareDbContext>(options =>
             {
+                if (_postgresConnectionString is not null)
+                {
+                    options.UseNpgsql(_postgresConnectionString);
+                    return;
+                }
+
                 options.UseSqlite(_sqliteConnectionString);
                 options.AddInterceptors(new SqliteBusyTimeoutInterceptor());
             });

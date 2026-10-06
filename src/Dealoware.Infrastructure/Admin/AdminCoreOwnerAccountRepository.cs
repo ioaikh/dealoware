@@ -42,12 +42,9 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
 
         var accountId = codes[0].AccountId;
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            DELETE FROM AdminRecoveryCodes
-            WHERE AccountId = {accountId}
-            """,
-            cancellationToken);
+        await _context.AdminRecoveryCodes
+            .Where(c => c.AccountId == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
         await _context.AdminRecoveryCodes.AddRangeAsync(codes, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -71,14 +68,11 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminPendingAuths
-            SET ConsumedAt = {now}
-            WHERE Email = {email}
-              AND ConsumedAt IS NULL
-            """,
-            cancellationToken);
+        await _context.AdminPendingAuths
+            .Where(p => p.Email == email && p.ConsumedAt == null)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(p => p.ConsumedAt, now),
+                cancellationToken);
     }
 
     public async Task<bool> TryIncrementPendingFailureAsync(
@@ -87,20 +81,15 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         CancellationToken cancellationToken = default)
     {
         const int maxAttempts = AdminPendingAuth.MaxFailedCodeAttempts;
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminPendingAuths
-            SET FailedCodeAttempts = FailedCodeAttempts + 1,
-                ConsumedAt = CASE
-                    WHEN FailedCodeAttempts + 1 >= {maxAttempts} THEN {now}
-                    ELSE ConsumedAt
-                END
-            WHERE Id = {pendingId}
-              AND ConsumedAt IS NULL
-              AND ExpiresAt > {now}
-              AND FailedCodeAttempts < {maxAttempts}
-            """,
-            cancellationToken);
+        var rows = await _context.AdminPendingAuths
+            .Where(p =>
+                p.Id == pendingId
+                && p.ConsumedAt == null
+                && p.ExpiresAt > now
+                && p.FailedCodeAttempts < maxAttempts)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(p => p.FailedCodeAttempts, p => p.FailedCodeAttempts + 1),
+                cancellationToken);
         return rows == 1;
     }
 
@@ -109,15 +98,14 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminPendingAuths
-            SET ConsumedAt = {now}
-            WHERE Id = {pendingId}
-              AND ConsumedAt IS NULL
-              AND ExpiresAt > {now}
-            """,
-            cancellationToken);
+        var rows = await _context.AdminPendingAuths
+            .Where(p =>
+                p.Id == pendingId
+                && p.ConsumedAt == null
+                && p.ExpiresAt > now)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(p => p.ConsumedAt, now),
+                cancellationToken);
         return rows == 1;
     }
 
@@ -127,15 +115,14 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminRecoveryCodes
-            SET UsedAt = {now}
-            WHERE AccountId = {accountId}
-              AND CodeHash = {codeHash}
-              AND UsedAt IS NULL
-            """,
-            cancellationToken);
+        var rows = await _context.AdminRecoveryCodes
+            .Where(c =>
+                c.AccountId == accountId
+                && c.CodeHash == codeHash
+                && c.UsedAt == null)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(c => c.UsedAt, now),
+                cancellationToken);
         return rows == 1;
     }
 
@@ -144,14 +131,13 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         long step,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminCoreOwnerAccounts
-            SET LastUsedTotpTimestep = {step}
-            WHERE Id = {accountId}
-              AND (LastUsedTotpTimestep IS NULL OR LastUsedTotpTimestep < {step})
-            """,
-            cancellationToken);
+        var rows = await _context.AdminCoreOwnerAccounts
+            .Where(a =>
+                a.Id == accountId
+                && (a.LastUsedTotpTimestep == null || a.LastUsedTotpTimestep < step))
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(a => a.LastUsedTotpTimestep, step),
+                cancellationToken);
         return rows == 1;
     }
 
@@ -165,19 +151,17 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         CancellationToken cancellationToken = default)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminCoreOwnerAccounts
-            SET TotpSecretCipher = {totpSecretCipher},
-                TotpEnrolledAt = {now},
-                RecoveryCodesIssued = {true},
-                PendingTotpSecretCipher = NULL,
-                RecoveryCodesRevealCipher = {recoveryCodesRevealCipher},
-                LastUsedTotpTimestep = {step}
-            WHERE Id = {accountId}
-              AND TotpEnrolledAt IS NULL
-            """,
-            cancellationToken);
+        var rows = await _context.AdminCoreOwnerAccounts
+            .Where(a => a.Id == accountId && a.TotpEnrolledAt == null)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.TotpSecretCipher, totpSecretCipher)
+                    .SetProperty(a => a.TotpEnrolledAt, now)
+                    .SetProperty(a => a.RecoveryCodesIssued, true)
+                    .SetProperty(a => a.PendingTotpSecretCipher, (string?)null)
+                    .SetProperty(a => a.RecoveryCodesRevealCipher, recoveryCodesRevealCipher)
+                    .SetProperty(a => a.LastUsedTotpTimestep, step),
+                cancellationToken);
         if (rows != 1)
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -185,12 +169,9 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         }
 
         DetachTrackedAccount(accountId);
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            DELETE FROM AdminRecoveryCodes
-            WHERE AccountId = {accountId}
-            """,
-            cancellationToken);
+        await _context.AdminRecoveryCodes
+            .Where(c => c.AccountId == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
         await _context.AdminRecoveryCodes.AddRangeAsync(codes, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -206,67 +187,81 @@ public sealed class AdminCoreOwnerAccountRepository : IAdminCoreOwnerAccountRepo
         var lockUntil = now.AddMinutes(AdminCoreOwnerAccount.FactorLockoutMinutes);
         const int maxAttempts = AdminCoreOwnerAccount.MaxFailedFactorAttempts;
 
-        var rows = await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminCoreOwnerAccounts
-            SET FailedFactorAttempts = CASE
-                    WHEN FactorAttemptWindowStartedAt IS NULL
-                         OR FactorAttemptWindowStartedAt <= {windowStartCutoff}
-                    THEN 1
-                    ELSE FailedFactorAttempts + 1
-                END,
-                FactorAttemptWindowStartedAt = CASE
-                    WHEN FactorAttemptWindowStartedAt IS NULL
-                         OR FactorAttemptWindowStartedAt <= {windowStartCutoff}
-                    THEN {now}
-                    ELSE FactorAttemptWindowStartedAt
-                END,
-                FactorLockedUntil = CASE
-                    WHEN (
-                        CASE
-                            WHEN FactorAttemptWindowStartedAt IS NULL
-                                 OR FactorAttemptWindowStartedAt <= {windowStartCutoff}
-                            THEN 1
-                            ELSE FailedFactorAttempts + 1
-                        END
-                    ) >= {maxAttempts}
-                    THEN {lockUntil}
-                    ELSE FactorLockedUntil
-                END
-            WHERE Id = {accountId}
-              AND (FactorLockedUntil IS NULL OR FactorLockedUntil <= {now})
-              AND (
-                    FailedFactorAttempts < {maxAttempts}
-                    OR FactorAttemptWindowStartedAt IS NULL
-                    OR FactorAttemptWindowStartedAt <= {windowStartCutoff}
-                  )
-            """,
-            cancellationToken);
+        var rows = await _context.AdminCoreOwnerAccounts
+            .Where(a =>
+                a.Id == accountId
+                && (a.FactorLockedUntil == null || a.FactorLockedUntil <= now)
+                && (a.FailedFactorAttempts < maxAttempts
+                    || a.FactorAttemptWindowStartedAt == null
+                    || a.FactorAttemptWindowStartedAt <= windowStartCutoff))
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(
+                        a => a.FailedFactorAttempts,
+                        a => a.FactorAttemptWindowStartedAt == null
+                             || a.FactorAttemptWindowStartedAt <= windowStartCutoff
+                            ? 1
+                            : a.FailedFactorAttempts + 1)
+                    .SetProperty(
+                        a => a.FactorAttemptWindowStartedAt,
+                        a => a.FactorAttemptWindowStartedAt == null
+                             || a.FactorAttemptWindowStartedAt <= windowStartCutoff
+                            ? now
+                            : a.FactorAttemptWindowStartedAt)
+                    .SetProperty(
+                        a => a.FactorLockedUntil,
+                        a => (a.FactorAttemptWindowStartedAt == null
+                              || a.FactorAttemptWindowStartedAt <= windowStartCutoff
+                            ? 1
+                            : a.FailedFactorAttempts + 1) >= maxAttempts
+                            ? lockUntil
+                            : a.FactorLockedUntil),
+                cancellationToken);
         return rows == 1;
+    }
+
+    public async Task<bool> TryReserveSecondFactorAttemptAsync(
+        Guid pendingId,
+        Guid accountId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (!await TryIncrementPendingFailureAsync(pendingId, now, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        if (!await TryRecordFailedFactorAttemptAsync(accountId, now, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task ClearFactorLockAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminCoreOwnerAccounts
-            SET FailedFactorAttempts = 0,
-                FactorAttemptWindowStartedAt = NULL,
-                FactorLockedUntil = NULL
-            WHERE Id = {accountId}
-            """,
-            cancellationToken);
+        await _context.AdminCoreOwnerAccounts
+            .Where(a => a.Id == accountId)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.FailedFactorAttempts, 0)
+                    .SetProperty(a => a.FactorAttemptWindowStartedAt, (DateTimeOffset?)null)
+                    .SetProperty(a => a.FactorLockedUntil, (DateTimeOffset?)null),
+                cancellationToken);
     }
 
     public async Task ClearRecoveryCodesRevealAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE AdminCoreOwnerAccounts
-            SET RecoveryCodesRevealCipher = NULL
-            WHERE Id = {accountId}
-            """,
-            cancellationToken);
+        await _context.AdminCoreOwnerAccounts
+            .Where(a => a.Id == accountId)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(a => a.RecoveryCodesRevealCipher, (string?)null),
+                cancellationToken);
     }
 
     public async Task<bool> IsFactorLockedAsync(

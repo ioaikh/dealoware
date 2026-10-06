@@ -826,6 +826,56 @@ public class AdminTotpTests
     }
 
     [Fact]
+    public async Task SecR7_CorrectCodeAfterFifthSlot_DoesNotEvaluateOrMintSession()
+    {
+        var (password, secret, _) = await SeedAccountAsync(enrolled: true);
+        var client = CreateClient();
+        var csrf = await IssueCsrfAsync(client);
+        using var step1 = await client.SendAsync(
+            await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }, csrf: csrf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        Guid pendingId;
+        Guid accountId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var accounts = scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>();
+            var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail && p.ConsumedAt == null);
+            var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            pendingId = pending.Id;
+            accountId = account.Id;
+            var now = DateTimeOffset.UtcNow;
+            for (var i = 0; i < AdminPendingAuth.MaxFailedCodeAttempts; i++)
+            {
+                Assert.True(await accounts.TryReserveSecondFactorAttemptAsync(pendingId, accountId, now));
+            }
+
+            Assert.False(await accounts.TryReserveSecondFactorAttemptAsync(pendingId, accountId, now));
+        }
+
+        Rfc6238Totp.ResetEvaluationCount();
+        var code = Rfc6238Totp.ComputeCode(secret!, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        var messages = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ =>
+                JsonAsync(client, HttpMethod.Post, CodePath, new { code }, csrf: csrf)));
+        var responses = await Task.WhenAll(messages.Select(client.SendAsync));
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+        Assert.True(Rfc6238Totp.EvaluationCount <= AdminCoreOwnerAccount.MaxFailedFactorAttempts);
+        Assert.Equal(0, Rfc6238Totp.EvaluationCount);
+
+        using var scopeAfter = _factory.Services.CreateScope();
+        var dbAfter = scopeAfter.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(0, dbAfter.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        Assert.Equal(
+            AdminPendingAuth.MaxFailedCodeAttempts,
+            dbAfter.AdminPendingAuths.Single(p => p.Id == pendingId).FailedCodeAttempts);
+        Assert.Equal(
+            AdminCoreOwnerAccount.MaxFailedFactorAttempts,
+            dbAfter.AdminCoreOwnerAccounts.Single(a => a.Id == accountId).FailedFactorAttempts);
+    }
+
+    [Fact]
     public async Task SecR3_PasswordLoginDoesNotResetFactorLock()
     {
         var (password, secret, _) = await SeedAccountAsync(enrolled: true);

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace Dealoware.Infrastructure.Admin;
 
@@ -101,6 +102,15 @@ public static class Rfc6238Totp
     public static long TimestepAt(DateTimeOffset utc)
         => utc.ToUnixTimeSeconds() / PeriodSeconds;
 
+    private static int _evaluationCount;
+
+    /// <summary>Test probe: TOTP/recovery/enrol evaluations started after the last reset.</summary>
+    public static int EvaluationCount => Volatile.Read(ref _evaluationCount);
+
+    public static void ResetEvaluationCount() => Interlocked.Exchange(ref _evaluationCount, 0);
+
+    public static void RecordEvaluation() => Interlocked.Increment(ref _evaluationCount);
+
     public static bool TryVerify(
         ReadOnlySpan<byte> secret,
         string code,
@@ -108,6 +118,7 @@ public static class Rfc6238Totp
         long? lastUsedTimestep,
         out long matchedTimestep)
     {
+        RecordEvaluation();
         matchedTimestep = 0;
         if (string.IsNullOrWhiteSpace(code) || code.Length != Digits)
             return false;

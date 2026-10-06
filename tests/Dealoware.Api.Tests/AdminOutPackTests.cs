@@ -77,8 +77,9 @@ public class AdminOutPackTests
         var repoSource = File.ReadAllText(repoPath);
         var endpointsSource = File.ReadAllText(endpointsPath);
 
-        Assert.Contains("UPDATE AdminCoreOwnerAccounts", repoSource, StringComparison.Ordinal);
+        Assert.Contains("ExecuteUpdateAsync", repoSource, StringComparison.Ordinal);
         Assert.Contains("FailedFactorAttempts", repoSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExecuteSqlInterpolatedAsync", repoSource, StringComparison.Ordinal);
         Assert.DoesNotContain("ConcurrentDictionary", repoSource, StringComparison.Ordinal);
         Assert.DoesNotContain("MemoryCache", repoSource, StringComparison.Ordinal);
         Assert.DoesNotContain("ConcurrentDictionary", endpointsSource, StringComparison.Ordinal);
