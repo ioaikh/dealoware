@@ -30,6 +30,8 @@ Alternatively, cut over the API secret and pin the guarded image in **one step**
 
 Any image that also includes A7 PR #20 additionally requires `DEALOWARE_ADMIN_IP_HMAC_KEY` to be set in the same deploy. Missing that key fails the admin path closed; it is independent of this DB-login guard.
 
+Never ship or pin a long-lived API or admin.core image with `ASPNETCORE_ENVIRONMENT=Development`. Development skips the admin host-allowlist lock and other fail-closed startup checks.
+
 ## Runtime vs migrations login
 
 | Process | Credentials | Privileges |
