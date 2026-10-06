@@ -16,10 +16,16 @@ public enum MigrationBaselineAction
     ApplyMigrations,
 
     /// <summary>
-    /// Complete EnsureCreated / bootstrap schema, no baseline history row.
-    /// Record the baseline as applied, then apply newer migrations.
+    /// Exact pre-#20 13-table schema, no history. Stamp Baseline only,
+    /// then apply newer migrations (including #20) for real.
     /// </summary>
     StampBaselineThenMigrate,
+
+    /// <summary>
+    /// Exact current-model schema (15 tables including admin / soft-delete),
+    /// no history. Stamp Baseline and #20, then apply any later migrations.
+    /// </summary>
+    StampCurrentThenMigrate,
 
     /// <summary>Some but not all baseline tables exist.</summary>
     FailClosedPartialSchema,
@@ -69,9 +75,28 @@ public static class DatabaseMigrationBaseline
         "stamp history or re-run CREATE TABLE.";
 
     /// <summary>
-    /// Tables created by Development <c>EnsureCreated</c> / schema bootstrap
-    /// for the current model (baseline plus A7 PR #20 admin tables). Frozen
-    /// for stamp detection. Incremental migrations after
+    /// Pre-#20 EnsureCreated tables (no Admin*). Frozen for the 13-table stamp path.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Pre20TableNames =
+    [
+        "AcceptGrants",
+        "ApiKeyCredentials",
+        "ArtifactValues",
+        "Artifacts",
+        "EntityProperties",
+        "Negotiations",
+        "Offers",
+        "ParticipantBudgets",
+        "Participants",
+        "RevokedTokens",
+        "Strategies",
+        "SubjectEntities",
+        "TimePeriods"
+    ];
+
+    /// <summary>
+    /// Current-model EnsureCreated tables (pre-#20 plus A7 admin tables).
+    /// Frozen for the 15-table stamp path. Incremental migrations after
     /// <see cref="AdminTablesMigrationId"/> still apply after a successful stamp.
     /// </summary>
     public static readonly IReadOnlyList<string> BaselineTableNames =
@@ -123,21 +148,25 @@ public static class DatabaseMigrationBaseline
 
         var names = postgres ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         var tables = new HashSet<string>(userTables, names);
-        var baseline = new HashSet<string>(BaselineTableNames, names);
-        var present = BaselineTableNames.Count(t => tables.Contains(t));
-        var extras = tables.Count(t => !baseline.Contains(t));
+        var current = new HashSet<string>(BaselineTableNames, names);
+        var pre20 = new HashSet<string>(Pre20TableNames, names);
 
-        if (present == 0 && extras == 0)
+        if (tables.Count == 0)
         {
             return new MigrationBaselinePlan(MigrationBaselineAction.ApplyMigrations, null);
         }
 
-        if (present == BaselineTableNames.Count && extras == 0)
+        if (tables.SetEquals(current))
+        {
+            return new MigrationBaselinePlan(MigrationBaselineAction.StampCurrentThenMigrate, null);
+        }
+
+        if (tables.SetEquals(pre20))
         {
             return new MigrationBaselinePlan(MigrationBaselineAction.StampBaselineThenMigrate, null);
         }
 
-        if (present == 0 || extras > 0)
+        if (tables.Any(t => !current.Contains(t)))
         {
             return new MigrationBaselinePlan(
                 MigrationBaselineAction.FailClosedUnknownSchema,
@@ -174,14 +203,26 @@ public static class DatabaseMigrationBaseline
                     plan.FailureMessage ?? PartialSchemaMessage);
 
             case MigrationBaselineAction.StampBaselineThenMigrate:
-                var live = await ReadLiveSchemaAsync(db, cancellationToken).ConfigureAwait(false);
-                var comparison = BaselineSchema.Compare(live.Columns, live.PrimaryKeys, postgres);
-                if (!comparison.Matches)
-                {
-                    throw new InvalidOperationException(SchemaMismatchMessage);
-                }
+                await CompareAndStampAsync(
+                        db,
+                        assembly,
+                        postgres,
+                        BaselineSchema.Pre20Columns,
+                        BaselineSchema.Pre20PrimaryKeys,
+                        stampAdminMigration: false,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                break;
 
-                await StampFrozenSchemaAsync(db, assembly, cancellationToken)
+            case MigrationBaselineAction.StampCurrentThenMigrate:
+                await CompareAndStampAsync(
+                        db,
+                        assembly,
+                        postgres,
+                        BaselineSchema.Columns,
+                        BaselineSchema.PrimaryKeys,
+                        stampAdminMigration: true,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 break;
         }
@@ -372,25 +413,34 @@ public static class DatabaseMigrationBaseline
         }
     }
 
-    /// <summary>
-    /// CREATE / INSERT on <c>__EFMigrationsHistory</c>. Call only as
-    /// <c>dealoware_migrate</c> from the one-shot. Idempotent if the row exists.
-    /// Stamps every migration embodied by the frozen stamp schema (baseline
-    /// plus #20 admin / soft-delete) so <c>MigrateAsync</c> does not re-apply
-    /// ALTERs against an already-current EnsureCreated database.
-    /// </summary>
-    private static async Task StampFrozenSchemaAsync(
+    private static async Task CompareAndStampAsync(
         DealowareDbContext db,
         IReadOnlyList<string> assemblyMigrations,
+        bool postgres,
+        IReadOnlyList<BaselineColumnSpec> expectedColumns,
+        IReadOnlyList<BaselinePrimaryKeySpec> expectedKeys,
+        bool stampAdminMigration,
         CancellationToken cancellationToken)
     {
+        var live = await ReadLiveSchemaAsync(db, cancellationToken).ConfigureAwait(false);
+        var comparison = BaselineSchema.Compare(
+            live.Columns,
+            live.PrimaryKeys,
+            expectedColumns,
+            expectedKeys,
+            postgres);
+        if (!comparison.Matches)
+        {
+            throw new InvalidOperationException(SchemaMismatchMessage);
+        }
+
         var history = db.GetService<IHistoryRepository>();
         await history.CreateIfNotExistsAsync(cancellationToken).ConfigureAwait(false);
 
         var applied = (await db.Database.GetAppliedMigrationsAsync(cancellationToken).ConfigureAwait(false))
             .ToList();
 
-        foreach (var migrationId in FrozenSchemaMigrationIds(assemblyMigrations))
+        foreach (var migrationId in StampIds(assemblyMigrations, stampAdminMigration))
         {
             if (applied.Contains(migrationId, StringComparer.Ordinal))
             {
@@ -403,10 +453,13 @@ public static class DatabaseMigrationBaseline
         }
     }
 
-    private static IEnumerable<string> FrozenSchemaMigrationIds(IReadOnlyList<string> assemblyMigrations)
+    private static IEnumerable<string> StampIds(
+        IReadOnlyList<string> assemblyMigrations,
+        bool stampAdminMigration)
     {
         yield return ResolveBaselineId(assemblyMigrations);
-        if (assemblyMigrations.Contains(AdminTablesMigrationId, StringComparer.Ordinal))
+        if (stampAdminMigration
+            && assemblyMigrations.Contains(AdminTablesMigrationId, StringComparer.Ordinal))
         {
             yield return AdminTablesMigrationId;
         }

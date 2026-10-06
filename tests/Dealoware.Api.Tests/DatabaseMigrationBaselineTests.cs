@@ -2,6 +2,7 @@ using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Dealoware.Api.Tests;
 
@@ -32,12 +33,24 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
-    public void Decide_CompleteSchemaNoHistory_StampsBaseline()
+    public void Decide_CompleteSchemaNoHistory_StampsCurrent()
     {
         var plan = DatabaseMigrationBaseline.Decide(
             AssemblyWithBaseline,
             appliedMigrations: Empty,
             userTables: DatabaseMigrationBaseline.BaselineTableNames);
+
+        Assert.Equal(MigrationBaselineAction.StampCurrentThenMigrate, plan.Action);
+        Assert.Null(plan.FailureMessage);
+    }
+
+    [Fact]
+    public void Decide_Pre20SchemaNoHistory_StampsBaselineOnly()
+    {
+        var plan = DatabaseMigrationBaseline.Decide(
+            AssemblyWithBaseline,
+            appliedMigrations: Empty,
+            userTables: DatabaseMigrationBaseline.Pre20TableNames);
 
         Assert.Equal(MigrationBaselineAction.StampBaselineThenMigrate, plan.Action);
         Assert.Null(plan.FailureMessage);
@@ -135,6 +148,16 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
+    public void Compare_Pre20Frozen_MatchesItself()
+    {
+        var comparison = BaselineSchema.ComparePre20(
+            ExpectedAsLive(BaselineSchema.Pre20Columns),
+            ExpectedKeys(BaselineSchema.Pre20PrimaryKeys));
+        Assert.True(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.None, comparison.Kind);
+    }
+
+    [Fact]
     public void Decide_Postgres_LowercaseTables_FailsClosed()
     {
         var tables = DatabaseMigrationBaseline.BaselineTableNames
@@ -202,6 +225,51 @@ public class DatabaseMigrationBaselineTests
 
         Assert.True(comparison.Matches);
         Assert.Equal(BaselineSchemaMismatchKind.None, comparison.Kind);
+    }
+
+    [Fact]
+    public void Compare_Postgres_FrozenSpec_MatchesNpgsqlGeneratedModel()
+    {
+        var options = new DbContextOptionsBuilder<DealowareDbContext>()
+            .UseNpgsql("Host=127.0.0.1;Database=baseline-drift;Username=x")
+            .Options;
+        using var db = new DealowareDbContext(options);
+
+        var live = new List<BaselineLiveColumn>();
+        var keys = new List<BaselineLivePrimaryKey>();
+        foreach (var tableGroup in BaselineSchema.Columns.GroupBy(c => c.Table, StringComparer.Ordinal))
+        {
+            var entity = db.Model.GetEntityTypes()
+                .Single(t => string.Equals(t.GetTableName(), tableGroup.Key, StringComparison.Ordinal));
+            var store = StoreObjectIdentifier.Table(entity.GetTableName()!, entity.GetSchema());
+            foreach (var expected in tableGroup)
+            {
+                var property = entity.GetProperties()
+                    .Single(p => string.Equals(p.GetColumnName(store), expected.Name, StringComparison.Ordinal));
+                live.Add(new BaselineLiveColumn(
+                    tableGroup.Key,
+                    expected.Name,
+                    CatalogStoreType(property.GetColumnType()),
+                    property.IsNullable));
+            }
+
+            var pk = entity.FindPrimaryKey()
+                ?? throw new InvalidOperationException(tableGroup.Key);
+            keys.Add(new BaselineLivePrimaryKey(
+                tableGroup.Key,
+                pk.Properties.Select(p => p.GetColumnName(store)!).ToList()));
+        }
+
+        var comparison = BaselineSchema.Compare(live, keys, postgres: true);
+        Assert.True(comparison.Matches);
+        Assert.Equal(BaselineSchemaMismatchKind.None, comparison.Kind);
+
+        var versions = live.Where(c => c.Name == "Version").ToList();
+        Assert.Equal(4, versions.Count);
+        Assert.All(versions, c => Assert.Equal("bigint", c.StoreType));
+        Assert.True(BaselineSchema.StoreTypeMatches(BaselineColumnKind.UInt32, "bigint", postgres: true));
+        Assert.False(BaselineSchema.StoreTypeMatches(BaselineColumnKind.Int32, "bigint", postgres: true));
+        Assert.True(BaselineSchema.StoreTypeMatches(BaselineColumnKind.UInt32, "INTEGER", postgres: false));
     }
 
     [Fact]
@@ -448,6 +516,126 @@ public class DatabaseMigrationBaselineTests
     }
 
     [Fact]
+    public async Task Apply_Pre20Schema_StampsBaselineOnlyThenAppliesAdmin()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_Pre20;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Pre20Columns,
+            BaselineSchema.Pre20PrimaryKeys);
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.CommandText =
+                """
+                INSERT INTO "Participants"
+                  ("Id", "Sub", "DisplayName", "LoginEmail", "ContactEmail", "CreatedAt", "IsActive")
+                VALUES
+                  ('00000000-0000-0000-0000-000000000001', 'pre20-keep', 'pre20-keep', NULL, NULL, '2026-01-01T00:00:00+00:00', 1);
+                """;
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+        await using (var db = new DealowareDbContext(options))
+        {
+            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
+        }
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            Assert.Equal(1, await db.Participants.CountAsync());
+            Assert.Equal("pre20-keep", (await db.Participants.SingleAsync()).DisplayName);
+            Assert.Equal(0, await db.AdminSessions.CountAsync());
+            Assert.Equal(0, await db.AdminAuditLog.CountAsync());
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+            Assert.Equal(FrozenSchemaMigrationIds, applied);
+        }
+    }
+
+    [Fact]
+    public async Task Apply_AdminTablesWithoutSoftDelete_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_AdminNoSoft;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var columns = BaselineSchema.Pre20Columns
+            .Concat(BaselineSchema.Columns.Where(c =>
+                c.Table is "AdminSessions" or "AdminAuditLog"))
+            .ToList();
+        var keys = BaselineSchema.Pre20PrimaryKeys
+            .Concat(BaselineSchema.PrimaryKeys.Where(k =>
+                k.Table is "AdminSessions" or "AdminAuditLog"))
+            .ToList();
+        await CreateTablesFromSpecAsync(connection, columns, keys);
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+        await using var db = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(db));
+
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Apply_SoftDeleteWithoutAdminTables_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_SoftNoAdmin;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var columns = BaselineSchema.Pre20Columns
+            .Concat(BaselineSchema.Columns.Where(c => c.Name is "DeletedAt" or "Version"))
+            .ToList();
+        await CreateTablesFromSpecAsync(connection, columns, BaselineSchema.Pre20PrimaryKeys);
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+        await using var db = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(db));
+
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Apply_Pre20PlusOneAdminTable_FailsClosed()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_OneAdmin;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var columns = BaselineSchema.Pre20Columns
+            .Concat(BaselineSchema.Columns.Where(c => c.Table == "AdminSessions"))
+            .ToList();
+        var keys = BaselineSchema.Pre20PrimaryKeys
+            .Concat(BaselineSchema.PrimaryKeys.Where(k => k.Table == "AdminSessions"))
+            .ToList();
+        await CreateTablesFromSpecAsync(connection, columns, keys);
+
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+        await using var db = new DealowareDbContext(options);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(db));
+
+        Assert.Equal(DatabaseMigrationBaseline.PartialSchemaMessage, ex.Message);
+        AssertSafe(ex.Message);
+        Assert.DoesNotContain(
+            DatabaseMigrationBaseline.HistoryTableName,
+            await ListSqliteTablesAsync(connection),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ApplyStartupSchemaAsync_Development_DoesNotWriteMigrationsHistory()
     {
         await using var connection = new SqliteConnection("Data Source=Baseline_StartupNoHistory;Mode=Memory;Cache=Shared");
@@ -495,12 +683,18 @@ public class DatabaseMigrationBaselineTests
     }
 
     private static List<BaselineLiveColumn> ExpectedAsLive()
-        => BaselineSchema.Columns
+        => ExpectedAsLive(BaselineSchema.Columns);
+
+    private static List<BaselineLiveColumn> ExpectedAsLive(IReadOnlyList<BaselineColumnSpec> columns)
+        => columns
             .Select(c => new BaselineLiveColumn(c.Table, c.Name, StoreTypeFor(c.Kind), c.IsNullable))
             .ToList();
 
     private static List<BaselineLivePrimaryKey> ExpectedKeys()
-        => BaselineSchema.PrimaryKeys
+        => ExpectedKeys(BaselineSchema.PrimaryKeys);
+
+    private static List<BaselineLivePrimaryKey> ExpectedKeys(IReadOnlyList<BaselinePrimaryKeySpec> keys)
+        => keys
             .Select(k => new BaselineLivePrimaryKey(k.Table, k.Columns))
             .ToList();
 
@@ -517,9 +711,22 @@ public class DatabaseMigrationBaselineTests
         {
             BaselineColumnKind.Guid or BaselineColumnKind.String or BaselineColumnKind.DateTimeOffset
                 or BaselineColumnKind.Decimal => "TEXT",
-            BaselineColumnKind.Boolean or BaselineColumnKind.Int32 or BaselineColumnKind.Int64 => "INTEGER",
+            BaselineColumnKind.Boolean or BaselineColumnKind.Int32 or BaselineColumnKind.Int64
+                or BaselineColumnKind.UInt32 => "INTEGER",
             _ => "TEXT"
         };
+
+    /// <summary>
+    /// Npgsql <c>GetColumnType()</c> includes facets (<c>character varying(256)</c>,
+    /// <c>numeric(18,4)</c>). PostgreSQL <c>information_schema.data_type</c>
+    /// and the frozen map use the catalog name without facets.
+    /// </summary>
+    private static string CatalogStoreType(string columnType)
+    {
+        var t = columnType.Trim().ToLowerInvariant();
+        var paren = t.IndexOf('(', StringComparison.Ordinal);
+        return paren < 0 ? t : t[..paren];
+    }
 
     private static string PostgresStoreTypeFor(BaselineColumnKind kind)
         => kind switch
@@ -530,9 +737,30 @@ public class DatabaseMigrationBaselineTests
             BaselineColumnKind.Boolean => "boolean",
             BaselineColumnKind.Int32 => "integer",
             BaselineColumnKind.Int64 => "bigint",
+            BaselineColumnKind.UInt32 => "bigint",
             BaselineColumnKind.Decimal => "numeric",
             _ => "text"
         };
+
+    private static async Task CreateTablesFromSpecAsync(
+        SqliteConnection connection,
+        IReadOnlyList<BaselineColumnSpec> columns,
+        IReadOnlyList<BaselinePrimaryKeySpec> keys)
+    {
+        foreach (var tableGroup in columns.GroupBy(c => c.Table, StringComparer.Ordinal))
+        {
+            var pk = keys.Single(k => string.Equals(k.Table, tableGroup.Key, StringComparison.Ordinal));
+            var defs = tableGroup
+                .Select(c =>
+                    $"\"{c.Name}\" {StoreTypeFor(c.Kind)}{(c.IsNullable ? "" : " NOT NULL")}");
+            var sql =
+                $"CREATE TABLE \"{tableGroup.Key}\" ({string.Join(", ", defs)}, " +
+                $"PRIMARY KEY ({string.Join(", ", pk.Columns.Select(n => $"\"{n}\""))}))";
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
 
     private static async Task<IReadOnlyList<string>> ListSqliteTablesAsync(SqliteConnection connection)
     {
