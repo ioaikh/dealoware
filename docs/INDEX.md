@@ -208,10 +208,13 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-05__qa__productqa-verify__test-design-core-admin-r5-condition3.md](qa/2026-10-05__qa__productqa-verify__test-design-core-admin-r5-condition3.md) — Test design QA PASS for the Core admin test design r5 (design sha256 7bb1dd3b, UX1 condition 3). Active holds: no passwords or AWS IDs; no deploy; not a build unlock. PoC $0.
 - [2026-10-05__qa__revision-note__test-design-core-admin-r5-condition3.md](qa/2026-10-05__qa__revision-note__test-design-core-admin-r5-condition3.md) — Revision note for the Core admin test design update to r5 (from 8df39255 to 7bb1dd3b). PoC $0.
 - [2026-10-05__qa__decision__ux1-x08-headless-ui-ci.md](qa/2026-10-05__qa__decision__ux1-x08-headless-ui-ci.md) — Chief QA and Chief DevOps decision, agreed: run the UX1-X08 headless admin UI cases in CI (case TD-ADM-UI-ci-01 on test design 7bb1dd3b). Active holds: no passwords or AWS IDs; no deploy; not a build unlock. PoC $0.
+- [2026-10-05__qa__amendment__test-design-core-admin-auth04-continue.md](qa/2026-10-05__qa__amendment__test-design-core-admin-auth04-continue.md) — Chief QA one-word amendment to the Core admin test design: the TD-ADM-UI-auth-04 S-A1 primary button label is "Continue" (UXR-A13). Test design r5 7bb1dd3b stays unchanged. Active holds: no passwords or AWS IDs; no deploy; not a build unlock. PoC $0.
+- [2026-10-05__qa__productqa-verify__test-design-core-admin-auth04-continue-amendment.md](qa/2026-10-05__qa__productqa-verify__test-design-core-admin-auth04-continue-amendment.md) — Test design QA PASS for the TD-ADM-UI-auth-04 "Continue" amendment (amendment sha256 fee52d75, tip 7bb1dd3b unchanged). Active holds: no passwords or AWS IDs; no deploy; not a build unlock. PoC $0.
 
 ## ux/
 
 - [2026-10-05__ux__approval__ux1-admin-requirements.md](ux/2026-10-05__ux__approval__ux1-admin-requirements.md) — Chief UI/UX approval of the UX1 admin.core UI requirements, with the release map for the UI Stories (sha256 15092fc1). Active holds: each UI PR still needs its merge conditions and Dev Code QA PASS; not a build unlock. PoC $0.
+- [2026-10-05__ux__decision__s-a1-label-and-focus-order.md](ux/2026-10-05__ux__decision__s-a1-label-and-focus-order.md) — Chief UI/UX decision that the S-A1 primary button is "Continue" and S-A2 keeps "Sign in", with the focus orders that follow from it (sha256 8a92c820). It cites test design amendment fee52d75 and approval 15092fc1, and the UXR-A08 fix is in addendum f83484da, which stays KB-only. Active holds: not a build unlock. PoC $0.
 
 ## verification/
 
