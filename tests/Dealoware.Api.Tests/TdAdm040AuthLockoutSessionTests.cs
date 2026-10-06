@@ -426,11 +426,197 @@ public class TdAdm040AuthLockoutSessionTests
             client, HttpMethod.Post, "/admin/api/auth/bootstrap",
             new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.Unauthorized, bootstrapMissing.StatusCode);
+        Assert.Equal(InvalidLinkJson(), await bootstrapMissing.Content.ReadAsStringAsync());
 
         using var confirmMissing = await SendAuthAsync(
             client, HttpMethod.Post, "/admin/api/auth/reset/confirm",
-            new { password = _password, totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.Unauthorized, confirmMissing.StatusCode);
+        Assert.Equal(InvalidLinkJson(), await confirmMissing.Content.ReadAsStringAsync());
+        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 1);
+        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthReason.InvalidLink);
+    }
+
+    [Fact]
+    public async Task TdAdmC4_GetConfirmAndBootstrap_TakeNoToken_NoStoreNoReferrer()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var raw = await RequestResetTokenAsync(client);
+        var ipCountAfterIssue = await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1");
+
+        foreach (var path in new[] { "/admin/reset/confirm", "/admin/bootstrap", "/admin/reset/confirm?token=" + raw })
+        {
+            using var get = await SendAuthAsync(client, HttpMethod.Get, path, null);
+            Assert.Equal(HttpStatusCode.NoContent, get.StatusCode);
+            Assert.True(
+                get.Headers.TryGetValues("Cache-Control", out var cache)
+                && cache.Any(v => v.Contains("no-store", StringComparison.OrdinalIgnoreCase)));
+            Assert.True(get.Headers.TryGetValues("Referrer-Policy", out var referrer));
+            Assert.Contains(referrer, v => string.Equals(v, "no-referrer", StringComparison.OrdinalIgnoreCase));
+            Assert.True(string.IsNullOrEmpty(ReadCookie(get, AdminSessionCookie.Name))
+                        || ReadCookie(get, AdminSessionCookie.Name) == string.Empty);
+            Assert.True(string.IsNullOrEmpty(ReadCookie(get, AdminSessionExemptions.PendingCookieName)));
+        }
+
+        Assert.Equal(ipCountAfterIssue, await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1"));
+        using var confirm = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+    }
+
+    [Fact]
+    public async Task TdAdmC4_QueryStringToken_IsIgnoredOnPost()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var raw = await RequestResetTokenAsync(client);
+        using var queryOnly = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath + "?token=" + raw,
+            new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, queryOnly.StatusCode);
+        Assert.Equal(InvalidLinkJson(), await queryOnly.Content.ReadAsStringAsync());
+
+        using var bodyOk = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, bodyOk.StatusCode);
+        Assert.True(string.IsNullOrEmpty(ReadCookie(bodyOk, AdminSessionCookie.Name)));
+    }
+
+    [Fact]
+    public async Task TdAdmC4_UnknownUsedExpiredWrongAccount_SameGeneric_CountsIp_NoTokenInAudit()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var raw = await RequestResetTokenAsync(client);
+        var unknown = AdminAuthService.CreateOpaqueToken();
+
+        using var unknownResponse = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = unknown, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await unknownResponse.Content.ReadAsStringAsync());
+
+        using var wrongAccount = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, email = "other@example.com", password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await wrongAccount.Content.ReadAsStringAsync());
+
+        using var wrongKind = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
+            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await wrongKind.Content.ReadAsStringAsync());
+
+        using var ok = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+        using var used = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await used.Content.ReadAsStringAsync());
+        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 4);
+
+        var expiredRaw = await RequestResetTokenAsync(client);
+        _factory.Services.GetRequiredService<TestAdminClock>().Advance(TimeSpan.FromMinutes(30));
+        using var expired = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = expiredRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await expired.Content.ReadAsStringAsync());
+        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 1);
+        foreach (var entry in await AuditAsync())
+        {
+            Assert.DoesNotContain(raw, entry.Action, StringComparison.Ordinal);
+            Assert.DoesNotContain(raw, entry.ActorEmail ?? "", StringComparison.Ordinal);
+            Assert.DoesNotContain(raw, entry.IpHmac ?? "", StringComparison.Ordinal);
+            Assert.DoesNotContain(raw, entry.ReasonClass ?? "", StringComparison.Ordinal);
+            Assert.DoesNotContain(raw, entry.BeforeSnapshot ?? "", StringComparison.Ordinal);
+            Assert.DoesNotContain(raw, entry.AfterSnapshot ?? "", StringComparison.Ordinal);
+            Assert.DoesNotContain(unknown, entry.BeforeSnapshot ?? "", StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task TdAdmC4_NewResetToken_CancelsEarlier_AndMailUsesFragmentOnly()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var first = await RequestResetTokenAsync(client);
+        var second = await RequestResetTokenAsync(client);
+        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        Assert.StartsWith(AdminAuthLinks.ResetConfirm(second), mailer.Last!.TextBody);
+        Assert.DoesNotContain("?token=", mailer.Last.TextBody, StringComparison.Ordinal);
+        Assert.True(second.Length >= 32);
+
+        using var old = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = first, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await old.Content.ReadAsStringAsync());
+
+        using var next = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = second, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, next.StatusCode);
+    }
+
+    [Fact]
+    public async Task TdAdmC4_ResetSetsPasswordOnly_EndsSessions_NoSessionIssued()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var sessionId = await SignInFullAsync(client);
+        var raw = await RequestResetTokenAsync(client);
+        var newPassword = "Pw-" + Guid.NewGuid().ToString("N") + "-yy";
+
+        using var confirm = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = raw, password = newPassword, totpCode = _totp, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+        Assert.True(string.IsNullOrEmpty(ReadCookie(confirm, AdminSessionCookie.Name)));
+        using var oldSession = await AdminGetAsync(client, "/admin/api/me", sessionId);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSession.StatusCode);
+
+        using var step1 = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = newPassword, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+        Assert.Contains("second_factor", await step1.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TdAdmC4_ResetExpiresAt30Minutes_BootstrapAt24Hours()
+    {
+        await ClearAuthStateAsync();
+        var client = CreateClient();
+        var clock = _factory.Services.GetRequiredService<TestAdminClock>();
+        var resetRaw = await RequestResetTokenAsync(client);
+        clock.Advance(TimeSpan.FromMinutes(29));
+        using var stillValid = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = resetRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, stillValid.StatusCode);
+
+        var expiredRaw = await RequestResetTokenAsync(client);
+        clock.Advance(TimeSpan.FromMinutes(30));
+        using var expired = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetConfirmPath,
+            new { token = expiredRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await expired.Content.ReadAsStringAsync());
+
+        var bootstrapRaw = AdminAuthService.CreateOpaqueToken();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                .IssueLinkAsync(AdminAuthToken.KindBootstrap, OwnerEmail, bootstrapRaw, CancellationToken.None);
+        }
+
+        clock.Advance(TimeSpan.FromHours(24));
+        using var bootstrapExpired = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
+            new { token = bootstrapRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(InvalidLinkJson(), await bootstrapExpired.Content.ReadAsStringAsync());
     }
 
     private HttpClient CreateClient() =>
@@ -573,11 +759,26 @@ public class TdAdm040AuthLockoutSessionTests
         return null;
     }
 
+    private async Task<string> RequestResetTokenAsync(HttpClient client)
+    {
+        using var reset = await SendAuthAsync(
+            client, HttpMethod.Post, AdminAuthEndpoints.ResetPath,
+            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        reset.EnsureSuccessStatusCode();
+        var mailer = _factory.Services.GetRequiredService<RecordingAdminMailSender>();
+        var token = AdminAuthLinks.TryReadFragmentToken(mailer.Last?.TextBody);
+        Assert.False(string.IsNullOrEmpty(token));
+        Assert.True(token!.Length >= 32);
+        return token;
+    }
+
     private static string SignInJson() => JsonSerializer.Serialize(new { error = SignInBody });
 
     private static string CaptchaJson() => JsonSerializer.Serialize(new { error = CaptchaBody });
 
     private static string ResetJson() => JsonSerializer.Serialize(new { error = AdminAuthCopy.ResetExists });
+
+    private static string InvalidLinkJson() => JsonSerializer.Serialize(new { error = AdminAuthCopy.InvalidLink });
 
     private static string RepoRoot()
     {

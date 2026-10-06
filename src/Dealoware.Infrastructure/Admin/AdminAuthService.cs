@@ -12,7 +12,9 @@ public sealed class AdminAuthService
     public static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(1);
+    public static readonly TimeSpan ResetLifetime = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan BootstrapLifetime = TimeSpan.FromHours(24);
+    public const int LinkTokenByteCount = 32;
 
     private readonly ITurnstileVerifier _turnstile;
     private readonly IAdminLockoutStore _lockouts;
@@ -90,6 +92,8 @@ public sealed class AdminAuthService
         }
 
         var rawPending = CreateOpaqueToken();
+        await _tokens.CancelUnusedAsync(AdminAuthToken.KindPending, _credentials.OwnerEmail, now, ct)
+            .ConfigureAwait(false);
         var pending = AdminAuthToken.Create(
             AdminAuthToken.KindPending,
             HashToken(rawPending),
@@ -196,16 +200,21 @@ public sealed class AdminAuthService
         if (_credentials.IsOwnerEmail(email))
         {
             var raw = CreateOpaqueToken();
+            await _tokens.CancelUnusedAsync(AdminAuthToken.KindReset, _credentials.OwnerEmail, now, ct)
+                .ConfigureAwait(false);
             var token = AdminAuthToken.Create(
                 AdminAuthToken.KindReset,
                 HashToken(raw),
                 _credentials.OwnerEmail,
                 now,
-                LinkLifetime);
+                ResetLifetime);
             await _tokens.AddAsync(token, ct).ConfigureAwait(false);
             await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
             await _mailer.SendAsync(
-                    new AdminMailMessage(_credentials.OwnerEmail, "Reset", raw),
+                    new AdminMailMessage(
+                        _credentials.OwnerEmail,
+                        "Reset",
+                        AdminAuthLinks.ResetConfirm(raw)),
                     ct)
                 .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.ResetRequest, _credentials.OwnerEmail, ipHmac, null, ct)
@@ -219,8 +228,7 @@ public sealed class AdminAuthService
         string kind,
         string? rawToken,
         string? password,
-        string? totpCode,
-        string? recoveryCode,
+        string? claimedEmail,
         string? turnstileToken,
         string? remoteIp,
         CancellationToken ct)
@@ -228,54 +236,49 @@ public sealed class AdminAuthService
         var now = _clock.UtcNow;
         var ip = NormalizeIp(remoteIp);
         var ipHmac = HashIp(ip);
+        var action = kind == AdminAuthToken.KindBootstrap
+            ? AdminAuthAction.BootstrapComplete
+            : AdminAuthAction.ResetComplete;
 
         if (!await _turnstile.VerifyAsync(turnstileToken ?? string.Empty, ip, ct).ConfigureAwait(false))
         {
-            await AuditAsync(AdminAuthAction.ResetComplete, null, ipHmac, AdminAuthReason.CaptchaFailed, ct)
+            await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.CaptchaFailed, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.CaptchaFailed();
         }
 
         if (await IsThrottledAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false))
         {
-            await AuditAsync(AdminAuthAction.ResetComplete, null, ipHmac, AdminAuthReason.RateLimited, ct)
+            await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
-            return AdminAuthOutcome.ThrottledSignIn();
+            return AdminAuthOutcome.ThrottledReset();
         }
 
         var token = await LoadUsableAsync(rawToken, kind, now, ct).ConfigureAwait(false);
-        if (token is null)
+        var emailOk = token is null
+            || string.IsNullOrWhiteSpace(claimedEmail)
+            || string.Equals(claimedEmail.Trim(), token.Email, StringComparison.OrdinalIgnoreCase);
+        if (token is null || !emailOk)
         {
             await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
+            await AuditAsync(AdminAuthAction.LinkRejected, claimedEmail, ipHmac, AdminAuthReason.InvalidLink, ct)
+                .ConfigureAwait(false);
             return AdminAuthOutcome.InvalidLink();
-        }
-
-        if (kind == AdminAuthToken.KindReset)
-        {
-            var secondOk = await _credentials.VerifyTotpAsync(token.Email, totpCode ?? string.Empty, ct).ConfigureAwait(false)
-                           || await _credentials.VerifyRecoveryCodeAsync(token.Email, recoveryCode ?? string.Empty, ct)
-                               .ConfigureAwait(false);
-            if (!secondOk)
-            {
-                await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
-                return AdminAuthOutcome.InvalidLink();
-            }
         }
 
         if (string.IsNullOrWhiteSpace(password))
         {
-            await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
-            return AdminAuthOutcome.InvalidLink();
+            return new AdminAuthOutcome(400, "Use at least 15 characters.", null, null);
         }
 
+        // Consume the token, set the password, and end sessions together.
+        // The in-memory credential directory cannot join the EF transaction;
+        // the token row and session deletes share this request's DbContext.
         token.Consume(now);
-        await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
+        await _sessions.DeleteByEmailAsync(token.Email, ct).ConfigureAwait(false);
         await _credentials.SetPasswordAsync(token.Email, password, ct).ConfigureAwait(false);
-        if (kind == AdminAuthToken.KindReset)
-        {
-            await AuditAsync(AdminAuthAction.ResetComplete, token.Email, ipHmac, null, ct).ConfigureAwait(false);
-        }
-
+        await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
+        await AuditAsync(action, token.Email, ipHmac, null, ct).ConfigureAwait(false);
         return AdminAuthOutcome.LinkCompleted();
     }
 
@@ -301,10 +304,17 @@ public sealed class AdminAuthService
 
     public async Task IssueLinkAsync(string kind, string email, string rawToken, CancellationToken ct)
     {
-        var token = AdminAuthToken.Create(kind, HashToken(rawToken), email, _clock.UtcNow, LinkLifetime);
+        var now = _clock.UtcNow;
+        await _tokens.CancelUnusedAsync(kind, email, now, ct).ConfigureAwait(false);
+        var token = AdminAuthToken.Create(kind, HashToken(rawToken), email, now, LifetimeFor(kind));
         await _tokens.AddAsync(token, ct).ConfigureAwait(false);
         await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
     }
+
+    public static TimeSpan LifetimeFor(string kind) =>
+        kind == AdminAuthToken.KindBootstrap ? BootstrapLifetime
+        : kind == AdminAuthToken.KindPending ? PendingLifetime
+        : ResetLifetime;
 
     private async Task<AdminSession> RotateSessionAsync(
         string email,
@@ -438,7 +448,8 @@ public sealed class AdminAuthService
 
     private string HashIp(string ip) => _ipHasher.Hash(ip);
 
-    private static string CreateOpaqueToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    public static string CreateOpaqueToken() =>
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(LinkTokenByteCount));
 }
 
 public sealed record AdminAuthOutcome(

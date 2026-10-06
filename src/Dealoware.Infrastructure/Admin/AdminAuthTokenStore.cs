@@ -23,5 +23,21 @@ public sealed class AdminAuthTokenStore : IAdminAuthTokenStore
         await _db.AdminAuthTokens.AddAsync(token, ct).ConfigureAwait(false);
     }
 
+    public async Task CancelUnusedAsync(string kind, string email, DateTimeOffset now, CancellationToken ct)
+    {
+        var rows = await _db.AdminAuthTokens
+            .Where(t => t.Kind == kind)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+        foreach (var row in rows)
+        {
+            if (string.Equals(row.Email, email, StringComparison.OrdinalIgnoreCase)
+                && row.IsUsable(now))
+            {
+                row.Consume(now);
+            }
+        }
+    }
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }

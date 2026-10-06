@@ -10,6 +10,7 @@ public static class AdminAuthReason
     public const string Bad2Fa = "bad_2fa";
     public const string Locked = "locked";
     public const string RateLimited = "rate-limited";
+    public const string InvalidLink = "invalid_link";
 }
 
 /// <summary>
@@ -22,5 +23,7 @@ public static class AdminAuthAction
     public const string LockStart = "lock_start";
     public const string ResetRequest = "reset_request";
     public const string ResetComplete = "reset_complete";
+    public const string BootstrapComplete = "bootstrap_complete";
+    public const string LinkRejected = "auth.link_rejected";
     public const string SecondFactorFailed = "signin.second_factor_failed";
 }

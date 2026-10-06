@@ -22,6 +22,7 @@ public static class AdminAntiForgery
     {
         var tokens = antiforgery.GetAndStoreTokens(context);
         context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
         context.Response.Headers[HeaderName] = tokens.RequestToken ?? string.Empty;
         return Results.NoContent();
     }

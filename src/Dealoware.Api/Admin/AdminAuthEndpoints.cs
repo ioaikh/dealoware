@@ -24,6 +24,8 @@ public static class AdminAuthEndpoints
         app.MapGet("/admin/sign-in", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
         app.MapGet("/admin/reset", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
         app.MapGet("/admin/reset/sent", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
+        app.MapGet("/admin/reset/confirm", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
+        app.MapGet("/admin/bootstrap", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
         app.MapGet("/admin/link-expired", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
         app.MapGet("/admin/sign-in/code", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
         app.MapGet("/admin/sign-in/recovery", IssueAntiForgery).WithTags("AdminAuth").AllowAnonymous();
@@ -128,10 +130,9 @@ public static class AdminAuthEndpoints
     {
         await WriteOutcome(context, await auth.CompleteLinkAsync(
             AdminAuthToken.KindReset,
-            body.LinkToken,
+            body.EffectiveLinkToken,
             body.Password,
-            body.TotpCode,
-            body.RecoveryCode,
+            body.Email,
             body.TurnstileToken,
             ClientIp(context),
             context.RequestAborted));
@@ -141,10 +142,9 @@ public static class AdminAuthEndpoints
     {
         await WriteOutcome(context, await auth.CompleteLinkAsync(
             AdminAuthToken.KindBootstrap,
-            body.LinkToken,
+            body.EffectiveLinkToken,
             body.Password,
-            body.TotpCode,
-            body.RecoveryCode,
+            body.Email,
             body.TurnstileToken,
             ClientIp(context),
             context.RequestAborted));
@@ -196,4 +196,8 @@ public sealed class AdminAuthRequest
     public string? RecoveryCode { get; set; }
     public string? PendingToken { get; set; }
     public string? LinkToken { get; set; }
+    public string? Token { get; set; }
+
+    public string? EffectiveLinkToken =>
+        !string.IsNullOrWhiteSpace(Token) ? Token : LinkToken;
 }
