@@ -3,22 +3,23 @@
 # Empty suite: must fail closed on pull_request (never green empty).
 # SKIP stubs: reported as SKIP with Active hold reason when specs missing.
 # Decision: Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate.
+#
+# Phase 0: No admin UI frontend exists yet. Pipeline wiring only.
+# When specs land, they run against webServer defined in e2e/playwright.config.ts.
+# See e2e/admin/README.md for environment setup and local development.
 
 name: Admin UI CI
 
 on:
   pull_request:
     paths:
-      # Admin UI source paths
-      - '**/Admin/**'
-      - '**/admin/**'
-      - '**/Areas/Admin/**'
-      # Playwright / e2e paths
-      - '**/e2e/admin/**'
-      - '**/e2e/admin*/**'
-      - '**/playwright*/**'
-      - '**/admin-dashboard/**'
-      # This workflow itself
+      # Admin UI e2e test files
+      - 'e2e/admin/**'
+      # Playwright configuration and dependencies
+      - 'e2e/playwright.config.ts'
+      - 'e2e/package.json'
+      - 'e2e/package-lock.json'
+      # This workflow
       - '.github/workflows/admin-ui-ci.yml'
   workflow_dispatch:
     inputs:
@@ -31,14 +32,8 @@ on:
           - 'false'
           - 'true'
 
-env:
-  ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
-  ADMIN_USER: ${{ secrets.ADMIN_USER }}
-  ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-  COREOWNER_PASSWORD_ENV: ${{ secrets.COREOWNER_PASSWORD_ENV }}
-  TOTP_SEED_ENV: ${{ secrets.TOTP_SEED_ENV }}
-  TURNSTILE_TEST_SITE_KEY: ${{ secrets.TURNSTILE_TEST_SITE_KEY }}
-  TURNSTILE_TEST_SECRET_KEY: ${{ secrets.TURNSTILE_TEST_SECRET_KEY }}
+permissions:
+  contents: read
 
 jobs:
   admin-ui-test:
@@ -54,6 +49,7 @@ jobs:
         shell: bash
         run: |
           # Resolve the base URL to check for live admin hosts
+          # Default to local stub; secrets are NOT exposed at this step
           BASE_URL="${ADMIN_BASE_URL:-http://127.0.0.1:4173}"
           PLAYWRIGHT_URL="${PLAYWRIGHT_BASE_URL:-$BASE_URL}"
 
@@ -96,6 +92,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'e2e/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: e2e
+        run: npm ci
 
       - name: Check for Playwright specs
         id: check-specs
@@ -104,27 +106,21 @@ jobs:
           echo "::group::Spec discovery"
 
           # Search for Playwright spec files in admin UI test directories
-          SPEC_DIRS=(
-            "e2e/admin"
-            "tests/e2e/admin"
-            "playwright/admin"
-          )
-
           SPEC_PATTERNS=(
-            "*.spec.ts"
-            "*.spec.js"
-            "*.e2e.ts"
-            "*.e2e.js"
+            "e2e/admin/*.spec.ts"
+            "e2e/admin/*.spec.js"
+            "e2e/admin/*.e2e.ts"
+            "e2e/admin/*.e2e.js"
+            "e2e/admin/**/*.spec.ts"
+            "e2e/admin/**/*.spec.js"
+            "e2e/admin/**/*.e2e.ts"
+            "e2e/admin/**/*.e2e.js"
           )
 
           FOUND_SPECS=0
-          for dir in "${SPEC_DIRS[@]}"; do
-            if [[ -d "$dir" ]]; then
-              for pattern in "${SPEC_PATTERNS[@]}"; do
-                count=$(find "$dir" -name "$pattern" 2>/dev/null | wc -l)
-                FOUND_SPECS=$((FOUND_SPECS + count))
-              done
-            fi
+          for pattern in "${SPEC_PATTERNS[@]}"; do
+            count=$(find . -path "./$pattern" 2>/dev/null | wc -l)
+            FOUND_SPECS=$((FOUND_SPECS + count))
           done
 
           echo "Found $FOUND_SPECS spec file(s)"
@@ -141,7 +137,7 @@ jobs:
           echo "  TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
           echo "═══════════════════════════════════════════════════════════════════════════"
           echo ""
-          echo "  This PR touches admin UI files but no Playwright specs exist yet."
+          echo "  This PR touches admin UI e2e files but no Playwright specs exist yet."
           echo "  Per UX1-X08 decision: empty suite must fail closed on pull_request."
           echo ""
           echo "  Next steps:"
@@ -177,41 +173,37 @@ jobs:
           echo "Use allow_skip_empty=true for manual dry-run if needed."
           exit 1
 
-      - name: Install Playwright (Chromium only)
+      - name: Install Playwright Chromium
         if: steps.check-specs.outputs.specs_found != '0'
-        shell: bash
-        run: |
-          # Check if playwright is already in package.json, otherwise install
-          if [[ -f "package.json" ]] && grep -q '"@playwright/test"' package.json; then
-            echo "Playwright found in package.json, installing dependencies..."
-            npm ci
-          else
-            echo "Installing Playwright as dev dependency..."
-            npm init -y 2>/dev/null || true
-            npm install -D @playwright/test
-          fi
-
-          # Install only Chromium browser
-          npx playwright install chromium --with-deps
+        working-directory: e2e
+        run: npx playwright install chromium --with-deps
 
       - name: Run Playwright tests (Chromium)
         if: steps.check-specs.outputs.specs_found != '0'
-        shell: bash
+        working-directory: e2e
+        # Secrets scoped to test step only — never exposed to npm install or other steps.
+        # Values below are CI test placeholders; configure real secrets in GitHub repo settings.
         env:
-          PLAYWRIGHT_BASE_URL: ${{ env.ADMIN_BASE_URL }}
+          ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER || 'ci-test-admin' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'ci-test-placeholder-not-real' }}
+          COREOWNER_PASSWORD_ENV: ${{ secrets.COREOWNER_PASSWORD_ENV || 'ci-test-placeholder-not-real' }}
+          TOTP_SEED_ENV: ${{ secrets.TOTP_SEED_ENV || 'JBSWY3DPEHPK3PXP' }}
+          TURNSTILE_TEST_SITE_KEY: ${{ secrets.TURNSTILE_TEST_SITE_KEY || '1x00000000000000000000AA' }}
+          TURNSTILE_TEST_SECRET_KEY: ${{ secrets.TURNSTILE_TEST_SECRET_KEY || '1x0000000000000000000000000000000AA' }}
         run: |
           npx playwright test \
+            -c playwright.config.ts \
             --project=chromium \
             --reporter=html \
-            --reporter=list \
-            e2e/admin/
+            --reporter=list
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always() && steps.check-specs.outputs.specs_found != '0'
         with:
           name: playwright-report
-          path: playwright-report/
+          path: e2e/playwright-report/
           retention-days: 14
 
       - name: Upload test results
@@ -219,7 +211,7 @@ jobs:
         if: always() && steps.check-specs.outputs.specs_found != '0'
         with:
           name: test-results
-          path: test-results/
+          path: e2e/test-results/
           retention-days: 14
 
       - name: Upload traces on failure
@@ -227,6 +219,6 @@ jobs:
         if: failure() && steps.check-specs.outputs.specs_found != '0'
         with:
           name: playwright-traces
-          path: test-results/**/trace.zip
+          path: e2e/test-results/**/trace.zip
           retention-days: 7
           if-no-files-found: ignore
