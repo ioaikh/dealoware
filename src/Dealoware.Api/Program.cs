@@ -1,6 +1,8 @@
 using Dealoware.Api;
+using Dealoware.Api.Admin;
 using Dealoware.Api.Endpoints;
 using Dealoware.Infrastructure;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -85,6 +87,11 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddAuthServices(jwtSettings);
+
+builder.Services.Configure<CoreOwnerOptions>(
+    builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
+builder.Services.Configure<AdminHostOptions>(
+    builder.Configuration.GetSection(AdminHostOptions.SectionName));
 
 
 var rateLimitOptions = builder.Configuration
@@ -176,6 +183,10 @@ var app = builder.Build();
 
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
+
+// Two-way admin host gate: admin paths only on the allowlist host; that host
+// serves only /admin/* and /health.
+app.UseMiddleware<AdminHostMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
