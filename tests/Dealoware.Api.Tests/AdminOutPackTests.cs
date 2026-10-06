@@ -33,9 +33,9 @@ public class AdminOutPackTests
             var refs = xml.Descendants("PackageReference")
                 .Select(e => (string?)e.Attribute("Include") ?? "")
                 .ToList();
-            Assert.DoesNotContain(refs, r => r.Contains("AWSSDK.SimpleEmail", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(refs, r => r.Contains("AWSSDK.SES", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(refs, r => r.Contains("AWSSDK.", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(refs, r => r.Contains("Amazon.SimpleEmail", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(refs, r => r.Contains("Amazon.SES", StringComparison.OrdinalIgnoreCase));
         }
     }
 
