@@ -33,6 +33,15 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
+        // Route-prefix note r3 §2.2: POST /admin/sign-out is idempotent and does not
+        // require a valid session. GET /admin/sign-out is not exempt (MUST NOT sign out).
+        // Only /admin/auth/** static files may skip the session gate (signed-out assets).
+        if (IsSignedOutExempt(context))
+        {
+            await _next(context);
+            return;
+        }
+
         if (!TryGetSessionId(context, out var sessionId))
         {
             await AdminDeny.WriteUnauthorizedAsync(context);
@@ -74,6 +83,20 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    private static bool IsSignedOutExempt(HttpContext context)
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        if (HttpMethods.IsPost(context.Request.Method)
+            && path.Equals(AdminUiRoutes.SignOut, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (path.Equals(AdminUiRoutes.SignedOutAssetsPrefix, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(AdminUiRoutes.SignedOutAssetsPrefix + "/", StringComparison.OrdinalIgnoreCase))
+            return HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method);
+
+        return false;
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)

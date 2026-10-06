@@ -92,6 +92,22 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
+var adminUiTestFlag = builder.Configuration[AdminUiRoutes.TestHarnessFlag]
+    ?? Environment.GetEnvironmentVariable(AdminUiRoutes.TestHarnessFlag);
+if (builder.Environment.IsDevelopment()
+    && (adminUiTestFlag == "1" || string.Equals(adminUiTestFlag, "true", StringComparison.OrdinalIgnoreCase)))
+{
+    // Local Playwright only: the browser cannot set Host. Never enabled outside Development.
+    builder.Services.PostConfigure<AdminHostOptions>(options =>
+    {
+        options.AllowedHosts ??= [];
+        foreach (var host in new[] { "127.0.0.1", "localhost" })
+        {
+            if (!options.AllowedHosts.Contains(host, StringComparer.OrdinalIgnoreCase))
+                options.AllowedHosts.Add(host);
+        }
+    });
+}
 
 builder.Services.AddAuthorization(options =>
 {
@@ -216,6 +232,43 @@ app.UseForwardedHeaders();
 // serves only /admin/* and /health.
 app.UseMiddleware<AdminHostMiddleware>();
 
+// Route-prefix note r3: /admin without a trailing slash is not a stored path.
+// Redirect to canonical /admin/ before routing so /admin and /admin/ do not
+// share one endpoint table (AmbiguousMatchException).
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method)
+        && string.Equals(context.Request.Path.Value, "/admin", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Redirect(AdminUiRoutes.Stats, permanent: false);
+        return;
+    }
+
+    await next();
+});
+
+// Test harness HTTP surface. Production (and any host without the Development
+// + DEALOWARE_ADMIN_UI_TEST gate) always 404s these paths — even if the env
+// flag is set. The seed type itself is compiled out of Release.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments(AdminUiRoutes.TestHarnessPrefix))
+    {
+#if DEBUG
+        if (AdminUiTestHarness.IsEnabled(app))
+        {
+            await next();
+            return;
+        }
+#endif
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -226,8 +279,23 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Route-prefix note r3 §2.3: UseStaticFiles runs before the session gate.
+// Only /admin/auth/** may be served that way. Signed-in shell assets are
+// mapped after AdminSessionMiddleware (AdminUiEndpoints) and must never
+// sit where anonymous static-file middleware can reach them.
+app.UseWhen(
+    context =>
+    {
+        var path = context.Request.Path;
+        if (!path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
+            return true;
+        return path.StartsWithSegments(AdminUiRoutes.SignedOutAssetsPrefix);
+    },
+    branch =>
+    {
+        branch.UseDefaultFiles();
+        branch.UseStaticFiles();
+    });
 
 app.UseRateLimiter();
 
@@ -266,6 +334,11 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+#if DEBUG
+await AdminUiTestHarness.ApplyAsync(app);
+AdminUiTestHarness.MapEndpoints(app);
+#endif
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .WithName("Health")
     .WithTags("Health")
@@ -283,6 +356,7 @@ app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminUiEndpoints();
 
 app.Run();
 

@@ -16,4 +16,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="Admin\Ui\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Local Playwright seed only. Never ships in Release / production binaries. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <Compile Remove="Admin\AdminUiTestHarness.cs" />
+  </ItemGroup>
+
 </Project>

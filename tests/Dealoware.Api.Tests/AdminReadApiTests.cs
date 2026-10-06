@@ -15,7 +15,7 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// A7 Step 7 admin read API. Case IDs match the test design (TD-ADM-*).
-/// TD-ADM-130 is a UI case and is deferred to the UI PR after UX1.
+/// TD-ADM-130 / TD-ADM-131 UI shells live in AdminUiTests and Dealoware.Api.UiTests.
 /// </summary>
 [Collection("WebAppTests")]
 public class AdminReadApiTests
@@ -825,8 +825,4 @@ public class AdminReadApiTests
         }
     }
 
-    [Fact(Skip = "TD-ADM-130 is a UI smoke case. Deferred to the UI PR after UX1 approval.")]
-    public void TD_ADM_130_UiSmoke_DeferredToUiPrAfterUx1()
-    {
-    }
 }
