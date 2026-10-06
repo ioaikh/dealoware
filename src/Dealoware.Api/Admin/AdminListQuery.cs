@@ -9,6 +9,8 @@ public sealed class AdminListQuery
 {
     public const int DefaultLimit = 50;
     public const int MaxLimit = 200;
+    public const int MaxQueryLength = 100;
+    public const int MaxFilterLength = 200;
 
     public string? Q { get; init; }
     public string Sort { get; init; } = "created";
@@ -152,18 +154,33 @@ public sealed class AdminListQuery
             status = null;
         else
             status = status.Trim();
+        if (status is { Length: > MaxFilterLength })
+        {
+            error = AdminDeny.BadRequestResult();
+            return false;
+        }
 
         var participant = query["participant"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(participant))
             participant = null;
         else
             participant = participant.Trim();
+        if (participant is { Length: > MaxFilterLength })
+        {
+            error = AdminDeny.BadRequestResult();
+            return false;
+        }
 
         var q = query["q"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(q))
             q = null;
         else
             q = q.Trim();
+        if (q is { Length: > MaxQueryLength })
+        {
+            error = AdminDeny.BadRequestResult();
+            return false;
+        }
 
         parsed = new AdminListQuery
         {

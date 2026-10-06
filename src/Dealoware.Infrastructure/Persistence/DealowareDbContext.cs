@@ -53,10 +53,20 @@ public class DealowareDbContext : DbContext
     {
         base.ConfigureConventions(configurationBuilder);
 
-        configurationBuilder.Properties<DateTimeOffset>()
-            .HaveConversion<UtcDateTimeOffsetConverter>();
-        configurationBuilder.Properties<DateTimeOffset?>()
-            .HaveConversion<UtcDateTimeOffsetConverter>();
+        if (Database.IsSqlite())
+        {
+            configurationBuilder.Properties<DateTimeOffset>()
+                .HaveConversion<SqliteSortableUtcDateTimeOffsetConverter>();
+            configurationBuilder.Properties<DateTimeOffset?>()
+                .HaveConversion<SqliteSortableUtcDateTimeOffsetConverter>();
+        }
+        else
+        {
+            configurationBuilder.Properties<DateTimeOffset>()
+                .HaveConversion<UtcDateTimeOffsetConverter>();
+            configurationBuilder.Properties<DateTimeOffset?>()
+                .HaveConversion<UtcDateTimeOffsetConverter>();
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

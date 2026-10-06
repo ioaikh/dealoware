@@ -82,8 +82,8 @@ public static class AdminReadEndpoints
                 || p.Sub.ToLower().Contains(needle));
         }
 
-        var (total, items) = await PageFilteredAsync(
-            rows, query, p => ParticipantSortKey(p, query), cancellationToken);
+        var (total, items) = await PageQueryAsync(
+            rows, ApplyParticipantSort(rows, query), query, cancellationToken);
 
         return Results.Json(AdminReadProjection.ListPage(
             query.Offset,
@@ -149,8 +149,8 @@ public static class AdminReadEndpoints
             rows = rows.Where(a => false);
         }
 
-        var (total, items) = await PageFilteredAsync(
-            rows.Include(a => a.Entities), query, a => ArtifactSortKey(a, query), cancellationToken);
+        var ordered = ApplyArtifactSort(rows, query).Include(a => a.Entities);
+        var (total, items) = await PageQueryAsync(rows, ordered, query, cancellationToken);
 
         return Results.Json(AdminReadProjection.ListPage(
             query.Offset,
@@ -249,8 +249,8 @@ public static class AdminReadEndpoints
             rows = rows.Where(n => matchingIds.Contains(n.Id));
         }
 
-        var (total, items) = await PageFilteredAsync(
-            rows, query, n => NegotiationSortKey(n, query), cancellationToken);
+        var (total, items) = await PageQueryAsync(
+            rows, ApplyNegotiationSort(rows, query), query, cancellationToken);
 
         return Results.Json(AdminReadProjection.ListPage(
             query.Offset,
@@ -350,19 +350,8 @@ public static class AdminReadEndpoints
             rows = rows.Where(o => matchingIds.Contains(o.Id));
         }
 
-        var materialized = await rows.ToListAsync(cancellationToken);
-        IReadOnlyDictionary<Guid, Guid>? offerArtifacts = null;
-        if (AdminListQuery.NormalizeSort(query.Sort) is "artifact")
-        {
-            var negotiationIds = materialized.Select(o => o.NegotiationId).Distinct().ToList();
-            offerArtifacts = await db.Negotiations.AsNoTracking()
-                .Where(n => negotiationIds.Contains(n.Id))
-                .Select(n => new { n.Id, n.ArtifactId })
-                .ToDictionaryAsync(n => n.Id, n => n.ArtifactId, cancellationToken);
-        }
-
-        var (total, items) = PageInMemory(
-            materialized, query, o => OfferSortKey(o, query, offerArtifacts));
+        var (total, items) = await PageQueryAsync(
+            rows, ApplyOfferSort(rows, query, db), query, cancellationToken);
 
         return Results.Json(AdminReadProjection.ListPage(
             query.Offset,
@@ -491,70 +480,132 @@ public static class AdminReadEndpoints
             => node == _from ? _to : base.VisitParameter(node);
     }
 
-    private static async Task<(int Total, List<T> Items)> PageFilteredAsync<T>(
-        IQueryable<T> rows,
+    /// <summary>
+    /// Count on the filtered query; sort, Skip, and Take stay in SQL so the
+    /// data query never reads more than <see cref="AdminListQuery.Limit"/> rows.
+    /// </summary>
+    private static async Task<(int Total, List<T> Items)> PageQueryAsync<T>(
+        IQueryable<T> filtered,
+        IQueryable<T> ordered,
         AdminListQuery query,
-        Func<T, IComparable> key,
         CancellationToken cancellationToken)
     {
-        var materialized = await rows.ToListAsync(cancellationToken);
-        return PageInMemory(materialized, query, key);
+        var total = await filtered.CountAsync(cancellationToken);
+        var items = await ordered
+            .Skip(query.Offset)
+            .Take(query.Limit)
+            .ToListAsync(cancellationToken);
+        return (total, items);
     }
 
-    private static (int Total, List<T> Items) PageInMemory<T>(
-        List<T> materialized,
-        AdminListQuery query,
-        Func<T, IComparable> key)
+    private static IQueryable<Domain.Participants.Participant> ApplyParticipantSort(
+        IQueryable<Domain.Participants.Participant> rows,
+        AdminListQuery query)
     {
-        var ordered = query.Descending
-            ? materialized.OrderByDescending(key)
-            : materialized.OrderBy(key);
-        var page = ordered.Skip(query.Offset).Take(query.Limit).ToList();
-        return (materialized.Count, page);
+        var key = AdminListQuery.NormalizeSort(query.Sort);
+        IOrderedQueryable<Domain.Participants.Participant> ordered = key switch
+        {
+            "updated" => query.Descending
+                ? rows.OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+                : rows.OrderBy(p => p.UpdatedAt ?? p.CreatedAt),
+            "name" => query.Descending
+                ? rows.OrderByDescending(p => p.DisplayName)
+                : rows.OrderBy(p => p.DisplayName),
+            _ => query.Descending
+                ? rows.OrderByDescending(p => p.CreatedAt)
+                : rows.OrderBy(p => p.CreatedAt)
+        };
+        return query.Descending ? ordered.ThenByDescending(p => p.Id) : ordered.ThenBy(p => p.Id);
     }
 
-    private static IComparable ParticipantSortKey(Domain.Participants.Participant p, AdminListQuery query)
-        => AdminListQuery.NormalizeSort(query.Sort) switch
+    private static IQueryable<Domain.Artifacts.Artifact> ApplyArtifactSort(
+        IQueryable<Domain.Artifacts.Artifact> rows,
+        AdminListQuery query)
+    {
+        var key = AdminListQuery.NormalizeSort(query.Sort);
+        IOrderedQueryable<Domain.Artifacts.Artifact> ordered = key switch
         {
-            "updated" => p.UpdatedAt ?? p.CreatedAt,
-            "name" => p.DisplayName ?? string.Empty,
-            _ => p.CreatedAt
+            "updated" => query.Descending
+                ? rows.OrderByDescending(a => a.UpdatedAt ?? a.CreatedAt)
+                : rows.OrderBy(a => a.UpdatedAt ?? a.CreatedAt),
+            "name" or "artifact" => query.Descending
+                ? rows.OrderByDescending(a => a.Entities.Select(e => e.Name).FirstOrDefault())
+                : rows.OrderBy(a => a.Entities.Select(e => e.Name).FirstOrDefault()),
+            _ => query.Descending
+                ? rows.OrderByDescending(a => a.CreatedAt)
+                : rows.OrderBy(a => a.CreatedAt)
         };
+        return query.Descending ? ordered.ThenByDescending(a => a.Id) : ordered.ThenBy(a => a.Id);
+    }
 
-    private static IComparable ArtifactSortKey(Domain.Artifacts.Artifact a, AdminListQuery query)
-        => AdminListQuery.NormalizeSort(query.Sort) switch
+    private static IQueryable<Negotiation> ApplyNegotiationSort(
+        IQueryable<Negotiation> rows,
+        AdminListQuery query)
+    {
+        var key = AdminListQuery.NormalizeSort(query.Sort);
+        IOrderedQueryable<Negotiation> ordered = key switch
         {
-            "updated" => a.UpdatedAt ?? a.CreatedAt,
-            "name" or "artifact" => a.Entities.Select(e => e.Name).FirstOrDefault() ?? string.Empty,
-            _ => a.CreatedAt
+            "updated" => query.Descending
+                ? rows.OrderByDescending(n => n.UpdatedAt ?? n.CreatedAt)
+                : rows.OrderBy(n => n.UpdatedAt ?? n.CreatedAt),
+            "status" => query.Descending
+                ? rows.OrderByDescending(n => n.Status)
+                : rows.OrderBy(n => n.Status),
+            "participant" => query.Descending
+                ? rows.OrderByDescending(n => n.PartyAParticipantId)
+                : rows.OrderBy(n => n.PartyAParticipantId),
+            "artifact" => query.Descending
+                ? rows.OrderByDescending(n => n.ArtifactId)
+                : rows.OrderBy(n => n.ArtifactId),
+            "id" or "negotiationid" => query.Descending
+                ? rows.OrderByDescending(n => n.Id)
+                : rows.OrderBy(n => n.Id),
+            _ => query.Descending
+                ? rows.OrderByDescending(n => n.CreatedAt)
+                : rows.OrderBy(n => n.CreatedAt)
         };
+        return query.Descending ? ordered.ThenByDescending(n => n.Id) : ordered.ThenBy(n => n.Id);
+    }
 
-    private static IComparable NegotiationSortKey(Negotiation n, AdminListQuery query)
-        => AdminListQuery.NormalizeSort(query.Sort) switch
-        {
-            "updated" => n.UpdatedAt ?? n.CreatedAt,
-            "status" => n.Status,
-            "participant" => n.PartyAParticipantId,
-            "artifact" => n.ArtifactId,
-            "id" or "negotiationid" => n.Id,
-            _ => n.CreatedAt
-        };
-
-    private static IComparable OfferSortKey(
-        Offer o,
+    private static IQueryable<Offer> ApplyOfferSort(
+        IQueryable<Offer> rows,
         AdminListQuery query,
-        IReadOnlyDictionary<Guid, Guid>? offerArtifacts)
-        => AdminListQuery.NormalizeSort(query.Sort) switch
+        DealowareDbContext db)
+    {
+        var key = AdminListQuery.NormalizeSort(query.Sort);
+        IOrderedQueryable<Offer> ordered = key switch
         {
-            "updated" => o.UpdatedAt ?? o.CreatedAt,
-            "status" => o.Status,
-            "participant" => o.FromParticipantId,
-            "artifact" => offerArtifacts != null && offerArtifacts.TryGetValue(o.NegotiationId, out var artifactId)
-                ? artifactId
-                : Guid.Empty,
-            "amount" => o.Amount ?? decimal.MinValue,
-            "negotiationid" => o.NegotiationId,
-            "id" => o.Id,
-            _ => o.CreatedAt
+            "updated" => query.Descending
+                ? rows.OrderByDescending(o => o.UpdatedAt ?? o.CreatedAt)
+                : rows.OrderBy(o => o.UpdatedAt ?? o.CreatedAt),
+            "status" => query.Descending
+                ? rows.OrderByDescending(o => o.Status)
+                : rows.OrderBy(o => o.Status),
+            "participant" => query.Descending
+                ? rows.OrderByDescending(o => o.FromParticipantId)
+                : rows.OrderBy(o => o.FromParticipantId),
+            "artifact" => query.Descending
+                ? rows.OrderByDescending(o => db.Negotiations
+                    .Where(n => n.Id == o.NegotiationId)
+                    .Select(n => n.ArtifactId)
+                    .FirstOrDefault())
+                : rows.OrderBy(o => db.Negotiations
+                    .Where(n => n.Id == o.NegotiationId)
+                    .Select(n => n.ArtifactId)
+                    .FirstOrDefault()),
+            "amount" => query.Descending
+                ? rows.OrderByDescending(o => o.Amount)
+                : rows.OrderBy(o => o.Amount),
+            "negotiationid" => query.Descending
+                ? rows.OrderByDescending(o => o.NegotiationId)
+                : rows.OrderBy(o => o.NegotiationId),
+            "id" => query.Descending
+                ? rows.OrderByDescending(o => o.Id)
+                : rows.OrderBy(o => o.Id),
+            _ => query.Descending
+                ? rows.OrderByDescending(o => o.CreatedAt)
+                : rows.OrderBy(o => o.CreatedAt)
         };
+        return query.Descending ? ordered.ThenByDescending(o => o.Id) : ordered.ThenBy(o => o.Id);
+    }
 }

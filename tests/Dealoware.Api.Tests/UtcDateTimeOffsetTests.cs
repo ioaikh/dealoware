@@ -86,7 +86,28 @@ public class UtcDateTimeOffsetUnitTests
         Assert.NotEmpty(dateProperties);
         Assert.Contains(dateProperties, p => p.DeclaringType.ClrType == typeof(Negotiation) && p.Name == nameof(Negotiation.StartsAt));
         Assert.Contains(dateProperties, p => p.DeclaringType.ClrType == typeof(TimePeriod) && p.Name == nameof(TimePeriod.Start));
-        Assert.All(dateProperties, p => Assert.IsType<UtcDateTimeOffsetConverter>(p.GetValueConverter()));
+        var sqlite = connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase);
+        Assert.All(dateProperties, p =>
+        {
+            if (sqlite)
+                Assert.IsType<SqliteSortableUtcDateTimeOffsetConverter>(p.GetValueConverter());
+            else
+                Assert.IsType<UtcDateTimeOffsetConverter>(p.GetValueConverter());
+        });
+    }
+
+    [Fact]
+    public void SqliteConverter_WritesSortableUtcString()
+    {
+        var converter = new SqliteSortableUtcDateTimeOffsetConverter();
+        var plusTwo = new DateTimeOffset(2030, 6, 1, 12, 30, 0, TimeSpan.FromHours(2));
+        var stored = (string)converter.ConvertToProvider(plusTwo)!;
+        var read = (DateTimeOffset)converter.ConvertFromProvider(stored)!;
+
+        Assert.Equal("2030-06-01T10:30:00.0000000Z", stored);
+        Assert.Equal(TimeSpan.Zero, read.Offset);
+        Assert.Equal(plusTwo.UtcDateTime, read.UtcDateTime);
+        Assert.True(string.CompareOrdinal(stored, "2030-06-01T10:30:00.0000001Z") < 0);
     }
 }
 

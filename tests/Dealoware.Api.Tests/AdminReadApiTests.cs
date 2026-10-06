@@ -712,6 +712,119 @@ public class AdminReadApiTests
         Assert.True(ids.IndexOf(newer.Id) < ids.IndexOf(older.Id));
     }
 
+    [Fact]
+    public async Task TD_ADM_066_OverlongQ_Safe400()
+    {
+        var session = await SeedSessionAsync();
+        var client = CreateClient();
+        var q = new string('a', AdminListQuery.MaxQueryLength + 1);
+        using var response = await client.SendAsync(AdminGet($"/admin/api/participants?q={q}", session));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("\"error\":\"BadRequest\"", body);
+        AssertNoDeniedFields(body);
+    }
+
+    [Fact]
+    public async Task TD_ADM_066_OverlongParticipant_Safe400()
+    {
+        var session = await SeedSessionAsync();
+        var client = CreateClient();
+        var participant = new string('p', AdminListQuery.MaxFilterLength + 1);
+        using var response = await client.SendAsync(
+            AdminGet($"/admin/api/negotiations?participant={participant}", session));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("\"error\":\"BadRequest\"", body);
+        AssertNoDeniedFields(body);
+    }
+
+    [Fact]
+    public async Task TD_ADM_066_OverlongStatus_Safe400()
+    {
+        var session = await SeedSessionAsync();
+        var client = CreateClient();
+        var status = new string('s', AdminListQuery.MaxFilterLength + 1);
+        using var response = await client.SendAsync(
+            AdminGet($"/admin/api/offers?status={status}", session));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("\"error\":\"BadRequest\"", body);
+        AssertNoDeniedFields(body);
+    }
+
+    [Fact]
+    public async Task TD_ADM_001_WrongHost_NewReadRoutes_Return404()
+    {
+        var session = await SeedSessionAsync();
+        var client = CreateClient();
+        foreach (var path in new[]
+                 {
+                     "/admin/api/participants",
+                     "/admin/api/artifacts",
+                     "/admin/api/negotiations",
+                     "/admin/api/offers",
+                     "/admin/api/stats"
+                 })
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Host = "core.dealoware.com";
+            request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session:D}");
+            using var response = await client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task TD_ADM_003_TotpNotVerified_DeniesNewReadRoutes()
+    {
+        var id = await SeedSessionAsync(totpVerified: false);
+        var client = CreateClient();
+        foreach (var path in new[]
+                 {
+                     "/admin/api/participants",
+                     "/admin/api/artifacts",
+                     "/admin/api/negotiations",
+                     "/admin/api/offers",
+                     "/admin/api/stats"
+                 })
+        {
+            using var response = await client.SendAsync(AdminGet(path, id));
+            var body = await response.Content.ReadAsStringAsync();
+            AssertSafeUnauthorized(response, body);
+        }
+    }
+
+    [Fact]
+    public async Task TD_ADM_003_WriteMethods_OnReadRoutes_AreRejected()
+    {
+        var session = await SeedSessionAsync();
+        var client = CreateClient();
+        var methods = new[] { HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch, HttpMethod.Delete };
+        var paths = new[]
+        {
+            "/admin/api/participants",
+            "/admin/api/artifacts",
+            "/admin/api/negotiations",
+            "/admin/api/offers",
+            "/admin/api/stats"
+        };
+
+        foreach (var method in methods)
+        {
+            foreach (var path in paths)
+            {
+                var request = new HttpRequestMessage(method, path);
+                request.Headers.Host = AdminHost;
+                request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session:D}");
+                using var response = await client.SendAsync(request);
+                Assert.True(
+                    response.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotFound,
+                    $"{method} {path} returned {response.StatusCode}");
+            }
+        }
+    }
+
     [Fact(Skip = "TD-ADM-130 is a UI smoke case. Deferred to the UI PR after UX1 approval.")]
     public void TD_ADM_130_UiSmoke_DeferredToUiPrAfterUx1()
     {
