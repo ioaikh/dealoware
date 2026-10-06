@@ -22,6 +22,8 @@ internal sealed class AdminUiHarness : IAsyncLifetime
     private const string AdminHost = "admin.core.dealoware.com";
 
     private IsolatedWebApplicationFactory? _factory;
+    private HttpClient? _client;
+    private readonly SemaphoreSlim _fulfillGate = new(1, 1);
     private IPlaywright? _playwright;
     private IBrowser? _browser;
 
@@ -31,7 +33,7 @@ internal sealed class AdminUiHarness : IAsyncLifetime
     {
         DenyLiveHost();
         _factory = new IsolatedWebApplicationFactory();
-        _ = _factory.Services;
+        _client = _factory.CreateClient();
         _playwright = await Playwright.CreateAsync();
         try
         {
@@ -49,6 +51,8 @@ internal sealed class AdminUiHarness : IAsyncLifetime
         if (_browser is not null)
             await _browser.DisposeAsync();
         _playwright?.Dispose();
+        _client?.Dispose();
+        _fulfillGate.Dispose();
         _factory?.Dispose();
     }
 
@@ -134,38 +138,47 @@ internal sealed class AdminUiHarness : IAsyncLifetime
 
     private async Task FulfillAsync(IRoute route, Guid? sessionId)
     {
-        var client = Factory.CreateClient();
-        var uri = new Uri(route.Request.Url);
-        var message = new HttpRequestMessage(new HttpMethod(route.Request.Method), uri.PathAndQuery);
-        message.Headers.Host = AdminHost;
-        if (sessionId is { } id)
-            message.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={id:D}");
-
-        foreach (var header in route.Request.Headers)
+        // One in-memory SQLite connection: serialize TestServer calls so HTML/CSS/JS
+        // plus the session-gated API fetch cannot overlap.
+        await _fulfillGate.WaitAsync();
+        try
         {
-            if (header.Key.Equals("If-Match", StringComparison.OrdinalIgnoreCase))
-                message.Headers.TryAddWithoutValidation("If-Match", header.Value);
+            var uri = new Uri(route.Request.Url);
+            var message = new HttpRequestMessage(new HttpMethod(route.Request.Method), uri.PathAndQuery);
+            message.Headers.Host = AdminHost;
+            if (sessionId is { } id)
+                message.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={id:D}");
+
+            foreach (var header in route.Request.Headers)
+            {
+                if (header.Key.Equals("If-Match", StringComparison.OrdinalIgnoreCase))
+                    message.Headers.TryAddWithoutValidation("If-Match", header.Value);
+            }
+
+            if (route.Request.PostData != null)
+            {
+                message.Content = new StringContent(route.Request.PostData, Encoding.UTF8, "application/json");
+                message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            }
+
+            using var response = await _client!.SendAsync(message);
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var headers = new Dictionary<string, string>();
+            if (response.Content.Headers.ContentType is { } ct)
+                headers["content-type"] = ct.ToString();
+            if (response.Headers.ETag is { } etag)
+                headers["etag"] = etag.ToString();
+            await route.FulfillAsync(new RouteFulfillOptions
+            {
+                Status = (int)response.StatusCode,
+                BodyBytes = bytes,
+                Headers = headers
+            });
         }
-
-        if (route.Request.PostData != null)
+        finally
         {
-            message.Content = new StringContent(route.Request.PostData, Encoding.UTF8, "application/json");
-            message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            _fulfillGate.Release();
         }
-
-        using var response = await client.SendAsync(message);
-        var bytes = await response.Content.ReadAsByteArrayAsync();
-        var headers = new Dictionary<string, string>();
-        if (response.Content.Headers.ContentType is { } ct)
-            headers["content-type"] = ct.ToString();
-        if (response.Headers.ETag is { } etag)
-            headers["etag"] = etag.ToString();
-        await route.FulfillAsync(new RouteFulfillOptions
-        {
-            Status = (int)response.StatusCode,
-            BodyBytes = bytes,
-            Headers = headers
-        });
     }
 
     public static async Task WriteAxeAndAssertAsync(IPage page, string caseId)
