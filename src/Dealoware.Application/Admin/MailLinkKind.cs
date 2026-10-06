@@ -1,7 +1,7 @@
 namespace Dealoware.Application.Admin;
 
 /// <summary>
-/// Token-link kind the mail layer is allowed to build. Paths come from route note r3 b079a814.
+/// Token-link kind the mail layer is allowed to build. Paths come from route note r5 c5e9d232.
 /// </summary>
 public enum MailLinkKind
 {
