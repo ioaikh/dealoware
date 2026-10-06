@@ -77,7 +77,8 @@ public partial class AdminTotpAndRecoveryCodes : Migration
                 CreatedAt = table.Column<DateTimeOffset>(nullable: false),
                 ExpiresAt = table.Column<DateTimeOffset>(nullable: false),
                 ConsumedAt = table.Column<DateTimeOffset>(nullable: true),
-                FailedCodeAttempts = table.Column<int>(nullable: false)
+                FailedCodeAttempts = table.Column<int>(nullable: false),
+                ReturnPath = table.Column<string>(maxLength: 2048, nullable: false, defaultValue: "/admin/")
             },
             constraints: table =>
             {

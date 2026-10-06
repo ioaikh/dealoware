@@ -4,8 +4,9 @@ using Dealoware.Infrastructure.Admin;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Exact signed-out exemptions for AdminSessionMiddleware (route-prefix note r2 §2).
-/// Path match is ordinal case-insensitive equality. No prefix or query matching.
+/// Exact signed-out exemptions for AdminSessionMiddleware (route-prefix note r3 §2 + §10 C1).
+/// Path is canonicalised first, then compared with ordinal case-insensitive equality.
+/// No prefix or query matching except GET static files under /admin/auth/.
 /// </summary>
 public static class AdminSignedOutExemptions
 {
@@ -73,21 +74,30 @@ public static class AdminSignedOutExemptions
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
-    public static string PathOnly(PathString path)
-        => path.HasValue ? path.Value! : string.Empty;
+    public static bool IsAnonymousAuthAsset(string canonicalPath)
+        => canonicalPath.StartsWith(AnonymousAuthAssetPrefix, StringComparison.OrdinalIgnoreCase);
 
-    public static bool IsAnonymousAuthAsset(PathString path)
-    {
-        var raw = PathOnly(path);
-        return raw.StartsWith(AnonymousAuthAssetPrefix, StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool IsSignOut(string canonicalPath)
+        => string.Equals(canonicalPath, SignOut, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiSignOut, StringComparison.OrdinalIgnoreCase);
 
-    public static ExemptionRule? FindRule(PathString path, string method)
+    public static bool IsAuthPost(string canonicalPath)
+        => string.Equals(canonicalPath, SignIn, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, SignInCode, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, SignInRecovery, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, SetupAuthenticator, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiSignIn, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiSignInCode, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiSignInRecovery, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiBootstrap, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase);
+
+    public static ExemptionRule? FindRule(string canonicalPath, string method)
     {
-        var raw = PathOnly(path);
         foreach (var rule in Rules)
         {
-            if (!string.Equals(rule.Path, raw, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(rule.Path, canonicalPath, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (!string.Equals(rule.Method.Method, method, StringComparison.OrdinalIgnoreCase))
                 continue;

@@ -185,6 +185,13 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.Property<int>("FailedCodeAttempts")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ReturnPath")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("/admin/");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)

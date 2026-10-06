@@ -167,6 +167,11 @@ public class AdminPendingAuthEntityConfiguration : IEntityTypeConfiguration<Admi
         builder.Property(p => p.FailedCodeAttempts)
             .IsRequired();
 
+        builder.Property(p => p.ReturnPath)
+            .IsRequired()
+            .HasMaxLength(2048)
+            .HasDefaultValue("/admin/");
+
         builder.HasIndex(p => p.Email);
         builder.HasIndex(p => p.ExpiresAt);
     }

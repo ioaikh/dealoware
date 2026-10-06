@@ -815,7 +815,17 @@ public class DatabaseMigrationBaselineTests
             var pk = keys.Single(k => string.Equals(k.Table, tableGroup.Key, StringComparison.Ordinal));
             var defs = tableGroup
                 .Select(c =>
-                    $"\"{c.Name}\" {StoreTypeFor(c.Kind)}{(c.IsNullable ? "" : " NOT NULL")}");
+                {
+                    var sqlType = StoreTypeFor(c.Kind);
+                    var nullability = c.IsNullable ? "" : " NOT NULL";
+                    var defaultClause = !c.IsNullable && c.Kind is BaselineColumnKind.UInt32
+                        or BaselineColumnKind.Int32
+                        or BaselineColumnKind.Int64
+                        or BaselineColumnKind.Boolean
+                        ? " DEFAULT 0"
+                        : "";
+                    return $"\"{c.Name}\" {sqlType}{nullability}{defaultClause}";
+                });
             var sql =
                 $"CREATE TABLE \"{tableGroup.Key}\" ({string.Join(", ", defs)}, " +
                 $"PRIMARY KEY ({string.Join(", ", pk.Columns.Select(n => $"\"{n}\""))}))";

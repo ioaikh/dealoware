@@ -21,6 +21,14 @@ public static class AdminSessionCookie
         Path = AdminHostMiddleware.AdminPathPrefix,
         IsEssential = true
     };
+
+    public static CookieOptions ExpiredOptions()
+    {
+        var options = CreateOptions();
+        options.MaxAge = TimeSpan.Zero;
+        options.Expires = DateTimeOffset.UnixEpoch;
+        return options;
+    }
 }
 
 /// <summary>

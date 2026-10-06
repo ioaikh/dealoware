@@ -2,71 +2,88 @@ using System.Text;
 using System.Text.Json;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r2 §2.2 paths.
+/// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r3 §2.2 paths.
 /// No HTML pages (Step 14). Session stays unverified until TOTP or a recovery code passes.
 /// </summary>
 public static class AdminAuthEndpoints
 {
     public static void MapAdminAuthEndpoints(this WebApplication app)
     {
+        app.MapGet(AdminSignedOutExemptions.SignIn, GetSignInPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.SignIn, SignIn)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
         app.MapPost(AdminSignedOutExemptions.ApiSignIn, SignIn)
             .WithTags("AdminAuth")
             .AllowAnonymous();
+
+        app.MapGet(AdminSignedOutExemptions.SignInCode, GetSignInCodePage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.SignInCode, VerifyTotp)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
         app.MapPost(AdminSignedOutExemptions.ApiSignInCode, VerifyTotp)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+
+        app.MapGet(AdminSignedOutExemptions.SignInRecovery, GetSignInRecoveryPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.SignInRecovery, VerifyRecovery)
             .WithTags("AdminAuth")
             .AllowAnonymous();
         app.MapPost(AdminSignedOutExemptions.ApiSignInRecovery, VerifyRecovery)
             .WithTags("AdminAuth")
             .AllowAnonymous();
 
-        app.MapMethods(
-                AdminSignedOutExemptions.SignInCode,
-                [HttpMethods.Get, HttpMethods.Post],
-                SignInCodePage)
+        app.MapGet(AdminSignedOutExemptions.SetupAuthenticator, GetSetupAuthenticator)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-        app.MapMethods(
-                AdminSignedOutExemptions.SignInRecovery,
-                [HttpMethods.Get, HttpMethods.Post],
-                SignInRecoveryPage)
+        app.MapPost(AdminSignedOutExemptions.SetupAuthenticator, PostSetupAuthenticator)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-        app.MapMethods(
-                AdminSignedOutExemptions.SetupAuthenticator,
-                [HttpMethods.Get, HttpMethods.Post],
-                SetupAuthenticator)
+        app.MapGet(AdminSignedOutExemptions.SetupRecoveryCodes, GetSetupRecoveryCodes)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-        app.MapGet(AdminSignedOutExemptions.SetupRecoveryCodes, SetupRecoveryCodes)
+
+        app.MapPost(AdminSignedOutExemptions.SignOut, SignOut)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.ApiSignOut, SignOut)
             .WithTags("AdminAuth")
             .AllowAnonymous();
     }
 
-    private sealed record SignInRequest(string? Email, string? Password);
+    private sealed record SignInRequest(string? Email, string? Password, string? ReturnPath);
 
     private sealed record TotpCodeRequest(string? Code, string? RecoveryCode);
 
-    private static Task<IResult> SignInCodePage(TotpCodeRequest? body, HttpContext context, IAdminCoreOwnerAccountRepository accounts, IAdminSessionRepository sessions, IAdminAuditRepository audit, IIpHasher ipHasher, TotpSecretProtector protector)
-        => HttpMethods.IsGet(context.Request.Method)
-            ? Task.FromResult(Results.Json(new { screen = "sign-in-code" }))
-            : VerifyTotp(body, context, accounts, sessions, audit, ipHasher, protector);
+    private static IResult GetSignInPage(HttpContext context, IAntiforgery antiforgery)
+        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in");
 
-    private static Task<IResult> SignInRecoveryPage(TotpCodeRequest? body, HttpContext context, IAdminCoreOwnerAccountRepository accounts, IAdminSessionRepository sessions, IAdminAuditRepository audit, IIpHasher ipHasher, TotpSecretProtector protector)
-        => HttpMethods.IsGet(context.Request.Method)
-            ? Task.FromResult(Results.Json(new { screen = "sign-in-recovery" }))
-            : VerifyRecovery(body, context, accounts, sessions, audit, ipHasher, protector);
+    private static IResult GetSignInCodePage(HttpContext context, IAntiforgery antiforgery)
+        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in-code");
+
+    private static IResult GetSignInRecoveryPage(HttpContext context, IAntiforgery antiforgery)
+        => AdminAntiForgeryCookie.IssuePage(context, antiforgery, "sign-in-recovery");
 
     private static async Task<IResult> SignIn(
-        SignInRequest? body,
+        [FromBody] SignInRequest? body,
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
+        TotpSecretProtector protector,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         var ownerEmail = coreOwnerOptions.Value.Email;
@@ -74,6 +91,7 @@ public static class AdminAuthEndpoints
         var password = body?.Password ?? string.Empty;
         var now = DateTimeOffset.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
+        var returnPath = AdminReturnPath.Resolve(body?.ReturnPath);
 
         var isOwner = !string.IsNullOrWhiteSpace(ownerEmail)
                       && string.Equals(submittedEmail, ownerEmail, StringComparison.OrdinalIgnoreCase);
@@ -101,8 +119,17 @@ public static class AdminAuthEndpoints
         }
 
         await accounts.ConsumeOutstandingPendingAsync(ownerEmail, now, context.RequestAborted);
+        account.ClearRecoveryCodesReveal();
+
+        if (!account.IsTotpEnrolled && string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+        {
+            var secret = Rfc6238Totp.GenerateSecret();
+            account.SetPendingEnrollment(protector.Encrypt(secret));
+            CryptographicClear(secret);
+        }
+
         var rawToken = AdminPendingToken.Create();
-        var pending = AdminPendingAuth.Create(ownerEmail, AdminPendingToken.Hash(rawToken), now);
+        var pending = AdminPendingAuth.Create(ownerEmail, AdminPendingToken.Hash(rawToken), now, returnPath);
         await accounts.AddPendingAsync(pending, context.RequestAborted);
         await accounts.SaveChangesAsync(context.RequestAborted);
 
@@ -113,14 +140,15 @@ public static class AdminAuthEndpoints
         });
     }
 
-    private static async Task<IResult> SetupAuthenticator(
-        TotpCodeRequest? body,
+    private static async Task<IResult> GetSetupAuthenticator(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        IAdminAuditRepository audit,
-        IIpHasher ipHasher,
+        IAntiforgery antiforgery,
         TotpSecretProtector protector)
     {
+        SetNoStore(context);
+        AdminAntiForgeryCookie.IssuePage(context, antiforgery, "setup-authenticator");
+
         var pending = await LoadUsablePendingAsync(context, accounts);
         if (pending is null)
             return AdminSignInDeny.Failure();
@@ -129,38 +157,48 @@ public static class AdminAuthEndpoints
         if (account is null)
             return AdminSignInDeny.Failure();
 
-        if (HttpMethods.IsGet(context.Request.Method) || string.IsNullOrWhiteSpace(body?.Code))
-            return await EnrollStartAsync(account, accounts, protector, context.RequestAborted);
+        return ReadEnrollmentSecret(account, protector);
+    }
+
+    private static async Task<IResult> PostSetupAuthenticator(
+        [FromBody] TotpCodeRequest? body,
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminAuditRepository audit,
+        IIpHasher ipHasher,
+        TotpSecretProtector protector)
+    {
+        SetNoStore(context);
+        var pending = await LoadUsablePendingAsync(context, accounts);
+        if (pending is null)
+            return AdminSignInDeny.Failure();
+
+        var account = await accounts.GetByEmailAsync(pending.Email, context.RequestAborted);
+        if (account is null)
+            return AdminSignInDeny.Failure();
+
+        if (string.IsNullOrWhiteSpace(body?.Code))
+            return ReadEnrollmentSecret(account, protector);
 
         return await EnrollConfirmAsync(body, account, pending, context, accounts, audit, ipHasher, protector);
     }
 
-    private static async Task<IResult> EnrollStartAsync(
-        AdminCoreOwnerAccount account,
-        IAdminCoreOwnerAccountRepository accounts,
-        TotpSecretProtector protector,
-        CancellationToken cancellationToken)
+    private static IResult ReadEnrollmentSecret(AdminCoreOwnerAccount account, TotpSecretProtector protector)
     {
         if (account.IsTotpEnrolled)
             return Results.Json(new { enrolled = true });
 
+        if (string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+            return AdminSignInDeny.Failure();
+
         byte[] secret;
-        if (!string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+        try
         {
-            try
-            {
-                secret = protector.Decrypt(account.PendingTotpSecretCipher);
-            }
-            catch
-            {
-                return AdminSignInDeny.Failure();
-            }
+            secret = protector.Decrypt(account.PendingTotpSecretCipher);
         }
-        else
+        catch
         {
-            secret = Rfc6238Totp.GenerateSecret();
-            account.SetPendingEnrollment(protector.Encrypt(secret));
-            await accounts.SaveChangesAsync(cancellationToken);
+            return AdminSignInDeny.Failure();
         }
 
         var base32 = Rfc6238Totp.ToBase32(secret);
@@ -202,6 +240,8 @@ public static class AdminAuthEndpoints
         if (!Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
         {
             CryptographicClear(secret);
+            pending.IncrementFailedCodeAttempt(now);
+            await accounts.SaveChangesAsync(context.RequestAborted);
             await WriteAuthEventAsync(
                 audit,
                 AdminAuthEvents.SecondFactorFailed,
@@ -235,11 +275,12 @@ public static class AdminAuthEndpoints
         return Results.Json(new { enrolled = true, next = "recovery-codes" });
     }
 
-    private static async Task<IResult> SetupRecoveryCodes(
+    private static async Task<IResult> GetSetupRecoveryCodes(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
         TotpSecretProtector protector)
     {
+        SetNoStore(context);
         var pending = await LoadUsablePendingAsync(context, accounts);
         if (pending is null)
             return AdminSignInDeny.Failure();
@@ -248,8 +289,9 @@ public static class AdminAuthEndpoints
         if (account is null || !account.IsTotpEnrolled)
             return AdminSignInDeny.Failure();
 
-        var cipher = account.TakeRecoveryCodesReveal();
-        await accounts.SaveChangesAsync(context.RequestAborted);
+        // C3: GET is side-effect free. Reveal cipher is cleared when pending is
+        // replaced or consumed, so codes are not re-shown after the enrol window.
+        var cipher = account.RecoveryCodesRevealCipher;
         if (string.IsNullOrEmpty(cipher))
             return Results.Json(new { enrolled = true });
 
@@ -266,7 +308,7 @@ public static class AdminAuthEndpoints
     }
 
     private static Task<IResult> VerifyTotp(
-        TotpCodeRequest? body,
+        [FromBody] TotpCodeRequest? body,
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
         IAdminSessionRepository sessions,
@@ -284,7 +326,7 @@ public static class AdminAuthEndpoints
             protector);
 
     private static Task<IResult> VerifyRecovery(
-        TotpCodeRequest? body,
+        [FromBody] TotpCodeRequest? body,
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
         IAdminSessionRepository sessions,
@@ -365,7 +407,7 @@ public static class AdminAuthEndpoints
 
         if (!accepted)
         {
-            pending.IncrementFailedCodeAttempt();
+            pending.IncrementFailedCodeAttempt(now);
             await accounts.SaveChangesAsync(context.RequestAborted);
             await WriteAuthEventAsync(
                 audit,
@@ -385,6 +427,7 @@ public static class AdminAuthEndpoints
         }
 
         pending.Consume(now);
+        account.ClearRecoveryCodesReveal();
         await accounts.SaveChangesAsync(context.RequestAborted);
 
         var session = AdminSession.Create(account.Email, ipHmac, now);
@@ -417,7 +460,24 @@ public static class AdminAuthEndpoints
             session.Id.ToString("D"),
             AdminSessionCookie.CreateOptions());
 
-        return Results.Json(new { verified = true });
+        return Results.Json(new { verified = true, next = pending.ReturnPath });
+    }
+
+    private static async Task<IResult> SignOut(
+        HttpContext context,
+        IAdminSessionRepository sessions)
+    {
+        if (context.Request.Cookies.TryGetValue(AdminSessionCookie.Name, out var raw)
+            && Guid.TryParse(raw, out var sessionId))
+        {
+            await sessions.DeleteAsync(sessionId, context.RequestAborted);
+            await sessions.SaveChangesAsync(context.RequestAborted);
+        }
+
+        context.Response.Cookies.Delete(AdminSessionCookie.Name, AdminSessionCookie.ExpiredOptions());
+        context.Response.Cookies.Delete(AdminPendingAuthCookie.Name, AdminPendingAuthCookie.ExpiredOptions());
+        context.Response.Cookies.Delete(AdminAntiForgeryCookie.Name, AdminAntiForgeryCookie.ExpiredOptions());
+        return Results.Json(new { signedOut = true });
     }
 
     private static async Task<AdminPendingAuth?> LoadUsablePendingAsync(
@@ -456,6 +516,12 @@ public static class AdminAuthEndpoints
             AdminAuditEntry.CreateAuthEvent(action, actorEmail, ipHmac, reasonClass),
             cancellationToken);
         await audit.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void SetNoStore(HttpContext context)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
     }
 
     private static void CryptographicClear(byte[] secret)

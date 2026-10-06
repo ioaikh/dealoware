@@ -85,6 +85,11 @@ public sealed class AdminCoreOwnerAccount
         return cipher;
     }
 
+    public void ClearRecoveryCodesReveal()
+    {
+        RecoveryCodesRevealCipher = null;
+    }
+
     public void RecordTotpTimestep(long timestep)
     {
         LastUsedTotpTimestep = timestep;

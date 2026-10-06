@@ -8,6 +8,8 @@ public sealed class AdminPendingAuth
 {
     public const int LifetimeMinutes = 5;
 
+    public const int MaxFailedCodeAttempts = 5;
+
     public Guid Id { get; private set; }
 
     public string Email { get; private set; } = string.Empty;
@@ -23,12 +25,16 @@ public sealed class AdminPendingAuth
 
     public int FailedCodeAttempts { get; private set; }
 
+    /// <summary>Validated return path from r3 §5 / C6. Never a raw query value.</summary>
+    public string ReturnPath { get; private set; } = "/admin/";
+
     private AdminPendingAuth() { }
 
     public static AdminPendingAuth Create(
         string email,
         string tokenHash,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null,
+        string? returnPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
@@ -39,14 +45,17 @@ public sealed class AdminPendingAuth
             Email = email.Trim(),
             TokenHash = tokenHash,
             CreatedAt = timestamp,
-            ExpiresAt = timestamp.AddMinutes(LifetimeMinutes)
+            ExpiresAt = timestamp.AddMinutes(LifetimeMinutes),
+            ReturnPath = string.IsNullOrWhiteSpace(returnPath) ? "/admin/" : returnPath.Trim()
         };
     }
 
     public bool IsUsable(DateTimeOffset? now = null)
     {
         var timestamp = now ?? DateTimeOffset.UtcNow;
-        return ConsumedAt is null && timestamp < ExpiresAt;
+        return ConsumedAt is null
+               && timestamp < ExpiresAt
+               && FailedCodeAttempts < MaxFailedCodeAttempts;
     }
 
     public void Consume(DateTimeOffset? now = null)
@@ -54,8 +63,10 @@ public sealed class AdminPendingAuth
         ConsumedAt = now ?? DateTimeOffset.UtcNow;
     }
 
-    public void IncrementFailedCodeAttempt()
+    public void IncrementFailedCodeAttempt(DateTimeOffset? now = null)
     {
         FailedCodeAttempts++;
+        if (FailedCodeAttempts >= MaxFailedCodeAttempts)
+            Consume(now);
     }
 }
