@@ -12,8 +12,9 @@ public static class AdminDeleteEndpoints
             .RequireAuthorization(AdminSessionMiddleware.PolicyName)
             .WithTags("AdminDelete");
 
-        api.MapPost("/{entityType}/{id:guid}/delete-intent", CreateIntent);
-        api.MapDelete("/{entityType}/{id:guid}", ConfirmDelete);
+        const string entity = "{entityType:regex(^(participants|artifacts|negotiations|offers)$)}";
+        api.MapPost($"/{entity}/{{id:guid}}/delete-intent", CreateIntent);
+        api.MapDelete($"/{entity}/{{id:guid}}", ConfirmDelete);
         api.MapGet("/delete-ui/stats", GetStats);
         api.MapGet("/delete-ui/{entityType}", ListEntities);
         api.MapGet("/delete-ui/{entityType}/{id:guid}", GetEntity);

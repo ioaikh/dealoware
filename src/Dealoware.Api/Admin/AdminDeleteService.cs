@@ -396,9 +396,10 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(p => p.DeletedAt == null);
 
-        var rows = await query.ToListAsync(cancellationToken);
+        // Shared SQLite converter (SqliteSortableUtcDateTimeOffsetConverter) makes
+        // ORDER BY CreatedAt translate on both SQLite tests and PostgreSQL.
+        var rows = await query.OrderByDescending(p => p.CreatedAt).ToListAsync(cancellationToken);
         return rows
-            .OrderByDescending(p => p.CreatedAt)
             .Select(p => new AdminDeleteUiRow(
                 p.Id,
                 "participants",
@@ -418,8 +419,7 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(a => a.DeletedAt == null);
 
-        var rows = await query.ToListAsync(cancellationToken);
-        rows = rows.OrderByDescending(a => a.CreatedAt).ToList();
+        var rows = await query.OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
         return rows.Select(a => new AdminDeleteUiRow(
             a.Id,
             "artifacts",
@@ -438,9 +438,8 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(n => n.DeletedAt == null);
 
-        var rows = await query.ToListAsync(cancellationToken);
+        var rows = await query.OrderByDescending(n => n.CreatedAt).ToListAsync(cancellationToken);
         return rows
-            .OrderByDescending(n => n.CreatedAt)
             .Select(n => new AdminDeleteUiRow(
             n.Id,
             "negotiations",
@@ -459,9 +458,8 @@ public sealed class AdminDeleteService
         if (!includeDeleted)
             query = query.Where(o => o.DeletedAt == null);
 
-        var rows = await query.ToListAsync(cancellationToken);
+        var rows = await query.OrderByDescending(o => o.CreatedAt).ToListAsync(cancellationToken);
         return rows
-            .OrderByDescending(o => o.CreatedAt)
             .Select(o => new AdminDeleteUiRow(
             o.Id,
             "offers",
