@@ -92,7 +92,8 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
-var adminUiTestFlag = Environment.GetEnvironmentVariable("DEALOWARE_ADMIN_UI_TEST");
+var adminUiTestFlag = builder.Configuration[AdminUiRoutes.TestHarnessFlag]
+    ?? Environment.GetEnvironmentVariable(AdminUiRoutes.TestHarnessFlag);
 if (builder.Environment.IsDevelopment()
     && (adminUiTestFlag == "1" || string.Equals(adminUiTestFlag, "true", StringComparison.OrdinalIgnoreCase)))
 {
@@ -247,6 +248,27 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Test harness HTTP surface. Production (and any host without the Development
+// + DEALOWARE_ADMIN_UI_TEST gate) always 404s these paths — even if the env
+// flag is set. The seed type itself is compiled out of Release.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments(AdminUiRoutes.TestHarnessPrefix))
+    {
+#if DEBUG
+        if (AdminUiTestHarness.IsEnabled(app))
+        {
+            await next();
+            return;
+        }
+#endif
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -312,7 +334,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+#if DEBUG
 await AdminUiTestHarness.ApplyAsync(app);
+AdminUiTestHarness.MapEndpoints(app);
+#endif
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .WithName("Health")

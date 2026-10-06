@@ -8,26 +8,39 @@ using Microsoft.EntityFrameworkCore;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Local Playwright seed only. Never a product bypass route.
-/// Runs when DEALOWARE_ADMIN_UI_TEST=1 in Development; fail-closed otherwise.
+/// Local Playwright seed only. Compiled out of Release. Routes under
+/// <see cref="AdminUiRoutes.TestHarnessPrefix"/> register only when the host is
+/// Development and DEALOWARE_ADMIN_UI_TEST is set.
 /// </summary>
 internal static class AdminUiTestHarness
 {
-    public const string FlagName = "DEALOWARE_ADMIN_UI_TEST";
-    public const string SessionFileEnv = "DEALOWARE_ADMIN_UI_TEST_SESSION_FILE";
+    public const string FlagName = AdminUiRoutes.TestHarnessFlag;
+    public const string SessionFileEnv = AdminUiRoutes.TestHarnessSessionFile;
+
+    public static bool IsEnabled(WebApplication app)
+        => app.Environment.IsDevelopment() && FlagIsOn(app.Configuration);
+
+    public static bool FlagIsOn(IConfiguration? configuration = null)
+    {
+        var flag = configuration?[FlagName] ?? Environment.GetEnvironmentVariable(FlagName);
+        return flag == "1" || string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void MapEndpoints(WebApplication app)
+    {
+        if (!IsEnabled(app))
+            return;
+
+        app.MapGet(AdminUiRoutes.TestHarnessPrefix + "/session", () => Results.NoContent())
+            .WithName("AdminUiTestHarnessSession");
+        app.MapGet(AdminUiRoutes.TestHarnessPrefix + "/seed", () => Results.NoContent())
+            .WithName("AdminUiTestHarnessSeed");
+    }
 
     public static async Task ApplyAsync(WebApplication app)
     {
-        var flag = Environment.GetEnvironmentVariable(FlagName);
-        if (string.IsNullOrWhiteSpace(flag)
-            || !(flag == "1" || flag.Equals("true", StringComparison.OrdinalIgnoreCase)))
+        if (!IsEnabled(app))
             return;
-
-        if (!app.Environment.IsDevelopment())
-        {
-            throw new InvalidOperationException(
-                $"{FlagName} is not allowed outside Development.");
-        }
 
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();

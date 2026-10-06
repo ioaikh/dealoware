@@ -12,6 +12,9 @@ public static class AdminUiRoutes
     public const string ApiPrefix = "/admin/api";
     public const string SignedInAssetsPrefix = "/admin/ui";
     public const string SignedOutAssetsPrefix = "/admin/auth";
+    public const string TestHarnessPrefix = "/admin/ui-test";
+    public const string TestHarnessFlag = "DEALOWARE_ADMIN_UI_TEST";
+    public const string TestHarnessSessionFile = "DEALOWARE_ADMIN_UI_TEST_SESSION_FILE";
 
     public const string Stats = "/admin/";
     public const string Participants = "/admin/participants";

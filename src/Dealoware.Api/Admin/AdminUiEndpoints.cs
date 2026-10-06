@@ -58,6 +58,8 @@ public static class AdminUiEndpoints
         // signed-in shell there.
         if (first.Equals("auth", StringComparison.OrdinalIgnoreCase))
             return AdminDeny.NotFoundResult();
+        if (first.Equals("ui-test", StringComparison.OrdinalIgnoreCase))
+            return AdminDeny.NotFoundResult();
 
         ApplyNoStore(context);
         var file = ResolveUiFile(context, "index.html");
