@@ -29,6 +29,8 @@ public sealed class AdminSessionMiddleware
         HttpContext context,
         IAdminSessionRepository sessions,
         IAdminCoreOwnerAccountRepository accounts,
+        IAdminPasswordResetTokenRepository resetTokens,
+        IAdminClock clock,
         AdminAntiForgeryService antiforgery,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
@@ -38,7 +40,7 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
-        if (await IsSignedOutExemptAsync(context, accounts, antiforgery))
+        if (await IsSignedOutExemptAsync(context, accounts, resetTokens, clock, antiforgery))
         {
             await _next(context);
             return;
@@ -93,6 +95,8 @@ public sealed class AdminSessionMiddleware
     internal static async Task<bool> IsSignedOutExemptAsync(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
+        IAdminPasswordResetTokenRepository resetTokens,
+        IAdminClock clock,
         AdminAntiForgeryService antiforgery)
     {
         if (!AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical))
@@ -120,7 +124,10 @@ public sealed class AdminSessionMiddleware
             AdminSignedOutExemptions.TokenKind.PendingSignIn =>
                 await AdminSignedOutExemptions.HasValidPendingTokenAsync(
                     context, accounts, context.RequestAborted),
-            // Bootstrap / reset tokens are owned by Steps 2 and 4. Missing token → not exempt.
+            AdminSignedOutExemptions.TokenKind.PasswordReset =>
+                await AdminSignedOutExemptions.HasValidResetTokenAsync(
+                    context, resetTokens, clock, context.RequestAborted),
+            // Bootstrap tokens are owned by Step 2. Missing token → not exempt.
             _ => false
         };
     }

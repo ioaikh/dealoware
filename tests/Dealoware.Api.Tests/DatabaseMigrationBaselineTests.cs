@@ -28,6 +28,7 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.AdminTablesMigrationId,
         DatabaseMigrationBaseline.UpdatedAtMigrationId,
         DatabaseMigrationBaseline.TotpRecoveryMigrationId,
+        DatabaseMigrationBaseline.AdminPasswordResetMigrationId,
         AdminAuditLogAppendOnly.MigrationId
     ];
 

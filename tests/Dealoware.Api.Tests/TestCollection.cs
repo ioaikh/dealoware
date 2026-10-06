@@ -136,13 +136,23 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
                 options.AddInterceptors(new SqliteBusyTimeoutInterceptor());
             });
 
-            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IAdminMailSender)).ToList())
-            {
-                services.Remove(descriptor);
-            }
-
-            services.AddSingleton<IAdminMailSender, RecordingMailSender>();
+            ReplaceSingleton<IAdminMailSender, RecordingMailSender>(services);
+            ReplaceSingleton<IAdminSecondFactorVerifier, FakeAdminSecondFactorVerifier>(services);
+            ReplaceSingleton<IAdminClock, FakeAdminClock>(services);
         });
+    }
+
+    private static void ReplaceSingleton<TService, TImpl>(IServiceCollection services)
+        where TService : class
+        where TImpl : class, TService
+    {
+        foreach (var descriptor in services.Where(d => d.ServiceType == typeof(TService)).ToList())
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddSingleton<TImpl>();
+        services.AddSingleton<TService>(sp => sp.GetRequiredService<TImpl>());
     }
 
     protected override void Dispose(bool disposing)

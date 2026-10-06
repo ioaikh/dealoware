@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 
@@ -7,6 +8,7 @@ namespace Dealoware.Api.Admin;
 /// Exact signed-out exemptions for AdminSessionMiddleware (route-prefix note r3 §2 + §10 C1).
 /// Path is canonicalised first, then compared with ordinal case-insensitive equality.
 /// No prefix or query matching except GET static files under /admin/auth/.
+/// Step 4 aliases (ResetPage, ResetApi, …) keep the password-reset endpoints compiling.
 /// </summary>
 public static class AdminSignedOutExemptions
 {
@@ -31,6 +33,14 @@ public static class AdminSignedOutExemptions
     public const string ApiResetConfirm = "/admin/api/auth/reset/confirm";
     public const string ApiBootstrap = "/admin/api/auth/bootstrap";
     public const string ApiSignOut = "/admin/api/auth/sign-out";
+
+    public const string ResetPage = Reset;
+    public const string ResetSentPage = ResetSent;
+    public const string ResetConfirmPage = ResetConfirm;
+    public const string LinkExpiredPage = LinkExpired;
+    public const string ResetApi = ApiReset;
+    public const string ResetConfirmApi = ApiResetConfirm;
+    public const string AuthStaticPrefix = "/admin/auth";
 
     public enum TokenKind
     {
@@ -122,5 +132,68 @@ public static class AdminSignedOutExemptions
             AdminPendingToken.Hash(raw),
             cancellationToken);
         return pending is not null && pending.IsUsable();
+    }
+
+    public static async Task<bool> HasValidResetTokenAsync(
+        HttpContext context,
+        IAdminPasswordResetTokenRepository tokens,
+        IAdminClock clock,
+        CancellationToken cancellationToken)
+    {
+        var raw = await ReadResetTokenAsync(context, cancellationToken);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        var hash = AdminPasswordResetToken.HashRaw(raw.Trim());
+        var row = await tokens.FindUsableByHashAsync(hash, clock.UtcNow, cancellationToken);
+        return row is not null;
+    }
+
+    public static async Task<string?> ReadResetTokenAsync(
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        if (context.Request.Query.TryGetValue("token", out var queryToken)
+            && !string.IsNullOrWhiteSpace(queryToken))
+        {
+            return queryToken.ToString();
+        }
+
+        if (context.Request.HasFormContentType)
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken);
+            if (form.TryGetValue("token", out var formToken) && !string.IsNullOrWhiteSpace(formToken))
+            {
+                return formToken.ToString();
+            }
+        }
+
+        var contentType = context.Request.ContentType;
+        if (!string.IsNullOrEmpty(contentType)
+            && contentType.Contains("json", StringComparison.OrdinalIgnoreCase)
+            && context.Request.ContentLength is > 0 and < 8192)
+        {
+            context.Request.EnableBuffering();
+            using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
+            var json = await reader.ReadToEndAsync(cancellationToken);
+            context.Request.Body.Position = 0;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("token", out var tokenProp)
+                    && tokenProp.ValueKind == JsonValueKind.String)
+                {
+                    return tokenProp.GetString();
+                }
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 }

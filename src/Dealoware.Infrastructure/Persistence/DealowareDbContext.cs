@@ -51,6 +51,16 @@ public class DealowareDbContext : DbContext
 
     public DbSet<AdminPendingAuth> AdminPendingAuths => Set<AdminPendingAuth>();
 
+    /// <summary>
+    /// A7 Step 4: hashed single-use password-reset tokens.
+    /// </summary>
+    public DbSet<AdminPasswordResetToken> AdminPasswordResetTokens => Set<AdminPasswordResetToken>();
+
+    /// <summary>
+    /// A7 Step 4: CoreOwner password hash (bootstrap write is Step 2).
+    /// </summary>
+    public DbSet<AdminCredential> AdminCredentials => Set<AdminCredential>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -121,6 +131,8 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminCoreOwnerAccountEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminRecoveryCodeEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminPendingAuthEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminPasswordResetTokenEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)

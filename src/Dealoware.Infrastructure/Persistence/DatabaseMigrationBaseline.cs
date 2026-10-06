@@ -61,6 +61,8 @@ public static class DatabaseMigrationBaseline
 
     public const string TotpRecoveryMigrationId = "20261006000320_AdminTotpAndRecoveryCodes";
 
+    public const string AdminPasswordResetMigrationId = "20261006000330_AdminPasswordResetTokens";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =
