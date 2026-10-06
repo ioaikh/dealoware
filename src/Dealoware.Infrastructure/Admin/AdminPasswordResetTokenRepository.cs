@@ -19,15 +19,19 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public Task<AdminPasswordResetToken?> FindUsableByHashAsync(
+    public async Task<AdminPasswordResetToken?> FindUsableByHashAsync(
         string tokenHash,
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        return _context.AdminPasswordResetTokens
-            .FirstOrDefaultAsync(
-                t => t.TokenHash == tokenHash && t.ConsumedAt == null && t.ExpiresAt > now,
-                cancellationToken);
+        var row = await _context.AdminPasswordResetTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
+        if (row is null || !row.IsUsable(now))
+        {
+            return null;
+        }
+
+        return row;
     }
 
     public async Task<bool> TryConsumeAsync(
