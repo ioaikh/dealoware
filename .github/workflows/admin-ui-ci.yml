@@ -25,6 +25,10 @@ on:
       - 'e2e/playwright.config.ts'
       - 'e2e/package.json'
       - 'e2e/package-lock.json'
+      # Local Step 14 suite (same cases)
+      - 'tests/admin-ui/**'
+      - 'src/Dealoware.Api/AdminUi/**'
+      - 'src/Dealoware.Api/wwwroot/admin/**'
       # This workflow
       - '.github/workflows/admin-ui-ci.yml'
   workflow_dispatch:
@@ -199,6 +203,12 @@ jobs:
           echo "TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
           echo "Use allow_skip_empty=true for manual dry-run if needed."
           exit 1
+
+      - name: Setup .NET
+        if: steps.check-specs.outputs.specs_found != '0'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Install Playwright Chromium
         if: steps.check-specs.outputs.specs_found != '0'

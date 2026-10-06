@@ -6,8 +6,10 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Fail-closed session gate for all /admin routes.
-/// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
+/// Fail-closed session gate for /admin routes after the host gate (C7).
+/// r5 sha c5e9d232 (r3 and r4 VOID) §10 C1–C8: exact exemptions, AF on POST,
+/// generic 401 otherwise. C4.3: GET /admin/bootstrap and /admin/reset/confirm
+/// take no token and have no side effects.
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -25,10 +27,39 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
-        IOptions<CoreOwnerOptions> coreOwnerOptions)
+        IOptions<CoreOwnerOptions> coreOwnerOptions,
+        IAdminAuthTokenGate tokenGate)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
         {
+            await _next(context);
+            return;
+        }
+
+        var raw = AdminAuthPaths.RawPath(context);
+        if (string.Equals(raw, AdminAuthPaths.StatsBare, StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status302Found;
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers.Location = AdminAuthPaths.Stats;
+            return;
+        }
+
+        if (await AdminAuthPaths.IsExemptAsync(context, tokenGate, context.RequestAborted))
+        {
+            if (HttpMethods.IsGet(context.Request.Method))
+            {
+                AdminAntiForgery.IssueOnGet(context);
+                await _next(context);
+                return;
+            }
+
+            if (HttpMethods.IsPost(context.Request.Method) && !AdminAntiForgery.TryValidate(context))
+            {
+                await AdminDeny.WriteUnauthorizedAsync(context);
+                return;
+            }
+
             await _next(context);
             return;
         }

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Set a new password · Dealoware admin</title>
+  <link rel="stylesheet" href="/admin/auth/css/admin-auth.css">
+</head>
+<body data-screen="S-A10">
+  <main class="auth-shell">
+    <div class="auth-card">
+      <h1>Set a new password</h1>
+      <p class="lede">Choose a new password and confirm with an authenticator or recovery code.</p>
+      <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+      <form id="reset-password-form" novalidate>
+        <div class="field">
+          <label for="new-password">New password</label>
+          <div class="field-row">
+            <input id="new-password" name="new-password" type="password" autocomplete="new-password" aria-describedby="password-helper new-password-error" required>
+            <button type="button" id="new-password-toggle" class="secondary toggle" aria-pressed="false">Show</button>
+          </div>
+          <span id="password-helper" class="helper"></span>
+          <span id="new-password-error" class="field-error" hidden></span>
+        </div>
+        <div class="field">
+          <label for="confirm-password">Confirm password</label>
+          <div class="field-row">
+            <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password" aria-describedby="confirm-password-error" required>
+            <button type="button" id="confirm-password-toggle" class="secondary toggle" aria-pressed="false">Show</button>
+          </div>
+          <span id="confirm-password-error" class="field-error" hidden></span>
+        </div>
+        <div class="field" id="totp-field">
+          <label for="code">Authenticator code</label>
+          <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+          <span id="code-error" class="field-error" hidden></span>
+        </div>
+        <div class="field" id="recovery-field" hidden>
+          <label for="recovery-code">Recovery code</label>
+          <input id="recovery-code" name="recovery-code" type="text" autocomplete="off">
+          <span id="recovery-error" class="field-error" hidden></span>
+        </div>
+        <button type="submit" data-submit>Set password</button>
+        <div class="links">
+          <a href="#" id="use-recovery">Use a recovery code instead</a>
+        </div>
+      </form>
+    </div>
+  </main>
+  <script src="/admin/auth/js/admin-dom.js"></script>
+  <script src="/admin/auth/js/admin-copy.js"></script>
+  <script src="/admin/auth/js/admin-api.js"></script>
+  <script src="/admin/auth/js/admin-password.js"></script>
+  <script src="/admin/auth/js/admin-turnstile.js"></script>
+  <script src="/admin/auth/js/admin-app.js"></script>
+</body>
+</html>

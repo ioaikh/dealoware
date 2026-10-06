@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Set password · Dealoware admin</title>
+  <link rel="stylesheet" href="/admin/auth/css/admin-auth.css">
+</head>
+<body data-screen="S-A4">
+  <main class="auth-shell">
+    <div class="auth-card">
+      <h1>Set password</h1>
+      <p class="lede">Set the first password for Dealoware admin.</p>
+      <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+      <form id="bootstrap-form" novalidate>
+        <div class="field">
+          <label for="new-password">New password</label>
+          <div class="field-row">
+            <input id="new-password" name="new-password" type="password" autocomplete="new-password" aria-describedby="password-helper new-password-error" required>
+            <button type="button" id="new-password-toggle" class="secondary toggle" aria-pressed="false">Show</button>
+          </div>
+          <span id="password-helper" class="helper"></span>
+          <span id="new-password-error" class="field-error" hidden></span>
+        </div>
+        <div class="field">
+          <label for="confirm-password">Confirm password</label>
+          <div class="field-row">
+            <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password" aria-describedby="confirm-password-error" required>
+            <button type="button" id="confirm-password-toggle" class="secondary toggle" aria-pressed="false">Show</button>
+          </div>
+          <span id="confirm-password-error" class="field-error" hidden></span>
+        </div>
+        <div class="turnstile" id="turnstile">
+          <p id="turnstile-status" class="turnstile-status"></p>
+          <div id="turnstile-widget"></div>
+          <button type="button" id="turnstile-retry" class="secondary" hidden>Retry</button>
+        </div>
+        <button type="submit" data-submit disabled>Set password</button>
+      </form>
+    </div>
+  </main>
+  <script src="/admin/auth/js/admin-dom.js"></script>
+  <script src="/admin/auth/js/admin-copy.js"></script>
+  <script src="/admin/auth/js/admin-api.js"></script>
+  <script src="/admin/auth/js/admin-password.js"></script>
+  <script src="/admin/auth/js/admin-turnstile.js"></script>
+  <script src="/admin/auth/js/admin-app.js"></script>
+</body>
+</html>
