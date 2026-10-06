@@ -1,0 +1,14 @@
+{
+  "name": "dealoware-admin-dashboard-ui-tests",
+  "private": true,
+  "description": "Playwright (Chromium, headless) specs for admin delete UI. Local instance only.",
+  "scripts": {
+    "test": "playwright test --project=chromium",
+    "test:ui-delete": "playwright test --project=chromium --grep TD-ADM-UI-del"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.55.0",
+    "axe-core": "^4.10.2"
+  }
+}

@@ -249,4 +249,18 @@ public sealed class Negotiation
     {
         return _offers.Any(o => o.Status == OfferStatus.Open && o.FromParticipantId == participantId);
     }
+
+    /// <summary>
+    /// Soft-deletes this negotiation. Sets DeletedAt and bumps Version.
+    /// Already-deleted rows are left unchanged.
+    /// </summary>
+    public void SoftDelete(DateTimeOffset deletedAt)
+    {
+        if (DeletedAt is not null)
+            return;
+
+        DeletedAt = deletedAt;
+        UpdatedAt = deletedAt;
+        Version++;
+    }
 }

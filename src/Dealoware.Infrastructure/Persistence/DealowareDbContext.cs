@@ -41,6 +41,11 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
 
+    /// <summary>
+    /// A7 Step 10: single-use delete confirm tokens. Not part of the PR #23 frozen specs.
+    /// </summary>
+    public DbSet<AdminDeleteConfirmToken> AdminDeleteConfirmTokens => Set<AdminDeleteConfirmToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -100,5 +105,6 @@ public class DealowareDbContext : DbContext
         // A7: Admin session and audit tables
         modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminDeleteConfirmTokenEntityConfiguration());
     }
 }

@@ -119,4 +119,18 @@ public sealed class Participant
     {
         DisplayName = displayName;
     }
+
+    /// <summary>
+    /// Soft-deletes this participant. Sets DeletedAt and bumps Version.
+    /// Already-deleted rows are left unchanged.
+    /// </summary>
+    public void SoftDelete(DateTimeOffset deletedAt)
+    {
+        if (DeletedAt is not null)
+            return;
+
+        DeletedAt = deletedAt;
+        UpdatedAt = deletedAt;
+        Version++;
+    }
 }

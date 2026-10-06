@@ -21,7 +21,8 @@ public class DatabaseMigrationBaselineTests
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
-        DatabaseMigrationBaseline.UpdatedAtMigrationId
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        DatabaseMigrationBaseline.ConfirmTokenMigrationId
     ];
 
     [Fact]
@@ -100,6 +101,18 @@ public class DatabaseMigrationBaselineTests
         var plan = DatabaseMigrationBaseline.Decide([], Empty, DatabaseMigrationBaseline.BaselineTableNames);
 
         Assert.Equal(MigrationBaselineAction.ApplyMigrations, plan.Action);
+    }
+
+    [Fact]
+    public void Decide_CurrentPlusConfirmTokenTable_StampsCurrent()
+    {
+        var tables = DatabaseMigrationBaseline.BaselineTableNames
+            .Append(DatabaseMigrationBaseline.ConfirmTokenTableName)
+            .ToArray();
+        var plan = DatabaseMigrationBaseline.Decide(AssemblyWithBaseline, Empty, tables);
+
+        Assert.Equal(MigrationBaselineAction.StampCurrentThenMigrate, plan.Action);
+        Assert.Null(plan.FailureMessage);
     }
 
     [Fact]
@@ -698,6 +711,8 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
+        Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
+        Assert.Equal(DatabaseMigrationBaseline.ConfirmTokenMigrationId, migrations[3]);
     }
 
     [Fact]

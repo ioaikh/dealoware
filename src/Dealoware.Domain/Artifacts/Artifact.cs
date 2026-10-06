@@ -94,4 +94,18 @@ public sealed class Artifact
 
         return artifact;
     }
+
+    /// <summary>
+    /// Soft-deletes this artifact. Sets DeletedAt and bumps Version.
+    /// Already-deleted rows are left unchanged.
+    /// </summary>
+    public void SoftDelete(DateTimeOffset deletedAt)
+    {
+        if (DeletedAt is not null)
+            return;
+
+        DeletedAt = deletedAt;
+        UpdatedAt = deletedAt;
+        Version++;
+    }
 }

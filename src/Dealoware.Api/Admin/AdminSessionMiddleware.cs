@@ -33,6 +33,14 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
+        // Route note r3 (b079a814): only /admin/auth/ static files may load signed out.
+        // Signed-in shell assets are mapped after this gate, never via anonymous static files.
+        if (IsAnonymousAuthStatic(context.Request))
+        {
+            await _next(context);
+            return;
+        }
+
         if (!TryGetSessionId(context, out var sessionId))
         {
             await AdminDeny.WriteUnauthorizedAsync(context);
@@ -58,7 +66,8 @@ public sealed class AdminSessionMiddleware
                 new Claim(ClaimTypes.Email, session.Email),
                 new Claim(ClaimTypes.Role, CoreOwnerRole),
                 new Claim("role", CoreOwnerRole),
-                new Claim("principal", CoreOwnerRole)
+                new Claim("principal", CoreOwnerRole),
+                new Claim("admin_session_id", session.Id.ToString("D"))
             ],
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
@@ -74,6 +83,15 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    public const string AuthStaticPrefix = "/admin/auth";
+
+    internal static bool IsAnonymousAuthStatic(HttpRequest request)
+    {
+        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
+            return false;
+        return request.Path.StartsWithSegments(AuthStaticPrefix);
     }
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)
