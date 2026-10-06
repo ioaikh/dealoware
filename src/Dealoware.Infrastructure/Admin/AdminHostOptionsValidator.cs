@@ -38,9 +38,30 @@ public static class AdminHostOptionsValidator
 
     private static bool IsExactlyProductionAdminHost(IReadOnlyList<string>? hosts)
     {
-        return hosts is { Count: 1 }
+        // Binders may append the JSON array onto a property default, so compare
+        // the distinct effective allowlist rather than raw slot count.
+        if (hosts is null || hosts.Count == 0)
+            return false;
+
+        string? only = null;
+        foreach (var host in hosts)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                continue;
+
+            if (only is null)
+            {
+                only = host;
+                continue;
+            }
+
+            if (!string.Equals(only, host, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return only is not null
             && string.Equals(
-                hosts[0],
+                only,
                 AdminHostOptions.ProductionAdminHost,
                 StringComparison.OrdinalIgnoreCase);
     }

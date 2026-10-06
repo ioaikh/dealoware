@@ -33,10 +33,15 @@ public class AdminHostOptionsValidatorTests
     }
 
     [Fact]
-    public void Production_DefaultOptions_Pass()
+    public void Production_ConfiguredExactAllowlist_Passes()
     {
-        var ex = Record.Exception(() =>
-            AdminHostOptionsValidator.Validate(new AdminHostOptions(), isDevelopment: false));
+        var options = new AdminHostOptions
+        {
+            EnforceHostValidation = true,
+            AllowedHosts = [AdminHostOptions.ProductionAdminHost]
+        };
+
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
 
         Assert.Null(ex);
     }
@@ -111,11 +116,25 @@ public class AdminHostOptionsValidatorTests
     }
 
     [Fact]
-    public void Production_NullOptions_UsesDefaultsAndPasses()
+    public void Production_DuplicateProductionHostEntries_Pass()
     {
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(null, isDevelopment: false));
+        var options = new AdminHostOptions
+        {
+            AllowedHosts = ["admin.core.dealoware.com", "admin.core.dealoware.com"]
+        };
+
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Production_NullOptions_UsesEmptyAllowlistAndThrows()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => AdminHostOptionsValidator.Validate(null, isDevelopment: false));
+
+        Assert.Equal(AdminHostOptionsValidator.AllowedHostsMessage, ex.Message);
     }
 
     [Fact]
