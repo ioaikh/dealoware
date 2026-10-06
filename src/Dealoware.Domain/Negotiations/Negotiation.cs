@@ -214,6 +214,45 @@ public sealed class Negotiation
     }
 
     /// <summary>
+    /// E8: explicit admin Expire. Open → Expired only. Cancels loaded open offers.
+    /// Closed and Expired stay final (no reopen). Unlike clock expiry, EndsAt need not have passed.
+    /// </summary>
+    public bool Expire()
+    {
+        if (Status != NegotiationStatus.Open)
+            return false;
+
+        Status = NegotiationStatus.Expired;
+        CancelAllOpenOffers();
+        return true;
+    }
+
+    /// <summary>
+    /// E6: update EndsAt while Open. When both are set, EndsAt must be later than StartsAt.
+    /// </summary>
+    public bool UpdateEndsAt(DateTimeOffset? endsAt)
+    {
+        if (Status != NegotiationStatus.Open)
+            return false;
+
+        var normalized = endsAt?.ToUniversalTime();
+        if (StartsAt.HasValue && normalized.HasValue && normalized.Value <= StartsAt.Value)
+            return false;
+
+        EndsAt = normalized;
+        return true;
+    }
+
+    /// <summary>
+    /// Records an admin edit: bump Version and set UpdatedAt (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Adds an offer to this negotiation (for EF navigation).
     /// </summary>
     internal void AddOffer(Offer offer)

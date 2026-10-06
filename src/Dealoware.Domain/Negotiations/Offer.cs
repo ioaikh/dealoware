@@ -183,7 +183,51 @@ public sealed class Offer
             return false;
 
         Status = OfferStatus.Cancelled;
+        UpdatedAt = DateTimeOffset.UtcNow;
         return true;
+    }
+
+    /// <summary>
+    /// E9–E11: update amount, currency, and terms while Open.
+    /// Amount is decimal(18,2) and 0 or more; currency is 3 characters when Amount is set;
+    /// terms at most 2000 characters; at least one of Amount or Terms.
+    /// </summary>
+    public bool UpdateTerms(decimal? amount, string? currency, string? terms)
+    {
+        if (Status != OfferStatus.Open)
+            return false;
+
+        if (!amount.HasValue && string.IsNullOrWhiteSpace(terms))
+            return false;
+
+        if (amount.HasValue && amount.Value < 0)
+            return false;
+
+        if (amount.HasValue && decimal.Round(amount.Value, 2) != amount.Value)
+            return false;
+
+        if (amount.HasValue && string.IsNullOrWhiteSpace(currency))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(currency) && currency.Trim().Length != 3)
+            return false;
+
+        if (terms is { Length: > 2000 })
+            return false;
+
+        Amount = amount;
+        Currency = string.IsNullOrWhiteSpace(currency) ? null : currency.Trim().ToUpperInvariant();
+        Terms = string.IsNullOrWhiteSpace(terms) ? null : terms.Trim();
+        return true;
+    }
+
+    /// <summary>
+    /// Records an admin edit: bump Version and set UpdatedAt (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
     }
 
     /// <summary>

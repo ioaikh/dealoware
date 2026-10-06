@@ -1,0 +1,170 @@
+:root {
+  --bg: #f6f3ee;
+  --ink: #1b1b1b;
+  --muted: #3d3d3d;
+  --card: #ffffff;
+  --line: #5c5c5c;
+  --focus: #003f8a;
+  --danger: #8a001b;
+  --ok: #0b4d2a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  background: #000;
+  color: #fff;
+  padding: 0.5rem 0.75rem;
+}
+
+.skip-link:focus { top: 0.5rem; }
+
+header, main {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.brand { font-weight: 700; margin: 0 0 0.5rem; }
+
+nav { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+nav a, button, input, select, textarea {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+a { color: var(--focus); }
+
+h1, h2 { line-height: 1.25; }
+
+.meta, .live { color: var(--muted); }
+
+.summary, .conflict, .banner, .modal-card, form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.summary a { color: var(--danger); }
+
+label, .ro-label {
+  display: block;
+  font-weight: 600;
+  margin-top: 0.85rem;
+}
+
+.req { font-weight: 500; color: var(--muted); }
+
+input, select, textarea {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+textarea { min-height: 6rem; }
+
+.field-error { color: var(--danger); margin: 0.25rem 0 0; }
+
+.ro { margin: 0.25rem 0 0; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+
+button {
+  padding: 0.45rem 0.8rem;
+  border: 2px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button[type="submit"], #expire-confirm, #close-confirm {
+  background: var(--focus);
+  color: #fff;
+  border-color: var(--focus);
+}
+
+#expire-confirm, #close-confirm {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.live { min-height: 1.5rem; color: var(--ok); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal[hidden] { display: none; }
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 0;
+}
+
+.modal-card {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  max-width: 32rem;
+  width: 100%;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.picker {
+  border: 1px solid var(--line);
+  background: #fff;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.picker button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+}
+
+@media (max-width: 768px) {
+  nav { flex-direction: column; }
+}

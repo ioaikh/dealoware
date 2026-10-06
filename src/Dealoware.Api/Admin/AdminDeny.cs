@@ -10,6 +10,9 @@ public static class AdminDeny
 
     public const string GenericBadRequest = "BadRequest";
     public const string GenericNotFound = "NotFound";
+    public const string GenericConflict = "Conflict";
+    public const string GenericPreconditionRequired = "PreconditionRequired";
+    public const string GenericValidation = "Validation";
 
     public static IResult UnauthorizedResult() =>
         Results.Json(new { error = GenericError }, statusCode: StatusCodes.Status401Unauthorized);
@@ -19,6 +22,15 @@ public static class AdminDeny
 
     public static IResult NotFoundResult() =>
         Results.Json(new { error = GenericNotFound }, statusCode: StatusCodes.Status404NotFound);
+
+    public static IResult ConflictResult() =>
+        Results.Json(new { error = GenericConflict }, statusCode: StatusCodes.Status409Conflict);
+
+    public static IResult PreconditionRequiredResult() =>
+        Results.Json(new { error = GenericPreconditionRequired }, statusCode: StatusCodes.Status428PreconditionRequired);
+
+    public static IResult ValidationResult(IReadOnlyDictionary<string, string> fields) =>
+        Results.Json(new { error = GenericValidation, fields }, statusCode: StatusCodes.Status400BadRequest);
 
     public static Task WriteUnauthorizedAsync(HttpContext context)
     {
