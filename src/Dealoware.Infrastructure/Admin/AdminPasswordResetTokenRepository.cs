@@ -39,8 +39,17 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
+        var row = await _context.AdminPasswordResetTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
+        if (row is null || !row.IsUsable(now))
+        {
+            return false;
+        }
+
+        // SQLite cannot translate DateTimeOffset inequality; expiry is checked above.
+        // Consume stays atomic on TokenHash + ConsumedAt so a race cannot double-use.
         var updated = await _context.AdminPasswordResetTokens
-            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null && t.ExpiresAt > now)
+            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(t => t.ConsumedAt, now),
                 cancellationToken);
