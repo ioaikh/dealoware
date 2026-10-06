@@ -421,16 +421,17 @@
                         while (list.firstChild) list.removeChild(list.firstChild);
                         if (!data || !data.items) { list.hidden = true; input.setAttribute("aria-expanded", "false"); return; }
                         data.items.slice(0, 50).forEach(function (item) {
-                            var btn = el("button", { type: "button", text: pick(item) });
-                            btn.addEventListener("click", function () {
+                            var opt = el("div", { role: "option", tabindex: "0", text: pick(item) });
+                            opt.addEventListener("click", function () {
                                 input.value = pick(item);
                                 state[key] = pickValue(item);
                                 state.offset = 0;
                                 list.hidden = true;
+                                input.setAttribute("aria-expanded", "false");
                                 writeState(state, true);
                                 loadList(type, spec, state, tableBody, meta);
                             });
-                            list.appendChild(el("div", { role: "option" }, [btn]));
+                            list.appendChild(opt);
                         });
                         list.hidden = list.childNodes.length === 0;
                         input.setAttribute("aria-expanded", list.hidden ? "false" : "true");

@@ -166,7 +166,7 @@ public sealed class AdminUiPlaywrightTests
         };
         await page.GotoAsync(Url("/admin/negotiations"), new() { WaitUntil = WaitUntilState.NetworkIdle });
         await page.Locator("#filter-participant").FillAsync("Alpha");
-        await page.WaitForSelectorAsync("#filter-participant-suggest button", new() { Timeout = 5000 });
+        await page.WaitForSelectorAsync("#filter-participant-suggest [role='option']", new() { Timeout = 5000 });
         Assert.Contains(seen, u => u.Contains("q=Alpha"));
         await AxeHelper.ScanAsync(page, "TD-ADM-UI-na-B05");
     }
