@@ -4,8 +4,8 @@ public interface IAdminBootstrapService
 {
     /// <summary>
     /// Mints a single-use bootstrap token (24h max), stores only the hash,
-    /// and sends the /admin/bootstrap#token link through <see cref="IAdminMailSender"/>.
-    /// The raw token travels only in the URL fragment.
+    /// and sends the /admin/bootstrap#token= link through AdminMailDispatcher
+    /// (PR #31 AddAdminMail). The raw token travels only in the URL fragment.
     /// </summary>
     Task<AdminBootstrapIssueResult> IssueLinkAsync(
         string? ipHmac,

@@ -1,3 +1,4 @@
+using Dealoware.Application.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -7,25 +8,20 @@ namespace Dealoware.Infrastructure.Admin;
 
 public sealed class AdminBootstrapService : IAdminBootstrapService
 {
-    public const string BootstrapPagePath = "/admin/bootstrap";
-    public const string BootstrapMailSubject = "Dealoware admin";
-
     private readonly DealowareDbContext _db;
-    private readonly IAdminMailSender _mail;
+    private readonly AdminMailDispatcher _mail;
     private readonly ITurnstileVerifier _turnstile;
     private readonly IAdminClock _clock;
     private readonly IAdminAuditRepository _audit;
     private readonly CoreOwnerOptions _coreOwner;
-    private readonly AdminMailOptions _mailOptions;
 
     public AdminBootstrapService(
         DealowareDbContext db,
-        IAdminMailSender mail,
+        AdminMailDispatcher mail,
         ITurnstileVerifier turnstile,
         IAdminClock clock,
         IAdminAuditRepository audit,
-        IOptions<CoreOwnerOptions> coreOwner,
-        IOptions<AdminMailOptions> mailOptions)
+        IOptions<CoreOwnerOptions> coreOwner)
     {
         _db = db;
         _mail = mail;
@@ -33,7 +29,6 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         _clock = clock;
         _audit = audit;
         _coreOwner = coreOwner.Value;
-        _mailOptions = mailOptions.Value;
     }
 
     public bool HasPasswordSet()
@@ -60,13 +55,7 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         var hash = AdminTokenHasher.Hash(raw);
         _db.AdminBootstrapTokens.Add(AdminBootstrapToken.Create(hash, now));
 
-        var origin = string.IsNullOrWhiteSpace(_mailOptions.PublicOrigin)
-            ? "https://admin.core.dealoware.com"
-            : _mailOptions.PublicOrigin.TrimEnd('/');
-        var link = $"{origin}{BootstrapPagePath}#{Uri.EscapeDataString(raw)}";
-        await _mail.SendAsync(
-            new AdminMailMessage(email, BootstrapMailSubject, link),
-            cancellationToken).ConfigureAwait(false);
+        await _mail.SendBootstrapLinkAsync(email, raw, cancellationToken).ConfigureAwait(false);
 
         await _audit.AddAsync(
             AdminAuditEntry.CreateAuthEvent(

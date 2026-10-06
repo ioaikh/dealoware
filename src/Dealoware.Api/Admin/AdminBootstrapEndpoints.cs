@@ -17,7 +17,6 @@ public static class AdminBootstrapEndpoints
         IConfiguration configuration,
         IHostEnvironment environment)
     {
-        services.Configure<AdminMailOptions>(configuration.GetSection("Admin:Bootstrap"));
         services.Configure<TurnstileOptions>(options =>
         {
             options.Secret = configuration[TurnstileOptions.SecretEnvironmentVariable]
@@ -36,9 +35,9 @@ public static class AdminBootstrapEndpoints
         }
 
         services.AddHttpClient<ITurnstileVerifier, CloudflareTurnstileVerifier>();
-        services.AddSingleton<IAdminMailSender, NoOpAdminMailSender>();
         services.AddSingleton<IAdminClock, SystemAdminClock>();
         services.AddScoped<IAdminBootstrapService, AdminBootstrapService>();
+        // IAdminMailSender + AdminMailDispatcher come from AddAdminMail (PR #31).
         return services;
     }
 

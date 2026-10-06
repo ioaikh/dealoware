@@ -32,7 +32,7 @@ public class AdminBootstrapTests
         db.AdminBootstrapIpThrottles.RemoveRange(db.AdminBootstrapIpThrottles);
         db.AdminAuditLog.RemoveRange(db.AdminAuditLog);
         await db.SaveChangesAsync();
-        _factory.Mail.Sent.Clear();
+        ClearSentMail();
         _factory.Turnstile.Unavailable = false;
         _factory.Clock.UtcNow = new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero);
     }
@@ -49,21 +49,40 @@ public class AdminBootstrapTests
 
     private async Task<string> IssueTokenAsync()
     {
+        ClearSentMail();
         using var scope = _factory.Services.CreateScope();
         var bootstrap = scope.ServiceProvider.GetRequiredService<IAdminBootstrapService>();
         var issued = await bootstrap.IssueLinkAsync("testhmac");
         Assert.True(issued.Sent);
-        return TokenFromLink(_factory.Mail.LastTextBody!);
+        return TokenFromLatestMail();
     }
 
-    private static string TokenFromLink(string link)
+    private void ClearSentMail()
     {
+        while (_factory.Mail.Sent.TryTake(out _))
+        {
+        }
+    }
+
+    private string LastMailBody()
+        => Assert.Single(_factory.Mail.Sent).TextBody;
+
+    private string TokenFromLatestMail()
+        => TokenFromLink(LastMailBody());
+
+    private static string TokenFromLink(string body)
+    {
+        const string origin = "https://admin.core.dealoware.com";
+        var start = body.IndexOf(origin, StringComparison.Ordinal);
+        Assert.True(start >= 0, body);
+        var end = body.IndexOfAny(['\r', '\n'], start);
+        var link = end < 0 ? body[start..] : body[start..end];
         var uri = new Uri(link);
         Assert.Equal("https://admin.core.dealoware.com/admin/bootstrap", uri.GetLeftPart(UriPartial.Path));
         Assert.True(string.IsNullOrEmpty(uri.Query));
-        Assert.DoesNotContain("token=", uri.Query, StringComparison.OrdinalIgnoreCase);
-        Assert.False(string.IsNullOrEmpty(uri.Fragment));
-        var token = Uri.UnescapeDataString(uri.Fragment.TrimStart('#'));
+        Assert.DoesNotContain("?token=", link, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("#token=", uri.Fragment, StringComparison.Ordinal);
+        var token = Uri.UnescapeDataString(uri.Fragment["#token=".Length..]);
         Assert.False(string.IsNullOrWhiteSpace(token));
         return token;
     }
@@ -184,8 +203,9 @@ public class AdminBootstrapTests
             antiForgery: af));
         await AssertGoesToLinkExpired(random);
 
-        Assert.DoesNotContain("password", _factory.Mail.LastTextBody!, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("?token=", _factory.Mail.LastTextBody!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("password", LastMailBody(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("?token=", LastMailBody(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("#token=", LastMailBody(), StringComparison.Ordinal);
     }
 
     private async Task<string> IssueFreshTokenAfterResetAsync()
@@ -194,10 +214,11 @@ public class AdminBootstrapTests
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminCredentials.RemoveRange(db.AdminCredentials);
         await db.SaveChangesAsync();
+        ClearSentMail();
         var bootstrap = scope.ServiceProvider.GetRequiredService<IAdminBootstrapService>();
         var issued = await bootstrap.IssueLinkAsync("testhmac");
         Assert.True(issued.Sent);
-        return TokenFromLink(_factory.Mail.LastTextBody!);
+        return TokenFromLatestMail();
     }
 
     [Fact]
@@ -597,6 +618,26 @@ public class AdminBootstrapTests
         }
 
         Assert.DoesNotContain(cookies, c => c.StartsWith(AdminSessionCookie.Name + "=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BootstrapFactory_UsesRecordingMailSender_Only()
+    {
+        var sender = _factory.Services.GetRequiredService<IAdminMailSender>();
+        Assert.IsType<RecordingMailSender>(sender);
+        Assert.Same(sender, _factory.Mail);
+        Assert.Empty(typeof(BootstrapWebApplicationFactory).Assembly
+            .GetTypes()
+            .Where(t => t.Name.Contains("Capturing", StringComparison.Ordinal)
+                        || t.Name.Contains("NoOpAdminMail", StringComparison.Ordinal)));
+
+        var root = RepoRoot();
+        var endpoints = File.ReadAllText(Path.Combine(root, "src", "Dealoware.Api", "Admin", "AdminBootstrapEndpoints.cs"));
+        Assert.DoesNotContain("IAdminMailSender", endpoints);
+        Assert.DoesNotContain("NoOpAdminMailSender", endpoints);
+        var support = File.ReadAllText(Path.Combine(root, "tests", "Dealoware.Api.Tests", "BootstrapTestSupport.cs"));
+        Assert.DoesNotContain("CapturingAdminMailSender", support);
+        Assert.DoesNotContain("AddSingleton<IAdminMailSender>", support);
     }
 
     [Fact]

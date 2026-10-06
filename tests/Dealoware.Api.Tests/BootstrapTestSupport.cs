@@ -7,19 +7,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Dealoware.Api.Tests;
 
-public sealed class CapturingAdminMailSender : IAdminMailSender
-{
-    public List<AdminMailMessage> Sent { get; } = [];
-
-    public Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken)
-    {
-        Sent.Add(message);
-        return Task.CompletedTask;
-    }
-
-    public string? LastTextBody => Sent.Count == 0 ? null : Sent[^1].TextBody;
-}
-
 public sealed class FakeTurnstileVerifier : ITurnstileVerifier
 {
     public const string ValidToken = "ok";
@@ -48,21 +35,20 @@ public sealed class ControllableAdminClock : IAdminClock
 
 public sealed class BootstrapWebApplicationFactory : IsolatedWebApplicationFactory
 {
-    public CapturingAdminMailSender Mail { get; } = new();
-
     public FakeTurnstileVerifier Turnstile { get; } = new();
 
     public ControllableAdminClock Clock { get; } = new();
+
+    public RecordingMailSender Mail
+        => (RecordingMailSender)Services.GetRequiredService<IAdminMailSender>();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.ConfigureTestServices(services =>
         {
-            services.RemoveAll<IAdminMailSender>();
             services.RemoveAll<ITurnstileVerifier>();
             services.RemoveAll<IAdminClock>();
-            services.AddSingleton<IAdminMailSender>(Mail);
             services.AddSingleton<ITurnstileVerifier>(Turnstile);
             services.AddSingleton<IAdminClock>(Clock);
         });
