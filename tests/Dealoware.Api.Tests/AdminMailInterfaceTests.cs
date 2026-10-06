@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using Dealoware.Application.Admin;
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Mail;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,12 +30,12 @@ public class AdminMailInterfaceTests
         await dispatcher.SendPasswordResetLinkAsync(TestRecipient, FixtureToken);
 
         Assert.Equal(2, recorder.Sent.Count);
-        Assert.Contains(recorder.Sent, m => m.Purpose == MailPurpose.Bootstrap && m.Subject == AdminMailDispatcher.BootstrapSubject);
-        Assert.Contains(recorder.Sent, m => m.Purpose == MailPurpose.PasswordReset && m.Subject == AdminMailDispatcher.PasswordResetSubject);
+        Assert.Contains(recorder.Sent, m => m.Subject == AdminMailDispatcher.BootstrapSubject);
+        Assert.Contains(recorder.Sent, m => m.Subject == AdminMailDispatcher.PasswordResetSubject);
         Assert.All(recorder.Sent, m =>
         {
             Assert.Equal(TestRecipient, m.To);
-            AssertBuiltLink(m.TextBody, expectReset: m.Purpose == MailPurpose.PasswordReset, FixtureToken);
+            AssertBuiltLink(m.TextBody, expectReset: m.Subject == AdminMailDispatcher.PasswordResetSubject, FixtureToken);
             Assert.DoesNotContain("/admin/api/", m.TextBody, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(TestSecret, m.TextBody);
         });
@@ -58,6 +58,24 @@ public class AdminMailInterfaceTests
         Assert.Contains("public const string Origin = \"https://admin.core.dealoware.com\";", source);
         Assert.DoesNotContain("?token=", source);
         Assert.DoesNotContain("Request.", source);
+    }
+
+    [Fact]
+    public void TD_ADM_110_MailPort_MatchesCommonFile()
+    {
+        const string expected =
+            "namespace Dealoware.Domain.Admin;\n" +
+            "\n" +
+            "public sealed record AdminMailMessage(string To, string Subject, string TextBody);\n" +
+            "\n" +
+            "public interface IAdminMailSender\n" +
+            "{\n" +
+            "    Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken);\n" +
+            "}\n";
+
+        var path = Path.Combine(RepoRoot(), "src", "Dealoware.Domain", "Admin", "IAdminMailSender.cs");
+        Assert.Equal(expected, File.ReadAllText(path).Replace("\r\n", "\n"));
+        Assert.False(Directory.Exists(Path.Combine(RepoRoot(), "src", "Dealoware.Domain", "Mail")));
     }
 
     [Fact]
@@ -108,7 +126,7 @@ public class AdminMailInterfaceTests
         Assert.Equal(2, recorder.Sent.Count);
         foreach (var message in recorder.Sent)
         {
-            var uri = AssertBuiltLink(message.TextBody, expectReset: message.Purpose == MailPurpose.PasswordReset, token);
+            var uri = AssertBuiltLink(message.TextBody, expectReset: message.Subject == AdminMailDispatcher.PasswordResetSubject, token);
             Assert.Equal(Uri.EscapeDataString(token), TokenPlacementValue(uri));
             Assert.True(string.IsNullOrEmpty(uri.UserInfo));
             Assert.True(uri.IsDefaultPort);
@@ -126,7 +144,7 @@ public class AdminMailInterfaceTests
         var body = "Use this one-time link to reset the Core admin password.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Reset, FixtureToken) + "\n";
 
-        await sender.SendAsync(new AdminMailMessage(TestRecipient, MailPurpose.PasswordReset, "Core admin password reset", body));
+        await sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin password reset", body));
 
         Assert.NotNull(handler.Request);
         Assert.Equal(HttpMethod.Post, handler.Request!.Method);
@@ -156,7 +174,7 @@ public class AdminMailInterfaceTests
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            sender.SendAsync(new AdminMailMessage(TestRecipient, MailPurpose.Bootstrap, "Core admin bootstrap", body)));
+            sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
 
         Assert.Contains("403", ex.Message);
         Assert.DoesNotContain(TestSecret, ex.Message);
@@ -172,7 +190,7 @@ public class AdminMailInterfaceTests
         var body = "Use this one-time link to finish Core admin bootstrap.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            sender.SendAsync(new AdminMailMessage(TestRecipient, MailPurpose.Bootstrap, "Core admin bootstrap", body)));
+            sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
         Assert.Contains(SesMailOptions.FromEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.RegionEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.AccessKeyEnvironmentVariable, ex.Message);
@@ -214,12 +232,12 @@ public class AdminMailInterfaceTests
         if (field == "to")
         {
             Assert.Throws<ArgumentException>(() =>
-                new AdminMailMessage(value, MailPurpose.Bootstrap, "Core admin bootstrap", "body"));
+                Dealoware.Application.Admin.MailHeaderText.CreateMessage(value, "Core admin bootstrap", "body"));
         }
         else
         {
             Assert.Throws<ArgumentException>(() =>
-                new AdminMailMessage(TestRecipient, MailPurpose.Bootstrap, value, "body"));
+                Dealoware.Application.Admin.MailHeaderText.CreateMessage(TestRecipient, value, "body"));
         }
     }
 
@@ -235,7 +253,7 @@ public class AdminMailInterfaceTests
     public void TD_ADM_150_AdminMailMessage_To_RejectsListsAndGroups(string to)
     {
         Assert.Throws<ArgumentException>(() =>
-            new AdminMailMessage(to, MailPurpose.Bootstrap, "Core admin bootstrap", "body"));
+            Dealoware.Application.Admin.MailHeaderText.CreateMessage(to, "Core admin bootstrap", "body"));
     }
 
     [Theory]
@@ -260,7 +278,8 @@ public class AdminMailInterfaceTests
     public void TD_ADM_150_MailSources_OmitSecretsAndAwsAccountDetails()
     {
         var root = RepoRoot();
-        var files = Directory.GetFiles(Path.Combine(root, "src", "Dealoware.Domain", "Mail"), "*.cs")
+        Assert.False(Directory.Exists(Path.Combine(root, "src", "Dealoware.Domain", "Mail")));
+        var files = Directory.GetFiles(Path.Combine(root, "src", "Dealoware.Domain", "Admin"), "*.cs")
             .Concat(Directory.GetFiles(Path.Combine(root, "src", "Dealoware.Application", "Admin"), "*.cs"))
             .Concat(Directory.GetFiles(Path.Combine(root, "src", "Dealoware.Infrastructure", "Mail"), "*.cs"))
             .Append(Path.Combine(root, "src", "Dealoware.Api", "Admin", "AdminMailServiceCollectionExtensions.cs"))
@@ -274,6 +293,7 @@ public class AdminMailInterfaceTests
             Assert.DoesNotContain("us-east-1", text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("eu-west-1", text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("f03a8c68", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("namespace Dealoware.Domain.Mail", text, StringComparison.Ordinal);
         }
 
         var envNames = File.ReadAllText(Path.Combine(root, "src", "Dealoware.Infrastructure", "Mail", "SesMailOptions.cs"));

@@ -1,4 +1,4 @@
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 
 namespace Dealoware.Application.Admin;
 
@@ -23,13 +23,13 @@ public sealed class AdminMailDispatcher
     {
         var link = AdminMailPagePaths.Build(kind, token);
         var purpose = kind == MailLinkKind.Bootstrap ? MailPurpose.Bootstrap : MailPurpose.PasswordReset;
-        var subject = kind == MailLinkKind.Bootstrap ? BootstrapSubject : PasswordResetSubject;
-        var lead = kind == MailLinkKind.Bootstrap
+        var subject = purpose == MailPurpose.Bootstrap ? BootstrapSubject : PasswordResetSubject;
+        var lead = purpose == MailPurpose.Bootstrap
             ? "Use this one-time link to finish Core admin bootstrap."
             : "Use this one-time link to reset the Core admin password.";
 
         return _sender.SendAsync(
-            new AdminMailMessage(to, purpose, subject, lead + "\n\n" + link + "\n"),
+            MailHeaderText.CreateMessage(to, subject, lead + "\n\n" + link + "\n"),
             cancellationToken);
     }
 

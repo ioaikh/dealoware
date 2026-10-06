@@ -1,6 +1,7 @@
 using System.Globalization;
+using Dealoware.Domain.Admin;
 
-namespace Dealoware.Domain.Mail;
+namespace Dealoware.Application.Admin;
 
 /// <summary>
 /// Header-safe mail text: no CR/LF or other Unicode Cc/Cf controls.
@@ -8,6 +9,20 @@ namespace Dealoware.Domain.Mail;
 /// </summary>
 public static class MailHeaderText
 {
+    public const int MaxToLength = 320;
+    public const int MaxSubjectLength = 200;
+    public const int MaxBodyLength = 8192;
+
+    public static AdminMailMessage CreateMessage(string to, string subject, string textBody)
+    {
+        var normalizedTo = NormalizeSingleAddress(to, MaxToLength, nameof(to));
+        var normalizedSubject = NormalizeRequired(subject, MaxSubjectLength, nameof(subject));
+        if (string.IsNullOrWhiteSpace(textBody) || textBody.Length > MaxBodyLength)
+            throw new ArgumentException("Body is required and must be 8192 characters or fewer.", nameof(textBody));
+
+        return new AdminMailMessage(normalizedTo, normalizedSubject, textBody);
+    }
+
     public static string NormalizeRequired(string value, int maxLength, string paramName)
     {
         if (value is null)

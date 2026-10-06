@@ -1,4 +1,4 @@
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 
 namespace Dealoware.Infrastructure.Mail;
 

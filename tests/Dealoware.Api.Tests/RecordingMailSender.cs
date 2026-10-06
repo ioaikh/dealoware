@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 
 namespace Dealoware.Api.Tests;
 

@@ -1,5 +1,3 @@
-using Dealoware.Domain.Mail;
-
 namespace Dealoware.Infrastructure.Mail;
 
 /// <summary>
@@ -20,7 +18,7 @@ public sealed class SesMailOptions
 
     public SesMailOptions(string from, string region, string accessKeyId, string secretAccessKey)
     {
-        From = MailHeaderText.NormalizeSingleAddress(from, AdminMailMessage.MaxToLength, nameof(from));
+        From = MailHeaderText.NormalizeSingleAddress(from, MailHeaderText.MaxToLength, nameof(from));
         if (string.IsNullOrWhiteSpace(region) || !IsSafeToken(region))
             throw new ArgumentException("Region must be a lowercase token of letters, digits, and hyphens.", nameof(region));
         if (string.IsNullOrWhiteSpace(accessKeyId))

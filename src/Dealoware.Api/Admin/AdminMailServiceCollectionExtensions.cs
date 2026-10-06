@@ -1,5 +1,5 @@
 using Dealoware.Application.Admin;
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Mail;
 using Microsoft.Extensions.Hosting;
 

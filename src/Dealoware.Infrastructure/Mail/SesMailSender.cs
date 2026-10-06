@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Dealoware.Domain.Mail;
+using Dealoware.Domain.Admin;
 
 namespace Dealoware.Infrastructure.Mail;
 
@@ -30,6 +30,10 @@ public sealed class SesMailSender : IAdminMailSender
     public async Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
+        MailHeaderText.NormalizeSingleAddress(message.To, MailHeaderText.MaxToLength, nameof(message.To));
+        MailHeaderText.NormalizeRequired(message.Subject, MailHeaderText.MaxSubjectLength, nameof(message.Subject));
+        if (string.IsNullOrWhiteSpace(message.TextBody) || message.TextBody.Length > MailHeaderText.MaxBodyLength)
+            throw new ArgumentException("Body is required and must be 8192 characters or fewer.", nameof(message.TextBody));
 
         var payloadObject = new SesHttpSendRequest
         {
