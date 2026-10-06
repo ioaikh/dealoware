@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Dealoware.Api.Admin;
+using Dealoware.Application.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
@@ -55,7 +56,7 @@ public class AdminPasswordResetTests
         Assert.All(sent, item =>
         {
             Assert.Equal(CoreOwnerEmail, item.To);
-            Assert.Equal(AdminPasswordResetEndpoints.MailSubject, item.Subject);
+            Assert.Equal(AdminMailDispatcher.PasswordResetSubject, item.Subject);
             Assert.Contains("https://admin.core.dealoware.com/admin/reset/confirm#token=", item.TextBody);
             Assert.DoesNotContain("?token=", item.TextBody);
             Assert.DoesNotContain(CurrentPassword, item.TextBody);
@@ -650,8 +651,8 @@ public class AdminPasswordResetTests
         Assert.Null(af.Domain);
     }
 
-    private CapturingAdminMailSender Mail()
-        => _factory.Services.GetRequiredService<CapturingAdminMailSender>();
+    private RecordingMailSender Mail()
+        => _factory.Services.GetRequiredService<RecordingMailSender>();
 
     private FakeAdminSecondFactorVerifier Factor()
         => _factory.Services.GetRequiredService<FakeAdminSecondFactorVerifier>();
@@ -707,6 +708,12 @@ public class AdminPasswordResetTests
         var hashAt = link.IndexOf("#token=", StringComparison.Ordinal);
         Assert.True(hashAt >= 0);
         var token = link[(hashAt + 7)..];
+        var end = token.IndexOfAny(['\r', '\n', ' ', '&']);
+        if (end >= 0)
+        {
+            token = token[..end];
+        }
+
         return Uri.UnescapeDataString(token);
     }
 

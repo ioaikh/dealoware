@@ -1,34 +1,32 @@
 using System.Threading.Channels;
-using Dealoware.Domain.Admin;
-using Microsoft.Extensions.Hosting;
+using Dealoware.Application.Admin;
 
-namespace Dealoware.Infrastructure.Admin;
+namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Unbounded in-process queue. The hosted loop calls <see cref="IAdminMailSender"/>
-/// after the HTTP request has returned (SC-9).
+/// SC-9: <see cref="AdminMailDispatcher"/> runs after the HTTP request returns.
 /// </summary>
-public sealed class ChannelAdminMailDispatcher : IAdminMailDispatcher, IHostedService
+public sealed class AdminMailSendQueue : IHostedService
 {
-    private readonly Channel<AdminMailMessage> _channel =
-        Channel.CreateUnbounded<AdminMailMessage>(new UnboundedChannelOptions
+    private readonly Channel<(string To, string Token)> _channel =
+        Channel.CreateUnbounded<(string To, string Token)>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
 
-    private readonly IAdminMailSender _mail;
+    private readonly AdminMailDispatcher _mail;
     private CancellationTokenSource? _run;
     private Task? _loop;
 
-    public ChannelAdminMailDispatcher(IAdminMailSender mail)
+    public AdminMailSendQueue(AdminMailDispatcher mail)
     {
         _mail = mail;
     }
 
-    public void Enqueue(AdminMailMessage message)
+    public void EnqueuePasswordReset(string to, string token)
     {
-        _channel.Writer.TryWrite(message);
+        _channel.Writer.TryWrite((to, token));
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -62,11 +60,11 @@ public sealed class ChannelAdminMailDispatcher : IAdminMailDispatcher, IHostedSe
     {
         try
         {
-            await foreach (var message in _channel.Reader.ReadAllAsync(stoppingToken))
+            await foreach (var (to, token) in _channel.Reader.ReadAllAsync(stoppingToken))
             {
                 try
                 {
-                    await _mail.SendAsync(message, stoppingToken);
+                    await _mail.SendPasswordResetLinkAsync(to, token, stoppingToken);
                 }
                 catch
                 {
