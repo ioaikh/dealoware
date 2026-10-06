@@ -2,63 +2,6 @@ using Dealoware.Domain.Admin;
 
 namespace Dealoware.Api.Tests;
 
-public sealed class CapturingAdminMailSender : IAdminMailSender
-{
-    private readonly List<AdminMailMessage> _sent = [];
-    private readonly object _gate = new();
-
-    public TimeSpan SendDelay { get; set; } = TimeSpan.Zero;
-
-    public IReadOnlyList<AdminMailMessage> Sent
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _sent.ToList();
-            }
-        }
-    }
-
-    public async Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken)
-    {
-        if (SendDelay > TimeSpan.Zero)
-        {
-            await Task.Delay(SendDelay, cancellationToken);
-        }
-
-        lock (_gate)
-        {
-            _sent.Add(message);
-        }
-    }
-
-    public async Task WaitForSentAsync(int count, TimeSpan? timeout = null)
-    {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
-        while (Sent.Count < count)
-        {
-            if (DateTime.UtcNow >= deadline)
-            {
-                throw new TimeoutException(
-                    $"Mail sender observed {Sent.Count} message(s); expected {count}.");
-            }
-
-            await Task.Delay(20, CancellationToken.None);
-        }
-    }
-
-    public void Clear()
-    {
-        lock (_gate)
-        {
-            _sent.Clear();
-        }
-
-        SendDelay = TimeSpan.Zero;
-    }
-}
-
 public sealed class FakeAdminSecondFactorVerifier : IAdminSecondFactorVerifier
 {
     public string ValidTotp { get; set; } = "123456";

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+using Dealoware.Application.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -18,8 +19,6 @@ public static class AdminPasswordResetEndpoints
     public const string RequestPagePath = AdminSignedOutExemptions.ResetPage;
     public const string ConfirmPagePath = AdminSignedOutExemptions.ResetConfirmPage;
     public const string LinkExpiredPath = AdminSignedOutExemptions.LinkExpiredPage;
-    public const string MailSubject = "Reset your Dealoware admin password";
-    public const string ResetLinkOrigin = "https://admin.core.dealoware.com";
     public const int TokenEntropyBytes = 32;
 
     public static void MapAdminPasswordReset(this WebApplication app)
@@ -104,7 +103,7 @@ public static class AdminPasswordResetEndpoints
     private static async Task<IResult> RequestReset(
         ResetRequestBody? body,
         IAdminPasswordResetTokenRepository tokens,
-        IAdminMailDispatcher mail,
+        AdminMailSendQueue mail,
         IAdminResetIpThrottle throttle,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
@@ -131,7 +130,7 @@ public static class AdminPasswordResetEndpoints
         if (known)
         {
             await tokens.AddAsync(AdminPasswordResetToken.Create(ownerEmail, hash, now), ct);
-            mail.Enqueue(new AdminMailMessage(ownerEmail, MailSubject, BuildResetLink(raw)));
+            mail.EnqueuePasswordReset(ownerEmail, raw);
         }
 
         await audit.AddAsync(
@@ -289,7 +288,7 @@ public static class AdminPasswordResetEndpoints
             .Replace('/', '_');
 
     public static string BuildResetLink(string rawToken)
-        => $"{ResetLinkOrigin}{ConfirmPagePath}#token={Uri.EscapeDataString(rawToken)}";
+        => AdminMailPagePaths.Build(MailLinkKind.Reset, rawToken);
 
     private static string HashClientIp(IIpHasher ipHasher, HttpContext http)
     {
