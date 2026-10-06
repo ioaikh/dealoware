@@ -38,6 +38,7 @@ public class NegotiationEntityConfiguration : IEntityTypeConfiguration<Negotiati
         builder.Property(n => n.StartsAt);
         builder.Property(n => n.EndsAt);
         builder.Property(n => n.CreatedAt).IsRequired();
+        builder.Property(n => n.UpdatedAt);
 
         builder.HasMany(n => n.Offers)
             .WithOne()

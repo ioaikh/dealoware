@@ -104,6 +104,16 @@ public class DatabaseSchemaBootstrapTests
         Assert.Null(ex);
         Assert.True(await db.AdminSessions.CountAsync() >= 0);
         Assert.True(await db.AdminAuditLog.CountAsync() >= 0);
+
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info(Participants);";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var columns = new List<string>();
+            while (await reader.ReadAsync())
+                columns.Add(reader.GetString(1));
+            Assert.Contains("UpdatedAt", columns);
+        }
     }
 
     [Theory]

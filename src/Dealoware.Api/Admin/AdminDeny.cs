@@ -8,8 +8,17 @@ public static class AdminDeny
 {
     public const string GenericError = "Unauthorized";
 
+    public const string GenericBadRequest = "BadRequest";
+    public const string GenericNotFound = "NotFound";
+
     public static IResult UnauthorizedResult() =>
         Results.Json(new { error = GenericError }, statusCode: StatusCodes.Status401Unauthorized);
+
+    public static IResult BadRequestResult() =>
+        Results.Json(new { error = GenericBadRequest }, statusCode: StatusCodes.Status400BadRequest);
+
+    public static IResult NotFoundResult() =>
+        Results.Json(new { error = GenericNotFound }, statusCode: StatusCodes.Status404NotFound);
 
     public static Task WriteUnauthorizedAsync(HttpContext context)
     {

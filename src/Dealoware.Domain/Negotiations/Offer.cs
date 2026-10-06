@@ -7,8 +7,9 @@ namespace Dealoware.Domain.Negotiations;
 /// - Belongs to exactly one Negotiation
 /// - FromParticipantId must be a party to the negotiation
 /// - ToParticipantId must be the other party
-/// - Only Open offers can be accepted, declined, or countered
+/// - Only Open offers can be accepted, declined, countered, or withdrawn
 /// - Accept/Decline/Counter can only be done by ToParticipantId
+/// - Withdraw can only be done by FromParticipantId (maker)
 /// - One-open-per-side: each party can have at most one open offer
 /// </summary>
 public sealed class Offer
@@ -52,6 +53,12 @@ public sealed class Offer
     public string? Terms { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>
+    /// Last mutation time (UTC). Null until a later write sets it.
+    /// Sort by updated falls back to CreatedAt when this is null.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; private set; }
 
     /// <summary>
     /// Soft-delete marker. When non-null, indicates the entity is soft-deleted.
@@ -176,6 +183,24 @@ public sealed class Offer
             return false;
 
         Status = OfferStatus.Cancelled;
+        return true;
+    }
+
+    /// <summary>
+    /// Withdraws this open offer. Maker-only (FromParticipantId). This is the only
+    /// way to set <see cref="OfferStatus.Withdrawn"/>; admin edits cannot set it.
+    /// </summary>
+    /// <returns>True if successfully withdrawn</returns>
+    public bool Withdraw(string callerParticipantId)
+    {
+        if (Status != OfferStatus.Open)
+            return false;
+
+        if (callerParticipantId != FromParticipantId)
+            return false;
+
+        Status = OfferStatus.Withdrawn;
+        UpdatedAt = DateTimeOffset.UtcNow;
         return true;
     }
 }

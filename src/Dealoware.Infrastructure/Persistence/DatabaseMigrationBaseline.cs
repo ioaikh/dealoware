@@ -57,6 +57,8 @@ public static class DatabaseMigrationBaseline
 
     public const string AdminTablesMigrationId = "20261006000100_AddAdminTablesAndSoftDelete";
 
+    public const string UpdatedAtMigrationId = "20261006000200_AddUpdatedAtToAdminEntities";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =
