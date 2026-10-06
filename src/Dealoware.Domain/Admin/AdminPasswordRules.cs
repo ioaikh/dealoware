@@ -168,9 +168,7 @@ public static class AdminPasswordRules
         var builder = new StringBuilder(value.Length);
         foreach (var rune in value.EnumerateRunes())
         {
-            var category = CharUnicodeInfo.GetUnicodeCategory(rune.Value);
-            var family = category.ToString()[0];
-            if (family is 'N' or 'P' or 'S' or 'Z')
+            if (IsNpsz(CharUnicodeInfo.GetUnicodeCategory(rune.Value)))
             {
                 continue;
             }
@@ -180,4 +178,23 @@ public static class AdminPasswordRules
 
         return builder.ToString();
     }
+
+    private static bool IsNpsz(UnicodeCategory category)
+        => category is UnicodeCategory.DecimalDigitNumber
+            or UnicodeCategory.LetterNumber
+            or UnicodeCategory.OtherNumber
+            or UnicodeCategory.ConnectorPunctuation
+            or UnicodeCategory.DashPunctuation
+            or UnicodeCategory.OpenPunctuation
+            or UnicodeCategory.ClosePunctuation
+            or UnicodeCategory.InitialQuotePunctuation
+            or UnicodeCategory.FinalQuotePunctuation
+            or UnicodeCategory.OtherPunctuation
+            or UnicodeCategory.MathSymbol
+            or UnicodeCategory.CurrencySymbol
+            or UnicodeCategory.ModifierSymbol
+            or UnicodeCategory.OtherSymbol
+            or UnicodeCategory.SpaceSeparator
+            or UnicodeCategory.LineSeparator
+            or UnicodeCategory.ParagraphSeparator;
 }
