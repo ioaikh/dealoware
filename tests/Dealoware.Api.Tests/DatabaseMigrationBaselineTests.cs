@@ -17,10 +17,25 @@ public class DatabaseMigrationBaselineTests
     private static IReadOnlyList<string> AssemblyWithBaseline =>
         [DatabaseMigrationBaseline.BaselineMigrationId, DatabaseMigrationBaseline.AdminTablesMigrationId];
 
-    private static readonly string[] FrozenSchemaMigrationIds =
+    /// <summary>
+    /// Frozen 13/15-table stamp ids only. Incremental migrations after #20
+    /// (including bootstrap) are applied by MigrateAsync after stamp.
+    /// </summary>
+    private static readonly string[] FrozenStampMigrationIds =
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId
+    ];
+
+    /// <summary>
+    /// History after a successful full migrate of the current assembly.
+    /// Frozen 13/15-table specs stay exact; bootstrap is a later migration.
+    /// </summary>
+    private static readonly string[] AppliedAfterMigrateIds =
+    [
+        DatabaseMigrationBaseline.BaselineMigrationId,
+        DatabaseMigrationBaseline.AdminTablesMigrationId,
+        DatabaseMigrationBaseline.BootstrapMigrationId
     ];
 
     [Fact]
@@ -288,7 +303,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrateIds, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
         }
     }
@@ -300,9 +315,12 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
         await using (var db = new DealowareDbContext(options))
         {
-            await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, "Development");
             db.Participants.Add(Participant.Create("baseline-keep"));
             await db.SaveChangesAsync();
         }
@@ -322,7 +340,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrateIds, applied);
+            Assert.Equal(0, await db.AdminCredentials.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
         }
     }
 
@@ -346,7 +366,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrateIds, applied);
         }
     }
 
@@ -357,17 +377,20 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
 
         await using (var db = new DealowareDbContext(options))
         {
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrateIds, applied);
+            Assert.Equal(FrozenStampMigrationIds, applied.Take(2).ToArray());
+            Assert.Equal(0, await db.AdminCredentials.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
         }
     }
 
@@ -422,10 +445,10 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -452,10 +475,10 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -492,10 +515,10 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+        await CreateTablesFromSpecAsync(
+            connection,
+            BaselineSchema.Columns,
+            BaselineSchema.PrimaryKeys);
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -554,7 +577,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminSessions.CountAsync());
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AppliedAfterMigrateIds, applied);
+            Assert.Equal(0, await db.AdminCredentials.CountAsync());
+            Assert.Equal(0, await db.AdminBootstrapTokens.CountAsync());
         }
     }
 
@@ -661,6 +686,8 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
+        Assert.Equal(DatabaseMigrationBaseline.BootstrapMigrationId, migrations[2]);
+        Assert.Equal(AppliedAfterMigrateIds, migrations);
     }
 
     [Fact]

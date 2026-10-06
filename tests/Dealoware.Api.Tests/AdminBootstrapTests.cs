@@ -39,7 +39,8 @@ public class AdminBootstrapTests
     private HttpClient CreateClient()
         => _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
-            HandleCookies = true
+            HandleCookies = false,
+            BaseAddress = new Uri("https://localhost")
         });
 
     private static string NewPassword()
@@ -89,6 +90,7 @@ public class AdminBootstrapTests
         if (antiForgery is not null)
         {
             request.Headers.TryAddWithoutValidation(AdminAntiForgery.HeaderName, antiForgery);
+            request.Headers.TryAddWithoutValidation("Cookie", $"{AdminAntiForgery.CookieName}={antiForgery}");
         }
 
         if (body is not null)
@@ -363,8 +365,9 @@ public class AdminBootstrapTests
             $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}",
             host: "core.dealoware.com"));
         Assert.Equal(HttpStatusCode.NotFound, wrongHost.StatusCode);
-        Assert.True(string.IsNullOrEmpty(await wrongHost.Content.ReadAsStringAsync()));
-        Assert.DoesNotContain("Unauthorized", await wrongHost.Content.ReadAsStringAsync());
+        var wrongHostBody = await wrongHost.Content.ReadAsStringAsync();
+        Assert.True(string.IsNullOrEmpty(wrongHostBody));
+        Assert.DoesNotContain("Unauthorized", wrongHostBody);
 
         using var authStatic = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
