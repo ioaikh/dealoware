@@ -6,10 +6,11 @@ An image that contains this guard must **not** be baked or pinned live until the
 
 Required order:
 
-1. **Create roles** — migrations login (owns schema objects) and least-privilege app login (DML only). Set default privileges so objects the migrations login creates are usable by the app login.
-2. **Run `migrate`** — one-shot (`dotnet Dealoware.Api.dll migrate` or `dotnet run --project src/Dealoware.Api -- migrate`) with the migrations login injected into `DB_*` / the connection string for that process only.
-3. **Cut the API secret** — point the long-lived API at the app login (same `DB_*` / connection-string keys; different credentials).
-4. **Pin the guarded image** — only after the runtime secret is the app login.
+1. **Create roles** — migrations login `dealoware_migrate` (owns schema objects; may CREATE / INSERT `__EFMigrationsHistory`) and least-privilege app login `dealoware_app` (DML only; **SELECT-only** on `__EFMigrationsHistory`). Set default privileges so objects the migrations login creates are usable by the app login.
+2. **Baseline existing databases** — deployed DBs were created with Development `EnsureCreated` / schema bootstrap and have **no** `__EFMigrationsHistory` row (there were no EF migrations on main). The first real incremental migration (A7 PR #20 `20261006000100_AddAdminTablesAndSoftDelete`, open / not modified here) assumes that schema already exists. The `migrate` one-shot detects a **complete** baseline table set with no history and **records** `20261005000000_Baseline` as applied instead of re-running `CREATE TABLE`, then applies any newer migrations. A fresh empty database applies the baseline for real. A partial or unknown schema fails closed. This never runs at API startup and never writes history as `dealoware_app`.
+3. **Run `migrate`** — one-shot (`dotnet Dealoware.Api.dll migrate` or `dotnet run --project src/Dealoware.Api -- migrate`) as `dealoware_migrate` only (same `DB_*` / connection-string keys; migrations credentials injected into that process only).
+4. **Cut the API secret** — point the long-lived API at `dealoware_app` (same `DB_*` / connection-string keys; different credentials).
+5. **Pin the guarded image** — only after the runtime secret is the app login.
 
 Alternatively, cut over the API secret and pin the guarded image in **one step**, with a rollback plan (revert the image pin and/or restore the previous runtime secret).
 
@@ -19,12 +20,12 @@ Any image that also includes A7 PR #20 additionally requires `DEALOWARE_ADMIN_IP
 
 | Process | Credentials | Privileges |
 |---------|-------------|------------|
-| Long-lived API | App login | `CONNECT` on the database; `USAGE` on the app schema; `SELECT` / `INSERT` / `UPDATE` / `DELETE` on tables; `USAGE` / `SELECT` on sequences. Must **not** own tables and must **not** be superuser, `CREATEROLE`, `CREATEDB`, or a member of `rds_superuser`. |
-| `migrate` one-shot | Migrations login | Owns the schema objects. Same image as the API; run as a one-shot task with migrations credentials injected only into that task. Never inject this login into the long-lived API. |
+| Long-lived API | `dealoware_app` | `CONNECT` on the database; `USAGE` on the app schema; `SELECT` / `INSERT` / `UPDATE` / `DELETE` on tables; `USAGE` / `SELECT` on sequences; **SELECT-only** on `__EFMigrationsHistory`. Must **not** own tables, must **not** need DDL, and must **not** be superuser, `CREATEROLE`, `CREATEDB`, or a member of `rds_superuser`. |
+| `migrate` one-shot | `dealoware_migrate` | Owns the schema objects. May `CREATE` / `INSERT` `__EFMigrationsHistory` (baseline stamp + later migrations). Same image as the API; run as a one-shot task with migrations credentials injected only into that task. Never inject this login into the long-lived API. |
 
 Default privileges on the app schema must `GRANT` the runtime login access to tables (and sequences) the migrations login creates. Otherwise DML fails after cutover even when the privilege guard passes.
 
-This repository does not run DDL from the long-lived API outside Development (`DatabaseSchemaBootstrap.ApplyStartupSchemaAsync` no-ops). Schema changes go through `migrate` only.
+This repository does not run DDL from the long-lived API outside Development (`DatabaseSchemaBootstrap.ApplyStartupSchemaAsync` no-ops). Schema changes and any `CREATE` / `INSERT` on `__EFMigrationsHistory` go through `migrate` only. The API runtime path does not stamp the baseline, does not call `MigrateAsync`, and does not need DDL.
 
 ## Startup guard (long-lived API only)
 

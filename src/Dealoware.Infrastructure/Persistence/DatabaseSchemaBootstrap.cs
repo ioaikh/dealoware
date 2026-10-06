@@ -37,15 +37,17 @@ public static class DatabaseSchemaBootstrap
     }
 
     /// <summary>
-    /// Applies EF Core migrations. Intended for the migrate one-shot entrypoint only,
-    /// using the same DB_* / connection-string configuration as the API (the operator
-    /// supplies migrations-capable credentials for that task).
+    /// Applies EF Core migrations, including the baseline stamp for EnsureCreated
+    /// databases that have no history row. Intended for the migrate one-shot
+    /// (<c>dealoware_migrate</c>) only — never the long-lived API
+    /// (<c>dealoware_app</c> is SELECT-only on <c>__EFMigrationsHistory</c> and
+    /// must not run this).
     /// </summary>
     public static Task ApplyMigrationsAsync(
         DealowareDbContext db,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(db);
-        return db.Database.MigrateAsync(cancellationToken);
+        return DatabaseMigrationBaseline.ApplyAsync(db, cancellationToken);
     }
 }
