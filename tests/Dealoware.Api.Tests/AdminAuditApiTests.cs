@@ -133,7 +133,8 @@ public class AdminAuditApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(ClientIp, body);
-        Assert.DoesNotContain("password", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("totpSecret", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("recoveryCode", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"ip\"", body, StringComparison.Ordinal);
         Assert.DoesNotContain("rawIp", body, StringComparison.OrdinalIgnoreCase);
 

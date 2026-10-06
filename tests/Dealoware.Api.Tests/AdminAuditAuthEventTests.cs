@@ -123,8 +123,8 @@ public class AdminAuditAuthEventTests
             Action = AdminAuditActions.LoginFailure
         });
 
-        Assert.Equal(2, items.Count);
-        Assert.True(total >= 2);
+        Assert.Equal(2, total);
+        Assert.Single(items);
         Assert.All(items, i => Assert.Equal(AdminAuditActions.LoginFailure, i.Action));
         Assert.Contains(interceptor.Commands, sql =>
             sql.Contains("AdminAuditLog", StringComparison.OrdinalIgnoreCase)
@@ -147,6 +147,16 @@ public class AdminAuditAuthEventTests
         {
             Commands.Add(command.CommandText);
             return base.ReaderExecuting(command, eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<System.Data.Common.DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
         }
     }
 }
