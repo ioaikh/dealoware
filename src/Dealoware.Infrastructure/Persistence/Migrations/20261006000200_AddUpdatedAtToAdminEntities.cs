@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Dealoware.Infrastructure.Persistence;
 
 #nullable disable
 
@@ -35,6 +36,11 @@ public partial class AddUpdatedAtToAdminEntities : Migration
             name: "UpdatedAt",
             table: "Offers",
             nullable: true);
+
+        if (SqliteDateTimeOffsetRewrite.IsSqliteProvider(migrationBuilder.ActiveProvider))
+        {
+            migrationBuilder.Sql(SqliteDateTimeOffsetRewrite.MigrationSqlSentinel);
+        }
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
