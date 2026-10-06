@@ -153,9 +153,8 @@ catch (InvalidOperationException ex)
     throw;
 }
 
-var allowLoopbackProxies = builder.Environment.IsDevelopment();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    ForwardedHeadersTrust.Apply(options, forwardedNetworks, allowLoopbackProxies));
+    ForwardedHeadersTrust.Apply(options, forwardedNetworks));
 
 builder.Services.AddRateLimiter(options =>
 {

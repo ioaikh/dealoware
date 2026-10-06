@@ -5,12 +5,14 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// F3 (limiter ruling bbf4bc51): KnownNetworks is one comma-separated CIDR
-/// string at <see cref="ConfigurationKey"/>. ForwardLimit stays 1. No CIDRs
-/// or account IDs are hard-coded. Development may trust loopback.
+/// string at <see cref="ConfigurationKey"/> (env
+/// <see cref="EnvironmentVariableName"/>). ForwardLimit stays 1. Defaults
+/// are cleared, then only those CIDRs are trusted. KnownProxies stays empty.
 /// </summary>
 public static class ForwardedHeadersTrust
 {
     public const string ConfigurationKey = "Admin:ForwardedHeaders:KnownNetworks";
+    public const string EnvironmentVariableName = "Admin__ForwardedHeaders__KnownNetworks";
 
     public static bool TryParse(string? raw, out IReadOnlyList<NetIPNetwork> networks, out string? error)
     {
@@ -51,31 +53,26 @@ public static class ForwardedHeadersTrust
         {
             if (requireConfigured)
             {
-                throw new InvalidOperationException(
-                    $"{ConfigurationKey} must be set to one or more comma-separated CIDRs (for example 10.0.0.0/16). Deploy injects this before rollout.");
+                throw MissingOrInvalid();
             }
 
             return Array.Empty<NetIPNetwork>();
         }
 
-        if (TryParse(raw, out var networks, out var error))
+        if (TryParse(raw, out var networks, out _))
         {
             return networks;
         }
 
         if (requireConfigured)
         {
-            throw new InvalidOperationException(
-                $"{ConfigurationKey} {error}. Each entry must be a CIDR. Deploy injects this before rollout.");
+            throw MissingOrInvalid();
         }
 
-        return ParseLenient(raw);
+        return Array.Empty<NetIPNetwork>();
     }
 
-    public static void Apply(
-        ForwardedHeadersOptions options,
-        IReadOnlyList<NetIPNetwork> networks,
-        bool allowLoopback)
+    public static void Apply(ForwardedHeadersOptions options, IReadOnlyList<NetIPNetwork> networks)
     {
         options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
         options.KnownIPNetworks.Clear();
@@ -86,26 +83,8 @@ public static class ForwardedHeadersTrust
         {
             options.KnownIPNetworks.Add(network);
         }
-
-        if (allowLoopback)
-        {
-            options.KnownProxies.Add(System.Net.IPAddress.Loopback);
-            options.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
-        }
     }
 
-    private static IReadOnlyList<NetIPNetwork> ParseLenient(string raw)
-    {
-        var parsed = new List<NetIPNetwork>();
-        foreach (var part in raw.Split(','))
-        {
-            var cidr = part.Trim();
-            if (cidr.Length > 0 && NetIPNetwork.TryParse(cidr, out var network))
-            {
-                parsed.Add(network);
-            }
-        }
-
-        return parsed;
-    }
+    private static InvalidOperationException MissingOrInvalid() =>
+        new($"{ConfigurationKey} is missing, empty, or invalid.");
 }

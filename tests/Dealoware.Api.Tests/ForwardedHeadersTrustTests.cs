@@ -61,7 +61,7 @@ public class ForwardedHeadersTrustTests
         var options = new ForwardedHeadersOptions();
         options.KnownProxies.Add(IPAddress.Loopback);
         var networks = ForwardedHeadersTrust.Resolve("", requireConfigured: false);
-        ForwardedHeadersTrust.Apply(options, networks, allowLoopback: false);
+        ForwardedHeadersTrust.Apply(options, networks);
 
         Assert.Empty(options.KnownIPNetworks);
         Assert.Empty(options.KnownProxies);
@@ -70,12 +70,14 @@ public class ForwardedHeadersTrustTests
     }
 
     [Fact]
-    public void F3_Development_MayTrustLoopback()
+    public void F3_Apply_LeavesKnownProxiesEmpty()
     {
         var options = new ForwardedHeadersOptions();
-        ForwardedHeadersTrust.Apply(options, [], allowLoopback: true);
-        Assert.Contains(IPAddress.Loopback, options.KnownProxies);
-        Assert.Contains(IPAddress.IPv6Loopback, options.KnownProxies);
+        options.KnownProxies.Add(IPAddress.Loopback);
+        Assert.True(ForwardedHeadersTrust.TryParse("10.8.0.0/16", out var networks, out _));
+        ForwardedHeadersTrust.Apply(options, networks);
+        Assert.Single(options.KnownIPNetworks);
+        Assert.Empty(options.KnownProxies);
         Assert.Equal(1, options.ForwardLimit);
     }
 
@@ -85,6 +87,7 @@ public class ForwardedHeadersTrustTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => ForwardedHeadersTrust.Resolve(null, requireConfigured: true));
         Assert.Contains(ForwardedHeadersTrust.ConfigurationKey, ex.Message);
+        Assert.DoesNotContain("10.", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -93,21 +96,35 @@ public class ForwardedHeadersTrustTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => ForwardedHeadersTrust.Resolve("not-a-cidr", requireConfigured: true));
         Assert.Contains(ForwardedHeadersTrust.ConfigurationKey, ex.Message);
+        Assert.DoesNotContain("not-a-cidr", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void F3_ProductionHost_MissingKnownNetworks_FailsAtStartup()
     {
-        using var factory = new ProductionMissingKnownNetworksFactory();
-        var ex = Record.Exception(() => factory.CreateClient());
-        Assert.NotNull(ex);
-        var messages = new List<string>();
-        for (var current = ex; current is not null; current = current.InnerException)
-        {
-            messages.Add(current.Message);
-        }
+        AssertHostFailsWithKeyName(new ProductionKnownNetworksFactory(string.Empty));
+    }
 
-        Assert.Contains(messages, m => m.Contains(ForwardedHeadersTrust.ConfigurationKey, StringComparison.Ordinal));
+    [Fact]
+    public void F3_ProductionHost_InvalidCidr_FailsAtStartup()
+    {
+        AssertHostFailsWithKeyName(new ProductionKnownNetworksFactory("not-a-cidr"));
+    }
+
+    private static void AssertHostFailsWithKeyName(IsolatedWebApplicationFactory factory)
+    {
+        using (factory)
+        {
+            var ex = Record.Exception(() => factory.CreateClient());
+            Assert.NotNull(ex);
+            var messages = new List<string>();
+            for (var current = ex; current is not null; current = current.InnerException)
+            {
+                messages.Add(current.Message);
+            }
+
+            Assert.Contains(messages, m => m.Contains(ForwardedHeadersTrust.ConfigurationKey, StringComparison.Ordinal));
+        }
     }
 
     [Fact]
@@ -211,8 +228,15 @@ public class ForwardedHeadersTrustTests
     }
 }
 
-internal sealed class ProductionMissingKnownNetworksFactory : IsolatedWebApplicationFactory
+internal sealed class ProductionKnownNetworksFactory : IsolatedWebApplicationFactory
 {
+    private readonly string _knownNetworks;
+
+    public ProductionKnownNetworksFactory(string knownNetworks)
+    {
+        _knownNetworks = knownNetworks;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
@@ -225,7 +249,7 @@ internal sealed class ProductionMissingKnownNetworksFactory : IsolatedWebApplica
         builder.UseSetting(
             "ConnectionStrings:DefaultConnection",
             "Host=127.0.0.1;Port=5432;Database=dealoware_test;Username=test;Password=test");
-        builder.UseSetting(ForwardedHeadersTrust.ConfigurationKey, string.Empty);
+        builder.UseSetting(ForwardedHeadersTrust.ConfigurationKey, _knownNetworks);
     }
 }
 
