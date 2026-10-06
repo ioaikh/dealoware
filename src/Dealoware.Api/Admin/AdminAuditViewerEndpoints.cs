@@ -22,7 +22,6 @@ public static class AdminAuditViewerEndpoints
             .RequireAuthorization(AdminSessionMiddleware.PolicyName);
 
         audit.MapGet("", ServeList).WithName("AdminAuditList");
-        audit.MapGet("/", ServeList).WithName("AdminAuditListSlash");
         audit.MapGet("/shell/audit.css", ServeCss).WithName("AdminAuditShellCss");
         audit.MapGet("/shell/audit.js", ServeJs).WithName("AdminAuditShellJs");
         audit.MapGet("/{id:guid}", ServeDetail).WithName("AdminAuditDetail");
