@@ -89,9 +89,22 @@ public class DatabaseSchemaBootstrapTests
     [Fact]
     public async Task ApplyMigrationsAsync_OnSqlite_CompletesWithoutLivePostgres()
     {
-        // With no migration assemblies/files yet, MigrateAsync still succeeds (creates history only).
+        // Incremental admin migration ALTERs existing entity tables. Seed the pre-admin
+        // tables so MigrateAsync can apply without a live Postgres.
         await using var connection = new SqliteConnection("Data Source=Migrate_Sqlite;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText =
+                """
+                CREATE TABLE Participants (Id TEXT PRIMARY KEY);
+                CREATE TABLE Artifacts (Id TEXT PRIMARY KEY);
+                CREATE TABLE Negotiations (Id TEXT PRIMARY KEY);
+                CREATE TABLE Offers (Id TEXT PRIMARY KEY);
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         var options = new DbContextOptionsBuilder<DealowareDbContext>()
             .UseSqlite(connection)
             .Options;
@@ -101,6 +114,8 @@ public class DatabaseSchemaBootstrapTests
             async () => await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db));
 
         Assert.Null(ex);
+        Assert.True(await db.AdminSessions.CountAsync() >= 0);
+        Assert.True(await db.AdminAuditLog.CountAsync() >= 0);
     }
 
     [Theory]
