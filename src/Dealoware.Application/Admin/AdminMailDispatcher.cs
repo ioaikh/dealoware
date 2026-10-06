@@ -5,7 +5,7 @@ namespace Dealoware.Application.Admin;
 /// <summary>
 /// Bootstrap and password-reset mail go through <see cref="IAdminMailSender"/> only.
 /// The mail layer builds the token URL itself from a kind plus raw token
-/// (route note r3 b079a814).
+/// (route note r3 b079a814; fragment form b6194918 item 6).
 /// </summary>
 public sealed class AdminMailDispatcher
 {

@@ -9,7 +9,7 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// TD-ADM-110 / TD-ADM-150: admin mail port, SES HTTP adapter, no AWS SDK, no invented account details.
-/// Token links are built by the mail layer (route note r3 b079a814).
+/// Token links are built by the mail layer (route note r3 b079a814; fragment form b6194918 item 6).
 /// </summary>
 public class AdminMailInterfaceTests
 {
@@ -53,6 +53,36 @@ public class AdminMailInterfaceTests
         Assert.Throws<ArgumentOutOfRangeException>(() => AdminMailPagePaths.Build((MailLinkKind)0, FixtureToken));
         Assert.Throws<ArgumentException>(() => AdminMailPagePaths.Build(MailLinkKind.Reset, ""));
         Assert.Throws<ArgumentException>(() => AdminMailPagePaths.Build(MailLinkKind.Reset, new string('a', AdminMailPagePaths.MaxTokenLength + 1)));
+
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Application", "Admin", "AdminMailPagePaths.cs"));
+        Assert.Contains("public const string Origin = \"https://admin.core.dealoware.com\";", source);
+        Assert.DoesNotContain("?token=", source);
+        Assert.DoesNotContain("Request.", source);
+    }
+
+    [Fact]
+    public async Task TD_ADM_110_EmailLinks_HaveNoQueryAndExactlyOneTokenFragment()
+    {
+        var recorder = new RecordingMailSender();
+        var dispatcher = new AdminMailDispatcher(recorder);
+        const string token = "a?b#c&d";
+
+        await dispatcher.SendBootstrapLinkAsync(TestRecipient, token);
+        await dispatcher.SendPasswordResetLinkAsync(TestRecipient, token);
+
+        Assert.Equal(2, recorder.Sent.Count);
+        Assert.All(recorder.Sent, m =>
+        {
+            var url = ExtractMailLink(m.TextBody);
+            AssertLinkHasNoQueryAndOneTokenFragment(url);
+            Assert.StartsWith(AdminMailPagePaths.Origin, url, StringComparison.Ordinal);
+        });
+        Assert.Equal(
+            "https://admin.core.dealoware.com/admin/reset/confirm#token=" + Uri.EscapeDataString(token),
+            AdminMailPagePaths.Build(MailLinkKind.Reset, token));
+        Assert.Equal(
+            "https://admin.core.dealoware.com/admin/bootstrap#token=" + Uri.EscapeDataString(token),
+            AdminMailPagePaths.Build(MailLinkKind.Bootstrap, token));
     }
 
     [Theory]
@@ -265,11 +295,8 @@ public class AdminMailInterfaceTests
 
     private static Uri AssertBuiltLink(string body, bool expectReset, string token)
     {
-        Assert.Contains(AdminMailPagePaths.Origin, body, StringComparison.Ordinal);
-        var start = body.IndexOf(AdminMailPagePaths.Origin, StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        var end = body.IndexOfAny(['\r', '\n'], start);
-        var url = end < 0 ? body[start..] : body[start..end];
+        var url = ExtractMailLink(body);
+        AssertLinkHasNoQueryAndOneTokenFragment(url);
         Assert.True(Uri.TryCreate(url, UriKind.Absolute, out var uri));
         Assert.Equal(Uri.UriSchemeHttps, uri!.Scheme);
         Assert.Equal(AdminMailPagePaths.Host, uri.Host);
@@ -284,9 +311,29 @@ public class AdminMailInterfaceTests
         return uri;
     }
 
-    /// <summary>
-    /// Token placement placeholder until Chief Security rules. One line to change after the ruling.
-    /// </summary>
+    private static string ExtractMailLink(string body)
+    {
+        Assert.Contains(AdminMailPagePaths.Origin, body, StringComparison.Ordinal);
+        var start = body.IndexOf(AdminMailPagePaths.Origin, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = body.IndexOfAny(['\r', '\n'], start);
+        return end < 0 ? body[start..] : body[start..end];
+    }
+
+    private static void AssertLinkHasNoQueryAndOneTokenFragment(string url)
+    {
+        Assert.DoesNotContain('?', url);
+        Assert.Equal(1, CountOccurrences(url, "#token="));
+    }
+
+    private static int CountOccurrences(string text, string marker)
+    {
+        var count = 0;
+        for (var i = 0; (i = text.IndexOf(marker, i, StringComparison.Ordinal)) >= 0; i += marker.Length)
+            count++;
+        return count;
+    }
+
     private static string ExpectedLink(MailLinkKind kind, string token)
         => AdminMailPagePaths.Origin + AdminMailPagePaths.PathFor(kind) + "#token=" + Uri.EscapeDataString(token);
 
