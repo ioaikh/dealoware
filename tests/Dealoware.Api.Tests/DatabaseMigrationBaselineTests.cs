@@ -319,10 +319,16 @@ public class DatabaseMigrationBaselineTests
             connection,
             BaselineSchema.Columns,
             BaselineSchema.PrimaryKeys);
-        await using (var db = new DealowareDbContext(options))
+        await using (var insert = connection.CreateCommand())
         {
-            db.Participants.Add(Participant.Create("baseline-keep"));
-            await db.SaveChangesAsync();
+            insert.CommandText =
+                """
+                INSERT INTO "Participants"
+                  ("Id", "Sub", "DisplayName", "LoginEmail", "ContactEmail", "CreatedAt", "IsActive", "DeletedAt", "Version")
+                VALUES
+                  ('00000000-0000-0000-0000-000000000001', 'baseline-keep', 'baseline-keep', NULL, NULL, '2026-01-01T00:00:00+00:00', 1, NULL, 0);
+                """;
+            await insert.ExecuteNonQueryAsync();
         }
 
         Assert.DoesNotContain(

@@ -39,8 +39,7 @@ public class AdminBootstrapTests
     private HttpClient CreateClient()
         => _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
-            HandleCookies = false,
-            BaseAddress = new Uri("https://localhost")
+            HandleCookies = false
         });
 
     private static string NewPassword()
