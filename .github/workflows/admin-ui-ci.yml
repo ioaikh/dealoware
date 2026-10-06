@@ -47,46 +47,34 @@ jobs:
       - name: Deny-live guard — block admin.core.dealoware.com
         id: deny-live
         shell: bash
+        # Scope ADMIN_BASE_URL here so deny-live checks the same URL Playwright uses.
+        # Only this env var is needed; other secrets stay on test step only.
+        env:
+          ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
         run: |
-          # Resolve the base URL to check for live admin hosts
-          # Default to local stub; secrets are NOT exposed at this step
+          # Check the resolved URL for live admin hosts.
+          # Do NOT echo secret values — only report pass/fail and blocked pattern.
           BASE_URL="${ADMIN_BASE_URL:-http://127.0.0.1:4173}"
-          PLAYWRIGHT_URL="${PLAYWRIGHT_BASE_URL:-$BASE_URL}"
 
-          echo "::group::Deny-live guard check"
-          echo "Resolved ADMIN_BASE_URL: $BASE_URL"
-          echo "Resolved PLAYWRIGHT_BASE_URL: $PLAYWRIGHT_URL"
-
-          # Extract hostname from URL
+          # Extract hostname from URL (strips scheme and port/path)
           extract_host() {
             echo "$1" | sed -E 's|^https?://||' | sed -E 's|[:/].*||'
           }
 
-          ADMIN_HOST=$(extract_host "$BASE_URL")
-          PW_HOST=$(extract_host "$PLAYWRIGHT_URL")
-
-          echo "ADMIN_HOST: $ADMIN_HOST"
-          echo "PLAYWRIGHT_HOST: $PW_HOST"
+          HOST=$(extract_host "$BASE_URL")
 
           # Deny pattern: admin.core.dealoware.com or admin*.dealoware.com
-          deny_if_live() {
-            local host="$1"
-            if [[ "$host" == "admin.core.dealoware.com" ]]; then
-              echo "::error::DENY-LIVE: Hostname '$host' is admin.core.dealoware.com — forbidden."
-              return 1
-            fi
-            if [[ "$host" =~ ^admin.*\.dealoware\.com$ ]]; then
-              echo "::error::DENY-LIVE: Hostname '$host' matches admin*.dealoware.com — forbidden."
-              return 1
-            fi
-            return 0
-          }
+          if [[ "$HOST" == "admin.core.dealoware.com" ]]; then
+            echo "::error::DENY-LIVE: ADMIN_BASE_URL resolves to admin.core.dealoware.com — forbidden."
+            exit 1
+          fi
 
-          deny_if_live "$ADMIN_HOST" || exit 1
-          deny_if_live "$PW_HOST" || exit 1
+          if [[ "$HOST" =~ ^admin.*\.dealoware\.com$ ]]; then
+            echo "::error::DENY-LIVE: ADMIN_BASE_URL matches admin*.dealoware.com pattern — forbidden."
+            exit 1
+          fi
 
-          echo "✓ Deny-live guard passed: no live admin dealoware hosts."
-          echo "::endgroup::"
+          echo "✓ Deny-live guard passed: ADMIN_BASE_URL does not point to live admin dealoware hosts."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
