@@ -1,18 +1,27 @@
+using System.Diagnostics;
 using Dealoware.Application.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Infrastructure.Admin;
 
 public sealed class AdminBootstrapService : IAdminBootstrapService
 {
+    /// <summary>
+    /// N4: dispatch failure logs exception type and trace ID only.
+    /// </summary>
+    public const string MailDispatchFailedTemplate =
+        "Bootstrap mail dispatch failed. ExceptionType={ExceptionType} TraceId={TraceId}";
+
     private readonly DealowareDbContext _db;
     private readonly AdminMailDispatcher _mail;
     private readonly ITurnstileVerifier _turnstile;
     private readonly IAdminClock _clock;
     private readonly IAdminAuditRepository _audit;
+    private readonly ILogger<AdminBootstrapService> _logger;
     private readonly CoreOwnerOptions _coreOwner;
 
     public AdminBootstrapService(
@@ -21,6 +30,7 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         ITurnstileVerifier turnstile,
         IAdminClock clock,
         IAdminAuditRepository audit,
+        ILogger<AdminBootstrapService> logger,
         IOptions<CoreOwnerOptions> coreOwner)
     {
         _db = db;
@@ -28,6 +38,7 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         _turnstile = turnstile;
         _clock = clock;
         _audit = audit;
+        _logger = logger;
         _coreOwner = coreOwner.Value;
     }
 
@@ -55,7 +66,30 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         var hash = AdminTokenHasher.Hash(raw);
         _db.AdminBootstrapTokens.Add(AdminBootstrapToken.Create(hash, now));
 
-        await _mail.SendBootstrapLinkAsync(email, raw, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _mail.SendBootstrapLinkAsync(email, raw, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            foreach (var entry in _db.ChangeTracker.Entries<AdminBootstrapToken>().ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            if (_db.Entry(credential).State == EntityState.Added)
+            {
+                _db.Entry(credential).State = EntityState.Detached;
+            }
+
+            // N4: exception type and trace ID only. Never email, link, fragment, or token.
+            // Never pass the exception object (its message may carry those) and never write to the console.
+            _logger.LogError(
+                MailDispatchFailedTemplate,
+                ex.GetType().FullName,
+                Activity.Current?.TraceId.ToString() ?? string.Empty);
+            return new AdminBootstrapIssueResult(false, AdminAuthMessages.InvalidOrExpiredLink);
+        }
 
         await _audit.AddAsync(
             AdminAuditEntry.CreateAuthEvent(

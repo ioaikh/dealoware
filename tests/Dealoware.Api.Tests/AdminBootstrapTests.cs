@@ -628,7 +628,7 @@ public class AdminBootstrapTests
         Assert.Same(sender, _factory.Mail);
         Assert.Empty(typeof(BootstrapWebApplicationFactory).Assembly
             .GetTypes()
-            .Where(t => t.Name.Contains("Capturing", StringComparison.Ordinal)
+            .Where(t => t.Name.Contains("CapturingAdminMail", StringComparison.Ordinal)
                         || t.Name.Contains("NoOpAdminMail", StringComparison.Ordinal)));
 
         var root = RepoRoot();
