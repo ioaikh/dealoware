@@ -1,6 +1,12 @@
+using System.Net;
+using Dealoware.Api.Admin;
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
+using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Dealoware.Api.Tests;
@@ -87,7 +93,51 @@ public class AdminHostStartupTests
 
         var response = await client.GetAsync("/health");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Host_Production_EnableTestExceptionEndpointTrue_ThrowRouteReturns404()
+    {
+        using var factory = new AdminHostConfigWebApplicationFactory("Production", builder =>
+            builder.UseSetting(AdminTestExceptionEndpoint.ConfigKey, "true"));
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.Database.EnsureCreated();
+        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        session.MarkTotpVerified();
+        db.AdminSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, AdminTestExceptionEndpoint.Path);
+        request.Headers.Host = AdminHostOptions.ProductionAdminHost;
+        request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session.Id:D}");
+        using var response = await factory.CreateClient().SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, body);
+    }
+
+    [Fact]
+    public async Task Host_Production_EnableTestExceptionEndpointFalse_ThrowRouteReturns404()
+    {
+        using var factory = new AdminHostConfigWebApplicationFactory("Production", builder =>
+            builder.UseSetting(AdminTestExceptionEndpoint.ConfigKey, "false"));
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        db.Database.EnsureCreated();
+        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        session.MarkTotpVerified();
+        db.AdminSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, AdminTestExceptionEndpoint.Path);
+        request.Headers.Host = AdminHostOptions.ProductionAdminHost;
+        request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session.Id:D}");
+        using var response = await factory.CreateClient().SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     private static List<string> ExceptionMessages(Exception ex)

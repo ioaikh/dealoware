@@ -13,7 +13,7 @@ public class AdminHostOptionsValidatorTests
     {
         var options = new AdminHostOptions { EnforceHostValidation = false };
 
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: true));
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Development"));
 
         Assert.Null(ex);
     }
@@ -27,7 +27,7 @@ public class AdminHostOptionsValidatorTests
             AllowedHosts = ["admin.core.dealoware.com", "localhost"]
         };
 
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: true));
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Development"));
 
         Assert.Null(ex);
     }
@@ -41,7 +41,7 @@ public class AdminHostOptionsValidatorTests
             AllowedHosts = [AdminHostOptions.ProductionAdminHost]
         };
 
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Null(ex);
     }
@@ -57,7 +57,7 @@ public class AdminHostOptionsValidatorTests
             AllowedHosts = [host]
         };
 
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Null(ex);
     }
@@ -68,7 +68,7 @@ public class AdminHostOptionsValidatorTests
         var options = new AdminHostOptions { EnforceHostValidation = false };
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Equal(AdminHostOptionsValidator.EnforceHostValidationMessage, ex.Message);
         Assert.DoesNotContain("stack", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -83,7 +83,7 @@ public class AdminHostOptionsValidatorTests
         };
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Equal(AdminHostOptionsValidator.AllowedHostsMessage, ex.Message);
         Assert.DoesNotContain("evil.example", ex.Message);
@@ -98,7 +98,7 @@ public class AdminHostOptionsValidatorTests
         };
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Equal(AdminHostOptionsValidator.AllowedHostsMessage, ex.Message);
         Assert.DoesNotContain("raw.alb.example", ex.Message);
@@ -110,7 +110,7 @@ public class AdminHostOptionsValidatorTests
         var options = new AdminHostOptions { AllowedHosts = [] };
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Equal(AdminHostOptionsValidator.AllowedHostsMessage, ex.Message);
     }
@@ -123,7 +123,7 @@ public class AdminHostOptionsValidatorTests
             AllowedHosts = ["admin.core.dealoware.com", "admin.core.dealoware.com"]
         };
 
-        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Production"));
 
         Assert.Null(ex);
     }
@@ -132,7 +132,7 @@ public class AdminHostOptionsValidatorTests
     public void Production_NullOptions_UsesEmptyAllowlistAndThrows()
     {
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(null, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(null, "Production"));
 
         Assert.Equal(AdminHostOptionsValidator.AllowedHostsMessage, ex.Message);
     }
@@ -143,8 +143,23 @@ public class AdminHostOptionsValidatorTests
         var options = new AdminHostOptions { EnforceHostValidation = false };
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => AdminHostOptionsValidator.Validate(options, isDevelopment: false));
+            () => AdminHostOptionsValidator.Validate(options, "Staging"));
 
         Assert.Equal(AdminHostOptionsValidator.EnforceHostValidationMessage, ex.Message);
+    }
+
+    [Fact]
+    public void Production_EnableTestExceptionEndpointTrue_DoesNotRefuseStartup()
+    {
+        var options = new AdminHostOptions
+        {
+            EnforceHostValidation = true,
+            AllowedHosts = [AdminHostOptions.ProductionAdminHost],
+            EnableTestExceptionEndpoint = true
+        };
+
+        var ex = Record.Exception(() => AdminHostOptionsValidator.Validate(options, "Production"));
+
+        Assert.Null(ex);
     }
 }
