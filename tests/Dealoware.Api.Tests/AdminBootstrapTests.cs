@@ -70,8 +70,9 @@ public class AdminBootstrapTests
         using var get = await client.SendAsync(AdminRequest(
             HttpMethod.Get,
             $"{AdminSignedOutAccess.BootstrapPage}?token={Uri.EscapeDataString(token)}"));
-        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
-        var json = await get.Content.ReadFromJsonAsync<JsonElement>();
+        var inspectBody = await get.Content.ReadAsStringAsync();
+        Assert.True(get.StatusCode == HttpStatusCode.OK, inspectBody);
+        var json = JsonSerializer.Deserialize<JsonElement>(inspectBody)!;
         var af = json.GetProperty("antiForgeryToken").GetString();
         Assert.False(string.IsNullOrEmpty(af));
         return (token, af!);

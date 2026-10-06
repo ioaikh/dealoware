@@ -134,8 +134,18 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
         }
 
         var tokenHash = AdminTokenHasher.Hash(rawToken);
+        var existing = await _db.AdminBootstrapTokens
+            .AsNoTracking()
+            .SingleOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is null || !existing.IsUsable(now))
+        {
+            await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new AdminBootstrapSetPasswordResult.InvalidLink();
+        }
+
         var consumed = await _db.AdminBootstrapTokens
-            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null && t.ExpiresAt > now)
+            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(t => t.ConsumedAt, now),
                 cancellationToken)
@@ -167,12 +177,11 @@ public sealed class AdminBootstrapService : IAdminBootstrapService
 
         var hash = AdminTokenHasher.Hash(rawToken);
         var now = _clock.UtcNow;
-        return await _db.AdminBootstrapTokens
+        var token = await _db.AdminBootstrapTokens
             .AsNoTracking()
-            .SingleOrDefaultAsync(
-                t => t.TokenHash == hash && t.ConsumedAt == null && t.ExpiresAt > now,
-                cancellationToken)
+            .SingleOrDefaultAsync(t => t.TokenHash == hash, cancellationToken)
             .ConfigureAwait(false);
+        return token is not null && token.IsUsable(now) ? token : null;
     }
 
     private async Task<AdminCredential> GetOrCreateCredentialAsync(string email, CancellationToken cancellationToken)
