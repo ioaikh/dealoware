@@ -6,6 +6,7 @@
 #
 # Specs live under e2e/admin/. webServer in e2e/playwright.config.ts starts a
 # local Development API on 127.0.0.1:4173 with the Admin UI test seed flag.
+# Step 10 delete suite: e2e/admin/td-adm-ui-del.spec.ts (PR #43).
 # See e2e/admin/README.md.
 #
 # SECURITY (public repo):
