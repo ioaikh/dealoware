@@ -87,6 +87,7 @@ public class AdminBootstrapTests
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = host;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.10");
         if (antiForgery is not null)
         {
             request.Headers.TryAddWithoutValidation(AdminAntiForgery.HeaderName, antiForgery);

@@ -86,7 +86,12 @@ public static class AdminBootstrapEndpoints
         }
 
         var remoteIp = context.Connection.RemoteIpAddress?.ToString();
-        var ipHmac = string.IsNullOrWhiteSpace(remoteIp) ? string.Empty : ipHasher.Hash(remoteIp);
+        if (string.IsNullOrWhiteSpace(remoteIp))
+        {
+            remoteIp = "0.0.0.0";
+        }
+
+        var ipHmac = ipHasher.Hash(remoteIp);
         var token = body.Token;
         if (string.IsNullOrWhiteSpace(token)
             && context.Request.Query.TryGetValue("token", out var queryToken))
