@@ -409,7 +409,7 @@
         }
         function addTypeahead(id, label, key, api, pick) {
             var input = el("input", { id: id, type: "text", value: state[key] || "", autocomplete: "off", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id + "-suggest" });
-            var list = el("ul", { className: "suggest", id: id + "-suggest", role: "listbox" });
+            var list = el("div", { className: "suggest", id: id + "-suggest", role: "listbox" });
             list.hidden = true;
             var box = el("label", { for: id }, [el("span", { text: label }), input, list]);
             var t = null;
@@ -430,7 +430,7 @@
                                 writeState(state, true);
                                 loadList(type, spec, state, tableBody, meta);
                             });
-                            list.appendChild(el("li", null, [btn]));
+                            list.appendChild(el("div", { role: "option" }, [btn]));
                         });
                         list.hidden = list.childNodes.length === 0;
                         input.setAttribute("aria-expanded", list.hidden ? "false" : "true");

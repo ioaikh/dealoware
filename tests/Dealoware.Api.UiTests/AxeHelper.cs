@@ -24,6 +24,7 @@ internal static class AxeHelper
 
         using var doc = JsonDocument.Parse(json);
         var violations = doc.RootElement.GetProperty("violations");
-        Assert.True(violations.GetArrayLength() == 0, $"axe failed for {caseId}. Artifact: {artifact}\n{json}");
+        var ids = violations.EnumerateArray().Select(v => v.GetProperty("id").GetString()).ToArray();
+        Assert.True(ids.Length == 0, $"axe failed for {caseId} ({string.Join(", ", ids)}). Artifact: {artifact}");
     }
 }

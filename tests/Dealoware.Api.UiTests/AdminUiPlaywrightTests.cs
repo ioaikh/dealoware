@@ -184,16 +184,16 @@ public sealed class AdminUiPlaywrightTests
         };
         await page.GotoAsync(Url("/admin/offers"), new() { WaitUntil = WaitUntilState.NetworkIdle });
         await page.WaitForSelectorAsync("#pager");
-        Assert.Contains(await page.InnerTextAsync("#pager"), "Showing");
+        Assert.Contains("Showing", await page.InnerTextAsync("#pager"));
         await page.Locator("#page-size").SelectOptionAsync("100");
         await page.WaitForTimeoutAsync(400);
-        Assert.Contains(page.Url, "limit=100");
+        Assert.Contains("limit=100", page.Url);
         await page.Locator("button:has-text('Next')").ClickAsync();
         await page.WaitForTimeoutAsync(400);
-        Assert.Contains(page.Url, "offset=100");
+        Assert.Contains("offset=100", page.Url);
         await page.Locator("th button:has-text('Amount')").ClickAsync();
         await page.WaitForTimeoutAsync(400);
-        Assert.Contains(page.Url, "offset=0");
+        Assert.Contains("offset=0", page.Url);
         await page.GotoAsync(Url("/admin/offers?limit=500"), new() { WaitUntil = WaitUntilState.NetworkIdle });
         Assert.DoesNotContain(seen, u =>
         {
