@@ -404,10 +404,10 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await CreateTablesFromSpecAsync(
-            connection,
-            BaselineSchema.Columns,
-            BaselineSchema.PrimaryKeys);
+        await using (var db = new DealowareDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+        }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
         Assert.DoesNotContain(
@@ -419,8 +419,8 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        // Current-model EnsureCreated includes TOTP tables that are not in the
-        // frozen 15-table stamp set, so the one-shot refuses as an unknown schema.
+        // Current-model EnsureCreated includes TOTP and reset tables that are not
+        // in the frozen 15-table stamp set, so the one-shot refuses as unknown.
         Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(

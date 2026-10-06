@@ -117,9 +117,9 @@ public static class AdminPasswordResetEndpoints
         var ipHmac = HashClientIp(ipHasher, http);
         var ct = http.RequestAborted;
 
-        if (await throttle.IsThrottledAsync(ipHmac, now, ct))
+        if (!await throttle.TryReserveAsync(ipHmac, now, ct))
         {
-            return ThrottledResult();
+            return RequestThrottledResult();
         }
 
         var known = string.Equals(submitted, ownerEmail, StringComparison.Ordinal)
@@ -127,6 +127,7 @@ public static class AdminPasswordResetEndpoints
         var raw = CreateRawToken();
         var hash = AdminPasswordResetToken.HashRaw(raw);
         await tokens.InvalidateUnusedForEmailAsync(known ? ownerEmail : submitted, now, ct);
+        _ = await tokens.FindUsableByHashAsync(hash, now, ct);
         if (known)
         {
             await tokens.AddAsync(AdminPasswordResetToken.Create(ownerEmail, hash, now), ct);
@@ -137,7 +138,6 @@ public static class AdminPasswordResetEndpoints
             AdminAuditEntry.CreateAuthEvent("reset_request", submitted, ipHmac, timestamp: now),
             ct);
         await audit.SaveChangesAsync(ct);
-        await throttle.RecordFailureAsync(ipHmac, now, ct);
 
         return Results.Json(new { message = AdminPasswordResetCopy.RequestAccepted });
     }
@@ -162,7 +162,7 @@ public static class AdminPasswordResetEndpoints
         var ipHmac = HashClientIp(ipHasher, http);
         if (await throttle.IsThrottledAsync(ipHmac, now, http.RequestAborted))
         {
-            return ThrottledResult();
+            return ConfirmThrottledResult();
         }
 
         var presented = NullIfWhiteSpace(body?.Token)
@@ -257,16 +257,24 @@ public static class AdminPasswordResetEndpoints
                 timestamp: now),
             http.RequestAborted);
         await audit.SaveChangesAsync(http.RequestAborted);
-        await throttle.RecordFailureAsync(ipHmac, now, http.RequestAborted);
+        if (!await throttle.TryReserveAsync(ipHmac, now, http.RequestAborted))
+        {
+            return ConfirmThrottledResult();
+        }
 
         ApplyNoStoreNoReferrer(http);
         http.Response.Headers.Location = LinkExpiredPath;
         return Results.StatusCode(StatusCodes.Status303SeeOther);
     }
 
-    private static IResult ThrottledResult()
+    private static IResult RequestThrottledResult()
         => Results.Json(
-            new { message = AdminPasswordResetCopy.Throttled },
+            new { message = AdminPasswordResetCopy.RequestAccepted },
+            statusCode: StatusCodes.Status429TooManyRequests);
+
+    private static IResult ConfirmThrottledResult()
+        => Results.Json(
+            new { message = AdminPasswordResetCopy.SignInGeneric },
             statusCode: StatusCodes.Status429TooManyRequests);
 
     private static void ApplyNoStoreNoReferrer(HttpContext http)
