@@ -37,7 +37,6 @@ public static class AdminBootstrapEndpoints
         services.AddHttpClient<ITurnstileVerifier, CloudflareTurnstileVerifier>();
         services.AddSingleton<IAdminClock, SystemAdminClock>();
         services.AddScoped<IAdminBootstrapService, AdminBootstrapService>();
-        // IAdminMailSender + AdminMailDispatcher come from AddAdminMail (PR #31).
         return services;
     }
 

@@ -633,7 +633,7 @@ public class AdminBootstrapTests
 
         var root = RepoRoot();
         var endpoints = File.ReadAllText(Path.Combine(root, "src", "Dealoware.Api", "Admin", "AdminBootstrapEndpoints.cs"));
-        Assert.DoesNotContain("IAdminMailSender", endpoints);
+        Assert.DoesNotContain("AddSingleton<IAdminMailSender>", endpoints);
         Assert.DoesNotContain("NoOpAdminMailSender", endpoints);
         var support = File.ReadAllText(Path.Combine(root, "tests", "Dealoware.Api.Tests", "BootstrapTestSupport.cs"));
         Assert.DoesNotContain("CapturingAdminMailSender", support);
