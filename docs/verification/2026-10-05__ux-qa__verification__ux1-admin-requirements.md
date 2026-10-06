@@ -209,9 +209,13 @@ Record fixes for Senior UI/UX:
 2. Bullet 2 says password rules v2.3 and lockout v5.5 still wait on the UI/UX QA cross-check, and that the S-A12 activity panel needs Spec to adopt it. These are done: re-verification 4 passed the two notes, and Spec X01 S-A12 adopts Recent sign-in activity. Drop it.
 3. The findings resolutions log entry is timed "9:14pm ET", but it was on disk by 9:11pm. Use the real time.
 
+### Condition 2 re-check (2026-10-05 ~9:13pm ET)
+
+**PASS.** Addendum `7aa374e9` and findings `4b612834` match on disk and in uiux-out. All three record fixes are confirmed: the two outdated bullets are gone from the addendum's Active holds, and the findings log entry now reads 9:11pm. The content is unchanged from `c578d618`, which already passed above. Approval condition 2 is met.
+
 ## Active holds
 UX1 was approved at 9:05pm ET (`ux/2026-10-05__ux__approval__ux1-admin-requirements.md`, sha256 `6247be65`). The UI lanes for rows 8, 11, 14 and 15 are released. Only the approval's merge conditions remain:
 1. Dev Plan record fixes: met on `b3788114`. The docs PR still needs Docs QA before it merges.
-2. Senior UI/UX's addendum follow-up (absolute-expiry warning row, Created fallback sort, Deleted badge position, `eb63276f` cites on B01 and X01) needs a UI/UX QA PASS before the first sign-in or list UI PR merges.
+2. Senior UI/UX's addendum follow-up: met on addendum `7aa374e9` (UI/UX QA PASS above). Spec still has to confirm whether S-A12 password change asks for the current password, and that holds only the S-A12 password PR.
 3. Chief QA fills out the B, C and X test-case stubs, including UXR-B14 Expire and B15, before those screens' UI PRs merge.
 4. Withdrawn (Step 7 PR) and the edit paths and Expire (Step 9 PR) each need their own Dev Code QA PASS.
