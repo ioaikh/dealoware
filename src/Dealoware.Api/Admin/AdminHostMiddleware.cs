@@ -24,7 +24,7 @@ public sealed class AdminHostMiddleware
 
     public Task InvokeAsync(HttpContext context)
     {
-        var isAdminHost = IsAllowedAdminHost(context.Request.Host.Host);
+        var isAdminHost = _options.IsAllowedHost(context.Request.Host.Host);
         var isAdminPath = context.Request.Path.StartsWithSegments(AdminPathPrefix);
         var isHealth = context.Request.Path.Equals("/health", StringComparison.OrdinalIgnoreCase);
 
@@ -41,19 +41,5 @@ public sealed class AdminHostMiddleware
         }
 
         return _next(context);
-    }
-
-    private bool IsAllowedAdminHost(string hostName)
-    {
-        if (string.IsNullOrWhiteSpace(hostName) || _options.AllowedHosts is null || _options.AllowedHosts.Count == 0)
-            return false;
-
-        foreach (var allowed in _options.AllowedHosts)
-        {
-            if (string.Equals(allowed, hostName, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
     }
 }
