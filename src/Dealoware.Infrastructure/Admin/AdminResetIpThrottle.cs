@@ -44,61 +44,53 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
                     DetachTracked();
                     return true;
                 }
-                catch (Exception)
+                catch (DbUpdateException)
                 {
                     DetachTracked();
                     continue;
                 }
             }
 
-            if (row.IsLocked(now) || row.FailureCount >= AdminResetIpCounter.Threshold)
+            // Count >= Threshold is locked only while LockedUntil is still in the future.
+            if (row.IsLocked(now))
             {
                 return false;
             }
 
-            try
+            if (!row.WindowOpen(now))
             {
-                if (!row.WindowOpen(now))
-                {
-                    var reset = await _context.AdminResetIpCounters
-                        .Where(c => c.IpHmac == ipHmac
-                                    && c.FailureCount == row.FailureCount
-                                    && c.FailureCount < AdminResetIpCounter.Threshold)
-                        .ExecuteUpdateAsync(
-                            setters => setters
-                                .SetProperty(c => c.FailureCount, 1)
-                                .SetProperty(c => c.WindowStartedAt, now)
-                                .SetProperty(c => c.LockedUntil, (DateTimeOffset?)null),
-                            cancellationToken);
-                    if (reset == 1)
-                    {
-                        return true;
-                    }
-
-                    continue;
-                }
-
-                var next = row.FailureCount + 1;
-                var lockUntil = next >= AdminResetIpCounter.Threshold
-                    ? now.Add(AdminResetIpCounter.LockDuration)
-                    : row.LockedUntil;
-                var updated = await _context.AdminResetIpCounters
-                    .Where(c => c.IpHmac == ipHmac
-                                && c.FailureCount == row.FailureCount
-                                && c.FailureCount < AdminResetIpCounter.Threshold)
+                var reset = await _context.AdminResetIpCounters
+                    .Where(c => c.IpHmac == ipHmac && c.FailureCount == row.FailureCount)
                     .ExecuteUpdateAsync(
                         setters => setters
-                            .SetProperty(c => c.FailureCount, next)
-                            .SetProperty(c => c.LockedUntil, lockUntil),
+                            .SetProperty(c => c.FailureCount, 1)
+                            .SetProperty(c => c.WindowStartedAt, now)
+                            .SetProperty(c => c.LockedUntil, (DateTimeOffset?)null),
                         cancellationToken);
-                if (updated == 1)
+                if (reset == 1)
                 {
                     return true;
                 }
-            }
-            catch (Exception)
-            {
+
                 continue;
+            }
+
+            var next = row.FailureCount + 1;
+            var lockUntil = next >= AdminResetIpCounter.Threshold
+                ? now.Add(AdminResetIpCounter.LockDuration)
+                : row.LockedUntil;
+            var updated = await _context.AdminResetIpCounters
+                .Where(c => c.IpHmac == ipHmac
+                            && c.FailureCount == row.FailureCount
+                            && c.FailureCount < AdminResetIpCounter.Threshold)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(c => c.FailureCount, next)
+                        .SetProperty(c => c.LockedUntil, lockUntil),
+                    cancellationToken);
+            if (updated == 1)
+            {
+                return true;
             }
         }
 

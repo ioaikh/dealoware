@@ -1,9 +1,11 @@
+using System.Data.Common;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,23 +18,68 @@ namespace Dealoware.Api.Tests;
 /// <summary>
 /// Custom WebApplicationFactory with isolated in-memory SQLite database.
 /// Each factory instance gets its own database to prevent race conditions
-/// when tests run in parallel.
+/// when tests run in parallel. When <c>DB_HOST</c> is set (PR #33 postgres
+/// CI job on main), the host uses that PostgreSQL server instead.
 /// </summary>
 public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly SqliteConnection _connection;
-    private readonly string _dbName;
+    private readonly SqliteConnection? _connection;
+    private readonly string? _sqliteConnectionString;
+    private readonly string? _postgresConnectionString;
 
     public CollectingLoggerProvider LogCollector { get; } = new();
 
     public IsolatedWebApplicationFactory()
     {
-        _dbName = $"TestDb_{Guid.NewGuid():N}";
-        _connection = new SqliteConnection($"Data Source={_dbName};Mode=Memory;Cache=Shared");
+        if (TryBuildTestPostgresConnectionString(out var postgres))
+        {
+            _postgresConnectionString = postgres;
+            return;
+        }
+
+        var dbName = $"TestDb_{Guid.NewGuid():N}";
+        _sqliteConnectionString = $"Data Source={dbName};Mode=Memory;Cache=Shared";
+        _connection = new SqliteConnection(_sqliteConnectionString);
         _connection.Open();
         using var busy = _connection.CreateCommand();
         busy.CommandText = "PRAGMA busy_timeout = 5000;";
         busy.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// CI postgres:16 has no TLS. Build a throwaway SSL Mode=Disable string from DB_*.
+    /// </summary>
+    internal static bool TryBuildTestPostgresConnectionString(out string connectionString)
+    {
+        var host = Environment.GetEnvironmentVariable("DB_HOST");
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            connectionString = string.Empty;
+            return false;
+        }
+
+        var port = Environment.GetEnvironmentVariable("DB_PORT");
+        if (string.IsNullOrWhiteSpace(port))
+        {
+            port = "5432";
+        }
+
+        var database = Environment.GetEnvironmentVariable("DB_NAME");
+        if (string.IsNullOrWhiteSpace(database))
+        {
+            database = "dealoware_ci";
+        }
+
+        var username = Environment.GetEnvironmentVariable("DB_USERNAME");
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            username = "dealoware_ci";
+        }
+
+        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? string.Empty;
+        connectionString =
+            $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Disable";
+        return true;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -47,9 +94,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             logging.AddProvider(LogCollector);
         });
 
-        // After the app registers its provider (SQLite or Npgsql), replace with this
-        // factory's in-memory SQLite so Production Host= selection does not leave Npgsql
-        // registered alongside SQLite.
+        // After the app registers its provider (SQLite or Npgsql), replace it.
+        // Default is isolated in-memory SQLite. When DB_HOST is set, use Postgres.
         builder.ConfigureTestServices(services =>
         {
             foreach (var descriptor in services
@@ -64,7 +110,14 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<DealowareDbContext>(options =>
             {
-                options.UseSqlite(_connection);
+                if (_postgresConnectionString is not null)
+                {
+                    options.UseNpgsql(_postgresConnectionString);
+                    return;
+                }
+
+                options.UseSqlite(_sqliteConnectionString);
+                options.AddInterceptors(new SqliteBusyTimeoutInterceptor());
             });
 
             ReplaceSingleton<IAdminMailSender, RecordingMailSender>(services);
@@ -91,7 +144,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         base.Dispose(disposing);
         if (disposing)
         {
-            _connection.Dispose();
+            _connection?.Dispose();
         }
     }
 }
@@ -104,4 +157,28 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 [CollectionDefinition("WebAppTests")]
 public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
 {
+}
+
+file sealed class SqliteBusyTimeoutInterceptor : DbConnectionInterceptor
+{
+    public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
+    {
+        SetBusyTimeout(connection);
+    }
+
+    public override Task ConnectionOpenedAsync(
+        DbConnection connection,
+        ConnectionEndEventData eventData,
+        CancellationToken cancellationToken = default)
+    {
+        SetBusyTimeout(connection);
+        return Task.CompletedTask;
+    }
+
+    private static void SetBusyTimeout(DbConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA busy_timeout = 5000;";
+        cmd.ExecuteNonQuery();
+    }
 }

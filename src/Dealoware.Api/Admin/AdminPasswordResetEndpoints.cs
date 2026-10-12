@@ -160,7 +160,8 @@ public static class AdminPasswordResetEndpoints
         var now = clock.UtcNow;
         var ownerEmail = NormalizeEmail(coreOwner.Value.Email);
         var ipHmac = HashClientIp(ipHasher, http);
-        if (await throttle.IsThrottledAsync(ipHmac, now, http.RequestAborted))
+        var ct = http.RequestAborted;
+        if (!await throttle.TryReserveAsync(ipHmac, now, ct))
         {
             return ConfirmThrottledResult();
         }
@@ -177,14 +178,14 @@ public static class AdminPasswordResetEndpoints
         if (row is null
             || !string.Equals(row.Email, ownerEmail, StringComparison.Ordinal))
         {
-            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         var totp = NullIfWhiteSpace(body?.Totp);
         var recovery = NullIfWhiteSpace(body?.RecoveryCode);
         if (totp is null && recovery is null)
         {
-            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         var factor = await secondFactor.VerifyAsync(
@@ -194,13 +195,13 @@ public static class AdminPasswordResetEndpoints
             http.RequestAborted);
         if (!factor.Succeeded)
         {
-            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         var credential = await credentials.GetByEmailAsync(ownerEmail, http.RequestAborted);
         if (credential is null)
         {
-            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         var proposed = body?.NewPassword ?? string.Empty;
@@ -218,7 +219,7 @@ public static class AdminPasswordResetEndpoints
         if (!await tokens.TryConsumeAsync(hash!, now, http.RequestAborted))
         {
             await tx.RollbackAsync(http.RequestAborted);
-            return await FailExpiredAsync(audit, throttle, ipHmac, now, http);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         credential.ReplacePassword(hasher.Hash(AdminPasswordRules.Normalize(proposed)), now);
@@ -243,7 +244,6 @@ public static class AdminPasswordResetEndpoints
 
     private static async Task<IResult> FailExpiredAsync(
         IAdminAuditRepository audit,
-        IAdminResetIpThrottle throttle,
         string ipHmac,
         DateTimeOffset now,
         HttpContext http)
@@ -257,10 +257,6 @@ public static class AdminPasswordResetEndpoints
                 timestamp: now),
             http.RequestAborted);
         await audit.SaveChangesAsync(http.RequestAborted);
-        if (!await throttle.TryReserveAsync(ipHmac, now, http.RequestAborted))
-        {
-            return ConfirmThrottledResult();
-        }
 
         ApplyNoStoreNoReferrer(http);
         http.Response.Headers.Location = LinkExpiredPath;

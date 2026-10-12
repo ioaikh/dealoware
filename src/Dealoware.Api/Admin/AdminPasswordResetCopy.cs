@@ -7,7 +7,7 @@ namespace Dealoware.Api.Admin;
 /// </summary>
 public static class AdminPasswordResetCopy
 {
-    public const string RequestAccepted = "If that account exists, we've sent instructions";
+    public const string RequestAccepted = "If that account exists, we've sent instructions.";
 
     public const string InvalidLink = "This link is no longer valid. Request a new one.";
 

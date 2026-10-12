@@ -395,9 +395,11 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
+        await CreateFrozen15TableSchemaAsync(connection);
+        await using (var addUpdatedAt = connection.CreateCommand())
         {
-            await db.Database.EnsureCreatedAsync();
+            addUpdatedAt.CommandText = "ALTER TABLE Participants ADD COLUMN UpdatedAt TEXT;";
+            await addUpdatedAt.ExecuteNonQueryAsync();
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -410,7 +412,7 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,
