@@ -243,6 +243,12 @@ public class SqliteDateTimeOffsetRewriteTests
             builder.UseSetting(
                 IpHasher.KeyEnvironmentVariable,
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting(
+                TotpSecretProtector.KeyEnvironmentVariable,
+                Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting(
+                AdminRecoveryCodeHasher.KeyEnvironmentVariable,
+                Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
             builder.ConfigureTestServices(services =>
             {

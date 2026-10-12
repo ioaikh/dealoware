@@ -9,5 +9,8 @@ public interface IAdminSessionRepository
     Task AddAsync(AdminSession session, CancellationToken cancellationToken = default);
     Task UpdateAsync(AdminSession session, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task DeleteByEmailAsync(string email, CancellationToken cancellationToken = default);
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

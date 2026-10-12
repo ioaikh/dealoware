@@ -40,6 +40,12 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
         builder.UseSetting(JwtSigningKeyValidator.EnvironmentVariableName, _signingKey ?? string.Empty);
         builder.UseSetting("Jwt:SigningKey", string.Empty);
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, TestIpHmacKey);
+        builder.UseSetting(
+            TotpSecretProtector.KeyEnvironmentVariable,
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        builder.UseSetting(
+            AdminRecoveryCodeHasher.KeyEnvironmentVariable,
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         // Non-Development refuses silent SQLite. Supply a Host= connection string so Production/Staging
         // hosts pass provider selection; ConfigureServices still swaps to in-memory SQLite for the test.
         if (!string.Equals(_environment, Environments.Development, StringComparison.OrdinalIgnoreCase))

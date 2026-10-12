@@ -17,11 +17,16 @@ public class DatabaseMigrationBaselineTests
     private static IReadOnlyList<string> AssemblyWithBaseline =>
         [DatabaseMigrationBaseline.BaselineMigrationId, DatabaseMigrationBaseline.AdminTablesMigrationId];
 
-    private static readonly string[] FrozenSchemaMigrationIds =
+    /// <summary>
+    /// After stamp, MigrateAsync applies later incremental migrations (TOTP/recovery).
+    /// Frozen 13/15-table specs stay unchanged.
+    /// </summary>
+    private static readonly string[] AllAppliedMigrationIds =
     [
         DatabaseMigrationBaseline.BaselineMigrationId,
         DatabaseMigrationBaseline.AdminTablesMigrationId,
-        DatabaseMigrationBaseline.UpdatedAtMigrationId
+        DatabaseMigrationBaseline.UpdatedAtMigrationId,
+        DatabaseMigrationBaseline.TotpRecoveryMigrationId
     ];
 
     [Fact]
@@ -289,7 +294,7 @@ public class DatabaseMigrationBaselineTests
         {
             Assert.Equal(0, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, applied[0]);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
@@ -332,7 +337,7 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(1, await db.Participants.CountAsync());
             Assert.Equal("baseline-keep", (await db.Participants.SingleAsync()).DisplayName);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
         }
 
@@ -359,8 +364,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Null(ex);
             Assert.Equal(1, await db.Participants.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -380,8 +386,9 @@ public class DatabaseMigrationBaselineTests
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -409,7 +416,9 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
+        // Current-model EnsureCreated includes TOTP tables that are not in the
+        // frozen 15-table stamp set, so the one-shot refuses as an unknown schema.
+        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,
@@ -588,8 +597,9 @@ public class DatabaseMigrationBaselineTests
             Assert.Equal(0, await db.AdminSessions.CountAsync());
             Assert.Equal(0, await db.AdminAuditLog.CountAsync());
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            Assert.Equal(FrozenSchemaMigrationIds, applied);
+            Assert.Equal(AllAppliedMigrationIds, applied);
             Assert.Contains(DatabaseMigrationBaseline.UpdatedAtMigrationId, applied);
+            Assert.Contains(DatabaseMigrationBaseline.TotpRecoveryMigrationId, applied);
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -698,6 +708,8 @@ public class DatabaseMigrationBaselineTests
         var migrations = db.Database.GetMigrations().ToList();
         Assert.Equal(DatabaseMigrationBaseline.BaselineMigrationId, migrations[0]);
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
+        Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
+        Assert.Equal(DatabaseMigrationBaseline.TotpRecoveryMigrationId, migrations[3]);
     }
 
     [Fact]
@@ -805,7 +817,17 @@ public class DatabaseMigrationBaselineTests
             var pk = keys.Single(k => string.Equals(k.Table, tableGroup.Key, StringComparison.Ordinal));
             var defs = tableGroup
                 .Select(c =>
-                    $"\"{c.Name}\" {StoreTypeFor(c.Kind)}{(c.IsNullable ? "" : " NOT NULL")}");
+                {
+                    var sqlType = StoreTypeFor(c.Kind);
+                    var nullability = c.IsNullable ? "" : " NOT NULL";
+                    var defaultClause = !c.IsNullable && c.Kind is BaselineColumnKind.UInt32
+                        or BaselineColumnKind.Int32
+                        or BaselineColumnKind.Int64
+                        or BaselineColumnKind.Boolean
+                        ? " DEFAULT 0"
+                        : "";
+                    return $"\"{c.Name}\" {sqlType}{nullability}{defaultClause}";
+                });
             var sql =
                 $"CREATE TABLE \"{tableGroup.Key}\" ({string.Join(", ", defs)}, " +
                 $"PRIMARY KEY ({string.Join(", ", pk.Columns.Select(n => $"\"{n}\""))}))";

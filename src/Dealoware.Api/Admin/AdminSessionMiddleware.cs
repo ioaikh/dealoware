@@ -6,7 +6,10 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Fail-closed session gate for all /admin routes.
+/// Fail-closed session gate for all /admin routes (route-prefix note r3 §2 + §10 C1–C8).
+/// Consulted only after AdminHostMiddleware accepts the admin host (C7).
+/// Exempts only exact canonical path+method pairs. Token rows require a server-validated
+/// pending token. /admin/api/** is never exempt except the listed auth API rows.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
 /// </summary>
 public sealed class AdminSessionMiddleware
@@ -25,6 +28,8 @@ public sealed class AdminSessionMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         IAdminSessionRepository sessions,
+        IAdminCoreOwnerAccountRepository accounts,
+        AdminAntiForgeryService antiforgery,
         IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
@@ -32,6 +37,15 @@ public sealed class AdminSessionMiddleware
             await _next(context);
             return;
         }
+
+        if (await IsSignedOutExemptAsync(context, accounts, antiforgery))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (context.Items.ContainsKey(AntiForgeryDeniedKey))
+            return;
 
         if (!TryGetSessionId(context, out var sessionId))
         {
@@ -75,6 +89,63 @@ public sealed class AdminSessionMiddleware
 
         await _next(context);
     }
+
+    internal static async Task<bool> IsSignedOutExemptAsync(
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        AdminAntiForgeryService antiforgery)
+    {
+        if (!AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical))
+            return false;
+
+        if (HttpMethods.IsGet(context.Request.Method)
+            && AdminSignedOutExemptions.IsAnonymousAuthAsset(canonical))
+        {
+            return true;
+        }
+
+        var rule = AdminSignedOutExemptions.FindRule(canonical, context.Request.Method);
+        if (rule is null)
+            return false;
+
+        if (HttpMethods.IsPost(context.Request.Method)
+            && !await HasValidAntiForgeryAsync(context, canonical, antiforgery))
+        {
+            return false;
+        }
+
+        return rule.Value.Token switch
+        {
+            AdminSignedOutExemptions.TokenKind.None => true,
+            AdminSignedOutExemptions.TokenKind.PendingSignIn =>
+                await AdminSignedOutExemptions.HasValidPendingTokenAsync(
+                    context, accounts, context.RequestAborted),
+            // Bootstrap / reset tokens are owned by Steps 2 and 4. Missing token → not exempt.
+            _ => false
+        };
+    }
+
+    private static async Task<bool> HasValidAntiForgeryAsync(
+        HttpContext context,
+        string canonical,
+        AdminAntiForgeryService antiforgery)
+    {
+        var hasSessionCookie = !string.IsNullOrWhiteSpace(context.Request.Cookies[AdminSessionCookie.Name]);
+        if (AdminSignedOutExemptions.IsSignOut(canonical) && !hasSessionCookie)
+            return true;
+
+        if (antiforgery.TryValidate(context))
+            return true;
+
+        if (AdminSignedOutExemptions.IsAuthPost(canonical))
+            await AdminSignInDeny.WriteFailureAsync(context);
+        else
+            await AdminDeny.WriteUnauthorizedAsync(context);
+        context.Items[AntiForgeryDeniedKey] = true;
+        return false;
+    }
+
+    internal const string AntiForgeryDeniedKey = "AdminAntiForgeryDenied";
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)
     {

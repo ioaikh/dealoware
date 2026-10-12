@@ -79,3 +79,103 @@ public class AdminAuditEntryEntityConfiguration : IEntityTypeConfiguration<Admin
         builder.HasIndex(e => e.CorrelationId);
     }
 }
+
+public class AdminCoreOwnerAccountEntityConfiguration : IEntityTypeConfiguration<AdminCoreOwnerAccount>
+{
+    public void Configure(EntityTypeBuilder<AdminCoreOwnerAccount> builder)
+    {
+        builder.ToTable("AdminCoreOwnerAccounts");
+
+        builder.HasKey(a => a.Id);
+
+        builder.Property(a => a.Email)
+            .IsRequired()
+            .HasMaxLength(256);
+
+        builder.HasIndex(a => a.Email)
+            .IsUnique();
+
+        builder.Property(a => a.PasswordHash)
+            .HasMaxLength(512);
+
+        builder.Property(a => a.TotpSecretCipher)
+            .HasMaxLength(512);
+
+        builder.Property(a => a.PendingTotpSecretCipher)
+            .HasMaxLength(512);
+
+        builder.Property(a => a.RecoveryCodesRevealCipher)
+            .HasMaxLength(4000);
+
+        builder.Property(a => a.RecoveryCodesIssued)
+            .IsRequired();
+
+        builder.Property(a => a.FailedFactorAttempts)
+            .IsRequired();
+
+        builder.Property(a => a.CreatedAt)
+            .IsRequired();
+    }
+}
+
+public class AdminRecoveryCodeEntityConfiguration : IEntityTypeConfiguration<AdminRecoveryCode>
+{
+    public void Configure(EntityTypeBuilder<AdminRecoveryCode> builder)
+    {
+        builder.ToTable("AdminRecoveryCodes");
+
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.AccountId)
+            .IsRequired();
+
+        builder.Property(c => c.CodeHash)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.Property(c => c.CreatedAt)
+            .IsRequired();
+
+        builder.HasIndex(c => c.AccountId);
+        builder.HasIndex(c => new { c.AccountId, c.CodeHash })
+            .IsUnique();
+    }
+}
+
+public class AdminPendingAuthEntityConfiguration : IEntityTypeConfiguration<AdminPendingAuth>
+{
+    public void Configure(EntityTypeBuilder<AdminPendingAuth> builder)
+    {
+        builder.ToTable("AdminPendingAuths");
+
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Email)
+            .IsRequired()
+            .HasMaxLength(256);
+
+        builder.Property(p => p.TokenHash)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.HasIndex(p => p.TokenHash)
+            .IsUnique();
+
+        builder.Property(p => p.CreatedAt)
+            .IsRequired();
+
+        builder.Property(p => p.ExpiresAt)
+            .IsRequired();
+
+        builder.Property(p => p.FailedCodeAttempts)
+            .IsRequired();
+
+        builder.Property(p => p.ReturnPath)
+            .IsRequired()
+            .HasMaxLength(2048)
+            .HasDefaultValue("/admin/");
+
+        builder.HasIndex(p => p.Email);
+        builder.HasIndex(p => p.ExpiresAt);
+    }
+}
