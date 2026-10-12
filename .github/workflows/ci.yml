@@ -83,11 +83,11 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run Sec* parallel tests and one full second-factor sign-in
+      - name: Run Sec* parallel tests, one full second-factor sign-in, and reset IP bursts
         run: >
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
-          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst"
 
       - name: Upload PostgreSQL test results
         uses: actions/upload-artifact@v4

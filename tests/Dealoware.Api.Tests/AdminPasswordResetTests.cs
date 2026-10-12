@@ -619,36 +619,62 @@ public class AdminPasswordResetTests
     [Fact]
     public async Task TD_ADM_030_SC6_R3_ParallelBurst_AtMostTwentyPassOrIssueTokens()
     {
-        await using var keepAlive = new SqliteConnection("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared");
-        await keepAlive.OpenAsync();
-        await using (var busy = keepAlive.CreateCommand())
-        {
-            busy.CommandText = "PRAGMA busy_timeout = 5000;";
-            await busy.ExecuteNonQueryAsync();
-        }
-
-        var options = new DbContextOptionsBuilder<DealowareDbContext>()
-            .UseSqlite("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared")
-            .Options;
-        await using (var created = new DealowareDbContext(options))
-        {
-            await created.Database.EnsureCreatedAsync();
-        }
-
-        var now = DateTimeOffset.UtcNow;
         const string ipHmac = "burst-ip-hmac";
-        var results = await Task.WhenAll(Enumerable.Range(0, 40).Select(async _ =>
+        SqliteConnection? keepAlive = null;
+        DbContextOptions<DealowareDbContext> options;
+        if (IsolatedWebApplicationFactory.TryBuildTestPostgresConnectionString(out var postgres))
         {
-            await using var db = new DealowareDbContext(options);
-            return await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, now, CancellationToken.None);
-        }));
+            options = new DbContextOptionsBuilder<DealowareDbContext>()
+                .UseNpgsql(postgres)
+                .Options;
+        }
+        else
+        {
+            keepAlive = new SqliteConnection("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared");
+            await keepAlive.OpenAsync();
+            await using (var busy = keepAlive.CreateCommand())
+            {
+                busy.CommandText = "PRAGMA busy_timeout = 5000;";
+                await busy.ExecuteNonQueryAsync();
+            }
 
-        Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
-        Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
+            options = new DbContextOptionsBuilder<DealowareDbContext>()
+                .UseSqlite("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared")
+                .Options;
+        }
 
-        await using var check = new DealowareDbContext(options);
-        Assert.Equal(AdminResetIpCounter.Threshold, check.AdminResetIpCounters.Single().FailureCount);
-        Assert.True(check.AdminResetIpCounters.Single().IsLocked(now));
+        try
+        {
+            await using (var created = new DealowareDbContext(options))
+            {
+                await created.Database.EnsureCreatedAsync();
+                await created.AdminResetIpCounters
+                    .Where(c => c.IpHmac == ipHmac)
+                    .ExecuteDeleteAsync();
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var results = await Task.WhenAll(Enumerable.Range(0, 40).Select(async _ =>
+            {
+                await using var db = new DealowareDbContext(options);
+                return await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, now, CancellationToken.None);
+            }));
+
+            Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
+            Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
+
+            await using var check = new DealowareDbContext(options);
+            var row = check.AdminResetIpCounters.Single(c => c.IpHmac == ipHmac);
+            Assert.Equal(AdminResetIpCounter.Threshold, row.FailureCount);
+            Assert.True(row.IsLocked(now));
+        }
+        finally
+        {
+            if (keepAlive is not null)
+            {
+                await keepAlive.DisposeAsync();
+            }
+        }
     }
 
     [Fact]
@@ -665,7 +691,8 @@ public class AdminPasswordResetTests
             totp = Factor().ValidTotp
         });
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
-        Assert.Null(await ResetCounterAsync());
+        Assert.Equal(1, await ResetCounterCountAsync());
+        await ClearResetCountersAsync();
 
         HttpResponseMessage? lastExpired = null;
         for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
@@ -702,6 +729,109 @@ public class AdminPasswordResetTests
         await AssertConfirmThrottledAsync(goodWhileLocked);
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
         Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_B1_LockedIp_AllowedAfterWindowOrLock_FakeClock()
+    {
+        Clock().UtcNow = new DateTimeOffset(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+        await SeedCredentialAsync();
+
+        HttpResponseMessage? lastOk = null;
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            lastOk?.Dispose();
+            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.com");
+            Assert.Equal(HttpStatusCode.OK, lastOk.StatusCode);
+        }
+
+        lastOk!.Dispose();
+        var locked = await ResetCounterAsync();
+        Assert.NotNull(locked);
+        Assert.Equal(AdminResetIpCounter.Threshold, locked.FailureCount);
+        Assert.True(locked.IsLocked(Clock().UtcNow));
+
+        Clock().Advance(AdminResetIpCounter.Window);
+        using var stillLocked = await PostRequestAsync(CoreOwnerEmail);
+        await AssertRequestThrottledAsync(stillLocked);
+        Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+        Assert.True((await ResetCounterAsync())!.IsLocked(Clock().UtcNow));
+
+        Clock().Advance(AdminResetIpCounter.LockDuration - AdminResetIpCounter.Window + TimeSpan.FromSeconds(1));
+        using var unlocked = await PostRequestAsync(CoreOwnerEmail);
+        Assert.Equal(HttpStatusCode.OK, unlocked.StatusCode);
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, await unlocked.Content.ReadAsStringAsync());
+
+        var after = await ResetCounterAsync();
+        Assert.NotNull(after);
+        Assert.Equal(1, after.FailureCount);
+        Assert.False(after.IsLocked(Clock().UtcNow));
+        Assert.Null(after.LockedUntil);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_OQ3_EventExactlyFifteenMinutesOld_IsOutside()
+    {
+        Clock().UtcNow = new DateTimeOffset(2026, 10, 12, 13, 0, 0, TimeSpan.Zero);
+        await SeedCredentialAsync();
+
+        using var first = await PostRequestAsync(CoreOwnerEmail);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(1, (await ResetCounterAsync())!.FailureCount);
+
+        Clock().Advance(AdminResetIpCounter.Window);
+        using var agedOut = await PostRequestAsync("nobody@example.com");
+        Assert.Equal(HttpStatusCode.OK, agedOut.StatusCode);
+
+        var after = await ResetCounterAsync();
+        Assert.NotNull(after);
+        Assert.Equal(1, after.FailureCount);
+        Assert.False(after.IsLocked(Clock().UtcNow));
+        Assert.True(after.WindowOpen(Clock().UtcNow));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_SC6_B2_ParallelBadTokenBurst_AtMostTwenty()
+    {
+        await SeedCredentialAsync();
+        await ClearResetCountersAsync();
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 40).Select(i =>
+            PostConfirmAsync(new
+            {
+                token = $"bad-token-burst-{i}",
+                newPassword = NextPassword,
+                totp = Factor().ValidTotp
+            })));
+
+        try
+        {
+            Assert.Equal(
+                AdminResetIpCounter.Threshold,
+                responses.Count(r => r.StatusCode == HttpStatusCode.SeeOther));
+            Assert.Equal(
+                40 - AdminResetIpCounter.Threshold,
+                responses.Count(r => r.StatusCode == HttpStatusCode.TooManyRequests));
+            Assert.All(
+                responses.Where(r => r.StatusCode == HttpStatusCode.SeeOther),
+                AssertLinkExpired);
+            foreach (var throttled in responses.Where(r => r.StatusCode == HttpStatusCode.TooManyRequests))
+            {
+                await AssertConfirmThrottledAsync(throttled);
+            }
+
+            var counter = await ResetCounterAsync();
+            Assert.NotNull(counter);
+            Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
+            Assert.True(counter.IsLocked(Clock().UtcNow));
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
     }
 
     [Fact]

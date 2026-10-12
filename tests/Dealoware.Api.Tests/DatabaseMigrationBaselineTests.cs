@@ -404,9 +404,11 @@ public class DatabaseMigrationBaselineTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
 
-        await using (var db = new DealowareDbContext(options))
+        await CreateFrozen15TableSchemaAsync(connection);
+        await using (var addUpdatedAt = connection.CreateCommand())
         {
-            await db.Database.EnsureCreatedAsync();
+            addUpdatedAt.CommandText = "ALTER TABLE Participants ADD COLUMN UpdatedAt TEXT;";
+            await addUpdatedAt.ExecuteNonQueryAsync();
         }
 
         Assert.Contains("UpdatedAt", await ListSqliteColumnsAsync(connection, "Participants"));
@@ -419,9 +421,7 @@ public class DatabaseMigrationBaselineTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSchemaBootstrap.ApplyMigrationsAsync(apply));
 
-        // Current-model EnsureCreated includes TOTP and reset tables that are not
-        // in the frozen 15-table stamp set, so the one-shot refuses as unknown.
-        Assert.Equal(DatabaseMigrationBaseline.UnknownSchemaMessage, ex.Message);
+        Assert.Equal(DatabaseMigrationBaseline.SchemaMismatchMessage, ex.Message);
         AssertSafe(ex.Message);
         Assert.DoesNotContain(
             DatabaseMigrationBaseline.HistoryTableName,
@@ -713,7 +713,8 @@ public class DatabaseMigrationBaselineTests
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
         Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
         Assert.Equal(DatabaseMigrationBaseline.TotpRecoveryMigrationId, migrations[3]);
-        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[4]);
+        Assert.Equal(DatabaseMigrationBaseline.AdminPasswordResetMigrationId, migrations[4]);
+        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[5]);
     }
 
     [Fact]
