@@ -47,6 +47,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-10-05__product__note__core-admin-dashboard-scope.md](product/2026-10-05__product__note__core-admin-dashboard-scope.md) — Core admin dashboard goals + AC at admin.core.dealoware.com. Soft HOLD build. PoC $0.
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
+- [Dealoware-PoC-Negotiations.postman_collection.json](../postman/Dealoware-PoC-Negotiations.postman_collection.json) — Core API negotiations collection aligned to main d33a6d9c
 - [2026-09-21__product__note__brief-4-status-reply.md](product/2026-09-21__product__note__brief-4-status-reply.md)
 - [2026-09-21__product__proposal__grok-bot-internal-test-connector.md](product/2026-09-21__product__proposal__grok-bot-internal-test-connector.md)
 

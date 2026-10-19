@@ -2,13 +2,31 @@
 	"info": {
 		"_postman_id": "dealoware-poc-negotiations",
 		"name": "Dealoware PoC — Negotiations",
-		"description": "End-to-end negotiation scenarios for the Dealoware PoC.\n\nSee companion documentation: [docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md](../docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md)\n\n## Quick Start\n\n1. Ensure API is running: `dotnet run --project src/Dealoware.Api`\n2. Verify: GET `{{baseUrl}}/health` → `{\"status\":\"ok\"}`\n3. Run folders in order: 01-Bootstrap → 02-Happy-Path-Deal → etc.\n\n## Variables\n\nThe collection auto-captures credentials and IDs via Tests scripts. If running individual requests, ensure prerequisite variables are set.\n\n## Authentication\n\nAll protected endpoints use `Authorization: ApiKey {{...ApiKey}}`",
+		"description": "Core API negotiations collection aligned to main `d33a6d9c12c34f07871309b67bb0e17c574e84f8`.\n\nEndpoint blobs on that commit:\n- `src/Dealoware.Api/Endpoints/AuthEndpoints.cs` `9191276796ded8ea5f8a2b1f9b59cb65b84a5ddd`\n- `src/Dealoware.Api/Endpoints/ArtifactEndpoints.cs` `42597dea972425d73cd607da954fc5e511f6f2b8`\n- `src/Dealoware.Api/Endpoints/NegotiationEndpoints.cs` `5a08eacabc9699ba32f9c8d5cf528678814fd48f`\n- `src/Dealoware.Api/Endpoints/OfferEndpoints.cs` `3670d23a1f0ade011c01d42ea8d5d9ca6b60178d`\n- `src/Dealoware.Api/Auth/AuthHelper.cs` `a2dfa78f104749261628ad170894138c748883b2`\n\nCompanion: [docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md](../docs/product/2026-09-20__product__guide__poc-negotiation-scenarios.md)\n\n## Base URL\n\n`{{baseUrl}}` defaults to `https://api.core.dealoware.com` (live Core API). Local Development is secondary: set `baseUrl` to `http://localhost:5287` (Newman: `--env-var baseUrl=http://localhost:5287`). Key and token variables stay empty in this file.\n\nSwagger is Development-only (`Program.cs` serves Swagger only when `IsDevelopment()`) and returns 404 in Production by design, so this collection is the HTTP reference.\n\n## Authentication\n\nProtected endpoints accept the Authorization header only (query-string and body tokens are rejected).\n\n- **ApiKey:** `Authorization: ApiKey {{sellerApiKey}}` or `Authorization: ApiKey {{buyerApiKey}}`. Use ApiKey after register for scripted flows that should not depend on JWT expiry.\n- **Bearer:** call `POST /auth/token` with `{ \"apiKey\": \"{{sellerApiKey}}\" }`, then `Authorization: Bearer {{accessToken}}`. The token test script stores `accessToken`. Use Bearer when you already minted a JWT (`expiresIn` seconds).\n\n## Rate limits\n\nPOST /auth/register and POST /auth/token are fixed-window rate limited per client IP (see RateLimiting in appsettings). A throttled call returns HTTP 429 with a Retry-After header (whole seconds until the fixed window resets) and JSON body message: \"Too many requests. Retry after the number of seconds in the Retry-After header.\" Wait for Retry-After, then retry. Collection scripts record Retry-After and do not retry in a loop.\n\nAdmin routes (`/admin/...`) are out of scope and host-gated to admin.core.\n\nMaker withdraw is not mapped on main. Inbound signed POST is unimplemented. Folders follow the negotiation flow: Auth → Artifact → Negotiation → Offer → Counter → Accept or Decline.\n",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
+	"event": [
+		{
+			"listen": "test",
+			"script": {
+				"exec": [
+					"if (pm.response.code === 429) {",
+					"    var retryAfter = pm.response.headers.get('Retry-After');",
+					"    pm.test('HTTP 429 includes Retry-After (no retry loop)', function () {",
+					"        pm.expect(retryAfter, 'Retry-After header').to.exist;",
+					"        pm.expect(String(retryAfter).length).to.be.above(0);",
+					"    });",
+					"    console.warn('HTTP 429 for ' + pm.info.requestName + '; Retry-After=' + retryAfter + '; not retrying in a loop.');",
+					"}"
+				],
+				"type": "text/javascript"
+			}
+		}
+	],
 	"variable": [
 		{
 			"key": "baseUrl",
-			"value": "http://localhost:5287",
+			"value": "https://api.core.dealoware.com",
 			"type": "string"
 		},
 		{
@@ -18,6 +36,21 @@
 		},
 		{
 			"key": "buyerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "observerApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "authDemoApiKey",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
 			"value": "",
 			"type": "string"
 		},
@@ -32,12 +65,12 @@
 			"type": "string"
 		},
 		{
-			"key": "observerApiKey",
+			"key": "observerSub",
 			"value": "",
 			"type": "string"
 		},
 		{
-			"key": "observerSub",
+			"key": "authDemoSub",
 			"value": "",
 			"type": "string"
 		},
@@ -64,7 +97,7 @@
 	],
 	"item": [
 		{
-			"name": "00-Health-Check",
+			"name": "00-Health",
 			"item": [
 				{
 					"name": "Health Check (No Auth)",
@@ -76,6 +109,8 @@
 									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
 									"",
 									"pm.test(\"Response has status ok\", function () {",
 									"    var jsonData = pm.response.json();",
@@ -91,21 +126,25 @@
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/health",
-							"host": ["{{baseUrl}}"],
-							"path": ["health"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
 						},
-						"description": "Verify the API is running. No authentication required."
+						"description": "GET /health — public liveness. No Authorization. Response: `{ \"status\": \"ok\" }`."
 					},
 					"response": []
 				}
 			],
-			"description": "Verify the API is running before starting scenarios."
+			"description": "Confirm the Core API process is up before auth. No credentials."
 		},
 		{
-			"name": "01-Bootstrap",
+			"name": "01-Auth",
 			"item": [
 				{
-					"name": "S1.1 Register Seller",
+					"name": "Register Seller",
 					"event": [
 						{
 							"listen": "test",
@@ -115,19 +154,21 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
-									"pm.test(\"Response has required fields\", function () {",
+									"if (pm.response.code !== 201) { return; }",
+									"",
+									"pm.test(\"RegisterResponse fields\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('sub');",
 									"    pm.expect(jsonData).to.have.property('apiKey');",
 									"    pm.expect(jsonData).to.have.property('displayName');",
+									"    pm.expect(jsonData).to.have.property('apiKeyPrefix');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
 									"});",
 									"",
-									"// Save credentials to collection variables",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"sellerApiKey\", jsonData.apiKey);",
 									"pm.collectionVariables.set(\"sellerSub\", jsonData.sub);",
-									"",
-									"console.log(\"Seller registered - Sub: \" + jsonData.sub);"
+									"console.log(\"Registered sub: \" + jsonData.sub);"
 								],
 								"type": "text/javascript"
 							}
@@ -141,21 +182,26 @@
 								"value": "application/json"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"displayName\": \"Seller\"\n}"
-						},
 						"url": {
 							"raw": "{{baseUrl}}/auth/register",
-							"host": ["{{baseUrl}}"],
-							"path": ["auth", "register"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
 						},
-						"description": "Register the Seller participant. Captures `sellerApiKey` and `sellerSub`."
+						"description": "POST /auth/register — bootstrap the seller participant (no Authorization). Response RegisterResponse: sub, displayName, apiKey (shown once), apiKeyPrefix, createdAt. Captures sellerApiKey and sellerSub.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"alex.doe@example.test\"\n}"
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S1.2 Register Buyer",
+					"name": "Register Buyer",
 					"event": [
 						{
 							"listen": "test",
@@ -165,18 +211,21 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
-									"pm.test(\"Response has required fields\", function () {",
+									"if (pm.response.code !== 201) { return; }",
+									"",
+									"pm.test(\"RegisterResponse fields\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('sub');",
 									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"    pm.expect(jsonData).to.have.property('displayName');",
+									"    pm.expect(jsonData).to.have.property('apiKeyPrefix');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
 									"});",
 									"",
-									"// Save credentials to collection variables",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"buyerApiKey\", jsonData.apiKey);",
 									"pm.collectionVariables.set(\"buyerSub\", jsonData.sub);",
-									"",
-									"console.log(\"Buyer registered - Sub: \" + jsonData.sub);"
+									"console.log(\"Registered sub: \" + jsonData.sub);"
 								],
 								"type": "text/javascript"
 							}
@@ -190,21 +239,87 @@
 								"value": "application/json"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"displayName\": \"Buyer\"\n}"
-						},
 						"url": {
 							"raw": "{{baseUrl}}/auth/register",
-							"host": ["{{baseUrl}}"],
-							"path": ["auth", "register"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
 						},
-						"description": "Register the Buyer participant. Captures `buyerApiKey` and `buyerSub`."
+						"description": "POST /auth/register — bootstrap the buyer participant (no Authorization). Response RegisterResponse: sub, apiKey, apiKeyPrefix, displayName, createdAt. Captures buyerApiKey and buyerSub.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"blair.doe@example.test\"\n}"
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S2.1 Create Sell Artifact (Seller)",
+					"name": "Issue JWT (store accessToken)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"TokenResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('accessToken');",
+									"    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+									"    pm.expect(jsonData).to.have.property('expiresIn');",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"accessToken\", jsonData.accessToken);",
+									"console.log(\"JWT stored in accessToken for sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/token",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"token"
+							]
+						},
+						"description": "POST /auth/token — exchange the seller API key for a JWT (no Authorization header; body TokenRequest.apiKey). Response TokenResponse: accessToken, tokenType (Bearer), expiresIn, sub. Test script stores accessToken.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"apiKey\": \"{{sellerApiKey}}\"\n}"
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Auth and participants: register seller and buyer, then mint a JWT. Run this folder first."
+		},
+		{
+			"name": "02-Artifact",
+			"item": [
+				{
+					"name": "Create Sell Artifact (Seller)",
 					"event": [
 						{
 							"listen": "test",
@@ -214,17 +329,22 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
-									"pm.test(\"Response has artifact id\", function () {",
+									"if (pm.response.code !== 201) { return; }",
+									"",
+									"pm.test(\"ArtifactResponse has id and sell intent\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('ownerParticipantId');",
+									"    pm.expect(jsonData).to.have.property('entities');",
 									"    pm.expect(jsonData.intent).to.eql('sell');",
+									"    pm.expect(jsonData).to.have.property('values');",
+									"    pm.expect(jsonData).to.have.property('locations');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
 									"});",
 									"",
-									"// Save artifact ID",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"artifactId\", jsonData.id);",
-									"",
-									"console.log(\"Artifact created - ID: \" + jsonData.id);"
+									"console.log(\"Artifact created\");"
 								],
 								"type": "text/javascript"
 							}
@@ -242,27 +362,124 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/artifacts",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"artifacts"
+							]
+						},
+						"description": "POST /artifacts — seller creates a sell artifact. Auth: ApiKey {{sellerApiKey}}. Body CreateArtifactRequest (entities, intent, values, locations). Response ArtifactResponse: id, ownerParticipantId, entities, intent, values, locations, timePeriods, createdAt. Captures artifactId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"entities\": [\n    {\n      \"name\": \"2020 Toyota Camry\",\n      \"description\": \"Well-maintained sedan, single owner\",\n      \"properties\": [\n        {\"name\": \"mileage\", \"type\": \"number\", \"value\": \"45000\"},\n        {\"name\": \"color\", \"type\": \"string\", \"value\": \"silver\"}\n      ],\n      \"facts\": [\"Clean title\", \"Regular maintenance\"]\n    }\n  ],\n  \"intent\": \"sell\",\n  \"values\": [{\"amount\": 22000.00, \"currency\": \"USD\"}],\n  \"locations\": [\"Los Angeles, CA\"]\n}"
-						},
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Artifact by Id (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"ArtifactResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('ownerParticipantId');",
+									"    pm.expect(jsonData.intent).to.eql('sell');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
 						"url": {
-							"raw": "{{baseUrl}}/artifacts",
-							"host": ["{{baseUrl}}"],
-							"path": ["artifacts"]
+							"raw": "{{baseUrl}}/artifacts/{{artifactId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"artifacts",
+								"{{artifactId}}"
+							]
 						},
-						"description": "Seller creates an artifact representing a car for sale. Captures `artifactId`."
+						"description": "GET /artifacts/{id} — owner-scoped get. Auth: ApiKey {{sellerApiKey}}. Response ArtifactResponse (id, ownerParticipantId, intent, entities). 401 unauthenticated; 404 if missing or not owner."
+					},
+					"response": []
+				},
+				{
+					"name": "List Own Artifacts (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"ArtifactResponse array includes created artifact\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"    pm.expect(jsonData.length).to.be.at.least(1);",
+									"    var id = pm.collectionVariables.get('artifactId');",
+									"    pm.expect(jsonData.some(function (a) { return a.id === id; })).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/artifacts/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"artifacts",
+								""
+							]
+						},
+						"description": "GET /artifacts/ — list artifacts owned by the caller. Auth: ApiKey {{sellerApiKey}}. Response: ArtifactResponse array."
 					},
 					"response": []
 				}
 			],
-			"description": "**S1-S2:** Register Seller and Buyer participants, create a sell artifact.\n\nRun this folder first to populate credentials and artifact ID."
+			"description": "Seller creates a sell artifact, then reads it back. Requires seller ApiKey from 01-Auth."
 		},
 		{
-			"name": "02-Happy-Path-Deal",
+			"name": "03-Negotiation",
 			"item": [
 				{
-					"name": "S3.1 Create Negotiation (Seller initiates)",
+					"name": "Create Negotiation (Seller initiates)",
 					"event": [
 						{
 							"listen": "test",
@@ -272,19 +489,23 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
 									"pm.test(\"Negotiation is Open with complementary intents\", function () {",
 									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('artifactId');",
+									"    pm.expect(jsonData).to.have.property('partyAParticipantId');",
+									"    pm.expect(jsonData).to.have.property('partyBParticipantId');",
 									"    pm.expect(jsonData.status).to.eql('Open');",
 									"    pm.expect(jsonData.partyAIntent).to.eql('sell');",
 									"    pm.expect(jsonData.partyBIntent).to.eql('buy');",
 									"    pm.expect(jsonData.identitySealed).to.be.true;",
 									"});",
 									"",
-									"// Save negotiation ID",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
-									"",
-									"console.log(\"Negotiation created - ID: \" + jsonData.id);"
+									"console.log(\"Negotiation created\");"
 								],
 								"type": "text/javascript"
 							}
@@ -302,21 +523,129 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — start a 1:1 negotiation (caller is party A). Auth: ApiKey {{sellerApiKey}}. Body CreateNegotiationRequest: artifactId, counterpartyParticipantId, callerIntent, counterpartyIntent. Response NegotiationResponse: id, artifactId, partyA/B participant ids and intents, status, identitySealed, createdAt (offers omitted). Captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
-						},
-						"description": "Seller initiates negotiation with Buyer (sell ↔ buy). Captures `negotiationId`."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S4.1 Seller Places Offer",
+					"name": "List Negotiations (Seller Bearer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"NegotiationResponse array (includeOffers false)\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"    pm.expect(jsonData.length).to.be.at.least(1);",
+									"    var id = pm.collectionVariables.get('negotiationId');",
+									"    var found = jsonData.find(function (n) { return n.id === id; });",
+									"    pm.expect(found).to.not.be.undefined;",
+									"    pm.expect(found).to.have.property('artifactId');",
+									"    pm.expect(found).to.have.property('status');",
+									"    pm.expect(found.identitySealed).to.be.true;",
+									"    pm.expect(found.offers == null || found.offers === undefined).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								""
+							]
+						},
+						"description": "GET /negotiations/ — list negotiations for the caller (offers not embedded). Auth: Bearer {{accessToken}} from POST /auth/token. Response: NegotiationResponse array."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Negotiation by Id (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"NegotiationResponse includes id and offers array\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"    pm.expect(jsonData.offers).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}"
+							]
+						},
+						"description": "GET /negotiations/{id} — party-only get with embedded offers. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse including offers[]. Non-party → 404."
+					},
+					"response": []
+				}
+			],
+			"description": "Seller starts a 1:1 negotiation with the buyer, lists, and gets by id."
+		},
+		{
+			"name": "04-Offer",
+			"item": [
+				{
+					"name": "Seller Places Offer",
 					"event": [
 						{
 							"listen": "test",
@@ -326,19 +655,23 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
 									"pm.test(\"Offer is Open with correct details\", function () {",
 									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('negotiationId');",
+									"    pm.expect(jsonData).to.have.property('fromParticipantId');",
+									"    pm.expect(jsonData).to.have.property('toParticipantId');",
 									"    pm.expect(jsonData.status).to.eql('Open');",
 									"    pm.expect(jsonData.amount).to.eql(22000);",
 									"    pm.expect(jsonData.currency).to.eql('USD');",
 									"    pm.expect(jsonData.identitySealed).to.be.true;",
 									"});",
 									"",
-									"// Save offer ID",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"offerId\", jsonData.id);",
-									"",
-									"console.log(\"Offer placed - ID: \" + jsonData.id);"
+									"console.log(\"Offer placed\");"
 								],
 								"type": "text/javascript"
 							}
@@ -356,21 +689,137 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers — place an offer. Auth: ApiKey {{sellerApiKey}}. Body CreateOfferRequest: amount, currency, terms (no contact PII). Response OfferResponse: id, negotiationId, from/toParticipantId, status, amount, currency, terms, createdAt, identitySealed. Captures offerId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 22000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Cash only, as-is condition\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
-						},
-						"description": "Seller places first offer ($22,000). Captures `offerId`."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S5.1 Buyer Counters",
+					"name": "List Offers (Seller)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"OfferResponse array contains placed offer\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"    pm.expect(jsonData.length).to.be.at.least(1);",
+									"    var id = pm.collectionVariables.get('offerId');",
+									"    var found = jsonData.find(function (o) { return o.id === id; });",
+									"    pm.expect(found).to.not.be.undefined;",
+									"    pm.expect(found).to.have.property('negotiationId');",
+									"    pm.expect(found.status).to.eql('Open');",
+									"    pm.expect(found.identitySealed).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{sellerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/offers/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"offers",
+								""
+							]
+						},
+						"description": "GET /offers/ — list offers for the caller. Auth: ApiKey {{sellerApiKey}}. Response: OfferResponse array."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Offer by Id (Buyer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"OfferResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('negotiationId');",
+									"    pm.expect(jsonData).to.have.property('fromParticipantId');",
+									"    pm.expect(jsonData).to.have.property('toParticipantId');",
+									"    pm.expect(jsonData.status).to.eql('Open');",
+									"    pm.expect(jsonData.amount).to.eql(22000);",
+									"    pm.expect(jsonData.currency).to.eql('USD');",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
+									"    pm.expect(jsonData).to.not.have.property('loginEmail');",
+									"    pm.expect(jsonData).to.not.have.property('counterpartyContactEmail');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{buyerApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/offers/{{offerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"offers",
+								"{{offerId}}"
+							]
+						},
+						"description": "GET /offers/{id} — party-only get. Auth: ApiKey {{buyerApiKey}}. Response OfferResponse (identity still sealed; no contact-on-accept fields). Non-party → 404."
+					},
+					"response": []
+				}
+			],
+			"description": "Seller places an offer; both parties can list and get it."
+		},
+		{
+			"name": "05-Counter",
+			"item": [
+				{
+					"name": "Buyer Counters",
 					"event": [
 						{
 							"listen": "test",
@@ -380,18 +829,20 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
 									"pm.test(\"Counter-offer is Open with new amount\", function () {",
 									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
 									"    pm.expect(jsonData.status).to.eql('Open');",
 									"    pm.expect(jsonData.amount).to.eql(18000);",
 									"    pm.expect(jsonData.currency).to.eql('USD');",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
 									"});",
 									"",
-									"// Save counter-offer ID",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"counterOfferId\", jsonData.id);",
-									"",
-									"console.log(\"Counter-offer created - ID: \" + jsonData.id);"
+									"console.log(\"Counter-offer created\");"
 								],
 								"type": "text/javascript"
 							}
@@ -409,21 +860,33 @@
 								"value": "ApiKey {{buyerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/offers/{{offerId}}/counter",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"offers",
+								"{{offerId}}",
+								"counter"
+							]
+						},
+						"description": "POST /offers/{id}/counter — recipient creates a new offer and supersedes the prior one. Auth: ApiKey {{buyerApiKey}}. Body CounterOfferRequest: amount, currency, terms. Response OfferResponse for the new open offer. Captures counterOfferId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 18000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Financing available, inspection required\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/offers/{{offerId}}/counter",
-							"host": ["{{baseUrl}}"],
-							"path": ["offers", "{{offerId}}", "counter"]
-						},
-						"description": "Buyer counters with $18,000. Original offer → Superseded. Captures `counterOfferId`."
+						}
 					},
 					"response": []
-				},
+				}
+			],
+			"description": "Buyer counters the open offer. Original offer becomes Superseded."
+		},
+		{
+			"name": "06-Accept-or-Decline",
+			"item": [
 				{
-					"name": "S6.1 Seller Accepts Counter",
+					"name": "Seller Accepts Counter",
 					"event": [
 						{
 							"listen": "test",
@@ -433,20 +896,34 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test(\"Offer is Accepted\", function () {",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"AcceptOfferResponse: Accepted + contact-on-accept fields\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.status).to.eql('Accepted');",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('negotiationId');",
+									"    pm.expect(jsonData).to.have.property('fromParticipantId');",
+									"    pm.expect(jsonData).to.have.property('toParticipantId');",
+									"    pm.expect(jsonData).to.have.property('amount');",
+									"    pm.expect(jsonData).to.have.property('currency');",
+									"    pm.expect(jsonData).to.have.property('terms');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
+									"    pm.expect(jsonData.identitySealed).to.be.false;",
+									"    pm.expect(jsonData.includesContactEmail).to.be.true;",
+									"    pm.expect(jsonData).to.have.property('counterpartyContactEmail');",
+									"    pm.expect(jsonData).to.have.property('counterpartyDisplayName');",
 									"});",
 									"",
-									"pm.test(\"No contact PII in response (identity sealed)\", function () {",
+									"pm.test(\"loginEmail is never included on accept\", function () {",
+									"    var raw = pm.response.text();",
+									"    pm.expect(raw.toLowerCase()).to.not.include('loginemail');",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData.identitySealed).to.be.true;",
-									"    pm.expect(jsonData).to.not.have.property('email');",
+									"    pm.expect(jsonData).to.not.have.property('loginEmail');",
 									"    pm.expect(jsonData).to.not.have.property('phone');",
-									"    pm.expect(jsonData).to.not.have.property('contact');",
 									"});",
 									"",
-									"console.log(\"Deal completed - Offer accepted!\");"
+									"console.log(\"Offer accepted (contact-on-accept response).\");"
 								],
 								"type": "text/javascript"
 							}
@@ -462,15 +939,21 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/offers/{{counterOfferId}}/accept",
-							"host": ["{{baseUrl}}"],
-							"path": ["offers", "{{counterOfferId}}", "accept"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"offers",
+								"{{counterOfferId}}",
+								"accept"
+							]
 						},
-						"description": "Seller accepts Buyer's counter-offer. Deal complete! No contact PII released (PoC stub)."
+						"description": "POST /offers/{id}/accept — recipient only. Auth: ApiKey {{sellerApiKey}}. Response AcceptOfferResponse: id, negotiationId, from/toParticipantId, status, amount, currency, terms, createdAt, identitySealed (false when the Accept grant allows ShareOutbound ContactEmail), includesContactEmail, counterpartyContactEmail (offeror ContactEmail or null if unset), counterpartyDisplayName. loginEmail is never included."
 					},
 					"response": []
 				},
 				{
-					"name": "S6.2 View Final Negotiation State",
+					"name": "View Final Negotiation State",
 					"event": [
 						{
 							"listen": "test",
@@ -480,14 +963,14 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
 									"pm.test(\"Negotiation contains accepted offer\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.offers).to.be.an('array');",
-									"    var acceptedOffer = jsonData.offers.find(o => o.status === 'Accepted');",
+									"    var acceptedOffer = jsonData.offers.find(function (o) { return o.status === 'Accepted'; });",
 									"    pm.expect(acceptedOffer).to.not.be.undefined;",
-									"});",
-									"",
-									"console.log(\"Final negotiation state retrieved\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -503,21 +986,20 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}"
+							]
 						},
-						"description": "View the negotiation with all offers after deal completion."
+						"description": "GET /negotiations/{id} after accept. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse with offers[] including the Accepted offer. Contact fields stay on AcceptOfferResponse only."
 					},
 					"response": []
-				}
-			],
-			"description": "**S3-S6:** Complete happy-path negotiation flow.\n\nSeller creates negotiation → places offer → Buyer counters → Seller accepts.\n\n**Prerequisite:** Run 01-Bootstrap first."
-		},
-		{
-			"name": "03-Alternate-Decline",
-			"item": [
+				},
 				{
-					"name": "Setup: Create Fresh Negotiation",
+					"name": "Decline setup: Create Fresh Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -527,9 +1009,11 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
-									"console.log(\"Fresh negotiation for decline test - ID: \" + jsonData.id);"
+									"console.log(\"Fresh negotiation for decline\");"
 								],
 								"type": "text/javascript"
 							}
@@ -547,20 +1031,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — new Open negotiation for the decline path. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "Setup: Seller Places Offer",
+					"name": "Decline setup: Seller Places Offer",
 					"event": [
 						{
 							"listen": "test",
@@ -569,6 +1058,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
@@ -589,20 +1080,27 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers — offer the buyer will decline. Auth: ApiKey {{sellerApiKey}}. Response OfferResponse; captures offerId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 25000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Firm price\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S7.1 Buyer Declines Offer",
+					"name": "Buyer Declines Offer",
 					"event": [
 						{
 							"listen": "test",
@@ -612,12 +1110,14 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
 									"pm.test(\"Offer is Declined\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.status).to.eql('Declined');",
-									"});",
-									"",
-									"console.log(\"Offer declined by Buyer\");"
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData.identitySealed).to.be.true;",
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -633,21 +1133,27 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/offers/{{offerId}}/decline",
-							"host": ["{{baseUrl}}"],
-							"path": ["offers", "{{offerId}}", "decline"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"offers",
+								"{{offerId}}",
+								"decline"
+							]
 						},
-						"description": "Buyer declines Seller's offer. Negotiation remains Open for new offers."
+						"description": "POST /offers/{id}/decline — recipient only. Auth: ApiKey {{buyerApiKey}}. Response OfferResponse with status Declined. Negotiation stays Open."
 					},
 					"response": []
 				}
 			],
-			"description": "**S7:** Buyer declines an offer without countering.\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "Happy path: seller accepts the counter (contact-on-accept). Alternate: fresh negotiation, buyer declines."
 		},
 		{
-			"name": "04-Alternate-Close",
+			"name": "07-Close",
 			"item": [
 				{
-					"name": "Setup: Create Fresh Negotiation",
+					"name": "Close setup: Create Fresh Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -656,6 +1162,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
@@ -676,20 +1184,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — Open negotiation that will be closed. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "Setup: Place Offer (to be cancelled)",
+					"name": "Close setup: Place Offer (to be cancelled)",
 					"event": [
 						{
 							"listen": "test",
@@ -698,6 +1211,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
@@ -718,20 +1233,27 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers — open offer expected to Cancel on close. Auth: ApiKey {{sellerApiKey}}. Response OfferResponse; captures offerId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 20000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Open offer\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S8.1 Close Negotiation",
+					"name": "Close Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -741,6 +1263,8 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
 									"pm.test(\"Negotiation is Closed\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.status).to.eql('Closed');",
@@ -749,15 +1273,11 @@
 									"pm.test(\"Open offers are Cancelled\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    if (jsonData.offers && jsonData.offers.length > 0) {",
-									"        jsonData.offers.forEach(function(offer) {",
-									"            if (offer.status !== 'Cancelled') {",
-									"                pm.expect(offer.status).to.be.oneOf(['Accepted', 'Declined', 'Superseded', 'Cancelled']);",
-									"            }",
+									"        jsonData.offers.forEach(function (offer) {",
+									"            pm.expect(offer.status).to.be.oneOf(['Accepted', 'Declined', 'Superseded', 'Cancelled']);",
 									"        });",
 									"    }",
-									"});",
-									"",
-									"console.log(\"Negotiation closed\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -773,21 +1293,27 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "close"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"close"
+							]
 						},
-						"description": "Seller closes the negotiation. All open offers → Cancelled."
+						"description": "POST /negotiations/{id}/close — party closes the negotiation and cancels open offers. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse with status Closed and offers[] (open ones Cancelled)."
 					},
 					"response": []
 				}
 			],
-			"description": "**S8:** Close negotiation (cancels all open offers).\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "Close an Open negotiation; open offers become Cancelled."
 		},
 		{
-			"name": "05-Negative-Cases",
+			"name": "08-Negative-Cases",
 			"item": [
 				{
-					"name": "S9.1 Non-Complementary Intents → 400",
+					"name": "Non-Complementary Intents → 400",
 					"event": [
 						{
 							"listen": "test",
@@ -797,13 +1323,13 @@
 									"    pm.response.to.have.status(400);",
 									"});",
 									"",
+									"if (pm.response.code !== 400) { return; }",
+									"",
 									"pm.test(\"Error mentions non-complementary intents\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    var errorText = JSON.stringify(jsonData);",
 									"    pm.expect(errorText.toLowerCase()).to.include('complementary');",
-									"});",
-									"",
-									"console.log(\"Correctly rejected non-complementary intents\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -821,21 +1347,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ with sell/sell. Auth: ApiKey {{sellerApiKey}}. Expect 400 ValidationProblemDetails mentioning complementary intents.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"sell\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
-						},
-						"description": "Both parties want to sell → 400 (intents not complementary)."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S10.1 Register Observer (Third Party)",
+					"name": "Register Observer (Third Party)",
 					"event": [
 						{
 							"listen": "test",
@@ -845,9 +1375,18 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
+									"pm.test(\"RegisterResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"});",
+									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"observerApiKey\", jsonData.apiKey);",
-									"pm.collectionVariables.set(\"observerSub\", jsonData.sub);"
+									"pm.collectionVariables.set(\"observerSub\", jsonData.sub);",
+									"console.log(\"Registered sub: \" + jsonData.sub);"
 								],
 								"type": "text/javascript"
 							}
@@ -861,21 +1400,26 @@
 								"value": "application/json"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"displayName\": \"Observer\"\n}"
-						},
 						"url": {
 							"raw": "{{baseUrl}}/auth/register",
-							"host": ["{{baseUrl}}"],
-							"path": ["auth", "register"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
 						},
-						"description": "Register a third party who is not part of any negotiation."
+						"description": "POST /auth/register — third-party participant who is not on the negotiation. No Authorization. Response RegisterResponse; captures observerApiKey and observerSub.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"casey.doe@example.test\"\n}"
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S10.2 Setup: Create Negotiation for Non-Party Test",
+					"name": "Non-party setup: Create Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -884,6 +1428,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
@@ -904,30 +1450,37 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — negotiation the observer is not a party to. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S10.3 Non-Party GET → 404",
+					"name": "Non-Party GET → 404",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"exec": [
-									"pm.test(\"Status code is 404 (not 403)\", function () {",
+									"pm.test(\"Status code is 404\", function () {",
 									"    pm.response.to.have.status(404);",
 									"});",
 									"",
-									"console.log(\"Correctly returned 404 for non-party (no information leak)\");"
+									"if (pm.response.code !== 404) { return; }",
+									"",
+									"console.log(\"Non-party GET returned 404\");"
 								],
 								"type": "text/javascript"
 							}
@@ -943,15 +1496,20 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}"
+							]
 						},
-						"description": "Third party (Observer) attempts to view negotiation → 404 (not 403, no info leak)."
+						"description": "GET /negotiations/{id} as a non-party. Auth: ApiKey {{observerApiKey}}. Expect 404 (not 403) so existence is not leaked."
 					},
 					"response": []
 				},
 				{
-					"name": "S11.1 Setup: Create Negotiation for Duplicate Offer Test",
+					"name": "Duplicate-offer setup: Create Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -960,6 +1518,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
@@ -980,20 +1540,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — Open negotiation for the duplicate-offer case. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S11.2 First Offer (Success)",
+					"name": "First Offer (Success)",
 					"event": [
 						{
 							"listen": "test",
@@ -1002,6 +1567,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"offerId\", jsonData.id);"
@@ -1022,20 +1589,27 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers — first open offer from the seller. Auth: ApiKey {{sellerApiKey}}. Response OfferResponse 201; captures offerId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 21000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"First offer\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S11.3 Second Offer Same Side → 400",
+					"name": "Second Offer Same Side → 400",
 					"event": [
 						{
 							"listen": "test",
@@ -1045,13 +1619,13 @@
 									"    pm.response.to.have.status(400);",
 									"});",
 									"",
+									"if (pm.response.code !== 400) { return; }",
+									"",
 									"pm.test(\"Error mentions already have open offer\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    var errorText = JSON.stringify(jsonData);",
 									"    pm.expect(errorText.toLowerCase()).to.include('open offer');",
-									"});",
-									"",
-									"console.log(\"Correctly rejected second open offer from same side\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1069,21 +1643,27 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers while the seller still has an open offer. Auth: ApiKey {{sellerApiKey}}. Expect 400 ValidationProblemDetails mentioning an open offer.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 20000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Second offer attempt\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
-						},
-						"description": "Seller tries to place second offer while first is still open → 400."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S12.1 Setup: Create Negotiation for Close Test",
+					"name": "After-close setup: Create Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1092,6 +1672,8 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"var jsonData = pm.response.json();",
 									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
@@ -1112,20 +1694,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ — negotiation that will be closed then mutated. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; captures negotiationId.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "S12.2 Close Negotiation",
+					"name": "After-close setup: Close Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1134,6 +1721,8 @@
 									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
 									"",
 									"pm.test(\"Negotiation is Closed\", function () {",
 									"    var jsonData = pm.response.json();",
@@ -1154,14 +1743,21 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "close"]
-						}
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"close"
+							]
+						},
+						"description": "POST /negotiations/{id}/close so later mutations 409. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse status Closed."
 					},
 					"response": []
 				},
 				{
-					"name": "S12.3 Place Offer After Close → 409",
+					"name": "Place Offer After Close → 409",
 					"event": [
 						{
 							"listen": "test",
@@ -1171,12 +1767,12 @@
 									"    pm.response.to.have.status(409);",
 									"});",
 									"",
+									"if (pm.response.code !== 409) { return; }",
+									"",
 									"pm.test(\"Error mentions Closed status\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.error).to.include('Closed');",
-									"});",
-									"",
-									"console.log(\"Correctly rejected mutation after close\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1194,21 +1790,27 @@
 								"value": "ApiKey {{buyerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers on a Closed negotiation. Auth: ApiKey {{buyerApiKey}}. Expect 409 `{ error }` mentioning Closed.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 19000.00,\n  \"currency\": \"USD\",\n  \"terms\": \"Offer after close\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
-						},
-						"description": "Attempt to place offer on closed negotiation → 409 Conflict."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S12.4 Close Again → 409",
+					"name": "Close Again → 409",
 					"event": [
 						{
 							"listen": "test",
@@ -1218,7 +1820,9 @@
 									"    pm.response.to.have.status(409);",
 									"});",
 									"",
-									"console.log(\"Correctly rejected double-close\");"
+									"if (pm.response.code !== 409) { return; }",
+									"",
+									"console.log(\"Double-close returned 409\");"
 								],
 								"type": "text/javascript"
 							}
@@ -1234,21 +1838,27 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/close",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "close"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"close"
+							]
 						},
-						"description": "Attempt to close already-closed negotiation → 409 Conflict."
+						"description": "POST /negotiations/{id}/close on an already Closed negotiation. Auth: ApiKey {{sellerApiKey}}. Expect 409."
 					},
 					"response": []
 				}
 			],
-			"description": "**S9-S12:** Negative test cases.\n\n- S9: Non-complementary intents\n- S10: Non-party access\n- S11: Duplicate open offer\n- S12: Mutations after close\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "Non-complementary intents, non-party 404, duplicate open offer, mutations after close."
 		},
 		{
-			"name": "06-Optional-Expiration",
+			"name": "09-Expiration",
 			"item": [
 				{
-					"name": "S13.1 Create Expired Negotiation",
+					"name": "Create Expired Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1258,10 +1868,10 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
-									"var jsonData = pm.response.json();",
-									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);",
+									"if (pm.response.code !== 201) { return; }",
 									"",
-									"console.log(\"Created negotiation with past endsAt - ID: \" + jsonData.id);"
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"negotiationId\", jsonData.id);"
 								],
 								"type": "text/javascript"
 							}
@@ -1279,21 +1889,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ with endsAt in the past. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse 201; captures negotiationId. Expiration is applied on the next mutating or GET party call.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"sell\",\n  \"counterpartyIntent\": \"buy\",\n  \"endsAt\": \"2020-01-01T00:00:00Z\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
-						},
-						"description": "Create negotiation with endsAt in the past (already expired)."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S13.2 Place Offer on Expired → 409",
+					"name": "Place Offer on Expired → 409",
 					"event": [
 						{
 							"listen": "test",
@@ -1303,12 +1917,12 @@
 									"    pm.response.to.have.status(409);",
 									"});",
 									"",
+									"if (pm.response.code !== 409) { return; }",
+									"",
 									"pm.test(\"Error mentions expired\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.error.toLowerCase()).to.include('expired');",
-									"});",
-									"",
-									"console.log(\"Correctly rejected offer on expired negotiation\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1326,21 +1940,27 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}",
+								"offers"
+							]
+						},
+						"description": "POST /negotiations/{id}/offers after expiration. Auth: ApiKey {{sellerApiKey}}. Expect 409 `{ error }` mentioning expired.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"amount\": 15000.00,\n  \"currency\": \"USD\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}/offers",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}", "offers"]
-						},
-						"description": "Attempt to place offer on expired negotiation → 409."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S13.3 GET Expired (Still Works)",
+					"name": "GET Expired (Still Works)",
 					"event": [
 						{
 							"listen": "test",
@@ -1350,12 +1970,12 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
 									"pm.test(\"Status is Expired\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.status).to.eql('Expired');",
-									"});",
-									"",
-									"console.log(\"GET still works on expired negotiation\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1371,21 +1991,26 @@
 						],
 						"url": {
 							"raw": "{{baseUrl}}/negotiations/{{negotiationId}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations", "{{negotiationId}}"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations",
+								"{{negotiationId}}"
+							]
 						},
-						"description": "GET still works on expired negotiation - parties can view history."
+						"description": "GET /negotiations/{id} after expiration still returns 200 for a party. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse status Expired."
 					},
 					"response": []
 				}
 			],
-			"description": "**S13:** Expiration via endsAt.\n\nVerify that expired negotiations reject mutations but allow GET.\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "endsAt in the past: mutations 409, GET still works with status Expired."
 		},
 		{
-			"name": "07-Optional-Other-Intents",
+			"name": "10-Other-Intents",
 			"item": [
 				{
-					"name": "S14.1 Provide ↔ Consume Negotiation",
+					"name": "Provide ↔ Consume Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1394,14 +2019,14 @@
 									"pm.test(\"Status code is 201\", function () {",
 									"    pm.response.to.have.status(201);",
 									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
 									"",
 									"pm.test(\"Intents are provide/consume\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.partyAIntent).to.eql('provide');",
 									"    pm.expect(jsonData.partyBIntent).to.eql('consume');",
-									"});",
-									"",
-									"console.log(\"Provide/Consume negotiation created\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1419,21 +2044,25 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ with provide/consume. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse partyAIntent provide, partyBIntent consume, status Open.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"provide\",\n  \"counterpartyIntent\": \"consume\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
-						},
-						"description": "Create negotiation with provide ↔ consume intents (service offering)."
+						}
 					},
 					"response": []
 				},
 				{
-					"name": "S14.2 Rent ↔ Rent Out Negotiation",
+					"name": "Rent ↔ Rent Out Negotiation",
 					"event": [
 						{
 							"listen": "test",
@@ -1443,13 +2072,13 @@
 									"    pm.response.to.have.status(201);",
 									"});",
 									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
 									"pm.test(\"Intents are rent out/rent\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData.partyAIntent).to.eql('rent out');",
 									"    pm.expect(jsonData.partyBIntent).to.eql('rent');",
-									"});",
-									"",
-									"console.log(\"Rent Out/Rent negotiation created\");"
+									"});"
 								],
 								"type": "text/javascript"
 							}
@@ -1467,21 +2096,183 @@
 								"value": "ApiKey {{sellerApiKey}}"
 							}
 						],
+						"url": {
+							"raw": "{{baseUrl}}/negotiations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"negotiations"
+							]
+						},
+						"description": "POST /negotiations/ with rent out/rent. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse partyAIntent 'rent out', partyBIntent rent, status Open.",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"artifactId\": \"{{artifactId}}\",\n  \"counterpartyParticipantId\": \"{{buyerSub}}\",\n  \"callerIntent\": \"rent out\",\n  \"counterpartyIntent\": \"rent\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/negotiations",
-							"host": ["{{baseUrl}}"],
-							"path": ["negotiations"]
-						},
-						"description": "Create negotiation with rent out ↔ rent intents (landlord offering, tenant seeking)."
+						}
 					},
 					"response": []
 				}
 			],
-			"description": "**S14:** Alternative complementary intent pairs.\n\n- Provide ↔ Consume (service)\n- Rent Out ↔ Rent (landlord ↔ tenant)\n\nSee product docs for full catalog of ~40 intent tokens across 20 directional pairs.\n\n**Prerequisite:** Run 01-Bootstrap first."
+			"description": "Additional complementary intent pairs: provide/consume and rent out/rent."
+		},
+		{
+			"name": "11-Optional-Rotate-and-Revoke",
+			"item": [
+				{
+					"name": "Register Auth-Demo Participant",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code !== 201) { return; }",
+									"",
+									"pm.test(\"RegisterResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('sub');",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"authDemoApiKey\", jsonData.apiKey);",
+									"pm.collectionVariables.set(\"authDemoSub\", jsonData.sub);",
+									"console.log(\"Registered sub: \" + jsonData.sub);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						},
+						"description": "POST /auth/register — dedicated participant for rotate/revoke. No Authorization. Response RegisterResponse; captures authDemoApiKey and authDemoSub.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"drew.doe@example.test\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Rotate API Key (optional)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code !== 200) { return; }",
+									"",
+									"pm.test(\"RotateKeyResponse fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('apiKey');",
+									"    pm.expect(jsonData).to.have.property('apiKeyPrefix');",
+									"    pm.expect(jsonData).to.have.property('revokedKeyPrefix');",
+									"    pm.expect(jsonData.apiKey).to.not.eql(pm.collectionVariables.get('authDemoApiKey'));",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"pm.collectionVariables.set(\"authDemoApiKey\", jsonData.apiKey);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{authDemoApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/rotate-key",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"rotate-key"
+							]
+						},
+						"description": "POST /auth/rotate-key — revoke the current API key from Authorization and issue a new one. Auth: ApiKey {{authDemoApiKey}}. Response RotateKeyResponse: apiKey, apiKeyPrefix, revokedKeyPrefix. Captures the new authDemoApiKey."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke API Key (optional)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});",
+									"",
+									"if (pm.response.code !== 204) { return; }",
+									""
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "ApiKey {{authDemoApiKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/revoke",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"revoke"
+							]
+						},
+						"description": "POST /auth/revoke — revoke the rotated key. Auth: ApiKey {{authDemoApiKey}}. Body RevokeRequest.apiKey (TokenJti alternative not used here). 204 No Content.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"apiKey\": \"{{authDemoApiKey}}\"\n}"
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Optional credential hygiene on a dedicated participant so seller/buyer keys stay valid. Skip if you only need the negotiation flow."
 		}
 	]
 }
