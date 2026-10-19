@@ -652,6 +652,59 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
+    public async Task SecN8_NonOwnerLockStart_AuditActorIsHmacNotRaw()
+    {
+        await ClearAsync();
+        await SeedEnrolledAccountAsync();
+        const string typed = "made-up-lock@example.com";
+        var client = CreateClient();
+        for (var i = 0; i < 7; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.SignInPath,
+                new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+            var expected = AdminAuthService.AccountSubjectKey(
+                AdminAuthService.NormalizeEmail(typed),
+                isOwner: false,
+                hasher);
+            var actors = db.AdminAuditLog
+                .Where(e => e.Action == AdminAuthAction.LockStart)
+                .Select(e => e.ActorEmail)
+                .ToList();
+            Assert.DoesNotContain(actors, actor => actor.Contains(typed, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(expected, actors);
+            Assert.Single(actors);
+        }
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var fail = await SendWrongAsync(client);
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Equal(
+                1,
+                db.AdminAuditLog.Count(e => e.Action == AdminAuthAction.LockStart && e.ActorEmail == OwnerEmail));
+            Assert.DoesNotContain(
+                typed,
+                db.AdminAuditLog.Select(e => e.ActorEmail),
+                StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task SecR10_ResetAndBootstrap_RejectPasswordShorterThan15()
     {
         await ClearAsync();

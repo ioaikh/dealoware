@@ -274,7 +274,7 @@ public static class AdminAuthEndpoints
                 accounts,
                 accountReserved,
                 accountKey,
-                isOwner ? ownerEmail : submittedEmail,
+                isOwner ? ownerEmail : accountKey,
                 now,
                 ipHmac,
                 audit,
