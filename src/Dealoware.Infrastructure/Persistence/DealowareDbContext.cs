@@ -5,6 +5,7 @@ using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Dealoware.Infrastructure.Persistence;
 
@@ -57,6 +58,14 @@ public class DealowareDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
+        // Snapshot is design-time SQLite. Npgsql store types (timestamptz, etc.)
+        // differ without schema drift. Ignore only on Postgres; SQLite CI asserts
+        // HasPendingModelChanges() is false so a missed migration still fails.
+        if (HasNpgsqlExtension(optionsBuilder))
+        {
+            optionsBuilder.ConfigureWarnings(w =>
+                w.Ignore(RelationalEventId.PendingModelChangesWarning));
+        }
     }
 
     /// <summary>
@@ -112,5 +121,16 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminCoreOwnerAccountEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminRecoveryCodeEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminPendingAuthEntityConfiguration());
+    }
+
+    private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)
+    {
+        foreach (var extension in optionsBuilder.Options.Extensions)
+        {
+            if (extension.GetType().Name.Contains("Npgsql", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 }
