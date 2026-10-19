@@ -22,4 +22,13 @@ public interface IAdminPasswordResetTokenRepository
         string email,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Increments failed 2FA attempts on the unused row. Consumes the token when
+    /// the count reaches <see cref="AdminPasswordResetToken.MaxFailedCodeAttempts"/>.
+    /// </summary>
+    Task RecordFailedCodeAttemptAsync(
+        string tokenHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
 }

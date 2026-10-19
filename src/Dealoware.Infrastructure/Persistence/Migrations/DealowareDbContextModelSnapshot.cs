@@ -287,6 +287,9 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FailedCodeAttempts")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)

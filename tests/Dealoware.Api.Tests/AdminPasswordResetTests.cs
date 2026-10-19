@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 using Dealoware.Api.Admin;
 using Dealoware.Application.Admin;
 using Microsoft.AspNetCore.Http;
@@ -23,6 +26,8 @@ public class AdminPasswordResetTests
     private const string NextPassword = "radio station later!";
 
     private readonly IsolatedWebApplicationFactory _factory;
+    private byte[]? _totpSecret;
+    private IReadOnlyList<string>? _recoveryCodes;
 
     public AdminPasswordResetTests(IsolatedWebApplicationFactory factory)
     {
@@ -87,7 +92,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, totp.StatusCode);
         var totpBody = await totp.Content.ReadAsStringAsync();
@@ -100,14 +105,14 @@ public class AdminPasswordResetTests
     public async Task TD_ADM_030_Complete_RecoveryCode_WorksAndIsSingleUse()
     {
         await SeedCredentialAsync();
-        Factor().Reset();
+        var code = FirstRecoveryCode();
         var token = await RequestRawTokenAsync();
 
         var first = await PostConfirmAsync(new
         {
             token,
             newPassword = NextPassword,
-            recoveryCode = Factor().ValidRecoveryCode
+            recoveryCode = code
         });
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
@@ -116,7 +121,7 @@ public class AdminPasswordResetTests
         {
             token = token2,
             newPassword = "radio station third!",
-            recoveryCode = Factor().ValidRecoveryCode
+            recoveryCode = code
         });
         AssertLinkExpired(replayCode);
         Assert.True(await CredentialStillMatchesAsync(NextPassword));
@@ -133,7 +138,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
@@ -162,7 +167,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = "short-value",
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
         var shortBody = await tooShort.Content.ReadAsStringAsync();
@@ -173,7 +178,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = CurrentPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.BadRequest, same.StatusCode);
         Assert.Contains(AdminPasswordRules.SameAsCurrentMessage, await same.Content.ReadAsStringAsync());
@@ -182,7 +187,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
@@ -196,7 +201,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
@@ -204,7 +209,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = "radio station other!",
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
 
         var expiredToken = await RequestRawTokenAsync();
@@ -213,14 +218,14 @@ public class AdminPasswordResetTests
         {
             token = expiredToken,
             newPassword = "radio station other!",
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
 
         var random = await PostConfirmAsync(new
         {
             token = "totally-random-token-value",
             newPassword = "radio station other!",
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
 
         AssertLinkExpired(replay);
@@ -297,16 +302,17 @@ public class AdminPasswordResetTests
         using var wrongMethodPage = await SendAsync(HttpMethod.Delete, "/admin/reset");
         using var missingAfConfirm = await SendAsync(HttpMethod.Post, "/admin/api/auth/reset/confirm");
 
-        var extraBody = await extraApi.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Unauthorized, extraApi.StatusCode);
+        var extraGetBody = await extraPage.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Forbidden, extraApi.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, extraPage.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, extraConfirm.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, extraConfirm.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrongMethodApi.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, wrongMethodPage.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, missingAfConfirm.StatusCode);
-        Assert.Equal(extraBody, await extraPage.Content.ReadAsStringAsync());
-        Assert.Equal(extraBody, await wrongMethodApi.Content.ReadAsStringAsync());
-        Assert.Contains("\"error\":\"Unauthorized\"", extraBody);
+        Assert.Equal(HttpStatusCode.Forbidden, wrongMethodPage.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, missingAfConfirm.StatusCode);
+        Assert.Equal(extraGetBody, await wrongMethodApi.Content.ReadAsStringAsync());
+        Assert.Contains("\"error\":\"Unauthorized\"", extraGetBody);
+        await AssertGenericForbiddenAsync(extraApi);
+        await AssertGenericForbiddenAsync(missingAfConfirm);
     }
 
     [Fact]
@@ -357,12 +363,12 @@ public class AdminPasswordResetTests
         using var bad = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
         bad.Headers.Host = AdminHost;
         bad.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
-        bad.Headers.TryAddWithoutValidation(AdminCookieNames.AntiForgeryHeader, "not-the-cookie");
+        bad.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, "not-the-cookie");
         bad.Content = JsonContent.Create(new { email = CoreOwnerEmail });
         using var invalid = await client.SendAsync(bad);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        await AssertGenericForbiddenAsync(missing);
+        await AssertGenericForbiddenAsync(invalid);
         Assert.Equal(
             await missing.Content.ReadAsStringAsync(),
             await invalid.Content.ReadAsStringAsync());
@@ -385,7 +391,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         Assert.True(await CredentialStillMatchesAsync(NextPassword));
@@ -408,7 +414,7 @@ public class AdminPasswordResetTests
         request.Content = JsonContent.Create(new
         {
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         using var response = await client.SendAsync(request);
         AssertLinkExpired(response);
@@ -431,7 +437,7 @@ public class AdminPasswordResetTests
         {
             token = first,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         AssertLinkExpired(stale);
 
@@ -439,7 +445,7 @@ public class AdminPasswordResetTests
         {
             token = second,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
@@ -463,6 +469,379 @@ public class AdminPasswordResetTests
         Assert.Contains("secure", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("domain=", issued.SetCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("X-Admin-AF", issued.SetCookie, StringComparison.Ordinal);
+        Assert.NotEqual(issued.CookieNonce, issued.Token);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_R12_Request_OwnerAndUnknown_EqualDbWorkAndResponse()
+    {
+        await SeedCredentialAsync();
+        Mail().Clear();
+
+        _factory.CommandCounter.Reset();
+        using var known = await PostRequestAsync(CoreOwnerEmail);
+        var knownCommands = _factory.CommandCounter.Count;
+        var knownBody = await known.Content.ReadAsStringAsync();
+
+        _factory.CommandCounter.Reset();
+        using var unknown = await PostRequestAsync("nobody@example.com");
+        var unknownCommands = _factory.CommandCounter.Count;
+        var unknownBody = await unknown.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, known.StatusCode);
+        Assert.Equal(known.StatusCode, unknown.StatusCode);
+        Assert.Equal(knownBody, unknownBody);
+        Assert.Equal(knownCommands, unknownCommands);
+        Assert.True(knownCommands > 0);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(2, db.AdminPasswordResetTokens.Count());
+        Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == CoreOwnerEmail);
+        Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == "nobody@example.com");
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_PasswordRuleReject_DoesNotConsumeTotpOrRecovery()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        var totp = CurrentTotp();
+
+        var tooShort = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = "short-value",
+            totp
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.Null(account.LastUsedTotpTimestep);
+            Assert.Equal(0, account.FailedFactorAttempts);
+            var reset = db.AdminPasswordResetTokens.Single(t => t.ConsumedAt == null);
+            Assert.Equal(0, reset.FailedCodeAttempts);
+            Assert.All(db.AdminRecoveryCodes, c => Assert.Null(c.UsedAt));
+        }
+
+        var ok = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp
+        });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R13_CrossOrigin_Sibling_Null_AndMissing_AreGeneric403()
+    {
+        await SeedCredentialAsync();
+        var issued = await IssueAntiForgeryAsync();
+
+        using var foreign = await SendResetWithOriginAsync(
+            issued,
+            origin: "https://evil.example",
+            referer: null);
+        await AssertGenericForbiddenAsync(foreign);
+
+        using var sibling = await SendResetWithOriginAsync(
+            issued,
+            origin: "https://www.dealoware.com",
+            referer: null);
+        await AssertGenericForbiddenAsync(sibling);
+
+        using var originNull = await SendResetWithOriginAsync(
+            issued,
+            origin: "null",
+            referer: null);
+        await AssertGenericForbiddenAsync(originNull);
+
+        using var bothMissing = await SendResetWithOriginAsync(
+            issued,
+            origin: null,
+            referer: null);
+        await AssertGenericForbiddenAsync(bothMissing);
+
+        using var refererOk = await SendResetWithOriginAsync(
+            issued,
+            origin: null,
+            referer: $"{AdminHostOptions.ProductionAdminOrigin}/admin/reset");
+        Assert.Equal(HttpStatusCode.OK, refererOk.StatusCode);
+
+        using var exactOrigin = await SendResetWithOriginAsync(
+            issued,
+            origin: AdminHostOptions.ProductionAdminOrigin,
+            referer: null);
+        Assert.Equal(HttpStatusCode.OK, exactOrigin.StatusCode);
+        Assert.Empty(Mail().Sent.Where(m => m.To != CoreOwnerEmail));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R15_SignOut_NoSessionNoToken_IsGeneric403()
+    {
+        var client = CreateClientWithoutDefaultOrigin();
+        using var request = new HttpRequestMessage(HttpMethod.Post, AdminSignedOutExemptions.ApiSignOut);
+        request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("Origin", AdminHostOptions.ProductionAdminOrigin);
+        request.Content = JsonContent.Create(new { });
+        using var response = await client.SendAsync(request);
+        await AssertGenericForbiddenAsync(response);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R15_NewlyMappedDummyPost_IsProtectedByDefault()
+    {
+        var client = CreateClient();
+        using var missing = new HttpRequestMessage(HttpMethod.Post, AdminCsrfProbeEndpoint.Path);
+        missing.Headers.Host = AdminHost;
+        missing.Content = JsonContent.Create(new { });
+        using var missingResponse = await client.SendAsync(missing);
+        await AssertGenericForbiddenAsync(missingResponse);
+
+        var sessionId = await SeedSessionAsync();
+        var issued = await IssueAntiForgeryAsync();
+        using var ok = new HttpRequestMessage(HttpMethod.Post, AdminCsrfProbeEndpoint.Path);
+        ok.Headers.Host = AdminHost;
+        ok.Headers.TryAddWithoutValidation(
+            "Cookie",
+            $"{issued.CookieHeader}; {AdminSessionCookie.Name}={sessionId:D}");
+        ok.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, issued.Token);
+        ok.Content = JsonContent.Create(new { });
+        using var okResponse = await client.SendAsync(ok);
+        Assert.Equal(HttpStatusCode.OK, okResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R16_TokenWithoutPurposeLabel_IsRejected()
+    {
+        await SeedCredentialAsync();
+        var issued = await IssueAntiForgeryAsync();
+        var derived = AdminAntiForgeryService.DeriveKey(Convert.FromBase64String(_factory.IpHmacKey));
+        var wrongPurpose = AdminAntiForgeryService.ComputeRequestToken(
+            derived,
+            issued.CookieNonce,
+            purpose: "other-purpose");
+        var noPurpose = Convert.ToHexString(
+            HMACSHA256.HashData(derived, Encoding.UTF8.GetBytes(issued.CookieNonce)));
+
+        foreach (var forged in new[] { wrongPurpose, noPurpose })
+        {
+            var client = CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
+            request.Headers.Host = AdminHost;
+            request.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
+            request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, forged);
+            request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+            using var response = await client.SendAsync(request);
+            await AssertGenericForbiddenAsync(response);
+        }
+
+        Assert.Empty(Mail().Sent);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R10_ValidTotp_ConsumesToken_RevokesSessions_SignInWorks()
+    {
+        await SeedCredentialAsync();
+        var sessionId = await SeedSessionAsync();
+        var token = await RequestRawTokenAsync();
+        var totp = CurrentTotp();
+
+        var complete = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp
+        });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.NotNull(account.LastUsedTotpTimestep);
+            Assert.Empty(db.AdminSessions.ToList());
+            Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.ConsumedAt == null);
+        }
+
+        using var me = await CreateClient().SendAsync(AdminGet("/admin/api/me", sessionId));
+        Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
+
+        var client = CreateClient();
+        var signInAf = await IssueSignInAntiForgeryAsync(client);
+        using var step1 = await client.SendAsync(SignInJson(
+            AdminSignedOutExemptions.ApiSignIn,
+            new { email = CoreOwnerEmail, password = NextPassword },
+            signInAf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+
+        using var scope2 = _factory.Services.CreateScope();
+        var lastUsed = scope2.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail).LastUsedTotpTimestep;
+        var nowStep = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
+        var signInCode = lastUsed == nowStep
+            ? Rfc6238Totp.ComputeCode(_totpSecret!, nowStep + 1)
+            : Rfc6238Totp.ComputeCode(_totpSecret!, nowStep);
+        var codeAf = await IssueSignInAntiForgeryAsync(client, AdminSignedOutExemptions.SignInCode);
+        using var step2 = await client.SendAsync(SignInJson(
+            AdminSignedOutExemptions.ApiSignInCode,
+            new { code = signInCode },
+            codeAf));
+        Assert.Equal(HttpStatusCode.OK, step2.StatusCode);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R10_TotpReplay_SameTimestep_IsRejected()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        var totp = CurrentTotp();
+        var first = await PostConfirmAsync(new { token, newPassword = NextPassword, totp });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        var token2 = await RequestRawTokenAsync();
+        var replay = await PostConfirmAsync(new
+        {
+            token = token2,
+            newPassword = "radio station third!",
+            totp
+        });
+        AssertLinkExpired(replay);
+        Assert.True(await CredentialStillMatchesAsync(NextPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R10_WrongCode_DoesNotConsumeToken_CountsTowardLock()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+
+        var wrong = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = "000000"
+        });
+        AssertLinkExpired(wrong);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.Equal(1, account.FailedFactorAttempts);
+            Assert.Null(account.LastUsedTotpTimestep);
+            Assert.Contains(db.AdminPasswordResetTokens, t => t.ConsumedAt == null && t.FailedCodeAttempts == 1);
+        }
+
+        var ok = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = CurrentTotp()
+        });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R10_BothFactorsOrUnenrolled_AreRejected()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        var both = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = CurrentTotp(),
+            recoveryCode = FirstRecoveryCode()
+        });
+        AssertLinkExpired(both);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+
+        await SeedCredentialAsync(enrolled: false);
+        var unenrolledToken = await RequestRawTokenAsync();
+        var unenrolled = await PostConfirmAsync(new
+        {
+            token = unenrolledToken,
+            newPassword = NextPassword,
+            totp = "123456"
+        });
+        AssertLinkExpired(unenrolled);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_R11_FiveFailedCodes_LockAccount_AndBurnToken()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+
+        HttpResponseMessage? last = null;
+        for (var i = 0; i < AdminPasswordResetToken.MaxFailedCodeAttempts; i++)
+        {
+            last?.Dispose();
+            last = await PostConfirmAsync(new
+            {
+                token,
+                newPassword = NextPassword,
+                totp = "000000"
+            });
+            AssertLinkExpired(last);
+        }
+
+        last!.Dispose();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
+            Assert.NotNull(account.FactorLockedUntil);
+            Assert.True(account.IsFactorLocked(Clock().UtcNow));
+            var burned = Assert.Single(db.AdminPasswordResetTokens.Where(t => t.ConsumedAt != null));
+            Assert.Equal(AdminPasswordResetToken.MaxFailedCodeAttempts, burned.FailedCodeAttempts);
+        }
+
+        var afterBurn = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = CurrentTotp()
+        });
+        AssertLinkExpired(afterBurn);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_SC6_R10_PostgresParallelConfirm_ExactlyOne200()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        var totp = CurrentTotp();
+        var body = new { token, newPassword = NextPassword, totp };
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => PostConfirmAsync(body)));
+        try
+        {
+            Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
+            Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.SeeOther));
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Equal(1, db.AdminPasswordResetTokens.Count(t => t.ConsumedAt != null));
+        Assert.True(await CredentialStillMatchesAsync(NextPassword));
     }
 
     [Fact]
@@ -482,7 +861,7 @@ public class AdminPasswordResetTests
         Assert.Equal(HttpStatusCode.OK, css.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, directory.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, handlerLike.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, postFile.StatusCode);
+        await AssertGenericForbiddenAsync(postFile);
     }
 
     [Fact]
@@ -495,7 +874,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
 
         using var scope = _factory.Services.CreateScope();
@@ -763,7 +1142,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = "short-value",
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
         Assert.Equal(1, await ResetCounterCountAsync());
@@ -777,7 +1156,7 @@ public class AdminPasswordResetTests
             {
                 token = $"bad-token-{i}",
                 newPassword = NextPassword,
-                totp = Factor().ValidTotp
+                totp = CurrentTotp()
             });
             AssertLinkExpired(lastExpired);
         }
@@ -791,7 +1170,7 @@ public class AdminPasswordResetTests
         {
             token = "bad-token-over",
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         await AssertConfirmThrottledAsync(throttled);
 
@@ -799,7 +1178,7 @@ public class AdminPasswordResetTests
         {
             token,
             newPassword = NextPassword,
-            totp = Factor().ValidTotp
+            totp = CurrentTotp()
         });
         await AssertConfirmThrottledAsync(goodWhileLocked);
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
@@ -876,7 +1255,7 @@ public class AdminPasswordResetTests
             {
                 token = $"bad-token-burst-{i}",
                 newPassword = NextPassword,
-                totp = Factor().ValidTotp
+                totp = CurrentTotp()
             })));
 
         try
@@ -910,6 +1289,29 @@ public class AdminPasswordResetTests
     }
 
     [Fact]
+    public void TD_ADM_031_R14_DerivedKey_IsStableAcrossInstances_AndFailsClosed()
+    {
+        var source = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var first = AdminAntiForgeryService.Create(_ => source, isDevelopment: false);
+        var second = AdminAntiForgeryService.Create(_ => source, isDevelopment: false);
+        Assert.Equal(first.ComputeRequestToken("browser-nonce"), second.ComputeRequestToken("browser-nonce"));
+
+        var missing = Assert.Throws<InvalidOperationException>(
+            () => AdminAntiForgeryService.Create(_ => null, isDevelopment: false));
+        Assert.Contains(IpHasher.KeyEnvironmentVariable, missing.Message);
+        Assert.DoesNotContain(source, missing.Message);
+
+        var afSource = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminAntiForgeryCookie.cs"));
+        Assert.Contains("HKDF.DeriveKey", afSource, StringComparison.Ordinal);
+        Assert.Contains("dw-admin-antiforgery-v1", afSource, StringComparison.Ordinal);
+        Assert.Contains("dw-admin-af-token-v1", afSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_key = RandomNumberGenerator.GetBytes", afSource, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminAntiForgery.cs")));
+    }
+
+    [Fact]
     public void TD_ADM_052_CookieOptions_MatchRouteNote24()
     {
         var options = AdminSessionCookie.CreateOptions();
@@ -919,7 +1321,7 @@ public class AdminPasswordResetTests
         Assert.Equal("/admin", options.Path);
         Assert.Null(options.Domain);
 
-        var af = AdminAntiForgery.CookieOptions();
+        var af = AdminAntiForgeryService.CreateOptions();
         Assert.True(af.HttpOnly);
         Assert.True(af.Secure);
         Assert.Equal(SameSiteMode.Strict, af.SameSite);
@@ -948,25 +1350,96 @@ public class AdminPasswordResetTests
         throw new TimeoutException("Dispatch failure was not logged.");
     }
 
-    private FakeAdminSecondFactorVerifier Factor()
-        => _factory.Services.GetRequiredService<FakeAdminSecondFactorVerifier>();
-
     private FakeAdminClock Clock()
         => _factory.Services.GetRequiredService<FakeAdminClock>();
 
-    private HttpClient CreateClient()
-        => _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-    private async Task SeedCredentialAsync()
+    private string CurrentTotp()
     {
-        Factor().Reset();
+        Assert.NotNull(_totpSecret);
+        return Rfc6238Totp.ComputeCode(_totpSecret, Rfc6238Totp.TimestepAt(Clock().UtcNow));
+    }
+
+    private string FirstRecoveryCode()
+    {
+        Assert.NotNull(_recoveryCodes);
+        return Assert.Single(_recoveryCodes.Take(1));
+    }
+
+    private HttpClient CreateClient()
+        => _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+    private HttpClient CreateClientWithoutDefaultOrigin()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Remove("Origin");
+        return client;
+    }
+
+    private async Task<HttpResponseMessage> SendResetWithOriginAsync(
+        IssuedAntiForgery issued,
+        string? origin,
+        string? referer)
+    {
+        var client = CreateClientWithoutDefaultOrigin();
+        using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
+        request.Headers.Host = AdminHost;
+        AttachAntiForgery(request, issued);
+        if (origin is not null)
+        {
+            request.Headers.TryAddWithoutValidation("Origin", origin);
+        }
+
+        if (referer is not null)
+        {
+            request.Headers.TryAddWithoutValidation("Referer", referer);
+        }
+
+        request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+        return await client.SendAsync(request);
+    }
+
+    private async Task<string> IssueSignInAntiForgeryAsync(
+        HttpClient client,
+        string path = AdminSignedOutExemptions.SignIn)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Host = AdminHost;
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var token = payload.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        return token!;
+    }
+
+    private static HttpRequestMessage SignInJson(string path, object body, string csrf)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, csrf);
+        request.Content = JsonContent.Create(body);
+        return request;
+    }
+
+    private Task SeedCredentialAsync() => SeedCredentialAsync(enrolled: true);
+
+    private async Task SeedCredentialAsync(bool enrolled)
+    {
+        Clock().UtcNow = DateTimeOffset.UtcNow;
         Mail().Clear();
         using var scope = _factory.Services.CreateScope();
         var hasher = scope.ServiceProvider.GetRequiredService<IAdminPasswordHasher>();
+        var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
+        var recoveryHasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
-        var existing = db.AdminCredentials.SingleOrDefault(c => c.Email == CoreOwnerEmail);
-        if (existing is null)
+        db.AdminPasswordResetTokens.RemoveRange(db.AdminPasswordResetTokens);
+        var existingCredential = db.AdminCredentials.SingleOrDefault(c => c.Email == CoreOwnerEmail);
+        if (existingCredential is null)
         {
             db.AdminCredentials.Add(AdminCredential.Create(
                 CoreOwnerEmail,
@@ -975,9 +1448,37 @@ public class AdminPasswordResetTests
         }
         else
         {
-            existing.ReplacePassword(hasher.Hash(CurrentPassword), DateTimeOffset.UtcNow);
+            existingCredential.ReplacePassword(hasher.Hash(CurrentPassword), DateTimeOffset.UtcNow);
         }
 
+        var existingAccount = db.AdminCoreOwnerAccounts.SingleOrDefault(a => a.Email == CoreOwnerEmail);
+        if (existingAccount is not null)
+        {
+            db.AdminRecoveryCodes.RemoveRange(db.AdminRecoveryCodes.Where(c => c.AccountId == existingAccount.Id));
+            db.AdminPendingAuths.RemoveRange(db.AdminPendingAuths.Where(p => p.Email == CoreOwnerEmail));
+            db.AdminSessions.RemoveRange(db.AdminSessions.Where(s => s.Email == CoreOwnerEmail));
+            db.AdminCoreOwnerAccounts.Remove(existingAccount);
+            await db.SaveChangesAsync();
+        }
+
+        _totpSecret = null;
+        _recoveryCodes = null;
+        var account = AdminCoreOwnerAccount.Create(CoreOwnerEmail);
+        account.SetPasswordHash(hasher.Hash(CurrentPassword));
+        if (enrolled)
+        {
+            _totpSecret = Rfc6238Totp.GenerateSecret();
+            _recoveryCodes = AdminRecoveryCodes.Generate();
+            foreach (var code in _recoveryCodes)
+            {
+                db.AdminRecoveryCodes.Add(AdminRecoveryCode.Create(account.Id, recoveryHasher.Hash(code)));
+            }
+
+            account.MarkRecoveryCodesIssued();
+            account.CompleteEnrollment(protector.Encrypt(_totpSecret));
+        }
+
+        db.AdminCoreOwnerAccounts.Add(account);
         await db.SaveChangesAsync();
     }
 
@@ -1037,23 +1538,28 @@ public class AdminPasswordResetTests
     {
         using var response = await SendAsync(HttpMethod.Get, AdminSignedOutExemptions.ResetConfirmPage);
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.False(response.Headers.Contains(AdminAntiForgeryCookie.HeaderName));
+        var html = await response.Content.ReadAsStringAsync();
         var setCookies = ReadSetCookie(response);
         var setCookie = Assert.Single(
             setCookies,
             c => c.StartsWith(AdminCookieNames.AntiForgery + "=", StringComparison.Ordinal));
-        var token = setCookie.Split(';', 2)[0].Split('=', 2)[1];
-        if (response.Headers.TryGetValues(AdminCookieNames.AntiForgeryHeader, out var headers))
-        {
-            Assert.Equal(token, headers.First());
-        }
-
-        return new IssuedAntiForgery(token, $"{AdminCookieNames.AntiForgery}={token}", setCookie);
+        var cookieNonce = setCookie.Split(';', 2)[0].Split('=', 2)[1];
+        var match = Regex.Match(html, "window\\.__dwCsrf=\"([0-9A-Fa-f]+)\"");
+        Assert.True(match.Success, "confirm page must embed the HMAC CSRF token for fetch");
+        var hmac = match.Groups[1].Value;
+        Assert.NotEqual(cookieNonce, hmac);
+        Assert.DoesNotContain(cookieNonce, html, StringComparison.Ordinal);
+        Assert.Contains(AdminAntiForgeryCookie.HeaderName, html, StringComparison.Ordinal);
+        Assert.DoesNotContain("X-Admin-AF", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"af\"", html, StringComparison.Ordinal);
+        return new IssuedAntiForgery(hmac, $"{AdminCookieNames.AntiForgery}={cookieNonce}", setCookie, cookieNonce);
     }
 
     private static void AttachAntiForgery(HttpRequestMessage request, IssuedAntiForgery issued)
     {
         request.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
-        request.Headers.TryAddWithoutValidation(AdminCookieNames.AntiForgeryHeader, issued.Token);
+        request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, issued.Token);
     }
 
     private static IReadOnlyList<string> ReadSetCookie(HttpResponseMessage response)
@@ -1071,7 +1577,23 @@ public class AdminPasswordResetTests
         return [];
     }
 
-    private sealed record IssuedAntiForgery(string Token, string CookieHeader, string SetCookie);
+    private sealed record IssuedAntiForgery(
+        string Token,
+        string CookieHeader,
+        string SetCookie,
+        string CookieNonce);
+
+    private static async Task AssertGenericForbiddenAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal("""{"error":"Forbidden"}""", body);
+        Assert.DoesNotContain("origin", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("csrf", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("anti-forgery", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Referer", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(AdminSignInDeny.GenericCopy, body);
+    }
 
     private async Task<AdminResetIpCounter?> ResetCounterAsync()
     {

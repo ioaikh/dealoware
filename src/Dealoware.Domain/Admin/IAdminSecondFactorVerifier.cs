@@ -2,8 +2,8 @@ namespace Dealoware.Domain.Admin;
 
 /// <summary>
 /// Verifies TOTP or an unused recovery code for CoreOwner.
-/// Step 3 registers <c>AdminSecondFactorVerifier</c>. Tests replace it with
-/// <c>FakeAdminSecondFactorVerifier</c> for reset HTTP cases that skip enrollment.
+/// Step 3 registers <c>AdminSecondFactorVerifier</c>. Reset confirm uses this
+/// verifier (account-wide factor lock + timestep / recovery redemption).
 /// </summary>
 public interface IAdminSecondFactorVerifier
 {

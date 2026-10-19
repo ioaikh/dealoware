@@ -11,6 +11,7 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Password-reset API under /admin/api/auth/reset*. Confirm GET is token-free
 /// (b6194918 item 6). The token travels in the mail fragment and the POST body.
+/// CSRF uses #33's keyed token (X-CSRF-TOKEN), never a cookie echo.
 /// </summary>
 public static class AdminPasswordResetEndpoints
 {
@@ -66,27 +67,23 @@ public static class AdminPasswordResetEndpoints
             .Produces(StatusCodes.Status429TooManyRequests);
     }
 
-    private static IResult ConfirmPageGet(HttpContext http)
+    private static IResult ConfirmPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
     {
         ApplyNoStoreNoReferrer(http);
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
         http.Response.Headers.ContentSecurityPolicy =
             $"default-src 'none'; script-src 'nonce-{nonce}'; form-action 'self'; base-uri 'none'";
-        var af = http.Response.Headers.TryGetValue(AdminCookieNames.AntiForgeryHeader, out var issued)
-                 && !string.IsNullOrWhiteSpace(issued)
-            ? issued.ToString()
-            : AdminAntiForgery.Issue(http);
+        var csrf = antiforgery.Issue(http);
         var html =
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
             "<title>Reset password</title></head><body>" +
             $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\">" +
-            $"<input type=\"hidden\" name=\"af\" value=\"{af}\">" +
             "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
-            "<label>New password <input type=\"password\" name=\"newPassword\" autocomplete=\"new-password\"></label>" +
-            "<label>Authenticator code <input name=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
-            "<label>Recovery code <input name=\"recoveryCode\" autocomplete=\"off\"></label>" +
+            "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
+            "<label>Authenticator code <input name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
+            "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"off\"></label>" +
             "<button type=\"submit\">Update password</button></form>" +
-            $"<script nonce=\"{nonce}\">(function(){{var h=location.hash;history.replaceState(null,\"\",location.pathname);var m=/[#&]token=([^&]*)/.exec(h);var el=document.getElementById(\"token\");if(el&&m)el.value=decodeURIComponent(m[1].replace(/\\+/g,\" \"));}})();</script>" +
+            $"<script nonce=\"{nonce}\">(function(){{window.__dwCsrf={System.Text.Json.JsonSerializer.Serialize(csrf)};var h=location.hash;history.replaceState(null,\"\",location.pathname);var m=/[#&]token=([^&]*)/.exec(h);var el=document.getElementById(\"token\");if(el&&m)el.value=decodeURIComponent(m[1].replace(/\\+/g,\" \"));var f=document.getElementById(\"reset-form\");if(!f)return;f.addEventListener(\"submit\",function(e){{e.preventDefault();fetch({System.Text.Json.JsonSerializer.Serialize(ConfirmApiPath)},{{method:\"POST\",credentials:\"same-origin\",headers:{{ \"Content-Type\":\"application/json\",\"{AdminAntiForgeryService.HeaderName}\":window.__dwCsrf }},body:JSON.stringify({{token:document.getElementById(\"token\").value,newPassword:document.getElementById(\"newPassword\").value,totp:document.getElementById(\"totp\").value,recoveryCode:document.getElementById(\"recoveryCode\").value}})}}).then(function(r){{if(r.status===303){{var loc=r.headers.get(\"Location\");if(loc)location.assign(loc);return;}}if(r.ok){{location.assign({System.Text.Json.JsonSerializer.Serialize(AdminSignedOutExemptions.SignIn)});return;}}r.text().then(function(){{}});}});}});}})();</script>" +
             "</body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
     }
@@ -126,11 +123,11 @@ public static class AdminPasswordResetEndpoints
                     && !string.IsNullOrEmpty(ownerEmail);
         var raw = CreateRawToken();
         var hash = AdminPasswordResetToken.HashRaw(raw);
-        await tokens.InvalidateUnusedForEmailAsync(known ? ownerEmail : submitted, now, ct);
-        _ = await tokens.FindUsableByHashAsync(hash, now, ct);
+        var stagedEmail = known ? ownerEmail : submitted;
+        await tokens.InvalidateUnusedForEmailAsync(stagedEmail, now, ct);
+        await tokens.AddAsync(AdminPasswordResetToken.Create(stagedEmail, hash, now), ct);
         if (known)
         {
-            await tokens.AddAsync(AdminPasswordResetToken.Create(ownerEmail, hash, now), ct);
             mail.EnqueuePasswordReset(ownerEmail, raw, http.TraceIdentifier);
         }
 
@@ -182,23 +179,6 @@ public static class AdminPasswordResetEndpoints
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        var totp = NullIfWhiteSpace(body?.Totp);
-        var recovery = NullIfWhiteSpace(body?.RecoveryCode);
-        if (totp is null && recovery is null)
-        {
-            return await FailExpiredAsync(audit, ipHmac, now, http);
-        }
-
-        var factor = await secondFactor.VerifyAsync(
-            ownerEmail,
-            totp,
-            recovery,
-            http.RequestAborted);
-        if (!factor.Succeeded)
-        {
-            return await FailExpiredAsync(audit, ipHmac, now, http);
-        }
-
         var credential = await credentials.GetByEmailAsync(ownerEmail, http.RequestAborted);
         if (credential is null)
         {
@@ -216,6 +196,38 @@ public static class AdminPasswordResetEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
+        var totp = NullIfWhiteSpace(body?.Totp);
+        var recovery = NullIfWhiteSpace(body?.RecoveryCode);
+        if ((totp is null) == (recovery is null))
+        {
+            return await FailExpiredAsync(audit, ipHmac, now, http);
+        }
+
+        var account = await accounts.GetByEmailAsync(ownerEmail, http.RequestAborted);
+        if (account is null || !account.IsTotpEnrolled)
+        {
+            return await FailExpiredAsync(audit, ipHmac, now, http);
+        }
+
+        if (!await accounts.TryRecordFailedFactorAttemptAsync(account.Id, now, ct))
+        {
+            return await FailExpiredAsync(audit, ipHmac, now, http);
+        }
+
+        var factor = await secondFactor.VerifyAsync(
+            ownerEmail,
+            totp,
+            recovery,
+            http.RequestAborted);
+        if (!factor.Succeeded)
+        {
+            await tokens.RecordFailedCodeAttemptAsync(hash!, now, ct);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
+        }
+
+        await accounts.ClearFactorLockAsync(account.Id, ct);
+        account.ClearFactorFailures();
+
         await using var tx = await db.Database.BeginTransactionAsync(http.RequestAborted);
         if (!await tokens.TryConsumeAsync(hash!, now, http.RequestAborted))
         {
@@ -225,8 +237,7 @@ public static class AdminPasswordResetEndpoints
 
         var passwordHash = hasher.Hash(AdminPasswordRules.Normalize(proposed));
         credential.ReplacePassword(passwordHash, now);
-        var account = await accounts.GetByEmailAsync(ownerEmail, http.RequestAborted);
-        account?.SetPasswordHash(passwordHash);
+        account.SetPasswordHash(passwordHash);
         await credentials.SaveChangesAsync(http.RequestAborted);
         await sessions.RevokeAllForEmailAsync(ownerEmail, http.RequestAborted);
 

@@ -25,7 +25,8 @@ public partial class AdminPasswordResetTokens : Migration
                 TokenHash = table.Column<string>(maxLength: 128, nullable: false),
                 CreatedAt = table.Column<DateTimeOffset>(nullable: false),
                 ExpiresAt = table.Column<DateTimeOffset>(nullable: false),
-                ConsumedAt = table.Column<DateTimeOffset>(nullable: true)
+                ConsumedAt = table.Column<DateTimeOffset>(nullable: true),
+                FailedCodeAttempts = table.Column<int>(nullable: false, defaultValue: 0)
             },
             constraints: table =>
             {

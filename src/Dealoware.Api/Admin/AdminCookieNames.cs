@@ -7,6 +7,6 @@ public static class AdminCookieNames
 {
     public const string Session = "dw_admin_session";
     public const string Pending = "dw_admin_pending";
-    public const string AntiForgery = "dw_admin_af";
-    public const string AntiForgeryHeader = "X-Admin-AF";
+    public const string AntiForgery = AdminAntiForgeryService.CookieName;
+    public const string AntiForgeryHeader = AdminAntiForgeryService.HeaderName;
 }

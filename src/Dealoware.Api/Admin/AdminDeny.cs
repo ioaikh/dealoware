@@ -7,6 +7,8 @@ namespace Dealoware.Api.Admin;
 public static class AdminDeny
 {
     public const string GenericError = "Unauthorized";
+    public const string GenericForbidden = "Forbidden";
+
     public const string GenericBadRequest = "BadRequest";
     public const string GenericNotFound = "NotFound";
 
@@ -24,5 +26,15 @@ public static class AdminDeny
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         context.Response.ContentType = "application/json";
         return context.Response.WriteAsync("""{"error":"Unauthorized"}""");
+    }
+
+    public static IResult ForbiddenResult() =>
+        Results.Json(new { error = GenericForbidden }, statusCode: StatusCodes.Status403Forbidden);
+
+    public static Task WriteForbiddenAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        context.Response.ContentType = "application/json";
+        return context.Response.WriteAsync("""{"error":"Forbidden"}""");
     }
 }

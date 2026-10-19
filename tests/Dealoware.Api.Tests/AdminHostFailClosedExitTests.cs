@@ -62,6 +62,20 @@ public class AdminHostFailClosedExitTests
         Assert.DoesNotContain("   at ", stderr, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Process_Production_MissingIpHmacKey_ExitsWithCode1()
+    {
+        var (exitCode, stderr) = RunApiProcess(environment =>
+        {
+            environment[IpHasher.KeyEnvironmentVariable] = "";
+        });
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains(IpHasher.KeyEnvironmentVariable, stderr);
+        Assert.DoesNotContain("Unhandled exception", stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("   at ", stderr, StringComparison.Ordinal);
+    }
+
     private static (int ExitCode, string Stderr) RunApiProcess(Action<IDictionary<string, string?>> configure)
     {
         var apiDll = Path.Combine(AppContext.BaseDirectory, "Dealoware.Api.dll");

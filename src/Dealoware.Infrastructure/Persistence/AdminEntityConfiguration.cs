@@ -202,6 +202,9 @@ public class AdminPasswordResetTokenEntityConfiguration : IEntityTypeConfigurati
         builder.Property(t => t.ExpiresAt)
             .IsRequired();
 
+        builder.Property(t => t.FailedCodeAttempts)
+            .IsRequired();
+
         builder.HasIndex(t => t.TokenHash)
             .IsUnique();
 

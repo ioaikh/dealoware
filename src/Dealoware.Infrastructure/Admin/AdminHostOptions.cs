@@ -16,6 +16,11 @@ public sealed class AdminHostOptions
     public const string ProductionAdminHost = "admin.core.dealoware.com";
 
     /// <summary>
+    /// Configured admin origin for CSRF Origin/Referer checks. Never taken from Host.
+    /// </summary>
+    public const string ProductionAdminOrigin = "https://" + ProductionAdminHost;
+
+    /// <summary>
     /// Allowed host names for admin routes.
     /// Default: admin.core.dealoware.com per Spec §3.
     /// For development/test, additional hosts can be configured.

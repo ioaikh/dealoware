@@ -22,6 +22,11 @@ public sealed class AdminPasswordResetToken
 
     public DateTimeOffset? ConsumedAt { get; private set; }
 
+    /// <summary>Failed 2FA presentations against this token. Burned at <see cref="MaxFailedCodeAttempts"/>.</summary>
+    public int FailedCodeAttempts { get; private set; }
+
+    public const int MaxFailedCodeAttempts = 5;
+
     private AdminPasswordResetToken() { }
 
     public static AdminPasswordResetToken Create(
@@ -36,7 +41,8 @@ public sealed class AdminPasswordResetToken
             TokenHash = tokenHash,
             CreatedAt = now,
             ExpiresAt = now.AddHours(1),
-            ConsumedAt = null
+            ConsumedAt = null,
+            FailedCodeAttempts = 0
         };
     }
 

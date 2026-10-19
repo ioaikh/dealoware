@@ -319,6 +319,7 @@ app.MapAdminReadEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();
+app.MapAdminCsrfProbeEndpoint();
 app.MapAdminPasswordReset();
 
 app.Run();

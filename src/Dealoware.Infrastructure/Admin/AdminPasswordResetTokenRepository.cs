@@ -16,7 +16,6 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
     public async Task AddAsync(AdminPasswordResetToken token, CancellationToken cancellationToken = default)
     {
         await _context.AdminPasswordResetTokens.AddAsync(token, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<AdminPasswordResetToken?> FindUsableByHashAsync(
@@ -65,6 +64,23 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
             .Where(t => t.Email == email && t.ConsumedAt == null)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(t => t.ConsumedAt, now),
+                cancellationToken);
+    }
+
+    public async Task RecordFailedCodeAttemptAsync(
+        string tokenHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        const int max = AdminPasswordResetToken.MaxFailedCodeAttempts;
+        await _context.AdminPasswordResetTokens
+            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(t => t.FailedCodeAttempts, t => t.FailedCodeAttempts + 1)
+                    .SetProperty(
+                        t => t.ConsumedAt,
+                        t => t.FailedCodeAttempts + 1 >= max ? now : t.ConsumedAt),
                 cancellationToken);
     }
 }
