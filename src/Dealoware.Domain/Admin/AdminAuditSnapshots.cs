@@ -169,7 +169,8 @@ public static class AdminAuditSnapshots
             return true;
         if (normalized is "code" or "codes" or "key" or "pass" or "pin" or "auth")
             return true;
-        if (normalized.EndsWith("code", StringComparison.Ordinal))
+        if (normalized.EndsWith("code", StringComparison.Ordinal)
+            || normalized.EndsWith("codes", StringComparison.Ordinal))
             return true;
 
         foreach (var fragment in ForbiddenFragments)
@@ -494,13 +495,9 @@ public static class AdminAuditSnapshots
                 }
             }
 
-            if (TryMatchJwtPrefix(word, out var jwtLen))
+            if (TryRedactJwtsInWord(text, word, nameStart, builder, ref copyFrom))
             {
-                var jwtEnd = nameStart + jwtLen;
-                builder.Append(text, copyFrom, nameStart - copyFrom);
-                builder.Append("[redacted]");
-                copyFrom = jwtEnd;
-                i = jwtEnd;
+                i = nameEnd;
                 continue;
             }
 
@@ -619,9 +616,10 @@ public static class AdminAuditSnapshots
 
     private static int ConsumeUnquotedToLineEnd(ReadOnlySpan<char> span, int index, int lineContextStart)
     {
+        var stopAtAmpersand = IsInsideUrlQuery(span, lineContextStart);
         while (index < span.Length && span[index] is not ('\n' or '\r'))
         {
-            if (span[index] == '&' && IsInsideUrlQuery(span, lineContextStart))
+            if (stopAtAmpersand && span[index] == '&')
                 break;
             index++;
         }
@@ -767,6 +765,7 @@ public static class AdminAuditSnapshots
         'ζ' => 'z',
         '0' => 'o',
         '1' => 'l',
+        '5' => 's',
         _ => ch
     };
 
@@ -785,15 +784,55 @@ public static class AdminAuditSnapshots
     }
 
     /// <summary>
-    /// True when <paramref name="text"/> is a compact JWT (3) or JWE (5) whose
-    /// first segment starts with <c>eyJ</c>. Empty 2nd JWE (<c>alg: dir</c>)
-    /// and empty last JWT (unsecured) segments are accepted. Extra
-    /// <c>.word</c> text after those parts is left unmatched.
+    /// Redacts every compact JWT/JWE prefix inside an already-scanned word, then
+    /// leaves the caller at <c>nameEnd</c>. After the first hit, further matches
+    /// are sought only in the leftover suffix so the word is never re-walked.
+    /// </summary>
+    private static bool TryRedactJwtsInWord(
+        string text,
+        ReadOnlySpan<char> word,
+        int nameStart,
+        StringBuilder builder,
+        ref int copyFrom)
+    {
+        if (!TryMatchJwtPrefix(word, out var jwtLen) || jwtLen <= 0)
+            return false;
+
+        var offset = 0;
+        while (offset < word.Length)
+        {
+            if (jwtLen > 0)
+            {
+                var redactFrom = nameStart + offset;
+                builder.Append(text, copyFrom, redactFrom - copyFrom);
+                builder.Append("[redacted]");
+                copyFrom = redactFrom + jwtLen;
+                offset += jwtLen;
+            }
+            else
+            {
+                offset++;
+            }
+
+            jwtLen = 0;
+            if (offset < word.Length)
+                TryMatchJwtPrefix(word[offset..], out jwtLen);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Compact JWT (3) or JWE (5). The general shape is any 3/5 non-empty
+    /// base64url parts whose first part is at least 4 characters (the c89f7ece
+    /// check). When the first part starts with <c>eyJ</c>, an empty 2nd JWE
+    /// segment (<c>alg: dir</c>) and an empty last JWT segment (unsecured) are
+    /// also accepted. Extra <c>.word</c> text after those parts is left unmatched.
     /// </summary>
     private static bool TryMatchJwtPrefix(ReadOnlySpan<char> text, out int matchLength)
     {
         matchLength = 0;
-        if (text.Length < 4 || !text.StartsWith("eyJ", StringComparison.Ordinal))
+        if (text.Length < 4)
             return false;
 
         Span<int> ends = stackalloc int[6];
@@ -815,9 +854,23 @@ public static class AdminAuditSnapshots
             start = i + 1;
         }
 
+        if (HasStrictJwtParts(lengths, segments, count: 5))
+        {
+            matchLength = ends[4];
+            return true;
+        }
+
+        if (HasStrictJwtParts(lengths, segments, count: 3))
+        {
+            matchLength = ends[2];
+            return true;
+        }
+
+        if (!text.StartsWith("eyJ", StringComparison.Ordinal))
+            return false;
+
         if (segments >= 5
             && lengths[0] >= 4
-            && lengths[0] > 0
             && lengths[2] > 0
             && lengths[3] > 0
             && lengths[4] > 0)
@@ -828,7 +881,6 @@ public static class AdminAuditSnapshots
 
         if (segments >= 3
             && lengths[0] >= 4
-            && lengths[0] > 0
             && lengths[1] > 0)
         {
             matchLength = ends[2];
@@ -836,6 +888,19 @@ public static class AdminAuditSnapshots
         }
 
         return false;
+    }
+
+    private static bool HasStrictJwtParts(ReadOnlySpan<int> lengths, int segments, int count)
+    {
+        if (segments < count || lengths[0] < 4)
+            return false;
+        for (var i = 0; i < count; i++)
+        {
+            if (lengths[i] == 0)
+                return false;
+        }
+
+        return true;
     }
 
     private static bool LooksLikeJwt(ReadOnlySpan<char> text)

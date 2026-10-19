@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dealoware.Api.Admin;
@@ -18,7 +20,8 @@ public class AdminAuditSecurityRecheckTests
     private const string AdminHost = "admin.core.dealoware.com";
     private const string CoreOwnerEmail = "io@aiknowhow.com";
     private const string SampleJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtaWQifQ.dGVzdHNpZ25hdHVyZQ";
-    private const string SampleJwe = "eyJhbGciOiJSU0EtT0FFUCJ9.LEAKkey.iv123.LEAKcipher.tag12";
+    private const string SampleJwe = "eyJhbGciOiJSU0EtT0FFUCJ9.LEAK-key.iv-123.LEAKcipher.tag_12";
+    private const string EyAiJwt = "eyAiYWxnIjoibm9uZSJ9.eyJzdWIiOiJleWFpIn0.dGVzdA";
     private const string MathBoldPassword =
         "\U0001D429\U0001D41A\U0001D42C\U0001D42C\U0001D430\U0001D428\U0001D42B\U0001D41D";
 
@@ -54,14 +57,23 @@ public class AdminAuditSecurityRecheckTests
     [InlineData("F6j", "passw0rd=LEAK")]
     [InlineData("F6k", "password\uA789LEAK")]
     [InlineData("F6l", "password\u02D0LEAK")]
+    [InlineData("F6q", "password\u2236LEAK")]
     [InlineData("F8i", "codes=LEAK")]
     [InlineData("F8k", "code_verifier=LEAK")]
+    [InlineData("NA16", "x-" + SampleJwt)]
+    [InlineData("NA17", "id_" + SampleJwt)]
+    [InlineData("NA30", "token_" + SampleJwt)]
+    [InlineData("NA24", EyAiJwt)]
+    [InlineData("NX02", "backup_codes=LEAK")]
+    [InlineData("NX03", "mfa_codes=LEAK")]
+    [InlineData("NX04", "pa55word=LEAK")]
     public void Recheck_FreeTextLeak_IsRedactedByTruncate(string id, string note)
     {
         var output = AdminAuditSnapshots.Truncate(new JsonObject { ["note"] = note }.ToJsonString());
         Assert.DoesNotContain("LEAK", output, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJzdWIiOiJ1In0", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("eyJzdWIiOiJleWFpIn0", output, StringComparison.Ordinal);
         Assert.DoesNotContain("LEAKcipher", output, StringComparison.Ordinal);
         Assert.True(
             output.Contains("[redacted]", StringComparison.Ordinal)
@@ -128,12 +140,75 @@ public class AdminAuditSecurityRecheckTests
     }
 
     [Fact]
+    public void Recheck_F2i_KeepsTextAfterJwtPrefix()
+    {
+        var output = AdminAuditSnapshots.Truncate(
+            new JsonObject { ["note"] = SampleJwt + ".Next sentence" }.ToJsonString());
+        Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
+        Assert.Contains(".Next sentence", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Recheck_UrlQuery_StopsAtAmpersandOnly()
     {
         var output = AdminAuditSnapshots.Truncate(
             new JsonObject { ["note"] = "https://ex.test/x?foo=1&token=LEAK&keep=ok" }.ToJsonString());
         Assert.DoesNotContain("LEAK", output, StringComparison.Ordinal);
         Assert.Contains("keep=ok", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Recheck_ProseAmpersand_StaysUnchanged()
+    {
+        const string prose = "Tom & Jerry met Smith & Sons at 5 & 6 Main St.";
+        var output = AdminAuditSnapshots.Truncate(new JsonObject { ["note"] = prose }.ToJsonString());
+        Assert.Contains("Tom", output, StringComparison.Ordinal);
+        Assert.Contains("Jerry", output, StringComparison.Ordinal);
+        Assert.Contains("Smith", output, StringComparison.Ordinal);
+        Assert.Contains("Sons", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("[redacted]", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Recheck_Nx07_BackupCodesJsonKey_IsStrippedByTruncate()
+    {
+        var output = AdminAuditSnapshots.Truncate("""{"backup_codes":"LEAK"}""");
+        Assert.DoesNotContain("LEAK", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("backup_codes", output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Recheck_AmpersandScan_IsLinearUnder64Kb()
+    {
+        var note = new string('/', 32_000) + "password=" + new string('&', 32_000);
+        var raw = "{\"note\":\"" + note + "\"}";
+        Assert.True(Encoding.UTF8.GetByteCount(raw) <= AdminAuditSnapshots.MaxInputUtf8Bytes);
+
+        AdminAuditSnapshots.Truncate(raw);
+        var clock = Stopwatch.StartNew();
+        var output = AdminAuditSnapshots.Truncate(raw);
+        clock.Stop();
+
+        Assert.DoesNotContain("password=", output, StringComparison.Ordinal);
+        Assert.True(clock.ElapsedMilliseconds < 200, $"ampersand scan took {clock.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public void Recheck_JwtRescan_IsLinearAt60Kb()
+    {
+        var unit = "eyJa.b.c..";
+        var note = string.Concat(Enumerable.Repeat(unit, 6_000));
+        var raw = new JsonObject { ["note"] = note }.ToJsonString();
+        Assert.True(note.Length >= 60_000);
+        Assert.True(Encoding.UTF8.GetByteCount(raw) <= AdminAuditSnapshots.MaxInputUtf8Bytes);
+
+        AdminAuditSnapshots.Truncate(raw);
+        var clock = Stopwatch.StartNew();
+        var output = AdminAuditSnapshots.Truncate(raw);
+        clock.Stop();
+
+        Assert.DoesNotContain("eyJa.b.c", output, StringComparison.Ordinal);
+        Assert.True(clock.ElapsedMilliseconds < 200, $"JWT rescan took {clock.ElapsedMilliseconds}ms");
     }
 
     [Fact]
