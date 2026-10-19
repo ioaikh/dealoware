@@ -258,8 +258,10 @@ public class AdminPasswordResetTests
         Assert.DoesNotContain("window.__dwCsrf", queryBody, StringComparison.Ordinal);
         Assert.Contains($"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>", queryBody);
         Assert.Contains(AdminPasswordResetCopy.ConfirmNoscript, queryBody);
-        Assert.Contains("role=\"status\"", queryBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"reset-status\" role=\"status\" hidden", queryBody, StringComparison.Ordinal);
         Assert.Contains("role=\"alert\"", queryBody, StringComparison.Ordinal);
+        Assert.Contains(">Change password</button>", queryBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Update password", queryBody, StringComparison.Ordinal);
         Assert.Contains($"src=\"{AdminPasswordResetCopy.ConfirmScriptPath}\"", queryBody);
         Assert.Contains("autocomplete=\"one-time-code\"", queryBody, StringComparison.Ordinal);
         Assert.Contains("name=\"dw-csrf\"", queryBody, StringComparison.Ordinal);
@@ -286,6 +288,51 @@ public class AdminPasswordResetTests
         Assert.Contains("meta[name=\"dw-csrf\"]", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("status===303", scriptBody.Replace(" ", ""), StringComparison.Ordinal);
         Assert.DoesNotContain("r.status === 303", scriptBody, StringComparison.Ordinal);
+        AssertConfirmClientSource(scriptBody);
+    }
+
+    [Fact]
+    public void TD_ADM_031_ConfirmClient_MatchesChiefUiN1ToN4()
+    {
+        var html = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
+        Assert.Contains(
+            "<p id=\\\"reset-status\\\" role=\\\"status\\\" hidden>",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains("<button type=\\\"submit\\\">Change password</button>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Update password", html, StringComparison.Ordinal);
+
+        var script = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin", "auth", "reset-confirm.js"));
+        AssertConfirmClientSource(script);
+    }
+
+    private static void AssertConfirmClientSource(string script)
+    {
+        var showRetry = Regex.Match(script, @"function showRetry\([^)]*\) \{[\s\S]*?\n  \}");
+        Assert.True(showRetry.Success, "showRetry() must be present");
+        Assert.Contains("retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("retryBtn.hidden = false", showRetry.Value, StringComparison.Ordinal);
+
+        Assert.Contains("window.__dwResetTimeoutMs", script, StringComparison.Ordinal);
+        Assert.Contains("if (!token)", script, StringComparison.Ordinal);
+        Assert.Contains("location.replace(EXPIRED)", script, StringComparison.Ordinal);
+        Assert.Contains("newPassword-error", script, StringComparison.Ordinal);
+        Assert.Contains("aria-describedby", script, StringComparison.Ordinal);
+        Assert.Contains("aria-invalid", script, StringComparison.Ordinal);
+        Assert.Contains("r.status === 400", script, StringComparison.Ordinal);
+        Assert.Contains("r.status === 401", script, StringComparison.Ordinal);
+        Assert.Contains("r.status === 429", script, StringComparison.Ordinal);
+        Assert.Contains(AdminPasswordResetCopy.SignInGeneric, script, StringComparison.Ordinal);
+        Assert.Contains("totpEl.value = \"\"", script, StringComparison.Ordinal);
+        Assert.Contains("recoveryEl.value = \"\"", script, StringComparison.Ordinal);
+        Assert.Contains("body.message", script, StringComparison.Ordinal);
+        Assert.Contains("field.focus()", script, StringComparison.Ordinal);
+        Assert.Contains("check();", script, StringComparison.Ordinal);
+        var beforeCheck = script[..script.LastIndexOf("check();", StringComparison.Ordinal)];
+        Assert.Contains("if (!token)", beforeCheck, StringComparison.Ordinal);
     }
 
     [Fact]

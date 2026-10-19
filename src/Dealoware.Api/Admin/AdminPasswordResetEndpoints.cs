@@ -97,7 +97,7 @@ public static class AdminPasswordResetEndpoints
             $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title></head>" +
             "<body><main id=\"reset-main\" aria-busy=\"true\">" +
             $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
-            $"<p id=\"reset-status\" role=\"status\">{AdminPasswordResetCopy.CheckingLink}</p>" +
+            $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +
             $"<p id=\"reset-alert\" role=\"alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
             $"<button type=\"button\" id=\"reset-retry\" hidden>{AdminPasswordResetCopy.TryAgain}</button>" +
             $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\" hidden>" +
@@ -105,7 +105,7 @@ public static class AdminPasswordResetEndpoints
             "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
             "<label>Authenticator code <input name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
             "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></label>" +
-            "<button type=\"submit\">Update password</button></form>" +
+            "<button type=\"submit\">Change password</button></form>" +
             $"<script src=\"{ConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
             "</main></body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
