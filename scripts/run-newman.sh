@@ -21,12 +21,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COLLECTION="$REPO_ROOT/postman/Dealoware-PoC-Negotiations.postman_collection.json"
 BASE_URL="${BASE_URL:-http://localhost:5287}"
 
-case "$BASE_URL" in
-  http://localhost:*|http://127.0.0.1:*) ;;
-  *) echo "ERROR: run-newman.sh runs against local Development only (BASE_URL=$BASE_URL refused)."
-     echo "The only route to the live Core API is postman/Dealoware-api-core.postman_environment.json (-e), and a live run needs Ivan's go through BM (T-G-08)."
-     exit 1 ;;
-esac
+if [[ "$BASE_URL" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$) ]]; then
+  :
+else
+  echo "ERROR: run-newman.sh runs against local Development only (BASE_URL=$BASE_URL refused)."
+  echo "The only route to the live Core API is postman/Dealoware-api-core.postman_environment.json (-e), and a live run needs Ivan's go through BM (T-G-08)."
+  exit 1
+fi
 
 BAIL_FLAG=""
 VERBOSE_FLAG=""

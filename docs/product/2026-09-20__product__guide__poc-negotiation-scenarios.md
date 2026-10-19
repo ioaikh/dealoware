@@ -565,11 +565,18 @@ Import the [Postman collection](../../postman/Dealoware-PoC-Negotiations.postman
 1. **Import:** File → Import → select `postman/Dealoware-PoC-Negotiations.postman_collection.json`
 2. **`baseUrl`:** leave the collection default `http://localhost:5287`. The only route to the live Core API is the LIVE override environment `postman/Dealoware-api-core.postman_environment.json`; a live run needs Ivan's go through BM (T-G-08) every time.
 3. **Run folders in order:**
-   - `01-Bootstrap` (captures credentials)
-   - `02-Happy-Path-Deal` (full negotiation → accept)
-   - `03-Alternate-Decline`
-   - `04-Alternate-Close`
-   - `05-Negative-Cases`
+   - `00-Health`
+   - `01-Auth` (captures credentials)
+   - `02-Artifact`
+   - `03-Negotiation`
+   - `04-Offer`
+   - `05-Counter`
+   - `06-Accept-or-Decline` (full negotiation → accept)
+   - `07-Close`
+   - `08-Negative-Cases`
+   - `09-Expiration`
+   - `10-Other-Intents`
+   - `11-Optional-Rotate-and-Revoke`
 
 The collection uses Tests scripts to automatically capture and propagate IDs between requests.
 
