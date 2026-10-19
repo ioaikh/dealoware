@@ -11,6 +11,7 @@ These files are real Playwright 1.48 JSON reporter output, captured by
 | `zero-tests-grep.json` | `--grep NO_MATCH_AC06_ZERO_TESTS` | red (`executed=0`) |
 | `normal-passed.json` | one passing test | green (`executed=1`) |
 | `mixed-skip.json` | one pass + one skip | green (`executed=1`) |
+| `failed.json` | deliberate failing throwaway spec | green for the guard (`failed>=1`); Playwright itself exits non-zero |
 
 Regenerate:
 

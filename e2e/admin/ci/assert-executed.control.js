@@ -9,6 +9,9 @@ const path = require('path');
 
 const script = path.join(__dirname, 'assert-executed.js');
 const fixturesDir = path.join(__dirname, 'fixtures');
+const e2eRoot = path.join(__dirname, '../..');
+const srcDir = path.join(__dirname, 'fixture-src');
+const playwrightBin = path.join(e2eRoot, 'node_modules', '.bin', 'playwright');
 
 function runReport(reportPath) {
   return spawnSync(process.execPath, [script, reportPath], {
@@ -30,6 +33,21 @@ function assertCountsOnly(result) {
   assert.doesNotMatch(text, /ADMIN_/);
   assert.doesNotMatch(text, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   assert.match(result.stdout, /^passed=\d+ failed=\d+ flaky=\d+ skipped=\d+ executed=\d+\n$/);
+}
+
+function assertSafeNonZero(result, forbidden = []) {
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  assert.notEqual(result.status, 0);
+  assert.equal(typeof result.status, 'number');
+  assertCountsOnly(result);
+  const text = `${result.stdout || ''}${result.stderr || ''}`;
+  assert.doesNotMatch(text, /Error:/);
+  assert.doesNotMatch(text, /SyntaxError/);
+  assert.doesNotMatch(text, /at Object\./);
+  for (const token of forbidden) {
+    assert.doesNotMatch(text, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 }
 
 function assertRealPlaywrightReport(report) {
@@ -71,6 +89,7 @@ test('checked-in fixtures are real Playwright JSON reports', () => {
     'zero-tests-grep.json',
     'normal-passed.json',
     'mixed-skip.json',
+    'failed.json',
   ]) {
     assertRealPlaywrightReport(readFixture(fileName));
   }
@@ -131,6 +150,78 @@ test('mixed-skip fixture with a pass and a skip exits 0', () => {
   assert.match(result.stdout, /passed=1/);
   assert.match(result.stdout, /skipped=1/);
   assert.match(result.stdout, /executed=1/);
+});
+
+test('failed spec makes Playwright exit non-zero and guard reports failed>=1', () => {
+  const dest = path.join(os.tmpdir(), `ac06-failed-${process.pid}.json`);
+  const pw = spawnSync(
+    playwrightBin,
+    [
+      'test',
+      '-c',
+      path.join(srcDir, 'playwright.config.ts'),
+      '--project=chromium',
+      '--reporter=json',
+      'failed.fixture.ts',
+    ],
+    {
+      cwd: e2eRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CI: '1',
+        PLAYWRIGHT_JSON_OUTPUT_FILE: dest,
+      },
+    }
+  );
+  assert.equal(pw.error, undefined);
+  assert.notEqual(pw.status, 0);
+
+  const report = readFixture('failed.json');
+  assertRealPlaywrightReport(report);
+  assert.ok(report.stats.unexpected >= 1);
+
+  const result = runFixture('failed.json');
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  assert.equal(result.status, 0);
+  assertCountsOnly(result);
+  const failed = Number((/failed=(\d+)/.exec(result.stdout) || [])[1]);
+  assert.ok(failed >= 1);
+  assert.match(result.stdout, /executed=[1-9]/);
+
+  if (fs.existsSync(dest)) {
+    fs.unlinkSync(dest);
+  }
+});
+
+test('missing report path exits non-zero without crashing or echoing contents', () => {
+  const missing = path.join(os.tmpdir(), `ac06-missing-${process.pid}-no-such-file.json`);
+  const result = runReport(missing);
+  assertSafeNonZero(result, [missing, 'ac06-missing']);
+});
+
+test('truncated JSON exits non-zero without crashing or echoing contents', () => {
+  const marker = 'AC06_TRUNCATED_MARKER_DO_NOT_ECHO';
+  const tmp = path.join(os.tmpdir(), `ac06-truncated-${process.pid}.json`);
+  fs.writeFileSync(tmp, `{ "stats": { "expected": 1, "unexpected": ${marker}`);
+  const result = runReport(tmp);
+  fs.unlinkSync(tmp);
+  assertSafeNonZero(result, [marker]);
+});
+
+test('non-JSON content exits non-zero without crashing or echoing contents', () => {
+  const marker = 'AC06_NONJSON_MARKER_DO_NOT_ECHO';
+  const tmp = path.join(os.tmpdir(), `ac06-nonjson-${process.pid}.txt`);
+  fs.writeFileSync(tmp, `not-json ${marker}\n`);
+  const result = runReport(tmp);
+  fs.unlinkSync(tmp);
+  assertSafeNonZero(result, [marker, 'not-json']);
+});
+
+test('no argument exits non-zero without crashing or echoing contents', () => {
+  const result = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+  assertSafeNonZero(result);
 });
 
 test('counts come from JSON stats, not stdout text', () => {

@@ -47,6 +47,12 @@ const scenarios = [
     config: path.join(srcDir, 'playwright.config.ts'),
     args: ['mixed-skip.fixture.ts'],
   },
+  {
+    name: 'failed',
+    output: 'failed.json',
+    config: path.join(srcDir, 'playwright.config.ts'),
+    args: ['failed.fixture.ts'],
+  },
 ];
 
 function countsFromReport(report) {

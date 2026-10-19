@@ -117,4 +117,9 @@ function main() {
   process.exit(executed > 0 ? 0 : 1);
 }
 
-main();
+try {
+  main();
+} catch {
+  printCounts(emptyCounts());
+  process.exit(1);
+}

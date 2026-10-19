@@ -1,0 +1,124 @@
+{
+  "config": {
+    "configFile": "/workspace/e2e/admin/ci/fixture-src/playwright.config.ts",
+    "rootDir": "/workspace/e2e/admin/ci/fixture-src",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 15000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/workspace/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspace/e2e/admin/ci/fixture-src",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.fixture.ts"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "version": "1.48.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "failed.fixture.ts",
+      "file": "failed.fixture.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "deliberate fail",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "failed",
+                  "duration": 6,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\n    at /workspace/e2e/admin/ci/fixture-src/failed.fixture.ts:4:13",
+                    "location": {
+                      "file": "/workspace/e2e/admin/ci/fixture-src/failed.fixture.ts",
+                      "column": 13,
+                      "line": 4
+                    },
+                    "snippet": "  2 |\n  3 | test('deliberate fail', async () => {\n> 4 |   expect(1).toBe(0);\n    |             ^\n  5 | });\n  6 |"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/workspace/e2e/admin/ci/fixture-src/failed.fixture.ts",
+                        "column": 13,
+                        "line": 4
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\n\n  2 |\n  3 | test('deliberate fail', async () => {\n> 4 |   expect(1).toBe(0);\n    |             ^\n  5 | });\n  6 |\n\n    at /workspace/e2e/admin/ci/fixture-src/failed.fixture.ts:4:13"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T13:01:57.539Z",
+                  "attachments": [],
+                  "errorLocation": {
+                    "file": "/workspace/e2e/admin/ci/fixture-src/failed.fixture.ts",
+                    "column": 13,
+                    "line": 4
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "0a017ac913b57232023b-ab28b76c4ebfe3ea1359",
+          "file": "failed.fixture.ts",
+          "line": 3,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-19T13:01:57.224Z",
+    "duration": 337.46500000000003,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}
