@@ -2,8 +2,9 @@ namespace Dealoware.Domain.Admin;
 
 /// <summary>
 /// Cross-instance lockout counters and locks (SC-6). Durable store only.
-/// Account keys are emails. IP keys are the trusted client address
-/// (or its keyed HMAC); never a client-supplied left-most XFF hop.
+/// Account keys are the owner email or an HMAC of a non-owner email.
+/// IP keys are the trusted client address (or its keyed HMAC); never a
+/// client-supplied left-most XFF hop.
 /// </summary>
 public interface IAdminLockoutStore
 {
@@ -18,9 +19,10 @@ public interface IAdminLockoutStore
     /// <summary>
     /// Atomically reserve one attempt. Refuses when the gate is already
     /// locked or the sliding window is at <paramref name="limit"/>. Does
-    /// not activate the lock — the caller locks only after a failed
-    /// evaluation, or releases <see cref="FailureIncrementResult.ReservationId"/>
-    /// on success.
+    /// not activate the lock — a refused reserve must not turn the gate
+    /// on. The caller locks only after a failed evaluation via
+    /// <see cref="TryActivateLockAsync"/>, or releases
+    /// <see cref="FailureIncrementResult.ReservationId"/> on success.
     /// </summary>
     Task<FailureIncrementResult> TryIncrementFailureAsync(
         string scope,
@@ -59,7 +61,12 @@ public interface IAdminLockoutStore
         int limit,
         CancellationToken ct);
 
-    Task ClearAccountFailuresAsync(string email, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> ListAccountFailureIdsAsync(string email, CancellationToken ct);
+
+    Task<int> DeleteAccountFailuresByIdsAsync(
+        string email,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct);
 
     Task SaveChangesAsync(CancellationToken ct);
 }

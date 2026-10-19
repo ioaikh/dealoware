@@ -10,17 +10,18 @@ namespace Dealoware.Api.Admin;
 /// string at <see cref="ConfigurationKey"/> (env
 /// <see cref="EnvironmentVariableName"/>). ForwardLimit stays 1. Defaults
 /// are cleared, then only those CIDRs are trusted. KnownProxies stays empty.
-/// IPv4 prefixes shorter than /8, IPv6 prefixes shorter than /32, and
-/// IPv4-mapped IPv6 prefixes shorter than /104 are rejected so
-/// 0.0.0.0/0 and ::/0 cannot trust every peer.
+/// IPv4 must be RFC 1918 and /16 or narrower. IPv6 must be ULA (fc00::/7)
+/// and /48 or narrower. Loopback, unspecified, link-local, and public
+/// ranges are refused.
 /// </summary>
 public static class ForwardedHeadersTrust
 {
     public const string ConfigurationKey = "Admin:ForwardedHeaders:KnownNetworks";
     public const string EnvironmentVariableName = "Admin__ForwardedHeaders__KnownNetworks";
-    public const int MinimumIpv4Prefix = 8;
-    public const int MinimumIpv6Prefix = 32;
-    public const int MinimumIpv4MappedPrefix = 104;
+    public const int MinimumIpv4Prefix = 16;
+    public const int MinimumIpv6Prefix = 48;
+    public const int Ipv4MappedPrefixBias = 96;
+    public const int MinimumIpv4MappedPrefix = Ipv4MappedPrefixBias + MinimumIpv4Prefix;
 
     public static bool TryParse(string? raw, out IReadOnlyList<NetIPNetwork> networks, out string? error)
     {
@@ -79,7 +80,7 @@ public static class ForwardedHeadersTrust
                 return false;
             }
 
-            return true;
+            return IsAllowedIpv4(address.MapToIPv4(), out error);
         }
 
         if (address.AddressFamily == AddressFamily.InterNetwork)
@@ -90,7 +91,7 @@ public static class ForwardedHeadersTrust
                 return false;
             }
 
-            return true;
+            return IsAllowedIpv4(address, out error);
         }
 
         if (prefix < MinimumIpv6Prefix)
@@ -99,7 +100,72 @@ public static class ForwardedHeadersTrust
             return false;
         }
 
+        return IsAllowedIpv6(address, out error);
+    }
+
+    private static bool IsAllowedIpv4(IPAddress address, out string? error)
+    {
+        error = null;
+        if (IPAddress.IsLoopback(address)
+            || address.Equals(IPAddress.Any)
+            || IsIpv4LinkLocal(address)
+            || !IsRfc1918(address))
+        {
+            error = "contains a public, loopback, unspecified, or link-local CIDR";
+            return false;
+        }
+
         return true;
+    }
+
+    private static bool IsAllowedIpv6(IPAddress address, out string? error)
+    {
+        error = null;
+        if (IPAddress.IsLoopback(address)
+            || address.Equals(IPAddress.IPv6Any)
+            || address.IsIPv6LinkLocal
+            || !IsUniqueLocal(address))
+        {
+            error = "contains a public, loopback, unspecified, or link-local CIDR";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsRfc1918(IPAddress address)
+    {
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10
+               || bytes[0] == 172 && bytes[1] is >= 16 and <= 31
+               || bytes[0] == 192 && bytes[1] == 168;
+    }
+
+    private static bool IsIpv4LinkLocal(IPAddress address)
+    {
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 169 && bytes[1] == 254;
+    }
+
+    private static bool IsUniqueLocal(IPAddress address)
+    {
+        if (address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        return (bytes[0] & 0xfe) == 0xfc;
     }
 
     public static IReadOnlyList<NetIPNetwork> Resolve(string? raw, bool requireConfigured)

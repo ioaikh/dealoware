@@ -52,10 +52,12 @@ public class ForwardedHeadersTrustTests
         Assert.Contains("over-broad", ipv6Any, StringComparison.OrdinalIgnoreCase);
         Assert.False(ForwardedHeadersTrust.TryParse("10.0.0.0/7", out _, out _));
         Assert.False(ForwardedHeadersTrust.TryParse("2001:db8::/16", out _, out _));
-        Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.0/8", out var minV4, out _));
-        Assert.Equal("10.0.0.0/8", minV4[0].ToString());
-        Assert.True(ForwardedHeadersTrust.TryParse("2001:db8::/32", out var minV6, out _));
-        Assert.Contains("32", minV6[0].ToString(), StringComparison.Ordinal);
+        Assert.False(ForwardedHeadersTrust.TryParse("10.0.0.0/8", out _, out _));
+        Assert.False(ForwardedHeadersTrust.TryParse("2001:db8::/32", out _, out _));
+        Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.0/16", out var minV4, out _));
+        Assert.Equal("10.0.0.0/16", minV4[0].ToString());
+        Assert.True(ForwardedHeadersTrust.TryParse("fd00:1:2::/48", out var minV6, out _));
+        Assert.Contains("48", minV6[0].ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -63,7 +65,7 @@ public class ForwardedHeadersTrustTests
     {
         Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.1", out var bare, out _));
         Assert.Equal(32, bare[0].PrefixLength);
-        Assert.True(ForwardedHeadersTrust.TryParse("2001:db8::1", out var v6Host, out _));
+        Assert.True(ForwardedHeadersTrust.TryParse("fd12:3456:789a::1", out var v6Host, out _));
         Assert.Equal(128, v6Host[0].PrefixLength);
         Assert.True(ForwardedHeadersTrust.TryParse("::ffff:10.0.0.1/128", out var mapped, out _));
         Assert.True(mapped[0].BaseAddress.IsIPv4MappedToIPv6);
@@ -71,6 +73,33 @@ public class ForwardedHeadersTrustTests
         Assert.Contains("over-broad", mappedWide, StringComparison.OrdinalIgnoreCase);
         Assert.True(ForwardedHeadersTrust.TryParse(" 10.8.0.0/16 ", out var padded, out _));
         Assert.Single(padded);
+    }
+
+    [Fact]
+    public void SecR5_Parse_RejectsOverBroadPublicLoopbackAndLinkLocal()
+    {
+        foreach (var cidr in new[]
+                 {
+                     "10.0.0.0/8",
+                     "11.0.0.0/8",
+                     "127.0.0.0/8",
+                     "0.0.0.0/8",
+                     "10.0.0.0/9",
+                     "::/32",
+                     "fe80::1",
+                     "2001:db8::/32",
+                     "169.254.0.0/16",
+                     "8.8.8.0/24"
+                 })
+        {
+            Assert.False(ForwardedHeadersTrust.TryParse(cidr, out _, out _), cidr);
+        }
+
+        Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.0/16", out var rfc1918, out var error));
+        Assert.Null(error);
+        Assert.Equal("10.0.0.0/16", rfc1918[0].ToString());
+        Assert.True(ForwardedHeadersTrust.TryParse("192.168.1.0/24", out _, out _));
+        Assert.True(ForwardedHeadersTrust.TryParse("fd00:1111:2222::/48", out _, out _));
     }
 
     [Fact]

@@ -1,8 +1,9 @@
 namespace Dealoware.Domain.Admin;
 
 /// <summary>
-/// Short-lived counted auth failure. Account rows store the email; IP rows store raw IP
-/// and expire with the 15-minute window. Never written to audit.
+/// Short-lived counted auth failure. Account rows store the owner email or
+/// an HMAC of a non-owner email. IP rows store raw IP and expire with the
+/// 15-minute window. Never written to audit.
 /// </summary>
 public sealed class AdminAuthFailureEvent
 {

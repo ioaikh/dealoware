@@ -242,7 +242,7 @@ public static class AdminAuthEndpoints
             return AdminSignInDeny.Throttled();
         }
 
-        var accountKey = isOwner ? ownerEmail : submittedEmail;
+        var accountKey = AdminAuthService.AccountSubjectKey(submittedEmail, isOwner, ipHasher);
         var accountReserved = await AdminLockoutFlow.ReserveAsync(
             lockouts,
             AdminAuthScopes.Account,
@@ -270,7 +270,15 @@ public static class AdminAuthEndpoints
         if (!isOwner || !passwordOk)
         {
             await ConfirmAccountLockAsync(
-                lockouts, accounts, accountReserved, accountKey, now, ipHmac, audit, context);
+                lockouts,
+                accounts,
+                accountReserved,
+                accountKey,
+                isOwner ? ownerEmail : submittedEmail,
+                now,
+                ipHmac,
+                audit,
+                context);
             await AdminLockoutFlow.ConfirmFailureAsync(
                 lockouts,
                 ipReserved,
@@ -436,7 +444,7 @@ public static class AdminAuthEndpoints
         var now = DateTimeOffset.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
         var (ok, ipReserved, accountReserved) = await ReserveSecondFactorAsync(
-            account, pending, now, context, accounts, sessions, audit, ipHmac);
+            account, pending, now, context, accounts, audit, ipHmac);
         if (!ok)
         {
             CryptographicClear(secret);
@@ -604,7 +612,7 @@ public static class AdminAuthEndpoints
         var accepted = false;
         var usedRecovery = false;
         var (ok, ipReserved, accountReserved) = await ReserveSecondFactorAsync(
-            account, pending, now, context, accounts, sessions, audit, ipHmac);
+            account, pending, now, context, accounts, audit, ipHmac);
         if (!ok)
         {
             return SecondFactorDeny(ipReserved);
@@ -722,7 +730,6 @@ public static class AdminAuthEndpoints
         DateTimeOffset now,
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
         string ipHmac)
     {
@@ -762,13 +769,21 @@ public static class AdminAuthEndpoints
             return (false, ipReserved, accountReserved);
         }
 
-        if (await accounts.TryReserveSecondFactorAttemptAsync(
-                pending.Id, account.Id, now, context.RequestAborted))
+        if (await accounts.TryIncrementPendingFailureAsync(pending.Id, now, context.RequestAborted))
         {
             return (true, ipReserved, accountReserved);
         }
 
-        await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
+        await ConfirmAccountLockAsync(
+            lockouts,
+            accounts,
+            accountReserved,
+            accountKey,
+            account.Email,
+            now,
+            ipHmac,
+            audit,
+            context);
         await WriteAuthEventAsync(
             audit,
             AdminAuthEvents.SecondFactorFailed,
@@ -803,7 +818,8 @@ public static class AdminAuthEndpoints
         var accountKey = AdminAuthService.NormalizeEmail(account.Email);
         await AdminLockoutFlow.ReleaseSuccessAsync(
             lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, AdminAuthService.IpFailureLimit, context.RequestAborted);
-        await lockouts.ClearAccountFailuresAsync(accountKey, context.RequestAborted);
+        var knownFailures = await lockouts.ListAccountFailureIdsAsync(accountKey, context.RequestAborted);
+        await lockouts.DeleteAccountFailuresByIdsAsync(accountKey, knownFailures, context.RequestAborted);
         await lockouts.TryReleaseLockIfBelowLimitAsync(
             AdminAuthScopes.Account,
             accountKey,
@@ -818,7 +834,8 @@ public static class AdminAuthEndpoints
         IAdminLockoutStore lockouts,
         IAdminCoreOwnerAccountRepository accounts,
         FailureIncrementResult reserved,
-        string accountKey,
+        string accountSubject,
+        string accountEmail,
         DateTimeOffset now,
         string ipHmac,
         IAdminAuditRepository audit,
@@ -828,18 +845,18 @@ public static class AdminAuthEndpoints
             lockouts,
             reserved,
             AdminAuthScopes.Account,
-            accountKey,
+            accountSubject,
             now,
             AdminAuthService.AccountFailureLimit,
             async () =>
             {
-                await accounts.ConsumeOutstandingPendingAsync(accountKey, now, context.RequestAborted);
+                await accounts.ConsumeOutstandingPendingAsync(accountEmail, now, context.RequestAborted);
                 var sessions = context.RequestServices.GetRequiredService<IAdminSessionRepository>();
-                await sessions.DeleteByEmailAsync(accountKey, context.RequestAborted);
+                await sessions.DeleteByEmailAsync(accountEmail, context.RequestAborted);
                 await WriteAuthEventAsync(
                     audit,
-                    AdminAuthEvents.LoginFailure,
-                    accountKey,
+                    AdminAuthAction.LockStart,
+                    accountEmail,
                     ipHmac,
                     AdminAuthReason.Locked,
                     context.RequestAborted);
@@ -862,7 +879,7 @@ public static class AdminAuthEndpoints
         var ip = ClientIp(context) ?? "0.0.0.0";
         var accountKey = AdminAuthService.NormalizeEmail(account.Email);
         await ConfirmAccountLockAsync(
-            lockouts, accounts, accountReserved, accountKey, now, ipHmac, audit, context);
+            lockouts, accounts, accountReserved, accountKey, account.Email, now, ipHmac, audit, context);
         await AdminLockoutFlow.ConfirmFailureAsync(
             lockouts,
             ipReserved,
@@ -872,7 +889,6 @@ public static class AdminAuthEndpoints
             AdminAuthService.IpFailureLimit,
             null,
             context.RequestAborted);
-        await EndSignInIfFactorLockedAsync(account, now, context, accounts, sessions);
         await WriteAuthEventAsync(
             audit,
             AdminAuthEvents.SecondFactorFailed,
@@ -887,23 +903,6 @@ public static class AdminAuthEndpoints
             ipHmac,
             AdminAuthEvents.ReasonBad2Fa,
             context.RequestAborted);
-    }
-
-    private static async Task EndSignInIfFactorLockedAsync(
-        AdminCoreOwnerAccount account,
-        DateTimeOffset now,
-        HttpContext context,
-        IAdminCoreOwnerAccountRepository accounts,
-        IAdminSessionRepository sessions)
-    {
-        if (!account.IsFactorLocked(now)
-            && !await accounts.IsFactorLockedAsync(account.Id, now, context.RequestAborted))
-        {
-            return;
-        }
-
-        await accounts.ConsumeOutstandingPendingAsync(account.Email, now, context.RequestAborted);
-        await sessions.DeleteByEmailAsync(account.Email, context.RequestAborted);
     }
 
     private static async Task<AdminPendingAuth?> LoadUsablePendingAsync(

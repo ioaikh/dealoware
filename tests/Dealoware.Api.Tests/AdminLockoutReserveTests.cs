@@ -385,6 +385,185 @@ public class AdminLockoutReserveTests
         Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(6)]
+    public async Task SecR11_ParallelWrongAfterFour_RevokesSessionPendingAndWritesOneLockStart(int parallel)
+    {
+        await ClearAsync();
+        await SeedEnrolledAccountAsync();
+        Guid sessionId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var session = AdminSession.Create(OwnerEmail, "r11-session-hmac");
+            session.MarkTotpVerified();
+            db.AdminSessions.Add(session);
+            db.AdminPendingAuths.Add(AdminPendingAuth.Create(
+                OwnerEmail,
+                AdminAuthService.HashToken(AdminAuthService.CreateOpaqueToken())));
+            await db.SaveChangesAsync();
+            sessionId = session.Id;
+        }
+
+        var client = CreateClient();
+        for (var i = 0; i < 4; i++)
+        {
+            using var fail = await SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        var responses = await Task.WhenAll(
+            Enumerable.Range(0, parallel).Select(_ => SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.SignInPath,
+                new { email = OwnerEmail, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken })));
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+        Assert.NotNull(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Equal(0, db.AdminSessions.Count(s => s.Email == OwnerEmail));
+            Assert.Equal(0, db.AdminPendingAuths.Count(p => p.Email == OwnerEmail && p.ConsumedAt == null));
+            Assert.Equal(1, db.AdminAuditLog.Count(e => e.Action == AdminAuthAction.LockStart && e.ActorEmail == OwnerEmail));
+            Assert.Equal(0, db.AdminSessions.Count(s => s.Id == sessionId));
+        }
+    }
+
+    [Fact]
+    public void SecR10b_IsShortPassword_CountsTextElementsAfterStrippingFormat()
+    {
+        Assert.True(AdminAuthService.IsShortPassword(string.Concat(Enumerable.Repeat("\U0001F600", 8))));
+        Assert.True(AdminAuthService.IsShortPassword("e" + new string('\u0301', 14)));
+        Assert.True(AdminAuthService.IsShortPassword(new string('\u200B', 15)));
+        Assert.True(AdminAuthService.IsShortPassword(string.Concat(Enumerable.Repeat("\U0001F600", 7)) + "a"));
+        Assert.False(AdminAuthService.IsShortPassword(new string('a', 15)));
+    }
+
+    [Fact]
+    public async Task SecR10b_Reset_RejectsEmojiCombiningAndZeroWidthPasswords()
+    {
+        await ClearAsync();
+        var client = CreateClient();
+        foreach (var password in new[]
+                 {
+                     string.Concat(Enumerable.Repeat("\U0001F600", 8)),
+                     "e" + new string('\u0301', 14),
+                     new string('\u200B', 15)
+                 })
+        {
+            var raw = AdminAuthService.CreateOpaqueToken();
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
+                await tokens.AddAsync(
+                    AdminAuthToken.Create(
+                        AdminAuthToken.KindReset,
+                        AdminAuthService.HashToken(raw),
+                        OwnerEmail.ToLowerInvariant(),
+                        DateTimeOffset.UtcNow,
+                        TimeSpan.FromMinutes(30)),
+                    CancellationToken.None);
+                await tokens.SaveChangesAsync(CancellationToken.None);
+            }
+
+            using var reset = await SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.ResetConfirmPath,
+                new { token = raw, email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+            Assert.Equal(HttpStatusCode.BadRequest, reset.StatusCode);
+            Assert.Contains(AdminAuthCopy.PasswordTooShort, await reset.Content.ReadAsStringAsync());
+        }
+    }
+
+    [Fact]
+    public async Task SecR13_Step2Success_LeavesInFlightAccountFailures()
+    {
+        await ClearAsync();
+        var now = DateTimeOffset.UtcNow;
+        IReadOnlyList<Guid> known;
+        using (var seed = _factory.Services.CreateScope())
+        {
+            var lockouts = seed.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
+            for (var i = 0; i < 3; i++)
+            {
+                var reserved = await AdminLockoutFlow.ReserveAsync(
+                    lockouts,
+                    AdminAuthScopes.Account,
+                    OwnerEmail,
+                    now,
+                    AdminAuthService.AccountFailureLimit,
+                    CancellationToken.None);
+                Assert.True(reserved.Incremented);
+            }
+
+            known = await lockouts.ListAccountFailureIdsAsync(OwnerEmail, CancellationToken.None);
+        }
+
+        Assert.Equal(3, known.Count);
+
+        using var incrementScope = _factory.Services.CreateScope();
+        using var deleteScope = _factory.Services.CreateScope();
+        var late = AdminLockoutFlow.ReserveAsync(
+            incrementScope.ServiceProvider.GetRequiredService<IAdminLockoutStore>(),
+            AdminAuthScopes.Account,
+            OwnerEmail,
+            now,
+            AdminAuthService.AccountFailureLimit,
+            CancellationToken.None);
+        var clear = deleteScope.ServiceProvider.GetRequiredService<IAdminLockoutStore>()
+            .DeleteAccountFailuresByIdsAsync(OwnerEmail, known, CancellationToken.None);
+        await Task.WhenAll(late, clear);
+        Assert.True((await late).Incremented);
+        Assert.Equal(1, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
+        using var after = _factory.Services.CreateScope();
+        var remaining = await after.ServiceProvider.GetRequiredService<IAdminLockoutStore>()
+            .ListAccountFailureIdsAsync(OwnerEmail, CancellationToken.None);
+        Assert.DoesNotContain(remaining, id => known.Contains(id));
+    }
+
+    [Fact]
+    public async Task SecN8_NonOwnerAccountRows_StoreHmacNotRawEmail()
+    {
+        await ClearAsync();
+        var client = CreateClient();
+        const string unknown = "nobody@example.com";
+        using var response = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = unknown, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(1, await CountAsync(AdminAuthScopes.Account, unknown));
+        using var reset = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.ResetPath,
+            new { email = unknown, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+        var expected = AdminAuthService.AccountSubjectKey(
+            AdminAuthService.NormalizeEmail(unknown),
+            isOwner: false,
+            hasher);
+        Assert.DoesNotContain(unknown, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
+        Assert.DoesNotContain(unknown, db.AdminAuthLockouts.Select(l => l.SubjectKey));
+        Assert.Contains(expected, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
+        Assert.Contains(expected, db.AdminAuthLockouts.Select(l => l.SubjectKey));
+        Assert.DoesNotContain(unknown, db.AdminAuthTokens.Select(t => t.Email));
+        Assert.Contains(expected, db.AdminAuthTokens.Select(t => t.Email));
+    }
+
     [Fact]
     public async Task SecR10_ResetAndBootstrap_RejectPasswordShorterThan15()
     {
@@ -505,6 +684,7 @@ public class AdminLockoutReserveTests
         await db.AdminPendingAuths.ExecuteDeleteAsync();
         await db.AdminRecoveryCodes.ExecuteDeleteAsync();
         await db.AdminCoreOwnerAccounts.ExecuteDeleteAsync();
+        await db.AdminAuditLog.ExecuteDeleteAsync();
         _factory.Services.GetRequiredService<TestAdminClock>().UtcNow = DateTimeOffset.UtcNow;
     }
 

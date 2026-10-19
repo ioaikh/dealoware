@@ -141,10 +141,29 @@ public sealed class AdminLockoutStore : IAdminLockoutStore
             }).ConfigureAwait(false);
     }
 
-    public async Task ClearAccountFailuresAsync(string email, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> ListAccountFailureIdsAsync(string email, CancellationToken ct)
     {
-        await _db.AdminAuthFailureEvents
+        return await _db.AdminAuthFailureEvents.AsNoTracking()
             .Where(e => e.Scope == AdminAuthScopes.Account && e.SubjectKey == email)
+            .Select(e => e.Id)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> DeleteAccountFailuresByIdsAsync(
+        string email,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct)
+    {
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        return await _db.AdminAuthFailureEvents
+            .Where(e => e.Scope == AdminAuthScopes.Account
+                        && e.SubjectKey == email
+                        && ids.Contains(e.Id))
             .ExecuteDeleteAsync(ct)
             .ConfigureAwait(false);
     }
@@ -160,6 +179,7 @@ public sealed class AdminLockoutStore : IAdminLockoutStore
         TimeSpan lockDuration,
         CancellationToken ct)
     {
+        _ = lockDuration;
         _db.ChangeTracker.Clear();
         await EnsureGateExistsAsync(scope, subjectKey, ct).ConfigureAwait(false);
 
@@ -168,15 +188,8 @@ public sealed class AdminLockoutStore : IAdminLockoutStore
         var prior = await CountFailuresAsync(scope, subjectKey, now - window, ct).ConfigureAwait(false);
         if (gate.IsActive(now) || prior >= limit)
         {
-            if (!gate.IsActive(now) && prior >= limit)
-            {
-                gate.Activate(now, lockDuration);
-                gate.BumpVersion();
-                await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-                await tx.CommitAsync(ct).ConfigureAwait(false);
-                return new FailureIncrementResult(false, true, true, prior, null);
-            }
-
+            // Refuse only. ConfirmFailureAsync activates the lock so on-lock
+            // session revoke, pending consume, and the lock-start audit run.
             await tx.CommitAsync(ct).ConfigureAwait(false);
             return new FailureIncrementResult(false, false, true, prior, null);
         }

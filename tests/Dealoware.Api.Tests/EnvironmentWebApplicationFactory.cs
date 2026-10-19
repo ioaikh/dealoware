@@ -23,7 +23,7 @@ public sealed class EnvironmentWebApplicationFactory : IsolatedWebApplicationFac
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
     /// <summary>Test-only CIDR so non-Development hosts pass F3. Not a deploy value.</summary>
-    public const string TestKnownNetworks = "10.0.0.0/8";
+    public const string TestKnownNetworks = "10.0.0.0/16";
 
     private readonly string _environment;
     private readonly string? _signingKey;
