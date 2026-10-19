@@ -5,6 +5,7 @@ using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Dealoware.Infrastructure.Persistence;
 
@@ -57,6 +58,10 @@ public class DealowareDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
+        // Snapshot is design-time SQLite. Npgsql store types (timestamptz, etc.)
+        // must not fail the migrate one-shot or the postgres CI job.
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(RelationalEventId.PendingModelChangesWarning));
     }
 
     /// <summary>
