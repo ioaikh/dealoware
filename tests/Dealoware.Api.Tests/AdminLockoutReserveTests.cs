@@ -484,49 +484,66 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
-    public async Task SecR13_Step2Success_LeavesInFlightAccountFailures()
+    public async Task SecR13_Step2Success_LeavesInFlightAndPostStep1Failures()
     {
         await ClearAsync();
-        var now = DateTimeOffset.UtcNow;
-        IReadOnlyList<Guid> known;
+        var (password, secret) = await SeedEnrolledAccountAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminPendingAuthCookie.Name)
+            ?? ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        using var afterStep1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong-after-step1", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, afterStep1.StatusCode);
+        Guid afterStep1Id;
         using (var seed = _factory.Services.CreateScope())
         {
-            var lockouts = seed.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
-            for (var i = 0; i < 3; i++)
-            {
-                var reserved = await AdminLockoutFlow.ReserveAsync(
-                    lockouts,
-                    AdminAuthScopes.Account,
-                    OwnerEmail,
-                    now,
-                    AdminAuthService.AccountFailureLimit,
-                    CancellationToken.None);
-                Assert.True(reserved.Incremented);
-            }
-
-            known = await lockouts.ListAccountFailureIdsAsync(OwnerEmail, CancellationToken.None);
+            var db = seed.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var afterStep1Rows = db.AdminAuthFailureEvents
+                .Where(e => e.Scope == AdminAuthScopes.Account && e.SubjectKey == OwnerEmail)
+                .Select(e => e.Id)
+                .ToList();
+            Assert.Single(afterStep1Rows);
+            afterStep1Id = afterStep1Rows[0];
         }
 
-        Assert.Equal(3, known.Count);
+        var code = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        var inFlight = SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = "wrong-in-flight", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        var step2 = SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+        await Task.WhenAll(inFlight, step2);
+        using var inFlightResponse = await inFlight;
+        using var step2Response = await step2;
+        Assert.Equal(HttpStatusCode.Unauthorized, inFlightResponse.StatusCode);
+        step2Response.EnsureSuccessStatusCode();
 
-        using var incrementScope = _factory.Services.CreateScope();
-        using var deleteScope = _factory.Services.CreateScope();
-        var late = AdminLockoutFlow.ReserveAsync(
-            incrementScope.ServiceProvider.GetRequiredService<IAdminLockoutStore>(),
-            AdminAuthScopes.Account,
-            OwnerEmail,
-            now,
-            AdminAuthService.AccountFailureLimit,
-            CancellationToken.None);
-        var clear = deleteScope.ServiceProvider.GetRequiredService<IAdminLockoutStore>()
-            .DeleteAccountFailuresByIdsAsync(OwnerEmail, known, CancellationToken.None);
-        await Task.WhenAll(late, clear);
-        Assert.True((await late).Incremented);
-        Assert.Equal(1, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.Equal(2, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
         using var after = _factory.Services.CreateScope();
-        var remaining = await after.ServiceProvider.GetRequiredService<IAdminLockoutStore>()
-            .ListAccountFailureIdsAsync(OwnerEmail, CancellationToken.None);
-        Assert.DoesNotContain(remaining, id => known.Contains(id));
+        var remaining = after.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminAuthFailureEvents
+            .Where(e => e.Scope == AdminAuthScopes.Account && e.SubjectKey == OwnerEmail)
+            .Select(e => e.Id)
+            .ToList();
+        Assert.Contains(afterStep1Id, remaining);
+        Assert.Equal(2, remaining.Count);
     }
 
     [Fact]
@@ -562,6 +579,76 @@ public class AdminLockoutReserveTests
         Assert.Contains(expected, db.AdminAuthLockouts.Select(l => l.SubjectKey));
         Assert.DoesNotContain(unknown, db.AdminAuthTokens.Select(t => t.Email));
         Assert.Contains(expected, db.AdminAuthTokens.Select(t => t.Email));
+        Assert.DoesNotContain(unknown, db.AdminAuditLog.Select(e => e.ActorEmail));
+        Assert.Contains(expected, db.AdminAuditLog.Select(e => e.ActorEmail));
+    }
+
+    [Fact]
+    public async Task SecN8_FallbackWrongPassword_AuditActorIsHmacNotRaw()
+    {
+        await ClearAsync();
+        const string typed = "fallback-wrong@example.com";
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        AssertAuditActorIsHmac(typed);
+    }
+
+    [Fact]
+    public async Task SecN8_RateLimitedSignIn_AuditActorIsHmacNotRaw()
+    {
+        await ClearAsync();
+        const string typed = "rate-signin@example.com";
+        var client = CreateClient();
+        await FillLoginIpAsync(client);
+        using var limited = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        AssertAuditActorIsHmac(typed, AdminAuthReason.RateLimited);
+    }
+
+    [Fact]
+    public async Task SecN8_RateLimitedReset_AuditActorIsHmacNotRaw()
+    {
+        await ClearAsync();
+        const string typed = "rate-reset@example.com";
+        var client = CreateClient();
+        await FillResetIpAsync(client);
+        using var limited = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.ResetPath,
+            new { email = typed, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        AssertAuditActorIsHmac(typed, AdminAuthReason.RateLimited);
+    }
+
+    [Fact]
+    public async Task SecN8_RejectedLink_AuditActorIsHmacNotRaw()
+    {
+        await ClearAsync();
+        const string typed = "rejected-link@example.com";
+        var client = CreateClient();
+        using var rejected = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.ResetConfirmPath,
+            new
+            {
+                token = AdminAuthService.CreateOpaqueToken(),
+                email = typed,
+                password = "Long-enough-pass-1",
+                turnstileToken = FakeTurnstileVerifier.ValidToken
+            });
+        Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        AssertAuditActorIsHmac(typed);
     }
 
     [Fact]
@@ -726,6 +813,40 @@ public class AdminLockoutReserveTests
                 });
             Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
         }
+    }
+
+    private async Task FillResetIpAsync(HttpClient client)
+    {
+        for (var i = 0; i < AdminAuthService.IpFailureLimit; i++)
+        {
+            using var reset = await SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.ResetPath,
+                new
+                {
+                    email = $"reset-fill{i}@example.com",
+                    turnstileToken = FakeTurnstileVerifier.ValidToken
+                });
+            Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        }
+    }
+
+    private void AssertAuditActorIsHmac(string typedEmail, string? reason = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+        var expected = AdminAuthService.AccountSubjectKey(
+            AdminAuthService.NormalizeEmail(typedEmail),
+            isOwner: false,
+            hasher);
+        var actors = db.AdminAuditLog
+            .Where(e => reason == null || e.ReasonClass == reason)
+            .Select(e => e.ActorEmail)
+            .ToList();
+        Assert.DoesNotContain(actors, actor => actor.Contains(typedEmail, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(expected, actors);
     }
 
     private async Task<(string Password, byte[] Secret)> SeedEnrolledAccountAsync()

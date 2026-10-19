@@ -196,17 +196,8 @@ public sealed class AdminAuthService
         await AdminLockoutFlow.ReleaseSuccessAsync(
                 _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
             .ConfigureAwait(false);
-        var knownFailures = await _lockouts.ListAccountFailureIdsAsync(accountSubject, ct)
-            .ConfigureAwait(false);
-        await _lockouts.DeleteAccountFailuresByIdsAsync(accountSubject, knownFailures, ct)
-            .ConfigureAwait(false);
-        await _lockouts.TryReleaseLockIfBelowLimitAsync(
-                AdminAuthScopes.Account,
-                accountSubject,
-                now,
-                FailureWindow,
-                AccountFailureLimit,
-                ct)
+        await AdminLockoutFlow.ReleaseSuccessAsync(
+                _lockouts, accountReserved, AdminAuthScopes.Account, accountSubject, now, AccountFailureLimit, ct)
             .ConfigureAwait(false);
 
         var session = await RotateSessionAsync(accountKey, ipHmac, now, ct).ConfigureAwait(false);
@@ -491,10 +482,28 @@ public sealed class AdminAuthService
         string? reason,
         CancellationToken ct)
     {
-        var actor = string.IsNullOrWhiteSpace(email) ? "anonymous" : NormalizeEmail(email);
+        var actor = AuditActorEmail(email);
         await _audit.AddAsync(AdminAuditEntry.CreateAuthEvent(action, actor, ipHmac, reason, _clock.UtcNow), ct)
             .ConfigureAwait(false);
         await _audit.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    private string AuditActorEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return "anonymous";
+        }
+
+        var key = NormalizeEmail(email);
+        if (key.Length == 0 || string.Equals(key, "anonymous", StringComparison.Ordinal))
+        {
+            return "anonymous";
+        }
+
+        return _credentials.IsOwnerEmail(key)
+            ? key
+            : AccountSubjectKey(key, isOwner: false, _ipHasher);
     }
 
     private string HashIp(string ip) => _ipHasher.Hash(ip);

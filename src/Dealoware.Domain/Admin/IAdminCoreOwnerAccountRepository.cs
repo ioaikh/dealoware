@@ -52,21 +52,6 @@ public interface IAdminCoreOwnerAccountRepository
         IReadOnlyList<AdminRecoveryCode> codes,
         CancellationToken cancellationToken = default);
 
-    Task<bool> TryRecordFailedFactorAttemptAsync(
-        Guid accountId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Atomically claims one second-factor evaluation slot on both the pending
-    /// row and the account row. Both updates must affect exactly one row.
-    /// </summary>
-    Task<bool> TryReserveSecondFactorAttemptAsync(
-        Guid pendingId,
-        Guid accountId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken = default);
-
     Task ClearFactorLockAsync(Guid accountId, CancellationToken cancellationToken = default);
 
     Task ClearRecoveryCodesRevealAsync(Guid accountId, CancellationToken cancellationToken = default);

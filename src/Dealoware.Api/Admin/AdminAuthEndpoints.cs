@@ -818,16 +818,14 @@ public static class AdminAuthEndpoints
         var accountKey = AdminAuthService.NormalizeEmail(account.Email);
         await AdminLockoutFlow.ReleaseSuccessAsync(
             lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, AdminAuthService.IpFailureLimit, context.RequestAborted);
-        var knownFailures = await lockouts.ListAccountFailureIdsAsync(accountKey, context.RequestAborted);
-        await lockouts.DeleteAccountFailuresByIdsAsync(accountKey, knownFailures, context.RequestAborted);
-        await lockouts.TryReleaseLockIfBelowLimitAsync(
+        await AdminLockoutFlow.ReleaseSuccessAsync(
+            lockouts,
+            accountReserved,
             AdminAuthScopes.Account,
             accountKey,
             now,
-            AdminAuthService.FailureWindow,
             AdminAuthService.AccountFailureLimit,
             context.RequestAborted);
-        _ = accountReserved;
     }
 
     private static async Task ConfirmAccountLockAsync(
