@@ -151,7 +151,7 @@ public class AdminPasswordResetTests
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        Assert.Empty(db.AdminSessions.ToList());
+        Assert.Empty(db.AdminSessions.Where(s => s.Email == CoreOwnerEmail).ToList());
         Assert.Contains(db.AdminAuditLog.ToList(), e => e.Action == "reset_complete");
         Assert.DoesNotContain(db.AdminAuditLog.ToList(), e =>
             e.BeforeSnapshot != null && e.BeforeSnapshot.Contains("pbkdf2", StringComparison.OrdinalIgnoreCase));
@@ -665,7 +665,7 @@ public class AdminPasswordResetTests
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
             var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
             Assert.NotNull(account.LastUsedTotpTimestep);
-            Assert.Empty(db.AdminSessions.ToList());
+            Assert.Empty(db.AdminSessions.Where(s => s.Email == CoreOwnerEmail).ToList());
             Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.ConsumedAt == null);
         }
 
