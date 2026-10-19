@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Dealoware.Api.Tests;
@@ -91,8 +92,10 @@ public class PostmanCollectionHygieneTests
     public void CommittedPostmanEnvironments_IfPresent_HaveAllowedBaseUrl_AndEmptyKeyTokenIdVariables()
     {
         var postmanDir = Path.Combine(RepoRoot(), "postman");
-        if (!Directory.Exists(postmanDir))
-            return;
+        Assert.True(Directory.Exists(postmanDir), "postman/ must exist");
+        Assert.True(
+            File.Exists(Path.Combine(postmanDir, "Dealoware-api-core.postman_environment.json")),
+            "postman/Dealoware-api-core.postman_environment.json must exist");
 
         var files = Directory.GetFiles(postmanDir, "*.postman_environment.json");
         foreach (var file in files)
@@ -121,6 +124,73 @@ public class PostmanCollectionHygieneTests
                 AssertEmptySlot(label, key, entry);
             }
         }
+    }
+
+    [Fact]
+    public void RunNewmanScript_RefusesLiveCoreBaseUrl_WithoutNetwork()
+    {
+        var script = Path.Combine(RepoRoot(), "scripts", "run-newman.sh");
+        Assert.True(File.Exists(script), "scripts/run-newman.sh must exist");
+
+        var temp = Directory.CreateTempSubdirectory("run-newman-guard-");
+        try
+        {
+            var copy = Path.Combine(temp.FullName, "run-newman.sh");
+            File.Copy(script, copy);
+
+            var stubDir = Path.Combine(temp.FullName, "bin");
+            Directory.CreateDirectory(stubDir);
+            var marker = Path.Combine(temp.FullName, "network-called");
+            WriteExecutableStub(Path.Combine(stubDir, "curl"), marker);
+            WriteExecutableStub(Path.Combine(stubDir, "npx"), marker);
+
+            var start = new ProcessStartInfo
+            {
+                FileName = "/bin/bash",
+                Arguments = $"\"{copy}\"",
+                WorkingDirectory = temp.FullName,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            start.Environment["BASE_URL"] = LiveCoreBaseUrl;
+            start.Environment["PATH"] = stubDir + Path.PathSeparator + start.Environment["PATH"];
+
+            using var process = Process.Start(start);
+            Assert.NotNull(process);
+            var stdoutTask = process!.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            Assert.True(process.WaitForExit(10_000), "run-newman.sh should refuse a live BASE_URL promptly");
+
+            var output = stdoutTask.GetAwaiter().GetResult() + stderrTask.GetAwaiter().GetResult();
+            Assert.Equal(1, process.ExitCode);
+            Assert.Contains("refused", output, StringComparison.Ordinal);
+            Assert.Contains("Dealoware-api-core.postman_environment.json", output, StringComparison.Ordinal);
+            Assert.False(File.Exists(marker), "guard must refuse before curl/npx");
+        }
+        finally
+        {
+            Directory.Delete(temp.FullName, recursive: true);
+        }
+    }
+
+    private static void WriteExecutableStub(string path, string marker)
+    {
+        File.WriteAllText(path, $"#!/bin/sh\nprintf called > '{marker}'\nexit 0\n");
+        var chmod = new ProcessStartInfo
+        {
+            FileName = "/bin/chmod",
+            Arguments = $"+x \"{path}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var process = Process.Start(chmod);
+        Assert.NotNull(process);
+        Assert.True(process!.WaitForExit(5_000));
+        Assert.Equal(0, process.ExitCode);
     }
 
     private static bool IsKeyTokenSubOrId(string key) =>

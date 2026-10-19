@@ -563,7 +563,7 @@ Open → Expired (endsAt reached on any operation)
 Import the [Postman collection](../../postman/Dealoware-PoC-Negotiations.postman_collection.json) to run these scenarios interactively:
 
 1. **Import:** File → Import → select `postman/Dealoware-PoC-Negotiations.postman_collection.json`
-2. **Set `baseUrl`:** Edit collection variables if not `http://localhost:5287`
+2. **`baseUrl`:** leave the collection default `http://localhost:5287`. The only route to the live Core API is the LIVE override environment `postman/Dealoware-api-core.postman_environment.json`; a live run needs Ivan's go through BM (T-G-08) every time.
 3. **Run folders in order:**
    - `01-Bootstrap` (captures credentials)
    - `02-Happy-Path-Deal` (full negotiation → accept)

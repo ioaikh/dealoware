@@ -453,7 +453,7 @@ For comprehensive scenario coverage and interactive testing:
 
 **Quick Postman Setup:**
 1. Import: File → Import → `postman/Dealoware-PoC-Negotiations.postman_collection.json`
-2. Set `baseUrl` variable if not `http://localhost:5287`
+2. Leave `baseUrl` at the default `http://localhost:5287`. The only route to the live Core API is the LIVE override environment `postman/Dealoware-api-core.postman_environment.json`; a live run needs Ivan's go through BM (T-G-08) every time.
 3. Run folders in order: `01-Bootstrap` → `02-Happy-Path-Deal` → etc.
 
 #### Negotiation Error Responses
