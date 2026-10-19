@@ -63,7 +63,8 @@ public static class AdminAuditSnapshots
         "privatekey",
         "signature",
         "passphrase",
-        "accesskey"
+        "accesskey",
+        "verifier"
     ];
 
     /// <summary>
@@ -166,7 +167,7 @@ public static class AdminAuditSnapshots
             return true;
         if (ContainsNonAsciiLetter(normalized))
             return true;
-        if (normalized is "code" or "key" or "pass" or "pin" or "auth")
+        if (normalized is "code" or "codes" or "key" or "pass" or "pin" or "auth")
             return true;
         if (normalized.EndsWith("code", StringComparison.Ordinal))
             return true;
@@ -493,10 +494,9 @@ public static class AdminAuditSnapshots
                 }
             }
 
-            var jwtWord = TrimTrailingJwtPunct(word);
-            if (LooksLikeJwt(jwtWord))
+            if (TryMatchJwtPrefix(word, out var jwtLen))
             {
-                var jwtEnd = nameStart + jwtWord.Length;
+                var jwtEnd = nameStart + jwtLen;
                 builder.Append(text, copyFrom, nameStart - copyFrom);
                 builder.Append("[redacted]");
                 copyFrom = jwtEnd;
@@ -558,6 +558,12 @@ public static class AdminAuditSnapshots
             && char.ToUpperInvariant(span[index + 2]) is 'D' or 'A')
         {
             after = index + 3;
+            return true;
+        }
+
+        if (IsLookalikeColon(span[index]))
+        {
+            after = index + 1;
             return true;
         }
 
@@ -630,11 +636,15 @@ public static class AdminAuditSnapshots
         return index;
     }
 
-    private static bool IsInsideUrlQuery(ReadOnlySpan<char> span, int index)
+    /// <summary>
+    /// True only when <paramref name="keyStart"/> sits in the same URL-query token
+    /// as a preceding <c>?</c> (no whitespace between them).
+    /// </summary>
+    private static bool IsInsideUrlQuery(ReadOnlySpan<char> span, int keyStart)
     {
-        for (var i = Math.Min(index, span.Length - 1); i >= 0; i--)
+        for (var i = keyStart - 1; i >= 0; i--)
         {
-            if (span[i] is '\n' or '\r')
+            if (span[i] is '\n' or '\r' || char.IsWhiteSpace(span[i]))
                 return false;
             if (span[i] == '?')
                 return true;
@@ -660,11 +670,16 @@ public static class AdminAuditSnapshots
     {
         if (text[index] == '-' && index + 1 < text.Length && text[index + 1] == '>')
             return false;
+        if (IsLookalikeColon(text[index]))
+            return false;
         var rune = Rune.GetRuneAt(text, index);
         return Rune.IsLetterOrDigit(rune)
                || IsIgnorableRune(rune)
                || rune.Value is '_' or '-' or '.';
     }
+
+    private static bool IsLookalikeColon(char ch)
+        => ch is '\uA789' or '\u02D0' or '\u2236';
 
     private static int RuneLength(string text, int index)
         => Rune.GetRuneAt(text, index).Utf16SequenceLength;
@@ -750,41 +765,83 @@ public static class AdminAuditSnapshots
         'ν' => 'n',
         'Ζ' => 'Z',
         'ζ' => 'z',
+        '0' => 'o',
+        '1' => 'l',
         _ => ch
     };
 
     private static bool LooksLikeSecretValue(string text)
         => LooksLikeJwt(text);
 
+    /// <summary>
+    /// Sentence punctuation only. A trailing <c>.</c> is an empty JWT segment
+    /// (unsecured compact form) and must not be stripped before matching.
+    /// </summary>
     private static ReadOnlySpan<char> TrimTrailingJwtPunct(ReadOnlySpan<char> text)
     {
-        while (text.Length > 0 && text[^1] is '.' or '?' or '!' or ':')
+        while (text.Length > 0 && text[^1] is '?' or '!' or ':')
             text = text[..^1];
         return text;
+    }
+
+    /// <summary>
+    /// True when <paramref name="text"/> is a compact JWT (3) or JWE (5) whose
+    /// first segment starts with <c>eyJ</c>. Empty 2nd JWE (<c>alg: dir</c>)
+    /// and empty last JWT (unsecured) segments are accepted. Extra
+    /// <c>.word</c> text after those parts is left unmatched.
+    /// </summary>
+    private static bool TryMatchJwtPrefix(ReadOnlySpan<char> text, out int matchLength)
+    {
+        matchLength = 0;
+        if (text.Length < 4 || !text.StartsWith("eyJ", StringComparison.Ordinal))
+            return false;
+
+        Span<int> ends = stackalloc int[6];
+        Span<int> lengths = stackalloc int[6];
+        var segments = 0;
+        var start = 0;
+        for (var i = 0; i <= text.Length && segments < 6; i++)
+        {
+            if (i < text.Length && text[i] != '.')
+                continue;
+
+            var length = i - start;
+            if (length > 0 && !IsBase64Url(text.Slice(start, length)))
+                break;
+
+            ends[segments] = i;
+            lengths[segments] = length;
+            segments++;
+            start = i + 1;
+        }
+
+        if (segments >= 5
+            && lengths[0] >= 4
+            && lengths[0] > 0
+            && lengths[2] > 0
+            && lengths[3] > 0
+            && lengths[4] > 0)
+        {
+            matchLength = ends[4];
+            return true;
+        }
+
+        if (segments >= 3
+            && lengths[0] >= 4
+            && lengths[0] > 0
+            && lengths[1] > 0)
+        {
+            matchLength = ends[2];
+            return true;
+        }
+
+        return false;
     }
 
     private static bool LooksLikeJwt(ReadOnlySpan<char> text)
     {
         text = TrimTrailingJwtPunct(text);
-        if (text.Length < 10)
-            return false;
-
-        var segments = 0;
-        var start = 0;
-        for (var i = 0; i <= text.Length; i++)
-        {
-            if (i < text.Length && text[i] != '.')
-                continue;
-            var length = i - start;
-            if (length == 0 || !IsBase64Url(text.Slice(start, length)))
-                return false;
-            if (segments == 0 && length < 4)
-                return false;
-            segments++;
-            start = i + 1;
-        }
-
-        return segments is 3 or 5;
+        return TryMatchJwtPrefix(text, out var len) && len == text.Length;
     }
 
     private static bool IsBase64Url(ReadOnlySpan<char> span)

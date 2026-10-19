@@ -9,8 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Dealoware.Api.Tests;
 
 /// <summary>
-/// Security recheck 5eee1ded: every leaking input is a Truncate() regression.
-/// Double-encoding and separator-less prose are documented accepted limits.
+/// Security recheck c89f7ece: every leaking input is a Truncate() regression.
+/// Double-encoding, separator-less prose, and "sms code X" are accepted limits.
 /// </summary>
 [Collection("WebAppTests")]
 public class AdminAuditSecurityRecheckTests
@@ -46,11 +46,23 @@ public class AdminAuditSecurityRecheckTests
     [InlineData("K13", "pass=LEAK")]
     [InlineData("K15", "auth=LEAK")]
     [InlineData("K16", "pin=LEAK")]
+    [InlineData("F2g", "dir JWE eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..iv12345.LEAKcipher.tag12 mid")]
+    [InlineData("F2h", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1In0.")]
+    [InlineData("F2i", SampleJwt + ".Next sentence")]
+    [InlineData("F5e", "why? password=ab&LEAK")]
+    [InlineData("F5f", "https://x.test/?q=1 then password=ab&LEAK")]
+    [InlineData("F6j", "passw0rd=LEAK")]
+    [InlineData("F6k", "password\uA789LEAK")]
+    [InlineData("F6l", "password\u02D0LEAK")]
+    [InlineData("F8i", "codes=LEAK")]
+    [InlineData("F8k", "code_verifier=LEAK")]
     public void Recheck_FreeTextLeak_IsRedactedByTruncate(string id, string note)
     {
         var output = AdminAuditSnapshots.Truncate(new JsonObject { ["note"] = note }.ToJsonString());
         Assert.DoesNotContain("LEAK", output, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("eyJzdWIiOiJ1In0", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("LEAKcipher", output, StringComparison.Ordinal);
         Assert.True(
             output.Contains("[redacted]", StringComparison.Ordinal)
             || output.Contains("_invalid", StringComparison.Ordinal),
@@ -103,6 +115,15 @@ public class AdminAuditSecurityRecheckTests
         // Accepted limit: "my password is X" has no assignment separator.
         var output = AdminAuditSnapshots.Truncate(
             new JsonObject { ["note"] = "my password is LEAK" }.ToJsonString());
+        Assert.Contains("LEAK", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Recheck_F8l_SmsCodeWithoutSeparator_IsAcceptedLimit()
+    {
+        // Accepted limit: "sms code X" has no assignment separator (same class as P21).
+        var output = AdminAuditSnapshots.Truncate(
+            new JsonObject { ["note"] = "sms code LEAK" }.ToJsonString());
         Assert.Contains("LEAK", output, StringComparison.Ordinal);
     }
 
