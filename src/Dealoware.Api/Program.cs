@@ -1,6 +1,8 @@
 using Dealoware.Api;
+using Dealoware.Api.Admin;
 using Dealoware.Api.Endpoints;
 using Dealoware.Infrastructure;
+using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,11 @@ if (DatabaseMigrateCommand.IsMigrateArgs(args))
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? Environment.GetEnvironmentVariable("DEALOWARE_CONNECTION_STRING")
@@ -85,6 +92,61 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddAuthServices(jwtSettings);
+
+builder.Services.Configure<CoreOwnerOptions>(
+    builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
+builder.Services.Configure<AdminHostOptions>(
+    builder.Configuration.GetSection(AdminHostOptions.SectionName));
+
+try
+{
+    var adminHostOptions = new AdminHostOptions { AllowedHosts = [] };
+    builder.Configuration.GetSection(AdminHostOptions.SectionName).Bind(adminHostOptions);
+    AdminHostOptionsValidator.Validate(
+        adminHostOptions,
+        builder.Environment.EnvironmentName);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireRole(AdminSessionMiddleware.CoreOwnerRole));
+});
+builder.Services.AddAdminAuthorizationResultHandler();
+
+try
+{
+    var ipHasher = IpHasher.Create(
+        name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
+        isDevelopment: builder.Environment.IsDevelopment());
+    builder.Services.AddSingleton<IIpHasher>(ipHasher);
+    builder.Services.AddAdminTotp(builder.Configuration, builder.Environment.IsDevelopment());
+}
+catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
+builder.Services.AddAdminMail(builder.Configuration);
 
 
 var rateLimitOptions = builder.Configuration
@@ -177,6 +239,14 @@ var app = builder.Build();
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 
+// Admin-host-only headers wrap the host gate so 404s, errors, pages, APIs, and
+// signed-out /admin/sign-in and /admin/auth/ responses all receive them.
+app.UseMiddleware<AdminSecurityHeadersMiddleware>();
+
+// Two-way admin host gate: admin paths only on the allowlist host; that host
+// serves only /admin/* and /health.
+app.UseMiddleware<AdminHostMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -192,12 +262,39 @@ app.UseStaticFiles();
 
 app.UseRateLimiter();
 
+app.UseMiddleware<AdminSessionMiddleware>();
+app.UseAuthorization();
+
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
     await DatabaseSchemaBootstrap.ApplyStartupSchemaAsync(db, app.Environment.EnvironmentName);
+
+    // Long-lived API only (this path is after the migrate early-return). PostgreSQL
+    // outside Development: fail closed if the current login is privileged.
+    try
+    {
+        var allowPrivilegedRuntimeLogin = app.Configuration.GetValue(
+            RuntimeLoginPrivilegeGuard.AllowPrivilegedRuntimeLoginKey,
+            false);
+        await RuntimeLoginPrivilegeGuard.EnforceAsync(
+            db,
+            app.Environment.EnvironmentName,
+            allowPrivilegedRuntimeLogin);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+        if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+        {
+            Environment.Exit(1);
+        }
+
+        throw;
+    }
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
@@ -215,6 +312,11 @@ app.MapStrategyEndpoints();
 app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
+app.MapAdminMeEndpoints();
+app.MapAdminReadEndpoints();
+app.MapAdminAuthEndpoints();
+app.MapAdminTestExceptionEndpoint();
+app.MapAdminAuditEndpoints();
 
 app.Run();
 

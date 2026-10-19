@@ -1,0 +1,18 @@
+{
+  "name": "dealoware-admin-e2e",
+  "version": "1.0.0",
+  "description": "Admin UI end-to-end tests for Dealoware (UX1-X08 / TD-ADM-UI-ci-01)",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

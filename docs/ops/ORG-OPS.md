@@ -11,7 +11,8 @@ CEO: Ivan Onuchin. COO: Dealoware COO (Ops Team Chief; also Business Team). All 
 Business → BA Team → SA Team → Spec Team → Dev Plan Team → SD Team → QA Team → **CQ Team** (post-task refactor gate) → Doc Team
 (After each SD task completes: CQ assesses; if refactor needed → refactor spec → Dev Plan → SD → QA tests-pass; PM owns the gate.)  
 (Product goals constrain the whole path.)  
-Any team may request DevOps / Business / Doc / Security help **through PM Team**.
+(Interface-touching work: **UI/UX Team** joins BA, Product, SA, Spec, Dev Plan, SD PR review, QA, and Doc; each such gate needs its own independent UI/UX QA PASS file. CPM routes UI/UX and checks every 5 minutes.)  
+Any team may request DevOps / Business / Doc / Security / UI/UX help **through PM Team**.
 
 ## Team triad
 1. **Chief** — intake from PM/CEO/COO; restate understanding; assign Senior or QA with structured itemized briefs; 24h efficiency review → COO.
@@ -25,6 +26,7 @@ Any team may request DevOps / Business / Doc / Security help **through PM Team**
 | **Ops** | **COO (Chief)** | Ops Executive | Ops QA | Dealoware Ops Team |
 | **Marketing** | **Chief Marketing** | Senior Marketing | Marketing QA | Dealoware Marketing Team |
 | **Product** | **Chief Product** | Senior Product | Product QA | Dealoware Product Team |
+| **UI/UX** | **Chief UI/UX** | Senior UI/UX | UI/UX QA | Dealoware UI/UX Team |
 | BA Team | CBA | Senior BA | BAQA | Dealoware BA Team |
 | PM Team | CPM | Senior PM | PMQA | Dealoware PM Team |
 | SA Team | Chief Architect | Senior Architect | Architecture QA | Dealoware SA Team |
@@ -120,27 +122,41 @@ Scaffold Stories (e.g. O10 host/health) still get a Security checklist (may be t
 - Bot Manager / CPM / Chiefs must **not** equate intake or chat with delivery.
 - Say **in progress** only with a **fresh evidence artifact ≤ ~60–90 minutes** (new commit, undraft PR, or gate PASS file). Otherwise: `assigned` / `waiting on <named owner>` / `stalled since <time>`.
 
-### Soft HOLD naming + one evidence ping (CEO 2026-10-02; locks Sept 28/29 no-loop)
+### Active holds + one evidence ping (CEO 2026-10-05; replaces 2026-10-02 hold-tag wording)
 
-Chat-directed Sept 28/29 no-loop / anti-filler never landed in this charter; Soft HOLD Soft HOLD Soft HOLD boilerplate relapsed on CPM/Senior PM status pings. This subsection locks it. **CEO nuance 2026-10-02:** Soft HOLDs may stay when there is a **real reason**. Do **not invent** Soft HOLDs without cause.
+**Policy (CEO lock 2026-10-05 via Bot Manager):** The old hold-tag jargon is **retired**. Do not use `Soft HOLD` or `Soft Soft CLOSE Soft HOLD` in new docs, status pings, INDEX blurbs, chat, or memory. Say what is paused in plain English. Inventing holds with no real gate is banned. Real gates do not change — only the wording does.
 
-**One evidence ping per real change.** CPM / Senior PM / Chiefs post a status line in the PM Team channel (and any cross-team status ping that lands in PMQA / Bot Manager / COO) **only when something real changed**:
+**Active holds list.** Each checklist or Story keeps **one** short block titled "Active holds". Change that block **only when** a hold is added, lifted, or narrowed:
+
+```
+Active holds (change only when the set flips):
+- Deploy — waiting Ivan OK
+- Admin build — waiting H4 live PASS
+```
+
+If nothing in that list changed since the last ping: **stay silent**.
+
+**One evidence ping per real change.** CPM / Senior PM / Chiefs post in the PM Team channel (and any cross-team status ping that lands with PMQA / Bot Manager / COO) **only when something real changed**:
 - Story/label status flip
 - new tip / PASS / CLOSE with evidence pointer
 - bounce that cites **new** missing/false evidence
-- Soft HOLD **set** change (a Soft HOLD added, lifted, or narrowed)
+- Active-holds set change
 
-If nothing in that list changed: **stay quiet**. No re-ACK of “Soft HOLD stands.” No watch-tick chat when the mirror is already current.
+If nothing in that list changed: **stay quiet**. No re-ACK that "holds still stand." No watch-tick chat when the mirror is already current.
 
-**Soft HOLD named only on flip (plain English, once each).** When Soft HOLDs must appear (Soft HOLD-set change, or first OPEN/FLIP of a Story that introduces Soft HOLDs): name each Soft HOLD **once** in plain English (e.g. “Spec content held until CA PASS · invent Stories held · AWS provision held”). Do **not** stack Soft HOLD Soft HOLD Soft HOLD tokens. Do **not** restate Soft HOLDs that did not change. Prefer omit unchanged Soft HOLDs on later pings.
+**Banned filler.** Use of the retired phrases above, any token or short phrase repeated more than 5 times in a row, and inventing holds with no real gate are **banned**.
 
-**Banned filler.** Soft HOLD Soft HOLD Soft HOLD token stacking, Soft Soft CLOSE Soft HOLD boilerplate, and re-ACK / “stands Soft HOLD” spam are **banned**. Inventing Soft HOLDs with no real gate/reason is **banned**.
+**Bounce rule (QA / PMQA):** Send back any message or **new** doc that contains a retired phrase or repeats any word/phrase more than 5 times in a row. Name the rule, ask for a plain-English rewrite, and do not ACK with more hold tags.
 
 **Mandatory flip mirror unchanged.** Every Story status flip still requires: issue link + label + next triad + evidence pointer (PR / commit / DOC-FLOW path). This subsection removes noise **around** that mirror; it does not remove the mirror.
 
-**15m watches.** CPM watch ticks remain evidence checks + PRIORITY-nudge if stalled. They do **not** post Soft HOLD inventory restatements. Notify CEO only on material flips or named blockers (existing rule).
+**15m watches.** CPM watch ticks remain evidence checks + PRIORITY-nudge if stalled. They do **not** restate Active-holds inventories. Notify CEO only on material flips or named blockers (existing rule).
 
-**Ops sample.** 6h Ops reviews may flag Soft HOLD Soft HOLD Soft HOLD / re-ACK spam / invent Soft HOLDs as process FAIL secondary evidence; does not replace CPM ownership of clean mirrors.
+**Ops sample.** 6h Ops reviews may flag retired-phrase use, >5× repeats, re-ACK spam, or invented holds as process FAIL secondary evidence; this does not replace CPM ownership of clean mirrors.
+
+**New docs only.** Do not mass-rewrite historical KB files. New DOC-FLOW files and INDEX blurbs use plain English.
+
+**24h verify (COO).** About one day after this lock, COO samples new KB files and status pings and reports results to Bot Manager.
 
 ### Unlock evidence = GitHub SoR (DOC-FLOW) — CEO/BM/COO 2026-09-21 post-#31
 - **GitHub (`ioaikh/dealoware`) is the system of record** for Spec / Dev Plan / SD unlock evidence.
@@ -215,6 +231,15 @@ After any **significant delivery milestone** (examples: PoC complete, MVP slice 
 - Standing schedule (Bot Manager routine “Dealoware Marketing daily research”): Mon 9:00 · Tue 14:00 · Wed 10:00 · Thu 15:00 · Fri 11:00 · Sat 13:00 · Sun 16:00.
 - Cycle: **Chief Marketing** owns → **Senior Marketing** executes → **Marketing QA** verifies → Chief presents via COO to CEO when actionable.
 - Product **claims lock** before any public claim; **no paid promo** without COO→CEO confirm.
+
+## UI/UX Team (CEO 2026-10-05)
+- Triad: Chief UI/UX / Senior UI/UX / UI/UX QA. Channel: Dealoware UI/UX Team.
+- Owns admin and interface quality. Aligns to **Product**.
+- Joins every interface-touching phase: BA, Product, architecture (SA), Spec, Dev Plan, build PR review, QA, and Docs.
+- **UI/UX must approve every UI-related requirement.** Each such gate needs its own independent UI/UX QA PASS file (no rubber-stamp from another team's Chief).
+- **UX1:** every existing admin interface piece is re-reviewed with UI/UX (admin checklist item).
+- **CPM** routes UI/UX work and checks every 5 minutes while interface work is active.
+- Cost/critical → CEO via COO.
 
 ## PoC nightly auto-tests (CEO 2026-09-20; until MVP)
 

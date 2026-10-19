@@ -1,100 +1,139 @@
-# Security QA Soft HOLD SoR — Dev Plan · Core admin dashboard (Soft HOLD SoR qa-confirm)
+# Security QA — Dev Plan · Core admin dashboard (qa-confirm)
 
 | Field | Value |
 |-------|--------|
 | Author | Dealoware Security QA |
-| Date | 2026-10-05 (~2:05pm ET; refresh cite Senior PASS 14/14) |
-| Verdict | **PASS** (14/14 MET, 0 GAP, 0 PARTIAL) |
-| Soft HOLD SoR role | **This file is Soft HOLD SoR** (handshake Soft HOLD SoR = qa-confirm only). Do **not** invent Soft HOLD SoR from points-review. |
-| Asked by | CPM Soft HOLD SoR qa-confirm; Senior Security PASS 14/14 points-review filed → refresh Soft HOLD SoR cite; Chief Security Soft HOLD invent process-global auth flood limiter until approved |
-| Checklist (binding) | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md` (**ISSUED**, pts 1–14) |
+| Date | 2026-10-05 (~8:39pm ET) |
+| Verdict | **PASS** — Soft HOLD status phrase absent; checklist pts 1–14 MET; Step 14 binds 6/6 MET; Step 15 binds 3/3 MET; wording-only scrub vs prior tip |
+| Asked by | Chief Dev Planner (Soft HOLD wording-only scrub reconfirm; voids PASS on `3385872a…`) |
+| Checklist (binding) | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md` (pts 1–14) |
 | Plan tip | `plans/2026-10-05__devplan__plan__core-admin-dashboard.md` |
-| Plan tip sha256 | `5fefb550e0c6565820d552dabe60356493d54474fd0871083884cee643bd4eaf` — **MATCH** (verified `sha256sum` before score) |
-| Senior Security points-review | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md` (**PASS** 14/14 MET — cited; independently re-confirmed vs plan tip + Senior review; agrees; **not** Soft HOLD SoR) |
-| Sibling Spec Soft HOLD SoR (cite only) | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` (**PASS** 15/15) — Spec not re-scored |
-| Sibling SA Soft HOLD SoR (cite only) | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` (**PASS** 14/14) — Arch not re-scored |
-| Host lock | `admin.core.dealoware.com` only |
+| Plan tip sha256 | `21535e6684ec347361a3f4fd0521a7928392428b7e9c2ce7c8355c2553808cd8` — **MATCH** (re-hashed with `sha256sum` before scoring and again immediately before this write) |
+| Prior tips VOID | `3385872a881095b8b44a90a4148f5faf87594c39fd742897f089e1425b93caff` (prior PASS) **VOID**; also VOID: `1c173e98…`, `970b453a…`, `abfa672a…`, `5fefb550…` |
+| Host | `admin.core.dealoware.com` only |
 | Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
 | PoC | **$0** |
-| DOC-FLOW / Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` |
-| QA twin | `qa/2026-10-05__qa__qa-report__core-admin-dashboard-devplan-qa-confirm.md` |
+| Handshake | **qa-confirm only** (this file). Points-review is not the gate. |
+| DOC-FLOW | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` |
+| QA twin | `/workspace/qa/2026-10-05__qa__qa-report__core-admin-dashboard-devplan-qa-confirm.md` |
 
-**Handshake Soft HOLD SoR = qa-confirm only.** Do **not** invent points-review Soft HOLD SoR. Soft HOLD invent Soft HOLD SoR as PASS claim from any points-review alone. **Not** build / deploy / Stories / code / CDK / spend unlock. Soft HOLD invent password values. Soft HOLD invent AWS account IDs. Soft HOLD invent process-global auth flood limiter until Chief Security explicitly approves. Soft HOLD A7 until H4 live PASS. Soft HOLD harden redeploy (H1) separate. Soft HOLD Dev Plan QA PASS until this Soft HOLD SoR CLEAR (checklist Status). No AWS account / CDK / bot-platform internals invented here. Names only.
+Paper-only qa-confirm. This file does **not** unlock Stories, code, CDK, spend, provision, or deploy.
 
-## Soft notes accepted (non-blocking)
+## Active holds
 
-| Soft note | Disposition |
-|-----------|-------------|
-| Soft HOLD Dev Plan QA PASS until Security Soft HOLD SoR qa-confirm CLEAR | **Accepted** — Security Soft HOLD SoR CLEARED by this PASS |
-| Handshake Soft HOLD SoR = qa-confirm only; do not invent points-review Soft HOLD SoR | **Accepted** — Soft HOLD SoR is this qa-confirm only; Senior points-review is content evidence, **not** Soft HOLD SoR |
-| Senior points-review PASS 14/14 filed after initial Soft HOLD SoR | **Accepted** — Soft HOLD SoR refreshed to cite; independent plan-body score unchanged PASS 14/14; Senior nit on §2/§5 "hashed IP" wording non-blocking (binding Steps 5/8 are keyed HMAC) |
-| Soft HOLD invent process-global auth flood limiter until Chief Security explicitly approves | **Accepted** — plan Step 5 / Locked #6 / Step 12 Soft HOLD; per-IP + per-account only this slice |
-| Soft HOLD invent password values in plan / Stories / fixtures / README / chat / commit history | **Accepted** — plan Soft HOLDs; scan: none invented here |
-| Soft HOLD invent AWS account IDs / region / SES identity / from-address / Turnstile site keys / provision / spend | **Accepted** — plan Soft HOLDs; none invented here |
-| Soft HOLD invent Stories / code / CDK / spend / provision / **deploy** | **Accepted** |
-| Soft HOLD A7 until H4 live PASS | **Accepted** — Step 12 / Explicit OUT |
-| Soft HOLD harden redeploy (H1) separate | **Accepted** |
-| Soft HOLD invent HMAC key value / Turnstile secrets in plan/docs/chat | **Accepted** |
-| After Dev Plan QA PASS → A6 Test design to Chief QA before Stories/code | **Accepted** — plan Status / Step 12 |
-| Not build unlock; PoC $0; Cost/critical → COO → CEO | **Accepted** |
+- Do not invent passwords, AWS account IDs, or Turnstile / HMAC / SES keys in the plan, UI copy, fixtures, or examples.
+- The process-global auth flood limiter stays paused until Chief Security explicitly approves; this slice is per-IP plus per-account only.
+- No Stories, code, CDK, spend, provision, or deploy from this confirm alone.
+- A7 stays paused until H4 live PASS.
+- Deploy waits for Ivan's OK.
+- H1 harden redeploy remains a separate track.
+- Handshake is qa-confirm only (this file); points-review is not the gate.
+- Binding Spec notes cited here are password-rules v2.3 `1a7b342c…`, lockout-window v5.5 `8a194eb9…`, and sign-in steps v1 `0a3db5f4…`. Any newer note hash voids the matching Spec QA / Security QA PASS and needs a fresh confirm before the plan may cite it.
+- CEO Soft HOLD phrasing retired (2:17pm ET): plan Active holds must stay plain English; this confirm does not use Soft HOLD wording.
 
-## Sources checked
+## Soft HOLD scrub check (this tip)
+
+| Check | Result |
+|-------|--------|
+| Tip sha256 MATCH `21535e66…8cd8` | **YES** |
+| Exact status phrase Soft HOLD / soft HOLD / SOFT HOLD absent from plan body | **YES** (no hits) |
+| Active holds header uses plain English | **YES** (lines 12–21: "Active holds … plain English; real gates unchanged") |
+| Word/phrase repeated >5× in a row | **NONE** |
+| Steps / scope / binds / security tip cites changed vs prior PASS claim | **No** — CDP wording-only claim; Step 14/15 bind tips and checklist security content still present and match prior PASS scoring |
+
+**OBS (non-blocking):** Sources / Cost cite historical finance artifact **filenames** that contain the substring `soft-hold` (`finance/…__core-admin-soft-hold-ses-turnstile.md`, Finance QA twin). Those are path strings to existing estimate files, not Soft HOLD Active-holds status language. Not a bounce.
+
+## Sources checked (re-hashed)
 
 | Source | Path | Result |
 |--------|------|--------|
-| Chief Security Dev Plan checklist ISSUED | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md` | Binding pts **1–14** ISSUED |
-| Plan tip | `plans/2026-10-05__devplan__plan__core-admin-dashboard.md` | Body §§1–10 + Steps 1–13 + Locked + Explicit OUT + §6 weave; sha256 **MATCH** |
-| Senior Dev Plan points-review | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md` | **PASS** 14/14 — present; aligned; not rubber-stamped; **not** Soft HOLD SoR |
-| Sibling Spec Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` | Cite-only PASS 15/15 — Spec not re-scored |
-| Sibling SA Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` | Cite-only PASS 14/14 — Arch not re-scored |
+| Dev Plan checklist | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-checklist.md` | Binding pts 1–14 |
+| Plan tip (re-hashed) | `plans/2026-10-05__devplan__plan__core-admin-dashboard.md` | sha256 **MATCH** `21535e66…8cd8`; Steps 1–15 present (617 lines) |
+| Main Spec v2.2 | `specs/2026-10-05__spec__spec__core-admin-dashboard.md` | On-disk sha256 `25f2647767efe91b3638a90309e92451e0ae60bc861fce8177d5ed9bc4cf2e51` — MATCH plan cite |
+| UX1-A16 decision | `/workspace/security-out/2026-10-05-ux1-a16-signin-step-shape-decision.md` | On-disk sha256 `bb0bcaa28577189ca7fba1a22a5e95d4fcc77a22b7b6bebebc7bfff694688d34` — MATCH plan cite |
+| UX1-A03 decision | `/workspace/security-out/2026-10-05-ux1-a03-admin-lockout-message-decision.md` | On-disk sha256 `0817b7676a0103d606197c07fb6ac48782c12fbd363304637e5340b86af6d3f0` — MATCH plan cite |
+| Password answers | `/workspace/security-out/2026-10-05-admin-core-auth-ui-security-answers.md` | On-disk sha256 `a87e293b94bea81738607779ac8f31587cc1a7f26bfe50a55cc263b9d6d58d15` — MATCH; `f03a82c9…` marked void |
+| Password-rules note | `specs/2026-10-05__spec__spec__core-admin-password-rules-note.md` | On-disk sha256 `1a7b342c46721d7c585623fc5a90371c67b99c2dbce1c733a4f50c376074c521` (v2.3) — MATCH |
+| Lockout-window note | `specs/2026-10-05__spec__spec__core-admin-lockout-window-note.md` | On-disk sha256 `8a194eb9d04ccde2f4403e25a1b9c6037bee2490c9fa3304db6d68dea81f87d3` (v5.5) — MATCH |
+| Sign-in steps note | `specs/2026-10-05__spec__spec__core-admin-signin-steps-note.md` | On-disk sha256 `0a3db5f489ccb8017e4631193429841ab7c21b994a2ff644485d348c4b5b4da4` — MATCH |
+| Invent-secrets scan | plan body | Zero invent passwords / AWS account IDs / keys |
 
-## Independent re-score (Security QA Soft HOLD SoR)
+## Independent re-score (pts 1–14 vs plan body)
 
-Score vs **checklist pts 1–14** against **plan body** (Locked §3, Steps 1–13, Explicit OUT §7, Cost/critical §8, Done-list §9) — §6 bind table alone is **not** the sole score basis. Hard Soft HOLDs verified in step bodies and verify checklists.
+Same security substance as prior PASS on `3385872a…` (now VOID). Soft HOLD scrub did not alter steps, scope, mappings, or binds. Spot-checked Locked §3, Steps 1–15, Explicit OUT, Cost/critical, Done-list, and Active holds (plain English).
 
-| # | Point | Security QA | Plan cites | Evidence |
-|---|-------|-------------|------------|----------|
-| 1 | Host + single CoreOwner gate | **MET** | Step 1; Step 11; Step 12 OUT; Locked #1–#2; Header Host/Principal | Admin UI/API only at `admin.core.dealoware.com`. Soft HOLD invent platform-admin host tasks. Single superadmin `io@aiknowhow.com` → **CoreOwner**. Soft HOLD invent multi-admin / operator ACL / human-user list on Core / Participant UI-as-admin. Fail-closed deny non-CoreOwner (Step 11). |
-| 2 | Bootstrap + email/password (no invent password) | **MET** | Step 2; Step 12; Locked #2, #14 | Single-use timed OOB bootstrap link (≤24h); first password set **only** via that link; TOTP enrollment **before** first session. Soft HOLD invent password values in Stories/fixtures/README/chat/commit history — env/placeholders only. Soft HOLD invent SSO/IdP as delivered. Verify checklist covers no password value + first session blocked until TOTP. |
-| 3 | TOTP required; no email OTP; hashed recovery | **MET** | Step 3; Locked #2 | Authenticator-app TOTP on **every** login after enrollment. Soft HOLD invent email OTP fallback — **NOT allowed**; verify step proves email OTP path absent. Recovery codes: show once, store **hashed**, single-use. No plaintext recovery / TOTP secrets in logs/UI dump/audit/plan. |
-| 4 | Password reset = email link + 2FA | **MET** | Step 4 | Reset requires **both** single-use short-lived email link (**1 hour**) **and** 2FA (TOTP or unused recovery code). Soft HOLD invent reset that skips 2FA. Reset mail carries **link only** — never a password value. Reset completion audited (ties Step 8). |
-| 5 | Turnstile only + lockout/rate + session | **MET** | Step 5; Step 12 OUT; Locked #3, #6 | **Cloudflare Turnstile only** on login, password-reset, bootstrap password-set. Soft HOLD invent Turnstile account/site keys. Soft HOLD invent AWS WAF CAPTCHA / reCAPTCHA / other CAPTCHA. Lockout: 5 fails/account/15m → 30m; 20 fails/IP/15m → 30m throttle; same per-IP on reset-request. Session: server-side Postgres; HttpOnly Secure SameSite=Strict; idle **30m**; absolute **8h**; after expiry full re-auth (password + TOTP). **Soft HOLD invent process-global auth flood limiter** until Chief Security explicitly approves — **per-IP + per-account only** this slice (Locked #6; Step 5 Process-global row; Step 12). |
-| 6 | Raw IP counters only; audit IP = keyed HMAC-SHA256 | **MET** | Step 5 Raw IP; Step 8 IP in auth audit; Locked #5 | Raw client IP lives **only** in short-lived rate-limit counters (expire with 15-/30-minute windows); **never** written to audit, other logs, or metrics. Auth audit stores IP **only** as keyed **HMAC-SHA256** (server-side rotatable secret) + failure reason class. Soft HOLD invent unkeyed hash or raw IP in audit/logs/metrics. Soft HOLD invent HMAC key value in plan/docs/chat. |
-| 7 | SES behind mail interface; Soft HOLD invent AWS | **MET** | Step 6; Locked #4, #13; Cost/critical §8 | Bootstrap/reset mail through **mail interface** (port/adapter). Soft HOLD invent direct AWS SES SDK dependency / SES types in Core app. Soft HOLD invent AWS account IDs, region, SES identity, from-address, provision, spend. CFO Soft HOLD cost cite only (Turnstile $0/mo; SES under $0.01/mo assumed) — Finance QA PASS cited; **not** spend approval. PoC **$0**. |
-| 8 | Audit: auth + edit/delete; soft-deleted toggle not audited | **MET** | Step 8; Step 7 toggle; Steps 9–10; Locked #10 | Append-only audit table; insert-only; no update/delete from admin UI/API. Auth events: login_success/fail (reason class), reset_request/complete, totp_enroll/change, recovery_code_use. Entity events: every successful admin edit/delete (+ cascade rows with correlation id). Soft-deleted **toggle use not audited**; toggle **CoreOwner-only**. Same-txn pairing: audit fail → roll back. Snapshots FieldPolicy-allowed only; Soft HOLD invent secret dump. |
-| 9 | Fail-closed FieldPolicy dual wall; no parallel ACL | **MET** | Steps 1, 9, 11, 12; Locked #8 | All admin reads/writes through Domain FieldPolicy for **CoreOwner** (Option A §3a/§3b — cite, do not rewrite). Missing/invalid/expired session or missing TOTP → deny all admin routes. Denied FieldClass → no write and no dump. Soft HOLD invent parallel multi-operator ACL / second permission matrix. |
-| 10 | Confirm-before-delete + soft-delete cascades | **MET** | Step 10; Locked #9 | UI modal confirm (type + identity + cascade summary); API confirm-token path (single-use **5 min**, bound to actor + entity + cascade set); blind DELETE rejected; cancel → no mutation / no delete audit. Soft-delete default (`DeletedAt`); hard delete deferred. Cascades: offer; negotiation→child offers; Artifact block-while-referenced; Participant→negotiations/offers, not auto Artifacts. Soft HOLD invent settlement cascades. |
-| 11 | Lists / search / paging safe | **MET** | Step 7; Locked #7 | All-status negotiation/offer lists incl. `Withdrawn`; soft-deleted via CoreOwner-only toggle; sort/filter **server-side**; server-side paging default **50** / max **200**; Soft HOLD invent client-only full-table dump; name search case-insensitive contains on all four tables; parameterized; results never include FieldPolicy-denied fields. Stats exclude soft-deleted. Soft HOLD invent charts/warehouse. No human-user list on Core. |
-| 12 | Edit write surface + concurrency | **MET** | Step 9; Locked #8 | Only FieldPolicy-allowed fields writable; every successful edit audited with before/after (FieldPolicy-allowed only). Optimistic concurrency via `Version` / `UpdatedAt` ETag; stale → **409 Conflict**; no silent overwrite. Soft HOLD invent password/secret fields in edit forms, errors, or audit snapshots. |
-| 13 | OUT / Soft HOLD / A7 gate pack | **MET** | Step 12 Explicit Soft HOLD/OUT; Explicit OUT §7; Locked #12–#14; Cost/critical; Status | Soft HOLD invent Stories/code/CDK/spend/provision/**deploy** until Dev Plan QA + Test design PASS. Soft HOLD A7 until **H4 live PASS** (no invented H4 steps). Soft HOLD harden redeploy (H1) separate. Soft HOLD invent password / AWS IDs / process-global flood limiter. Platform admin hosts OUT; human-user list OUT; Participant UI as admin OUT; multiple admin humans OUT; email OTP OUT; WAF CAPTCHA / reCAPTCHA OUT; inbound bot connector after; settlement OUT; SSO/IdP OUT. PoC **$0**. Cost/critical → COO → CEO. |
-| 14 | Traceability + handshake Soft HOLD SoR | **MET** | §6; Sources §1; Status; Done-list §9; Handshake note | Plan cites Spec v2.2 tip sha256 `25f2647767efe91b3638a90309e92451e0ae60bc861fce8177d5ed9bc4cf2e51` + Spec Security Soft HOLD SoR PASS 15/15 + SA Soft HOLD SoR PASS 14/14 + this Dev Plan checklist. Done-list: Soft HOLD SoR qa-confirm CLEAR at this path required before Dev Plan QA PASS. Handshake Soft HOLD SoR = **qa-confirm only** — do not invent points-review Soft HOLD SoR. Soft HOLD invent Stories/code/deploy from checklist alone. Soft HOLD A7 until H4. After Dev Plan QA PASS → A6 Test design before Stories/code. Not build unlock. PoC **$0**. |
+| # | Point | Score |
+|---|-------|-------|
+| 1 | Host + single CoreOwner gate | **MET** |
+| 2 | Bootstrap + email/password (no invented password) | **MET** |
+| 3 | TOTP required; no email OTP; hashed recovery | **MET** |
+| 4 | Password reset = email link + 2FA | **MET** |
+| 5 | Turnstile only + lockout/rate + session | **MET** |
+| 6 | Raw IP counters only; audit IP = keyed HMAC-SHA256 | **MET** |
+| 7 | SES behind mail interface; no invented AWS | **MET** |
+| 8 | Audit: auth + edit/delete; toggle not audited; `signin.second_factor_failed` | **MET** |
+| 9 | Fail-closed FieldPolicy dual wall; no parallel ACL | **MET** |
+| 10 | Confirm-before-delete + soft-delete cascades | **MET** |
+| 11 | Lists / search / paging safe | **MET** |
+| 12 | Edit write surface + concurrency | **MET** |
+| 13 | OUT / gate pack | **MET** |
+| 14 | Traceability + handshake | **MET** |
 
+**Checklist score:** **14/14 MET.**
 
-## Alignment with Senior Security done-list
+## Step 14 security binds
 
-Senior Dev Plan points-review (**PASS** 14/14 MET, 0 GAP) scored plan **body** Steps 1–13 vs checklist with Soft HOLDs for Soft HOLD invent process-global flood limiter, Soft HOLD invent password/AWS, Soft HOLD A7 until H4, Soft HOLD H1 separate, Soft HOLD deploy, Soft HOLD Dev Plan QA until Soft HOLD SoR CLEAR. Independent Soft HOLD SoR re-score vs same plan tip sha256 `5fefb550…` **agrees** on all 14. Senior non-blocking nit (§2/§5 "hashed IP" wording vs Steps 5/8 keyed HMAC) **accepted**. Soft HOLD SoR remains this qa-confirm only — points-review is **not** Soft HOLD SoR. Soft HOLD Security Soft HOLD SoR CLEARED stands.
+| # | Bind | Required | Plan finding (tip `21535e66…`) | Score |
+|---|------|----------|--------------------------------|-------|
+| 1 | UX1-A16 two-step decision | Full tip `bb0bcaa2…8d34` + conditions 1–8 on Step 14 | Item 1 (line 417): path + full tip; conditions 1–8 by number + short label | **MET** |
+| 2 | UX1-A03 generic copy on Step 14 | Full tip `0817b767…f3f0` | Item 2 (line 426): path + full tip; generic copy rules | **MET** |
+| 3 | Password answers + confirm path | Full tip `a87e293b…8d15`; `f03a82c9…` void | Item 3 (line 427): only current tip; void prior; confirm path | **MET** |
+| 4 | Password-rules tip v2.3 (binding) | Cite `1a7b342c…c521`; older void | Item 4 (line 428): full v2.3 tip; v2.2 superseded | **MET** |
+| 5 | Lockout-window tip v5.5 (binding) | Cite `8a194eb9…87d3`; older void | Item 5 (line 429): full v5.5 tip; v5.4/v5.3 void | **MET** |
+| 6 | Sign-in steps Spec note v1 | Cite `0a3db5f4…4da4` on Step 14 | Item 6 (line 430): full tip; Spec bind; A16 kept as Security decision | **MET** |
 
-## Guardrails (hard spot-check)
+**Step 14 result:** **6/6 MET.**
 
-| Guardrail | Status | Plan body cite |
-|-----------|--------|----------------|
-| Host `admin.core.dealoware.com` only | **Held** | Header; Step 1; Step 12 OUT |
-| CoreOwner + FieldPolicy; no parallel ACL | **Held** | Steps 1, 9, 11, 12 |
-| Soft HOLD invent **process-global** auth flood limiter (per-IP + per-account only) | **Held** | Step 5 Process-global; Locked #6; Step 12 |
-| Raw IP counters only (short-lived); never audit/logs/metrics | **Held** | Step 5 Raw IP; Step 8 verify |
-| Auth audit IP = keyed HMAC-SHA256 only; Soft HOLD invent HMAC key value | **Held** | Step 8 IP in auth audit |
-| Turnstile only; WAF CAPTCHA / reCAPTCHA OUT | **Held** | Step 5; Step 12 OUT |
-| SES behind mail interface; Soft HOLD invent AWS account IDs | **Held** | Step 6; Cost/critical |
-| Soft HOLD invent password values | **Held** | Steps 2, 12; Locked #14 |
-| Soft HOLD A7 until H4; Soft HOLD build / Stories / deploy | **Held** | Step 12; Status; Done-list |
-| Soft HOLD harden redeploy (H1) separate | **Held** | Step 12; Explicit OUT |
-| Handshake Soft HOLD SoR = qa-confirm only | **Held** — this file |
-| PoC $0; not build unlock | **Held** | Cost/critical; Status |
+## Step 15 security binds
 
-## Gaps
+| Bind | Required | Plan finding | Score |
+|------|----------|--------------|-------|
+| HMAC IP prefix only; no raw IP | Viewer shows HMAC IP prefix only | Line 463 + verify line 470 | **MET** |
+| No secrets / tokens | Nothing secret displayed | Line 463 + verify line 470 | **MET** |
+| admin.core only | Viewer on `admin.core.dealoware.com` only | Line 463 + verify line 470 | **MET** |
 
-**None.** Soft notes non-blocking. Soft HOLD invent Soft HOLD SoR beyond this qa-confirm not done. Soft HOLD invent Soft HOLD SoR as PASS from points-review alone not done (Senior PASS 14/14 cited as content evidence only). Soft HOLD invent process-global auth flood limiter not done. Soft HOLD invent password / AWS not done. Soft HOLD build / Stories / code / CDK / spend / A7 not unlocked.
+**Step 15 result:** **3/3 MET.**
+
+## Guardrails spot-check
+
+| Guardrail | Status |
+|-----------|--------|
+| Host `admin.core.dealoware.com` only | Held |
+| CoreOwner + FieldPolicy; no parallel ACL | Held |
+| Process-global auth flood limiter paused | Held |
+| Raw IP counters only; never audit/logs/metrics | Held |
+| Auth audit IP = keyed HMAC-SHA256; viewer prefix only | Held |
+| Turnstile only; other CAPTCHA OUT | Held |
+| SES behind mail interface; no AWS IDs | Held |
+| No invented password values | Held |
+| Spec cites match on-disk tips (v2.3 / v5.5 / sign-in `0a3db5f4…`) | Held |
+| Soft HOLD status phrase absent; Active holds plain English | Held |
+| A7 until H4; deploy until Ivan OK; no Stories/code from this confirm | Held |
+| Handshake = qa-confirm only; PoC $0; not a build unlock | Held |
+
+## Gaps / OBS
+
+**Gaps (blocking):** none.
+
+**OBS (non-blocking):**
+
+1. Prior PASS on tip `3385872a…` is **VOID**; this tip `21535e66…` is the only current Dev Plan Security qa-confirm tip.
+2. Finance estimate / Finance QA **filenames** still contain substring `soft-hold` where the plan cites those paths — historical artifact names, not Soft HOLD status language.
+3. UX addendum / findings hashes "at amend" remain UI sources outside this Security scope; not re-hashed here.
+4. Sign-in Spec QA Active holds may still note a non-blocking sibling pointer rename inside the sign-in note; Dev Plan cites lockout v5.5 correctly.
+
+**Invent scan:** zero invented passwords, AWS account IDs, ARNs, or Turnstile / HMAC / SES keys; no raw IPv4 in plan body.
 
 ## Handshake status
 
-Security QA Soft HOLD SoR → **PASS** (14/14 MET). Soft HOLD Dev Plan Security Soft HOLD SoR **CLEARED**. Soft HOLD Dev Plan QA Soft HOLD Security gate may lift per checklist Status (Dev Plan QA may proceed after Soft HOLD SoR CLEAR — formal Dev Plan QA PASS remains with Dev Plan QA / Chief Dev Planner path). Soft HOLD invent Stories / code / CDK / spend / provision / deploy. Soft HOLD A7 until H4 live PASS. Soft HOLD invent password / AWS. Soft HOLD invent process-global auth flood limiter until Chief Security explicitly approves. Soft HOLD harden redeploy (H1) separate. Senior points-review PASS 14/14 cited (content only — **not** Soft HOLD SoR). Sibling Spec Soft HOLD SoR PASS 15/15 + SA Soft HOLD SoR PASS 14/14 cite-only (Spec/Arch not re-scored). Not build unlock. PoC **$0**. Cost/critical: none from this Soft HOLD SoR → COO → CEO if any later spend.
+**PASS** on tip `21535e6684ec347361a3f4fd0521a7928392428b7e9c2ce7c8355c2553808cd8` (**MATCH**). Soft HOLD status phrase **absent**. Checklist **14/14 MET**. Step 14 binds **6/6 MET**; Step 15 binds **3/3 MET**. Prior PASS on `3385872a…` (and earlier `1c173e98…` / `970b453a…`) **VOID**. This clears the Security qa-confirm handshake for the Soft HOLD wording-only scrub tip. Next gate after Dev Plan QA PASS: A6 Test design via Chief QA before any Stories or code. Not a build unlock. PoC **$0**. Flood limiter paused, A7 waits for H4, deploy waits for Ivan, H1 separate.

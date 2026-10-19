@@ -12,7 +12,7 @@ public sealed class FieldPrincipal
     public string? Sub { get; init; }
     
     /// <summary>
-    /// Type of principal (User, OwnAgent, Counterparty, Stranger, Unauthenticated).
+    /// Type of principal (User, OwnAgent, Counterparty, Stranger, Unauthenticated, CoreOwner).
     /// </summary>
     public PrincipalType Type { get; init; }
     
@@ -53,10 +53,24 @@ public sealed class FieldPrincipal
     };
     
     /// <summary>
+    /// Creates the CoreOwner principal (single system superadmin).
+    /// Not remapped to User/Stranger by resource ownership.
+    /// </summary>
+    public static FieldPrincipal CoreOwner(string email) => new()
+    {
+        Sub = email,
+        Type = PrincipalType.CoreOwner,
+        IsAgent = false
+    };
+    
+    /// <summary>
     /// Determines the principal type relative to a resource context.
     /// </summary>
     public PrincipalType GetTypeForContext(FieldResourceContext context)
     {
+        if (Type == PrincipalType.CoreOwner)
+            return PrincipalType.CoreOwner;
+
         if (Type == PrincipalType.Unauthenticated)
             return PrincipalType.Unauthenticated;
         

@@ -50,9 +50,25 @@ public sealed class Participant
     public DateTimeOffset CreatedAt { get; private set; }
 
     /// <summary>
+    /// Last mutation time (UTC). Null until a later write sets it.
+    /// Sort by updated falls back to CreatedAt when this is null.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; private set; }
+
+    /// <summary>
     /// Whether this participant is active (can authenticate).
     /// </summary>
     public bool IsActive { get; private set; } = true;
+
+    /// <summary>
+    /// Soft-delete marker. When non-null, indicates the entity is soft-deleted.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    /// <summary>
+    /// Concurrency token for optimistic concurrency control.
+    /// </summary>
+    public uint Version { get; private set; }
 
     private Participant() { }
 

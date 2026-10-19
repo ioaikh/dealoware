@@ -38,6 +38,7 @@ public class NegotiationEntityConfiguration : IEntityTypeConfiguration<Negotiati
         builder.Property(n => n.StartsAt);
         builder.Property(n => n.EndsAt);
         builder.Property(n => n.CreatedAt).IsRequired();
+        builder.Property(n => n.UpdatedAt);
 
         builder.HasMany(n => n.Offers)
             .WithOne()
@@ -48,5 +49,11 @@ public class NegotiationEntityConfiguration : IEntityTypeConfiguration<Negotiati
         builder.HasIndex(n => n.PartyBParticipantId);
         builder.HasIndex(n => n.ArtifactId);
         builder.HasIndex(n => n.Status);
+        
+        builder.Property(n => n.DeletedAt);
+        
+        builder.Property(n => n.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }

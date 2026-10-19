@@ -29,5 +29,11 @@ public enum OfferStatus
     /// <summary>
     /// Offer was cancelled (negotiation closed/expired or another offer accepted).
     /// </summary>
-    Cancelled = 4
+    Cancelled = 4,
+
+    /// <summary>
+    /// Offer was withdrawn by the maker. First-class offer-only status (int 5).
+    /// Admin cannot set this; only <see cref="Offer.Withdraw"/> can.
+    /// </summary>
+    Withdrawn = 5
 }

@@ -29,6 +29,8 @@ public class ArtifactEntityConfiguration : IEntityTypeConfiguration<Artifact>
         builder.Property(e => e.CreatedAt)
             .IsRequired();
 
+        builder.Property(e => e.UpdatedAt);
+
         builder.HasMany(e => e.Entities)
             .WithOne()
             .HasForeignKey("ArtifactId")
@@ -55,6 +57,12 @@ public class ArtifactEntityConfiguration : IEntityTypeConfiguration<Artifact>
                     c => c.ToList()));
 
         builder.HasIndex(e => e.OwnerParticipantId);
+        
+        builder.Property(e => e.DeletedAt);
+        
+        builder.Property(e => e.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }
 

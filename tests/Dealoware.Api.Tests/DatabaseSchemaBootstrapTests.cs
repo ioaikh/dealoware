@@ -89,7 +89,8 @@ public class DatabaseSchemaBootstrapTests
     [Fact]
     public async Task ApplyMigrationsAsync_OnSqlite_CompletesWithoutLivePostgres()
     {
-        // With no migration assemblies/files yet, MigrateAsync still succeeds (creates history only).
+        // Fresh SQLite: baseline migration creates the app schema; the admin
+        // migration then applies. No live Postgres required.
         await using var connection = new SqliteConnection("Data Source=Migrate_Sqlite;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<DealowareDbContext>()
@@ -101,6 +102,18 @@ public class DatabaseSchemaBootstrapTests
             async () => await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db));
 
         Assert.Null(ex);
+        Assert.True(await db.AdminSessions.CountAsync() >= 0);
+        Assert.True(await db.AdminAuditLog.CountAsync() >= 0);
+
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info(Participants);";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var columns = new List<string>();
+            while (await reader.ReadAsync())
+                columns.Add(reader.GetString(1));
+            Assert.Contains("UpdatedAt", columns);
+        }
     }
 
     [Theory]

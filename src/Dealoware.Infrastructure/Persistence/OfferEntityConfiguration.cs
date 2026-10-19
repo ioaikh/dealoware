@@ -37,10 +37,17 @@ public class OfferEntityConfiguration : IEntityTypeConfiguration<Offer>
             .HasMaxLength(2000);
 
         builder.Property(o => o.CreatedAt).IsRequired();
+        builder.Property(o => o.UpdatedAt);
 
         builder.HasIndex(o => o.NegotiationId);
         builder.HasIndex(o => o.FromParticipantId);
         builder.HasIndex(o => o.ToParticipantId);
         builder.HasIndex(o => o.Status);
+        
+        builder.Property(o => o.DeletedAt);
+        
+        builder.Property(o => o.Version)
+            .IsConcurrencyToken()
+            .HasDefaultValue(0u);
     }
 }

@@ -1,9 +1,11 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Domain.Artifacts;
 using Dealoware.Domain.Budget;
 using Dealoware.Domain.Negotiations;
 using Dealoware.Domain.Participants;
 using Dealoware.Domain.Strategies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Dealoware.Infrastructure.Persistence;
 
@@ -30,8 +32,40 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<ParticipantBudget> ParticipantBudgets => Set<ParticipantBudget>();
 
+    /// <summary>
+    /// A7: Admin sessions for CoreOwner authentication.
+    /// </summary>
+    public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
+
+    /// <summary>
+    /// A7: Append-only admin audit log.
+    /// </summary>
+    public DbSet<AdminAuditEntry> AdminAuditLog => Set<AdminAuditEntry>();
+
+    /// <summary>
+    /// A7 Step 3: CoreOwner credential, encrypted TOTP, pending auth, hashed recovery codes.
+    /// </summary>
+    public DbSet<AdminCoreOwnerAccount> AdminCoreOwnerAccounts => Set<AdminCoreOwnerAccount>();
+
+    public DbSet<AdminRecoveryCode> AdminRecoveryCodes => Set<AdminRecoveryCode>();
+
+    public DbSet<AdminPendingAuth> AdminPendingAuths => Set<AdminPendingAuth>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.AddInterceptors(SqliteDateTimeOffsetRewriteInterceptor.Instance);
+        // Snapshot is design-time SQLite. Npgsql store types (timestamptz, etc.)
+        // differ without schema drift. Ignore only on Postgres; SQLite CI asserts
+        // HasPendingModelChanges() is false so a missed migration still fails.
+        if (HasNpgsqlExtension(optionsBuilder))
+        {
+            optionsBuilder.ConfigureWarnings(w =>
+                w.Ignore(RelationalEventId.PendingModelChangesWarning));
+        }
     }
 
     /// <summary>
@@ -42,10 +76,20 @@ public class DealowareDbContext : DbContext
     {
         base.ConfigureConventions(configurationBuilder);
 
-        configurationBuilder.Properties<DateTimeOffset>()
-            .HaveConversion<UtcDateTimeOffsetConverter>();
-        configurationBuilder.Properties<DateTimeOffset?>()
-            .HaveConversion<UtcDateTimeOffsetConverter>();
+        if (Database.IsSqlite())
+        {
+            configurationBuilder.Properties<DateTimeOffset>()
+                .HaveConversion<SqliteSortableUtcDateTimeOffsetConverter>();
+            configurationBuilder.Properties<DateTimeOffset?>()
+                .HaveConversion<SqliteSortableUtcDateTimeOffsetConverter>();
+        }
+        else
+        {
+            configurationBuilder.Properties<DateTimeOffset>()
+                .HaveConversion<UtcDateTimeOffsetConverter>();
+            configurationBuilder.Properties<DateTimeOffset?>()
+                .HaveConversion<UtcDateTimeOffsetConverter>();
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -70,5 +114,23 @@ public class DealowareDbContext : DbContext
         
         // Stage C #68: Per-Participant budgets
         modelBuilder.ApplyConfiguration(new ParticipantBudgetEntityConfiguration());
+        
+        // A7: Admin session and audit tables
+        modelBuilder.ApplyConfiguration(new AdminSessionEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuditEntryEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminCoreOwnerAccountEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminRecoveryCodeEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminPendingAuthEntityConfiguration());
+    }
+
+    private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)
+    {
+        foreach (var extension in optionsBuilder.Options.Extensions)
+        {
+            if (extension.GetType().Name.Contains("Npgsql", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 }

@@ -47,6 +47,22 @@ public sealed class Artifact
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Last mutation time (UTC). Null until a later write sets it.
+    /// Sort by updated falls back to CreatedAt when this is null.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; private set; }
+
+    /// <summary>
+    /// Soft-delete marker. When non-null, indicates the entity is soft-deleted.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    /// <summary>
+    /// Concurrency token for optimistic concurrency control.
+    /// </summary>
+    public uint Version { get; private set; }
+
     private Artifact() { }
 
     public static Artifact Create(
