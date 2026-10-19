@@ -1,7 +1,5 @@
-using System.Data;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dealoware.Infrastructure.Admin;
@@ -20,102 +18,75 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 16; attempt++)
+        for (var attempt = 0; attempt < 8; attempt++)
         {
-            DetachTracked();
-            await using var tx = await _context.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable,
-                cancellationToken);
-            try
+            var row = await _context.AdminResetIpCounters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.IpHmac == ipHmac, cancellationToken);
+
+            if (row is null)
             {
-                var reserved = await TryReserveOnceAsync(ipHmac, now, cancellationToken);
-                if (reserved is null)
+                try
                 {
-                    await tx.RollbackAsync(cancellationToken);
+                    _context.AdminResetIpCounters.Add(AdminResetIpCounter.Start(ipHmac, now));
+                    await _context.SaveChangesAsync(cancellationToken);
+                    DetachTracked();
+                    return true;
+                }
+                catch (DbUpdateException)
+                {
+                    DetachTracked();
                     continue;
                 }
+            }
 
-                await tx.CommitAsync(cancellationToken);
-                return reserved.Value;
-            }
-            catch (DbUpdateException)
+            // Count >= Threshold is locked only while LockedUntil is still in the future.
+            if (row.IsLocked(now))
             {
-                await TryRollbackAsync(tx, cancellationToken);
+                return false;
             }
-            catch (SqliteException)
+
+            if (!row.WindowOpen(now))
             {
-                await TryRollbackAsync(tx, cancellationToken);
+                var reset = await Matching(row)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(c => c.FailureCount, 1)
+                            .SetProperty(c => c.WindowStartedAt, now)
+                            .SetProperty(c => c.LockedUntil, (DateTimeOffset?)null),
+                        cancellationToken);
+                if (reset == 1)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            var next = row.FailureCount + 1;
+            var lockUntil = next >= AdminResetIpCounter.Threshold
+                ? now.Add(AdminResetIpCounter.LockDuration)
+                : row.LockedUntil;
+            var updated = await Matching(row)
+                .Where(c => c.FailureCount < AdminResetIpCounter.Threshold)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(c => c.FailureCount, next)
+                        .SetProperty(c => c.LockedUntil, lockUntil),
+                    cancellationToken);
+            if (updated == 1)
+            {
+                return true;
             }
         }
 
         return false;
     }
 
-    private async Task<bool?> TryReserveOnceAsync(
-        string ipHmac,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var row = await _context.AdminResetIpCounters
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.IpHmac == ipHmac, cancellationToken);
-
-        if (row is null)
-        {
-            _context.AdminResetIpCounters.Add(AdminResetIpCounter.Start(ipHmac, now));
-            _context.AdminResetIpEvents.Add(AdminResetIpEvent.Create(ipHmac, now));
-            await _context.SaveChangesAsync(cancellationToken);
-            DetachTracked();
-            return true;
-        }
-
-        if (row.IsLocked(now))
-            return false;
-
-        var cutoff = now - AdminResetIpCounter.Window;
-        await _context.AdminResetIpEvents
-            .Where(e => e.IpHmac == ipHmac && e.OccurredAt <= cutoff)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        var inWindow = await _context.AdminResetIpEvents
-            .CountAsync(
-                e => e.IpHmac == ipHmac && e.OccurredAt > cutoff,
-                cancellationToken);
-
-        if (inWindow >= AdminResetIpCounter.Threshold)
-        {
-            var lockUntil = now.Add(AdminResetIpCounter.LockDuration);
-            var locked = await Matching(row)
-                .ExecuteUpdateAsync(
-                    setters => setters
-                        .SetProperty(c => c.FailureCount, inWindow)
-                        .SetProperty(c => c.LockedUntil, lockUntil),
-                    cancellationToken);
-            return locked == 1 ? false : null;
-        }
-
-        var next = inWindow + 1;
-        var nextWindow = row.WindowStartedAt > cutoff ? row.WindowStartedAt : now;
-        var nextLock = next >= AdminResetIpCounter.Threshold
-            ? now.Add(AdminResetIpCounter.LockDuration)
-            : (DateTimeOffset?)null;
-
-        var updated = await Matching(row)
-            .ExecuteUpdateAsync(
-                setters => setters
-                    .SetProperty(c => c.FailureCount, next)
-                    .SetProperty(c => c.WindowStartedAt, nextWindow)
-                    .SetProperty(c => c.LockedUntil, nextLock),
-                cancellationToken);
-        if (updated != 1)
-            return null;
-
-        _context.AdminResetIpEvents.Add(AdminResetIpEvent.Create(ipHmac, now));
-        await _context.SaveChangesAsync(cancellationToken);
-        DetachTracked();
-        return true;
-    }
-
+    /// <summary>
+    /// R5 compare-and-set: a delayed reset cannot clear a newer lock, and a
+    /// burst against an expired row cannot pass the threshold.
+    /// </summary>
     private IQueryable<AdminResetIpCounter> Matching(AdminResetIpCounter row)
         => _context.AdminResetIpCounters.Where(c =>
             c.IpHmac == row.IpHmac
@@ -125,25 +96,9 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
 
     private void DetachTracked()
     {
-        foreach (var entry in _context.ChangeTracker.Entries()
-                     .Where(e => e.Entity is AdminResetIpCounter or AdminResetIpEvent)
-                     .ToList())
+        foreach (var entry in _context.ChangeTracker.Entries<AdminResetIpCounter>().ToList())
         {
             entry.State = EntityState.Detached;
-        }
-    }
-
-    private static async Task TryRollbackAsync(
-        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction tx,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await tx.RollbackAsync(cancellationToken);
-        }
-        catch (InvalidOperationException)
-        {
-            // Already rolled back with the failed command.
         }
     }
 }

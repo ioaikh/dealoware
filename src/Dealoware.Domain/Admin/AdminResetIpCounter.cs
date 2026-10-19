@@ -33,8 +33,11 @@ public sealed class AdminResetIpCounter
         => LockedUntil is { } until && until > now;
 
     /// <summary>
-    /// OQ3 sliding 15-minute window: an event exactly 15 minutes old is outside
-    /// (<c>WindowStartedAt &gt; now - Window</c>).
+    /// Fixed 15-minute window for the reset/bootstrap IP throttle only
+    /// (Chief Security ruling <c>e48f4581</c>). An event exactly 15 minutes
+    /// after <see cref="WindowStartedAt"/> is outside
+    /// (<c>WindowStartedAt &gt; now - Window</c>). Sign-in account and IP
+    /// throttles stay on their own window rules.
     /// </summary>
     public bool WindowOpen(DateTimeOffset now)
         => WindowStartedAt > now - Window;

@@ -648,7 +648,7 @@ public class AdminPasswordResetTests
             ipHmac,
             windowStartedAt: now - TimeSpan.FromMinutes(20),
             lockedUntil: now - TimeSpan.FromSeconds(1),
-            eventCount: AdminResetIpCounter.Threshold);
+            failureCount: AdminResetIpCounter.Threshold);
 
         var results = await ParallelReserveAsync(store.Options, ipHmac, now, 40);
 
@@ -676,7 +676,7 @@ public class AdminPasswordResetTests
             ipHmac,
             windowStartedAt: t0,
             lockedUntil: lockUntil,
-            eventCount: AdminResetIpCounter.Threshold);
+            failureCount: AdminResetIpCounter.Threshold);
 
         for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
         {
@@ -708,45 +708,6 @@ public class AdminPasswordResetTests
             RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "AdminResetIpThrottle.cs"));
         Assert.Contains("c.WindowStartedAt == row.WindowStartedAt", source, StringComparison.Ordinal);
         Assert.Contains("c.LockedUntil == row.LockedUntil", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task TD_ADM_030_SC6_R8_WindowEdge_DoesNotDoubleBudget()
-    {
-        const string ipHmac = "r8-window-edge";
-        await using var store = await OpenThrottleStoreAsync("ResetIpR8Edge");
-        await ClearThrottleIpAsync(store.Options, ipHmac);
-
-        var t0 = new DateTimeOffset(2026, 10, 12, 14, 0, 0, TimeSpan.Zero);
-        for (var i = 0; i < 10; i++)
-        {
-            await using var db = new DealowareDbContext(store.Options);
-            Assert.True(await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, t0, CancellationToken.None));
-        }
-
-        var tLate = t0.AddMinutes(14);
-        for (var i = 0; i < 9; i++)
-        {
-            await using var db = new DealowareDbContext(store.Options);
-            Assert.True(await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, tLate, CancellationToken.None));
-        }
-
-        var tEdge = t0.Add(AdminResetIpCounter.Window);
-        var late = 0;
-        for (var i = 0; i < 19; i++)
-        {
-            await using var db = new DealowareDbContext(store.Options);
-            if (await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, tEdge, CancellationToken.None))
-                late++;
-        }
-
-        Assert.True(9 + late <= AdminResetIpCounter.Threshold);
-        Assert.InRange(late, 0, 11);
-
-        await using var check = new DealowareDbContext(store.Options);
-        var inWindow = check.AdminResetIpEvents.Count(e =>
-            e.IpHmac == ipHmac && e.OccurredAt > tEdge - AdminResetIpCounter.Window);
-        Assert.True(inWindow <= AdminResetIpCounter.Threshold);
     }
 
     [Fact]
@@ -1004,7 +965,6 @@ public class AdminPasswordResetTests
         var hasher = scope.ServiceProvider.GetRequiredService<IAdminPasswordHasher>();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
-        db.AdminResetIpEvents.RemoveRange(db.AdminResetIpEvents);
         var existing = db.AdminCredentials.SingleOrDefault(c => c.Email == CoreOwnerEmail);
         if (existing is null)
         {
@@ -1128,7 +1088,6 @@ public class AdminPasswordResetTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
-        db.AdminResetIpEvents.RemoveRange(db.AdminResetIpEvents);
         await db.SaveChangesAsync();
     }
 
@@ -1261,7 +1220,6 @@ public class AdminPasswordResetTests
     private static async Task ClearThrottleIpAsync(DbContextOptions<DealowareDbContext> options, string ipHmac)
     {
         await using var db = new DealowareDbContext(options);
-        await db.AdminResetIpEvents.Where(e => e.IpHmac == ipHmac).ExecuteDeleteAsync();
         await db.AdminResetIpCounters.Where(c => c.IpHmac == ipHmac).ExecuteDeleteAsync();
     }
 
@@ -1270,20 +1228,15 @@ public class AdminPasswordResetTests
         string ipHmac,
         DateTimeOffset windowStartedAt,
         DateTimeOffset lockedUntil,
-        int eventCount)
+        int failureCount)
     {
         await using var db = new DealowareDbContext(options);
         db.AdminResetIpCounters.Add(AdminResetIpCounter.Start(ipHmac, windowStartedAt));
-        for (var i = 0; i < eventCount; i++)
-        {
-            db.AdminResetIpEvents.Add(AdminResetIpEvent.Create(ipHmac, windowStartedAt));
-        }
-
         await db.SaveChangesAsync();
         await db.AdminResetIpCounters
             .Where(c => c.IpHmac == ipHmac)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.FailureCount, eventCount)
+                .SetProperty(c => c.FailureCount, failureCount)
                 .SetProperty(c => c.WindowStartedAt, windowStartedAt)
                 .SetProperty(c => c.LockedUntil, lockedUntil));
     }
