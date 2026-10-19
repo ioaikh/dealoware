@@ -7,7 +7,10 @@ namespace Dealoware.Api.Tests;
 /// <summary>
 /// H6: when the real Dealoware.Api process starts outside Development without a valid signing key,
 /// it must exit with code 1 (clean fail-closed) rather than aborting (134/SIGABRT or 139/SIGSEGV).
+/// Same collection as <see cref="AdminHostFailClosedExitTests"/>: spawning the Api next to
+/// testhost under xUnit collection parallelism can stall <see cref="Process.WaitForExit(int)"/>.
 /// </summary>
+[Collection("AdminHostProcessTests")]
 public class JwtFailClosedExitTests
 {
     [Fact]
@@ -51,8 +54,9 @@ public class JwtFailClosedExitTests
         var start = new ProcessStartInfo
         {
             FileName = ResolveDotnetPath(),
-            Arguments = $"\"{apiDll}\"",
+            Arguments = $"exec \"{apiDll}\"",
             WorkingDirectory = AppContext.BaseDirectory,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -73,11 +77,27 @@ public class JwtFailClosedExitTests
 
         using var process = Process.Start(start);
         Assert.NotNull(process);
+        process!.StandardInput.Close();
 
-        var stderrTask = process!.StandardError.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var exited = process.WaitForExit(30_000);
-        Assert.True(exited, "Dealoware.Api should exit promptly on fail-closed JWT validation");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            process.WaitForExitAsync(timeout.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            Assert.Fail("Dealoware.Api should exit promptly on fail-closed JWT validation");
+        }
 
         _ = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
