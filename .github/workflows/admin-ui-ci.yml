@@ -1,6 +1,7 @@
 # Admin UI Headless CI — UX1-X08 / TD-ADM-UI-ci-01
 # Merge-blocking: failing non-SKIP UI case fails the check.
 # Empty suite: must fail closed on pull_request (never green empty).
+# AC-06: SKIP is not PASS — all-skipped or zero-collected runs fail (never green empty).
 # SKIP stubs: reported as SKIP with Active hold reason when specs missing.
 # Decision: Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate.
 #
@@ -126,6 +127,14 @@ jobs:
         working-directory: e2e
         run: npm ci
 
+      - name: Negative control — AC-06 fixture reports
+        working-directory: e2e
+        # Recapture real Playwright JSON reports, then fail-closed on them.
+        # No continue-on-error, no || true, no if: always().
+        run: |
+          node admin/ci/capture-fixtures.js
+          node --test admin/ci/assert-executed.control.js
+
       - name: Check for Playwright specs
         id: check-specs
         shell: bash
@@ -220,11 +229,19 @@ jobs:
           TOTP_SEED_ENV: ${{ secrets.TOTP_SEED_ENV || 'JBSWY3DPEHPK3PXP' }}
           TURNSTILE_TEST_SITE_KEY: ${{ secrets.TURNSTILE_TEST_SITE_KEY || '1x00000000000000000000AA' }}
           TURNSTILE_TEST_SECRET_KEY: ${{ secrets.TURNSTILE_TEST_SECRET_KEY || '1x0000000000000000000000000000000AA' }}
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
         run: |
+          # AC-06: list reporter plus local JSON. Count comes from the JSON
+          # file, never from scraping stdout. assert-executed.js fails this
+          # step when executed (passed + failed + flaky) is 0.
+          # Playwright 1.48 has no json:path CLI form; file path is set above.
+          # No continue-on-error, no || true, no if: always() — a red run
+          # stays red.
           npx playwright test \
             -c playwright.config.ts \
             --project=chromium \
-            --reporter=list
+            --reporter=list,json
+          node admin/ci/assert-executed.js test-results/results.json
 
       # PUBLIC REPO: Artifact uploads disabled.
       # Traces, screenshots, and test results may contain credentials, cookies, or
