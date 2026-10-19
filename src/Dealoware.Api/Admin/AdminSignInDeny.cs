@@ -1,3 +1,5 @@
+using Dealoware.Domain.Admin;
+
 namespace Dealoware.Api.Admin;
 
 /// <summary>
@@ -6,8 +8,7 @@ namespace Dealoware.Api.Admin;
 /// </summary>
 public static class AdminSignInDeny
 {
-    public const string GenericCopy =
-        "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
+    public const string GenericCopy = AdminAuthCopy.SignInFailure;
 
     public static IResult Failure() =>
         Results.Json(new { error = GenericCopy }, statusCode: StatusCodes.Status401Unauthorized);
@@ -20,6 +21,6 @@ public static class AdminSignInDeny
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         context.Response.ContentType = "application/json";
         return context.Response.WriteAsync(
-            """{"error":"We couldn't sign you in. Check your details and try again later. You can also reset your password."}""");
+            $$"""{"error":"{{AdminAuthCopy.SignInFailure}}"}""");
     }
 }

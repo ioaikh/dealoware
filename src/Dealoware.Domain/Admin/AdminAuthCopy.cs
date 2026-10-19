@@ -10,9 +10,5 @@ public static class AdminAuthCopy
 
     public const string VerificationFailed = "Verification failed, please try again.";
 
-    public const string ResetExists = "If that account exists, we've sent instructions";
-
-    public const string InvalidLink = "This link is invalid or has expired.";
-
     public const string PasswordTooShort = "Use at least 15 characters.";
 }

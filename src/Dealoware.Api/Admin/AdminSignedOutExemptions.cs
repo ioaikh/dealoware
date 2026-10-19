@@ -19,16 +19,12 @@ public static class AdminSignedOutExemptions
     public const string SetupRecoveryCodes = "/admin/setup/recovery-codes";
     public const string Reset = "/admin/reset";
     public const string ResetSent = "/admin/reset/sent";
-    public const string ResetConfirm = "/admin/reset/confirm";
     public const string Bootstrap = "/admin/bootstrap";
-    public const string LinkExpired = "/admin/link-expired";
     public const string SignOut = "/admin/sign-out";
 
     public const string ApiSignIn = "/admin/api/auth/sign-in";
     public const string ApiSignInCode = "/admin/api/auth/sign-in/code";
     public const string ApiSignInRecovery = "/admin/api/auth/sign-in/recovery";
-    public const string ApiReset = "/admin/api/auth/reset";
-    public const string ApiResetConfirm = "/admin/api/auth/reset/confirm";
     public const string ApiBootstrap = "/admin/api/auth/bootstrap";
     public const string ApiSignOut = "/admin/api/auth/sign-out";
 
@@ -58,9 +54,6 @@ public static class AdminSignedOutExemptions
         new(ResetSent, HttpMethod.Get, TokenKind.None),
         new(Bootstrap, HttpMethod.Get, TokenKind.None),
         new(Bootstrap, HttpMethod.Post, TokenKind.None),
-        new(ResetConfirm, HttpMethod.Get, TokenKind.None),
-        new(ResetConfirm, HttpMethod.Post, TokenKind.None),
-        new(LinkExpired, HttpMethod.Get, TokenKind.None),
         new(SetupAuthenticator, HttpMethod.Get, TokenKind.PendingSignIn),
         new(SetupAuthenticator, HttpMethod.Post, TokenKind.PendingSignIn),
         new(SetupRecoveryCodes, HttpMethod.Get, TokenKind.PendingSignIn),
@@ -68,9 +61,7 @@ public static class AdminSignedOutExemptions
         new(ApiSignIn, HttpMethod.Post, TokenKind.None),
         new(ApiSignInCode, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiSignInRecovery, HttpMethod.Post, TokenKind.PendingSignIn),
-        new(ApiReset, HttpMethod.Post, TokenKind.None),
         new(ApiBootstrap, HttpMethod.Post, TokenKind.None),
-        new(ApiResetConfirm, HttpMethod.Post, TokenKind.None),
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
@@ -89,9 +80,7 @@ public static class AdminSignedOutExemptions
            || string.Equals(canonicalPath, ApiSignIn, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiSignInCode, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiSignInRecovery, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiBootstrap, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase);
+           || string.Equals(canonicalPath, ApiBootstrap, StringComparison.OrdinalIgnoreCase);
 
     public static ExemptionRule? FindRule(string canonicalPath, string method)
     {

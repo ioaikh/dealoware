@@ -19,8 +19,6 @@ public static class AdminAuthEndpoints
     public const string SignInPath = AdminSignedOutExemptions.ApiSignIn;
     public const string SignInCodePath = AdminSignedOutExemptions.ApiSignInCode;
     public const string SignInRecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;
-    public const string ResetPath = AdminSignedOutExemptions.ApiReset;
-    public const string ResetConfirmPath = AdminSignedOutExemptions.ApiResetConfirm;
     public const string BootstrapPath = AdminSignedOutExemptions.ApiBootstrap;
     public const string SignOutPath = AdminSignedOutExemptions.ApiSignOut;
     public const string PageSignOutPath = AdminSignedOutExemptions.SignOut;
@@ -132,19 +130,7 @@ public static class AdminAuthEndpoints
         app.MapGet(AdminSignedOutExemptions.ResetSent, IssueAnonymousPage)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-        app.MapGet(AdminSignedOutExemptions.LinkExpired, IssueAnonymousPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
-        app.MapGet(AdminSignedOutExemptions.ResetConfirm, IssueFragmentPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
         app.MapGet(AdminSignedOutExemptions.Bootstrap, IssueFragmentPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
-        app.MapPost(AdminSignedOutExemptions.ApiReset, RequestReset)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
-        app.MapPost(AdminSignedOutExemptions.ApiResetConfirm, CompleteReset)
             .WithTags("AdminAuth")
             .AllowAnonymous();
         app.MapPost(AdminSignedOutExemptions.ApiBootstrap, CompleteBootstrap)
@@ -957,24 +943,6 @@ public static class AdminAuthEndpoints
 
     private static void CryptographicClear(byte[] secret)
         => System.Security.Cryptography.CryptographicOperations.ZeroMemory(secret);
-
-    private static async Task<IResult> RequestReset(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
-        => await WriteStep5OutcomeAsync(
-            context,
-            await auth.RequestResetAsync(
-                body.Email, body.TurnstileToken, ClientIp(context), context.RequestAborted));
-
-    private static async Task<IResult> CompleteReset(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
-        => await WriteStep5OutcomeAsync(
-            context,
-            await auth.CompleteLinkAsync(
-                AdminAuthToken.KindReset,
-                body.EffectiveLinkToken,
-                body.Password,
-                body.Email,
-                body.TurnstileToken,
-                ClientIp(context),
-                context.RequestAborted));
 
     private static async Task<IResult> CompleteBootstrap(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
         => await WriteStep5OutcomeAsync(

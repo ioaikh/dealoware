@@ -294,22 +294,6 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
-    public async Task SecR1_ResetIp_ParallelBurst_StopsAtTwenty()
-    {
-        await ClearAsync();
-        var client = CreateClient();
-        var responses = await Task.WhenAll(
-            Enumerable.Range(0, 25).Select(i => SendAuthAsync(
-                client,
-                HttpMethod.Post,
-                AdminAuthEndpoints.ResetPath,
-                new { email = $"reset{i}@example.com", turnstileToken = FakeTurnstileVerifier.ValidToken })));
-        Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.OK) <= 20);
-        Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.TooManyRequests) >= 5);
-        Assert.True(await CountAsync(AdminAuthScopes.ResetIp, "127.0.0.1") <= 20);
-    }
-
-    [Fact]
     public async Task SecR6_SignIn_UnknownEmail_WritesAccountCounter()
     {
         await ClearAsync();
@@ -322,29 +306,6 @@ public class AdminLockoutReserveTests
         Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
         Assert.Equal(1, await CountAsync(AdminAuthScopes.Account, "nobody@example.com"));
         Assert.Equal(1, await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
-    }
-
-    [Fact]
-    public async Task SecR6_Reset_OwnerAndUnknown_SameRequestPathWork()
-    {
-        await ClearAsync();
-        var client = CreateClient();
-        using var owner = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        using var unknown = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = "nobody@example.com", turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
-        Assert.Equal(await owner.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        Assert.Equal(2, db.AdminAuthTokens.Count(t => t.Kind == AdminAuthToken.KindReset));
-        Assert.Equal(1, db.AdminAuthTokens.Count(t => t.Kind == AdminAuthToken.KindReset && t.ConsumedAt == null));
     }
 
     [Fact]
@@ -447,7 +408,7 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
-    public async Task SecR10b_Reset_RejectsEmojiCombiningAndZeroWidthPasswords()
+    public async Task SecR10b_Bootstrap_RejectsEmojiCombiningAndZeroWidthPasswords()
     {
         await ClearAsync();
         var client = CreateClient();
@@ -464,22 +425,22 @@ public class AdminLockoutReserveTests
                 var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
                 await tokens.AddAsync(
                     AdminAuthToken.Create(
-                        AdminAuthToken.KindReset,
+                        AdminAuthToken.KindBootstrap,
                         AdminAuthService.HashToken(raw),
                         OwnerEmail.ToLowerInvariant(),
                         DateTimeOffset.UtcNow,
-                        TimeSpan.FromMinutes(30)),
+                        TimeSpan.FromHours(24)),
                     CancellationToken.None);
                 await tokens.SaveChangesAsync(CancellationToken.None);
             }
 
-            using var reset = await SendAuthAsync(
+            using var bootstrap = await SendAuthAsync(
                 client,
                 HttpMethod.Post,
-                AdminAuthEndpoints.ResetConfirmPath,
+                AdminAuthEndpoints.BootstrapPath,
                 new { token = raw, email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-            Assert.Equal(HttpStatusCode.BadRequest, reset.StatusCode);
-            Assert.Contains(AdminAuthCopy.PasswordTooShort, await reset.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.BadRequest, bootstrap.StatusCode);
+            Assert.Contains(AdminAuthCopy.PasswordTooShort, await bootstrap.Content.ReadAsStringAsync());
         }
     }
 
@@ -559,12 +520,6 @@ public class AdminLockoutReserveTests
             new { email = unknown, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal(1, await CountAsync(AdminAuthScopes.Account, unknown));
-        using var reset = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = unknown, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
@@ -580,8 +535,6 @@ public class AdminLockoutReserveTests
         Assert.DoesNotContain(unknown, db.AdminAuthLockouts.Select(l => l.SubjectKey));
         Assert.Contains(expectedSubject, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
         Assert.Contains(expectedSubject, db.AdminAuthLockouts.Select(l => l.SubjectKey));
-        Assert.DoesNotContain(unknown, db.AdminAuthTokens.Select(t => t.Email));
-        Assert.Contains(expectedSubject, db.AdminAuthTokens.Select(t => t.Email));
         Assert.DoesNotContain(unknown, db.AdminAuditLog.Select(e => e.ActorEmail));
         Assert.Contains(expectedActor, db.AdminAuditLog.Select(e => e.ActorEmail));
         Assert.DoesNotContain(expectedSubject, db.AdminAuditLog.Select(e => e.ActorEmail));
@@ -616,43 +569,6 @@ public class AdminLockoutReserveTests
             new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         AssertAuditActorIsHmac(typed, AdminAuthReason.RateLimited);
-    }
-
-    [Fact]
-    public async Task SecN8_RateLimitedReset_AuditActorIsHmacNotRaw()
-    {
-        await ClearAsync();
-        const string typed = "rate-reset@example.com";
-        var client = CreateClient();
-        await FillResetIpAsync(client);
-        using var limited = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = typed, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
-        AssertAuditActorIsHmac(typed, AdminAuthReason.RateLimited);
-    }
-
-    [Fact]
-    public async Task SecN8_RejectedLink_AuditActorIsHmacNotRaw()
-    {
-        await ClearAsync();
-        const string typed = "rejected-link@example.com";
-        var client = CreateClient();
-        using var rejected = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetConfirmPath,
-            new
-            {
-                token = AdminAuthService.CreateOpaqueToken(),
-                email = typed,
-                password = "Long-enough-pass-1",
-                turnstileToken = FakeTurnstileVerifier.ValidToken
-            });
-        Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
-        AssertAuditActorIsHmac(typed);
     }
 
     [Fact]
@@ -717,12 +633,6 @@ public class AdminLockoutReserveTests
             AdminAuthEndpoints.SignInPath,
             new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        using var reset = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = typed, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
@@ -743,34 +653,10 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
-    public async Task SecR10_ResetAndBootstrap_RejectPasswordShorterThan15()
+    public async Task SecR10_Bootstrap_RejectPasswordShorterThan15()
     {
         await ClearAsync();
         var client = CreateClient();
-        var raw = AdminAuthService.CreateOpaqueToken();
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
-            var now = DateTimeOffset.UtcNow;
-            await tokens.AddAsync(
-                AdminAuthToken.Create(
-                    AdminAuthToken.KindReset,
-                    AdminAuthService.HashToken(raw),
-                    OwnerEmail.ToLowerInvariant(),
-                    now,
-                    TimeSpan.FromMinutes(30)),
-                CancellationToken.None);
-            await tokens.SaveChangesAsync(CancellationToken.None);
-        }
-
-        using var reset = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetConfirmPath,
-            new { token = raw, email = OwnerEmail, password = "short", turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.BadRequest, reset.StatusCode);
-        Assert.Contains(AdminAuthCopy.PasswordTooShort, await reset.Content.ReadAsStringAsync());
-
         var bootstrapRaw = AdminAuthService.CreateOpaqueToken();
         using (var scope = _factory.Services.CreateScope())
         {
@@ -799,56 +685,6 @@ public class AdminLockoutReserveTests
             });
         Assert.Equal(HttpStatusCode.BadRequest, bootstrap.StatusCode);
         Assert.Contains(AdminAuthCopy.PasswordTooShort, await bootstrap.Content.ReadAsStringAsync());
-    }
-
-    [Fact]
-    public async Task SecSc9_ResetMail_LeavesRequestBeforeSend()
-    {
-        await ClearAsync();
-        using var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureTestServices(services =>
-            {
-                foreach (var descriptor in services
-                             .Where(d => d.ImplementationType == typeof(AdminMailQueueHostedService))
-                             .ToList())
-                {
-                    services.Remove(descriptor);
-                }
-            });
-        });
-
-        var mailer = factory.Services.GetRequiredService<RecordingMailSender>();
-        var before = mailer.SendCount;
-        var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false,
-            HandleCookies = false,
-            BaseAddress = new Uri("https://localhost")
-        });
-
-        using var owner = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
-        Assert.Equal(before, mailer.SendCount);
-
-        using var unknown = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.ResetPath,
-            new { email = "nobody@example.com", turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
-        Assert.Equal(before, mailer.SendCount);
-        Assert.Equal(await owner.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
-
-        var queue = factory.Services.GetRequiredService<AdminMailQueue>();
-        Assert.True(queue.Reader.TryRead(out var ownerMail));
-        Assert.NotNull(ownerMail);
-        Assert.True(queue.Reader.TryRead(out var unknownMail));
-        Assert.Null(unknownMail);
     }
 
     private async Task ClearAsync()
@@ -903,23 +739,6 @@ public class AdminLockoutReserveTests
                     turnstileToken = FakeTurnstileVerifier.ValidToken
                 });
             Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
-        }
-    }
-
-    private async Task FillResetIpAsync(HttpClient client)
-    {
-        for (var i = 0; i < AdminAuthService.IpFailureLimit; i++)
-        {
-            using var reset = await SendAuthAsync(
-                client,
-                HttpMethod.Post,
-                AdminAuthEndpoints.ResetPath,
-                new
-                {
-                    email = $"reset-fill{i}@example.com",
-                    turnstileToken = FakeTurnstileVerifier.ValidToken
-                });
-            Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
         }
     }
 

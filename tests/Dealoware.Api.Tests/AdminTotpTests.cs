@@ -26,8 +26,7 @@ public class AdminTotpTests
     private const string RecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;
     private const string SetupPath = AdminSignedOutExemptions.SetupAuthenticator;
     private const string RecoveryCodesPath = AdminSignedOutExemptions.SetupRecoveryCodes;
-    private const string GenericSignInCopy =
-        "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
+    private const string GenericSignInCopy = AdminAuthCopy.SignInFailure;
 
     private readonly IsolatedWebApplicationFactory _factory;
 

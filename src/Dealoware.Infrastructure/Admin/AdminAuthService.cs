@@ -208,77 +208,6 @@ public sealed class AdminAuthService
         return AdminAuthOutcome.SignedIn(session.Id);
     }
 
-    public async Task<AdminAuthOutcome> RequestResetAsync(
-        string? email,
-        string? turnstileToken,
-        string? remoteIp,
-        CancellationToken ct)
-    {
-        var now = _clock.UtcNow;
-        var ip = NormalizeIp(remoteIp);
-        var ipHmac = HashIp(ip);
-        var accountKey = NormalizeEmail(email);
-
-        if (!await _turnstile.VerifyAsync(turnstileToken ?? string.Empty, ip, ct).ConfigureAwait(false))
-        {
-            await AuditAsync(AdminAuthAction.ResetRequest, accountKey, ipHmac, AdminAuthReason.CaptchaFailed, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.CaptchaFailed();
-        }
-
-        var ipReserved = await AdminLockoutFlow.ReserveAsync(
-                _lockouts, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, ct)
-            .ConfigureAwait(false);
-        if (!ipReserved.Incremented)
-        {
-            await AuditAsync(AdminAuthAction.ResetRequest, accountKey, ipHmac, AdminAuthReason.RateLimited, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.ThrottledReset();
-        }
-
-        if (ipReserved.Count >= IpFailureLimit)
-        {
-            await AdminLockoutFlow.ConfirmFailureAsync(
-                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
-                .ConfigureAwait(false);
-        }
-
-        var tokenEmail = _credentials.IsOwnerEmail(accountKey)
-            ? NormalizeEmail(_credentials.OwnerEmail)
-            : AccountSubjectKey(accountKey, isOwner: false, _ipHasher);
-        var raw = CreateOpaqueToken();
-        await _tokens.CancelUnusedAsync(AdminAuthToken.KindReset, tokenEmail, now, ct)
-            .ConfigureAwait(false);
-        var token = AdminAuthToken.Create(
-            AdminAuthToken.KindReset,
-            HashToken(raw),
-            tokenEmail,
-            now,
-            ResetLifetime);
-        if (!_credentials.IsOwnerEmail(accountKey))
-        {
-            token.Consume(now);
-        }
-
-        await _tokens.AddAsync(token, ct).ConfigureAwait(false);
-        await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
-        AdminMailMessage? mail = _credentials.IsOwnerEmail(accountKey)
-            ? new AdminMailMessage(tokenEmail, "Reset", AdminAuthLinks.ResetConfirm(raw))
-            : null;
-        await AuditAsync(
-                AdminAuthAction.ResetRequest,
-                _credentials.IsOwnerEmail(accountKey) ? tokenEmail : "anonymous",
-                ipHmac,
-                null,
-                ct)
-            .ConfigureAwait(false);
-
-        // Owner and unknown both enqueue one work item so the request returns
-        // before SendAsync (SC-9).
-        await _mailQueue.EnqueueAsync(mail, ct).ConfigureAwait(false);
-        return AdminAuthOutcome.ResetAccepted();
-    }
-
     public async Task<AdminAuthOutcome> CompleteLinkAsync(
         string kind,
         string? rawToken,
@@ -309,7 +238,7 @@ public sealed class AdminAuthService
         {
             await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
-            return AdminAuthOutcome.ThrottledReset();
+            return AdminAuthOutcome.ThrottledSignIn();
         }
 
         var token = await LoadUsableAsync(rawToken, kind, now, ct).ConfigureAwait(false);
@@ -324,7 +253,7 @@ public sealed class AdminAuthService
                 .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LinkRejected, claimedEmail, ipHmac, AdminAuthReason.InvalidLink, ct)
                 .ConfigureAwait(false);
-            return AdminAuthOutcome.InvalidLink();
+            return AdminAuthOutcome.SignInFailed();
         }
 
         if (IsShortPassword(password))
@@ -340,7 +269,7 @@ public sealed class AdminAuthService
                 .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LinkRejected, accountKey, ipHmac, AdminAuthReason.InvalidLink, ct)
                 .ConfigureAwait(false);
-            return AdminAuthOutcome.InvalidLink();
+            return AdminAuthOutcome.SignInFailed();
         }
 
         await _sessions.DeleteByEmailAsync(accountKey, ct).ConfigureAwait(false);
@@ -538,15 +467,6 @@ public sealed record AdminAuthOutcome(
 
     public static AdminAuthOutcome ThrottledSignIn() =>
         new(429, AdminAuthCopy.SignInFailure, null, null);
-
-    public static AdminAuthOutcome ThrottledReset() =>
-        new(429, AdminAuthCopy.ResetExists, null, null);
-
-    public static AdminAuthOutcome ResetAccepted() =>
-        new(200, AdminAuthCopy.ResetExists, null, null);
-
-    public static AdminAuthOutcome InvalidLink() =>
-        new(401, AdminAuthCopy.InvalidLink, null, null);
 
     public static AdminAuthOutcome LinkCompleted() =>
         new(200, "ok", null, null);
