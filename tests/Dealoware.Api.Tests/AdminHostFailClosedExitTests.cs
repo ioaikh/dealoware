@@ -9,7 +9,11 @@ namespace Dealoware.Api.Tests;
 /// <summary>
 /// A11 items 3, 4, and 36: the real Dealoware.Api process must exit 1 with a clear
 /// log line (no stack-trace crash) when admin host hardening or the IP HMAC key fails.
+/// Own collection: spawning <c>dotnet exec</c> next to testhost under xUnit's default
+/// collection parallelism can stall <see cref="Process.WaitForExit(int)"/> on Linux
+/// until the child is killed.
 /// </summary>
+[Collection("AdminHostProcessTests")]
 public class AdminHostFailClosedExitTests
 {
     [Fact]
@@ -66,8 +70,9 @@ public class AdminHostFailClosedExitTests
         var start = new ProcessStartInfo
         {
             FileName = ResolveDotnetPath(),
-            Arguments = $"\"{apiDll}\"",
+            Arguments = $"exec \"{apiDll}\"",
             WorkingDirectory = AppContext.BaseDirectory,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -90,11 +95,27 @@ public class AdminHostFailClosedExitTests
 
         using var process = Process.Start(start);
         Assert.NotNull(process);
+        process!.StandardInput.Close();
 
-        var stderrTask = process!.StandardError.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var exited = process.WaitForExit(30_000);
-        Assert.True(exited, "Dealoware.Api should exit promptly on fail-closed admin host hardening");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            process.WaitForExitAsync(timeout.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            Assert.Fail("Dealoware.Api should exit promptly on fail-closed admin host hardening");
+        }
 
         _ = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
