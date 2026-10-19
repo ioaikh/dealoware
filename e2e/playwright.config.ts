@@ -33,11 +33,14 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './admin',
+  testIgnore: ['**/ci/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? [['html'], ['list']] : 'html',
+  reporter: process.env.CI
+    ? [['list'], ['json', { outputFile: 'test-results/results.json' }]]
+    : 'html',
 
   use: {
     baseURL: process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4173',

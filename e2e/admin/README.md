@@ -22,9 +22,11 @@ The `admin-ui-ci.yml` workflow enforces:
 
 1. **Fail-closed on pull_request:** If no Playwright specs exist (no `*.spec.*` or `*.e2e.*` files), the CI job fails.
 
-2. **Allow-list deny-live guard:** Tests can ONLY run against `localhost`, `127.0.0.1`, or `::1`. Any other hostname — including `*.dealoware.com`, live IPs, or external hosts — is rejected. The guard uses Node.js URL parsing and never echoes URL values.
+2. **SKIP is not PASS (AC-06):** After Playwright runs, `e2e/admin/ci/assert-executed.js` reads the JSON reporter file (never stdout) and fails the job unless at least one test was executed (passed + failed + flaky). Red: zero tests collected (empty glob or `--grep` that matches nothing) and every-test-skipped (`test.skip`, `test.fixme`, `test.skip(condition)`). Green: a normal passing run, and a mixed run with some skips if at least one test executed. The negative control recaptures those reports from `e2e/admin/ci/fixture-src/` and re-runs the script. No `continue-on-error`, `|| true`, or `if: always()` can turn a red run green.
 
-3. **Secrets scoping:** Credentials are only exposed to the test step, never to `npm install` or other steps.
+3. **Allow-list deny-live guard:** Tests can ONLY run against `localhost`, `127.0.0.1`, or `::1`. Any other hostname — including `*.dealoware.com`, live IPs, or external hosts — is rejected. The guard uses Node.js URL parsing and never echoes URL values.
+
+4. **Secrets scoping:** Credentials are only exposed to the test step, never to `npm install` or other steps.
 
 ## Security — Public Repository
 
