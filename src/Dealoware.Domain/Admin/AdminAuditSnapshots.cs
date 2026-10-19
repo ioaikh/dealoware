@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -175,14 +176,13 @@ public static class AdminAuditSnapshots
 
     internal static string NormalizeKey(string key)
     {
-        var nfkc = key.Normalize(NormalizationForm.FormKC);
-        var trimmed = nfkc.Trim();
-        var builder = new StringBuilder(trimmed.Length);
-        foreach (var ch in trimmed)
+        var folded = key.Normalize(NormalizationForm.FormKD);
+        var builder = new StringBuilder(folded.Length);
+        foreach (var ch in folded)
         {
-            if (ch is '_' or '-' or '.' || char.IsWhiteSpace(ch))
+            if (IsIgnorableKeyChar(ch) || ch is '_' or '-' or '.' || char.IsWhiteSpace(ch))
                 continue;
-            builder.Append(char.ToLowerInvariant(ch));
+            builder.Append(char.ToLowerInvariant(MapLookalike(ch)));
         }
 
         return builder.ToString();
@@ -428,6 +428,7 @@ public static class AdminAuditSnapshots
     /// Linear scan (no backtracking). Quotes never stop the scan: an unclosed
     /// quote is a normal character, and quoted prose is still searched for
     /// assignments. Separators are NFKC-normalized and %3D/%3A are decoded.
+    /// The same pass also redacts Bearer/Basic/Digest/Token values and JWT-shaped words.
     /// </summary>
     private static string RedactForbiddenAssignments(string text)
     {
@@ -448,9 +449,44 @@ public static class AdminAuditSnapshots
 
             var nameStart = i;
             i++;
-            while (i < span.Length && IsBareNameContinue(span[i]))
+            while (i < span.Length && IsNameOrJwtContinue(span, i))
                 i++;
             var nameEnd = i;
+            var word = span[nameStart..nameEnd];
+
+            if (IsAuthScheme(word))
+            {
+                var afterScheme = SkipWhiteSpace(span, nameEnd);
+                if (afterScheme > nameEnd
+                    && afterScheme < span.Length
+                    && !TryReadSeparator(span, afterScheme, out _))
+                {
+                    if (IsRedactedPlaceholder(span, afterScheme))
+                    {
+                        i = afterScheme + 10;
+                        continue;
+                    }
+
+                    var tokenEnd = ConsumeSchemeToken(span, afterScheme);
+                    if (tokenEnd > afterScheme)
+                    {
+                        builder.Append(text, copyFrom, afterScheme - copyFrom);
+                        builder.Append("[redacted]");
+                        copyFrom = tokenEnd;
+                        i = tokenEnd;
+                        continue;
+                    }
+                }
+            }
+
+            if (LooksLikeJwt(word))
+            {
+                builder.Append(text, copyFrom, nameStart - copyFrom);
+                builder.Append("[redacted]");
+                copyFrom = nameEnd;
+                i = nameEnd;
+                continue;
+            }
 
             var look = nameEnd;
             if (look < span.Length && span[look] is '"' or '\'')
@@ -458,7 +494,7 @@ public static class AdminAuditSnapshots
             look = SkipWhiteSpace(span, look);
 
             if (!TryReadSeparator(span, look, out var afterSep)
-                || !IsForbiddenKey(span[nameStart..nameEnd].ToString()))
+                || !IsForbiddenKey(word.ToString()))
                 continue;
 
             var valueEnd = ConsumeAssignmentValue(span, afterSep);
@@ -476,7 +512,7 @@ public static class AdminAuditSnapshots
     }
 
     /// <summary>
-    /// True when the next token is '=', ':', their NFKC equivalents, or
+    /// True when the next token is '=', ':', '=>', '->', their NFKC equivalents, or
     /// percent-encoded <c>%3D</c>/<c>%3A</c> (any case).
     /// </summary>
     private static bool TryReadSeparator(ReadOnlySpan<char> span, int index, out int after)
@@ -484,6 +520,21 @@ public static class AdminAuditSnapshots
         after = index;
         if (index >= span.Length)
             return false;
+
+        if (index + 1 < span.Length)
+        {
+            if (span[index] == '=' && span[index + 1] == '>')
+            {
+                after = index + 2;
+                return true;
+            }
+
+            if (span[index] == '-' && span[index + 1] == '>')
+            {
+                after = index + 2;
+                return true;
+            }
+        }
 
         if (index + 2 < span.Length
             && span[index] == '%'
@@ -521,7 +572,16 @@ public static class AdminAuditSnapshots
                 }
 
                 if (span[index] == quote)
+                {
+                    if (index + 1 < span.Length && span[index + 1] == quote)
+                    {
+                        index += 2;
+                        continue;
+                    }
+
                     return index + 1;
+                }
+
                 index++;
             }
 
@@ -529,8 +589,19 @@ public static class AdminAuditSnapshots
         }
 
         while (index < span.Length
+               && span[index] is not ('\n' or '\r' or ',' or ';' or '&' or ')' or ']' or '}' or '>'))
+        {
+            index++;
+        }
+
+        return index;
+    }
+
+    private static int ConsumeSchemeToken(ReadOnlySpan<char> span, int index)
+    {
+        while (index < span.Length
                && !char.IsWhiteSpace(span[index])
-               && span[index] is not (',' or ';' or '}' or ']'))
+               && span[index] is not ('\n' or '\r' or ',' or ';' or '&' or ')' or ']' or '}' or '>'))
         {
             index++;
         }
@@ -549,25 +620,97 @@ public static class AdminAuditSnapshots
         => char.IsLetter(ch) || ch == '_';
 
     private static bool IsBareNameContinue(char ch)
-        => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.';
+        => char.IsLetterOrDigit(ch)
+           || ch is '_' or '-' or '.'
+           || IsIgnorableKeyChar(ch);
+
+    private static bool IsNameOrJwtContinue(ReadOnlySpan<char> span, int index)
+    {
+        if (span[index] == '-' && index + 1 < span.Length && span[index + 1] == '>')
+            return false;
+        return IsBareNameContinue(span[index]);
+    }
+
+    private static bool IsAuthScheme(ReadOnlySpan<char> word)
+        => word.Equals("Bearer", StringComparison.OrdinalIgnoreCase)
+           || word.Equals("Basic", StringComparison.OrdinalIgnoreCase)
+           || word.Equals("Digest", StringComparison.OrdinalIgnoreCase)
+           || word.Equals("Token", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRedactedPlaceholder(ReadOnlySpan<char> span, int index)
+        => index + 10 <= span.Length
+           && span.Slice(index, 10).Equals("[redacted]", StringComparison.Ordinal);
+
+    private static bool IsIgnorableKeyChar(char ch)
+    {
+        var category = char.GetUnicodeCategory(ch);
+        return category is UnicodeCategory.NonSpacingMark
+            or UnicodeCategory.SpacingCombiningMark
+            or UnicodeCategory.EnclosingMark
+            or UnicodeCategory.Format;
+    }
+
+    /// <summary>
+    /// Maps Cyrillic and Greek letters that impersonate Latin identifiers.
+    /// Accents are already stripped by NFKD + combining-mark removal.
+    /// </summary>
+    private static char MapLookalike(char ch) => ch switch
+    {
+        'А' or 'Α' => 'A',
+        'а' or 'α' => 'a',
+        'В' or 'Β' => 'B',
+        'в' or 'β' => 'b',
+        'Е' or 'Ε' => 'E',
+        'е' or 'ε' => 'e',
+        'К' or 'Κ' => 'K',
+        'к' or 'κ' => 'k',
+        'М' or 'Μ' => 'M',
+        'м' or 'μ' => 'm',
+        'Н' or 'Η' => 'H',
+        'н' or 'η' => 'h',
+        'О' or 'Ο' => 'O',
+        'о' or 'ο' => 'o',
+        'Р' or 'Ρ' => 'P',
+        'р' or 'ρ' => 'p',
+        'С' => 'C',
+        'с' => 'c',
+        'Т' or 'Τ' => 'T',
+        'т' or 'τ' => 't',
+        'У' or 'Υ' => 'Y',
+        'у' or 'υ' => 'y',
+        'Х' or 'Χ' => 'X',
+        'х' or 'χ' => 'x',
+        'І' or 'Ι' => 'I',
+        'і' or 'ι' => 'i',
+        'Ј' => 'J',
+        'ј' => 'j',
+        'Ѕ' => 'S',
+        'ѕ' => 's',
+        'Ν' => 'N',
+        'ν' => 'n',
+        'Ζ' => 'Z',
+        'ζ' => 'z',
+        _ => ch
+    };
 
     private static bool LooksLikeSecretValue(string text)
-        => text.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-           || LooksLikeJwt(text);
+        => LooksLikeJwt(text);
 
-    private static bool LooksLikeJwt(string text)
+    private static bool LooksLikeJwt(ReadOnlySpan<char> text)
     {
         var first = text.IndexOf('.');
-        if (first <= 0)
+        if (first < 4)
             return false;
-        var second = text.IndexOf('.', first + 1);
-        if (second <= first + 1 || second == text.Length - 1)
+        var remaining = text[(first + 1)..];
+        var secondRel = remaining.IndexOf('.');
+        if (secondRel <= 0 || secondRel == remaining.Length - 1)
             return false;
-        if (text.IndexOf('.', second + 1) >= 0)
+        var second = first + 1 + secondRel;
+        if (text[(second + 1)..].IndexOf('.') >= 0)
             return false;
-        return IsBase64Url(text.AsSpan(0, first))
-               && IsBase64Url(text.AsSpan(first + 1, second - first - 1))
-               && IsBase64Url(text.AsSpan(second + 1));
+        return IsBase64Url(text[..first])
+               && IsBase64Url(text[(first + 1)..second])
+               && IsBase64Url(text[(second + 1)..]);
     }
 
     private static bool IsBase64Url(ReadOnlySpan<char> span)

@@ -44,6 +44,20 @@ public class AdminAuditSecretStripTests
     private const string FullwidthEqSecret = "LEAK-fullwidth-eq";
     private const string SingleQuoteSecret = "LEAK-singlequote-v1";
     private const string UnquotedSecret = "LEAK-unquoted-v1";
+    private const string BearerMidSecret = "LEAK-bearer-mid";
+    private const string BasicMidSecret = "LEAK-basic-mid";
+    private const string DigestMidSecret = "LEAK-digest-mid";
+    private const string TokenSchemeSecret = "LEAK-token-scheme";
+    private const string AuthBearerSecret = "LEAK-auth-bearer";
+    private const string MidJwtSecret = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtaWQifQ.dGVzdHNpZ25hdHVyZQ";
+    private const string TwoWordSecret = "LEAK two words";
+    private const string ArrowEqSecret = "LEAK-arrow-eq";
+    private const string ArrowDashSecret = "LEAK-arrow-dash";
+    private const string DoubledQuoteSecret = "LEAK-doubled-quote";
+    private const string CyrillicKeySecret = "LEAK-cyrillic-a";
+    private const string GreekKeySecret = "LEAK-greek-o";
+    private const string AccentKeySecret = "LEAK-accent";
+    private const string ZeroWidthKeySecret = "LEAK-zwsp";
 
     /// <summary>
     /// Reviewer-required keys. Do not read this from production code.
@@ -356,10 +370,151 @@ public class AdminAuditSecretStripTests
         var stripped = AdminAuditSnapshots.StripForbiddenKeys(raw);
         using var doc = JsonDocument.Parse(stripped!);
         Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
-        Assert.Equal("[redacted]", doc.RootElement.GetProperty("auth").GetString());
+        Assert.Equal("Bearer [redacted]", doc.RootElement.GetProperty("auth").GetString());
         Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
         Assert.DoesNotContain(jwt, stripped);
         Assert.DoesNotContain("LEAK-bearer-value-v1", stripped);
+    }
+
+    [Fact]
+    public async Task TdAdm101_BearerAnywhere_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("see Bearer " + BearerMidSecret + " later");
+        Assert.DoesNotContain(BearerMidSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(BearerMidSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("see Bearer [redacted] later", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_BasicAnywhere_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("see Basic " + BasicMidSecret + " later");
+        Assert.DoesNotContain(BasicMidSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(BasicMidSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("see Basic [redacted] later", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_DigestAnywhere_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("see Digest " + DigestMidSecret + " later");
+        Assert.DoesNotContain(DigestMidSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(DigestMidSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("see Digest [redacted] later", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_TokenSchemeAnywhere_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("see Token " + TokenSchemeSecret + " later");
+        Assert.DoesNotContain(TokenSchemeSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(TokenSchemeSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("see Token [redacted] later", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_AuthorizationBearer_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("Authorization: Bearer " + AuthBearerSecret);
+        Assert.DoesNotContain(AuthBearerSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(AuthBearerSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_MidSentenceJwt_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("hello " + MidJwtSecret + " world");
+        Assert.DoesNotContain(MidJwtSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(MidJwtSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("hello [redacted] world", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_PasswordTwoWords_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("password=" + TwoWordSecret);
+        Assert.DoesNotContain(TwoWordSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(TwoWordSecret, body, StringComparison.Ordinal);
+        Assert.DoesNotContain("two words", stored, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_ArrowEqSeparator_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("password => " + ArrowEqSecret);
+        Assert.DoesNotContain(ArrowEqSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(ArrowEqSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_ArrowDashSeparator_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("password -> " + ArrowDashSecret);
+        Assert.DoesNotContain(ArrowDashSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(ArrowDashSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_DoubledSingleQuote_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("password='it''s " + DoubledQuoteSecret + "'");
+        Assert.DoesNotContain(DoubledQuoteSecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(DoubledQuoteSecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_CyrillicLookalikeKey_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("p\u0430ssword=" + CyrillicKeySecret);
+        Assert.DoesNotContain(CyrillicKeySecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(CyrillicKeySecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_GreekLookalikeKey_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("passw\u03BFrd=" + GreekKeySecret);
+        Assert.DoesNotContain(GreekKeySecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(GreekKeySecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_AccentedKey_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("p\u00E1ssword=" + AccentKeySecret);
+        Assert.DoesNotContain(AccentKeySecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccentKeySecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task TdAdm101_ZeroWidthKey_RedactedInDbAndGet()
+    {
+        var (stored, body) = await WriteNoteAsync("pass\u200bword=" + ZeroWidthKeySecret);
+        Assert.DoesNotContain(ZeroWidthKeySecret, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(ZeroWidthKeySecret, body, StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stored);
+        Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
     }
 
     [Fact]
@@ -389,6 +544,13 @@ public class AdminAuditSecretStripTests
         AssertNoSecrets(stored.AfterSnapshot);
         Assert.Contains(VisibleMarker, stored.BeforeSnapshot);
     }
+
+    private Task<(string Snapshot, string GetBody)> WriteNoteAsync(string note)
+        => WriteAndReadAsync(new JsonObject
+        {
+            ["note"] = note,
+            ["displayName"] = VisibleMarker
+        }.ToJsonString());
 
     private async Task<(string Snapshot, string GetBody)> WriteAndReadAsync(string snapshot)
     {
@@ -503,6 +665,20 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(FullwidthEqSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(SingleQuoteSecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(UnquotedSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(BearerMidSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(BasicMidSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(DigestMidSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(TokenSchemeSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(AuthBearerSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(MidJwtSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(TwoWordSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ArrowEqSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ArrowDashSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(DoubledQuoteSecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(CyrillicKeySecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(GreekKeySecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccentKeySecret, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ZeroWidthKeySecret, text, StringComparison.Ordinal);
         Assert.DoesNotContain(ClientIp, text, StringComparison.Ordinal);
     }
 }

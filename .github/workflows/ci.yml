@@ -32,7 +32,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run tests
-        run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        run: >
+          dotnet test --no-build --configuration Release --verbosity normal
+          --logger "trx;LogFileName=test-results.trx"
+          --filter "FullyQualifiedName!~AdminAuditPostgres"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -84,7 +87,7 @@ jobs:
         run: >
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
-          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres"
 
       - name: Upload PostgreSQL test results
         uses: actions/upload-artifact@v4
