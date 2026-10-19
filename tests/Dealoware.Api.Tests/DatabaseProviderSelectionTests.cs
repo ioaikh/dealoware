@@ -134,6 +134,7 @@ public class DatabaseProviderSelectionTests
         Assert.Equal("placeholder-password", csb.Password);
         Assert.Equal(SslMode.VerifyFull, csb.SslMode);
         Assert.Equal(DatabaseProviderSelector.RdsRootCertificatePath, csb.RootCertificate);
+        Assert.False(csb.IncludeErrorDetail);
     }
 
     [Fact]
@@ -151,6 +152,7 @@ public class DatabaseProviderSelectionTests
         Assert.Equal(6543, csb.Port);
         Assert.Equal(SslMode.VerifyFull, csb.SslMode);
         Assert.Equal(DatabaseProviderSelector.RdsRootCertificatePath, csb.RootCertificate);
+        Assert.False(csb.IncludeErrorDetail);
     }
 
     [Fact]
@@ -166,6 +168,22 @@ public class DatabaseProviderSelectionTests
         var csb = new NpgsqlConnectionStringBuilder(selection.ConnectionString);
         Assert.Equal(SslMode.VerifyFull, csb.SslMode);
         Assert.Equal(DatabaseProviderSelector.RdsRootCertificatePath, csb.RootCertificate);
+        Assert.False(csb.IncludeErrorDetail);
+    }
+
+    [Fact]
+    public void Strict_HostConnectionString_IncludeErrorDetailTrue_IsForcedOff()
+    {
+        var connectionString =
+            "Host=localhost;Port=5432;Database=dealoware;Username=app_user;Password=placeholder;Include Error Detail=true";
+        var selection = DatabaseProviderSelector.Select(
+            connectionString, Env(), strictNonDevelopment: true,
+            fileExistsCheck: _ => true,
+            certLoadCheck: _ => true);
+
+        Assert.Equal(DatabaseProvider.Postgres, selection.Provider);
+        var csb = new NpgsqlConnectionStringBuilder(selection.ConnectionString);
+        Assert.False(csb.IncludeErrorDetail);
     }
 
     [Fact]
