@@ -16,9 +16,11 @@ public interface IAdminLockoutStore
     Task AddLockoutAsync(AdminAuthLockout lockout, CancellationToken ct);
 
     /// <summary>
-    /// Atomically: refuse if already locked, else increment and lock when
-    /// the window count reaches <paramref name="limit"/>. Parallel callers
-    /// cannot pass the threshold.
+    /// Atomically reserve one attempt. Refuses when the gate is already
+    /// locked or the sliding window is at <paramref name="limit"/>. Does
+    /// not activate the lock — the caller locks only after a failed
+    /// evaluation, or releases <see cref="FailureIncrementResult.ReservationId"/>
+    /// on success.
     /// </summary>
     Task<FailureIncrementResult> TryIncrementFailureAsync(
         string scope,
@@ -27,6 +29,34 @@ public interface IAdminLockoutStore
         TimeSpan window,
         int limit,
         TimeSpan lockDuration,
+        CancellationToken ct);
+
+    Task ReleaseReservationAsync(Guid reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// Activate the gate when the window count is at least
+    /// <paramref name="limit"/>. Version compare-and-set; never an
+    /// unconditional write.
+    /// </summary>
+    Task<bool> TryActivateLockAsync(
+        string scope,
+        string subjectKey,
+        DateTimeOffset now,
+        TimeSpan window,
+        int limit,
+        TimeSpan lockDuration,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Deactivate the gate only when it is active and the window count is
+    /// below <paramref name="limit"/>. Version compare-and-set.
+    /// </summary>
+    Task<bool> TryReleaseLockIfBelowLimitAsync(
+        string scope,
+        string subjectKey,
+        DateTimeOffset now,
+        TimeSpan window,
+        int limit,
         CancellationToken ct);
 
     Task ClearAccountFailuresAsync(string email, CancellationToken ct);
@@ -38,4 +68,5 @@ public readonly record struct FailureIncrementResult(
     bool Incremented,
     bool LockCreated,
     bool AlreadyLocked,
-    int Count);
+    int Count,
+    Guid? ReservationId);

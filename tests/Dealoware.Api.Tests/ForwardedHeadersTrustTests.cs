@@ -44,6 +44,36 @@ public class ForwardedHeadersTrustTests
     }
 
     [Fact]
+    public void F3_Parse_RejectsUnrestrictedAndOverBroad()
+    {
+        Assert.False(ForwardedHeadersTrust.TryParse("0.0.0.0/0", out _, out var ipv4Any));
+        Assert.Contains("over-broad", ipv4Any, StringComparison.OrdinalIgnoreCase);
+        Assert.False(ForwardedHeadersTrust.TryParse("::/0", out _, out var ipv6Any));
+        Assert.Contains("over-broad", ipv6Any, StringComparison.OrdinalIgnoreCase);
+        Assert.False(ForwardedHeadersTrust.TryParse("10.0.0.0/7", out _, out _));
+        Assert.False(ForwardedHeadersTrust.TryParse("2001:db8::/16", out _, out _));
+        Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.0/8", out var minV4, out _));
+        Assert.Equal("10.0.0.0/8", minV4[0].ToString());
+        Assert.True(ForwardedHeadersTrust.TryParse("2001:db8::/32", out var minV6, out _));
+        Assert.Contains("32", minV6[0].ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void F3_Parse_BareHost_Ipv6_Ipv4Mapped()
+    {
+        Assert.True(ForwardedHeadersTrust.TryParse("10.0.0.1", out var bare, out _));
+        Assert.Equal(32, bare[0].PrefixLength);
+        Assert.True(ForwardedHeadersTrust.TryParse("2001:db8::1", out var v6Host, out _));
+        Assert.Equal(128, v6Host[0].PrefixLength);
+        Assert.True(ForwardedHeadersTrust.TryParse("::ffff:10.0.0.1/128", out var mapped, out _));
+        Assert.True(mapped[0].BaseAddress.IsIPv4MappedToIPv6);
+        Assert.False(ForwardedHeadersTrust.TryParse("::ffff:0:0/96", out _, out var mappedWide));
+        Assert.Contains("over-broad", mappedWide, StringComparison.OrdinalIgnoreCase);
+        Assert.True(ForwardedHeadersTrust.TryParse(" 10.8.0.0/16 ", out var padded, out _));
+        Assert.Single(padded);
+    }
+
+    [Fact]
     public void F3_Parse_InvalidValue()
     {
         Assert.False(ForwardedHeadersTrust.TryParse("not-a-cidr", out var networks, out var error));

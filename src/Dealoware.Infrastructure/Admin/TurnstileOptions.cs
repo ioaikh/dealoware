@@ -8,4 +8,13 @@ public sealed class TurnstileOptions
 
     /// <summary>Cloudflare siteverify URL. Override in tests; never a secret.</summary>
     public string VerifyUrl { get; set; } = DefaultVerifyUrl;
+
+    /// <summary>Required siteverify hostname. Defaults to the production admin host.</summary>
+    public string ExpectedHostname { get; set; } = AdminHostOptions.ProductionAdminHost;
+
+    /// <summary>
+    /// Optional widget action. When set, a successful siteverify must return
+    /// the same action; when empty, action is not checked.
+    /// </summary>
+    public string? ExpectedAction { get; set; }
 }

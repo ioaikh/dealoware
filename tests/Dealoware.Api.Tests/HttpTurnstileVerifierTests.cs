@@ -41,6 +41,77 @@ public class HttpTurnstileVerifierTests
         Assert.DoesNotContain("example.com", rendered, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task HostnameMismatch_FailsClosed()
+    {
+        using var handler = new StubHandler(
+            """{"success":true,"hostname":"evil.example"}""");
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://challenges.cloudflare.com/") };
+        var verifier = CreateVerifier(client);
+
+        Assert.False(await verifier.VerifyAsync("token", "203.0.113.10", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MatchingHostname_Succeeds()
+    {
+        using var handler = new StubHandler(
+            """{"success":true,"hostname":"admin.core.dealoware.com"}""");
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://challenges.cloudflare.com/") };
+        var verifier = CreateVerifier(client);
+
+        Assert.True(await verifier.VerifyAsync("token", "203.0.113.10", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ActionMismatch_FailsClosed()
+    {
+        using var handler = new StubHandler(
+            """{"success":true,"hostname":"admin.core.dealoware.com","action":"other"}""");
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://challenges.cloudflare.com/") };
+        var verifier = CreateVerifier(client, expectedAction: "login");
+
+        Assert.False(await verifier.VerifyAsync("token", "203.0.113.10", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task HangingSiteverify_FailsClosedWithinTimeout()
+    {
+        using var handler = new HangHandler();
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://challenges.cloudflare.com/"),
+            Timeout = HttpTurnstileVerifier.RequestTimeout
+        };
+        var verifier = CreateVerifier(client);
+        var started = DateTime.UtcNow;
+
+        Assert.False(await verifier.VerifyAsync("token", "203.0.113.10", CancellationToken.None));
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(8));
+    }
+
+    private static HttpTurnstileVerifier CreateVerifier(HttpClient client, string? expectedAction = null)
+        => new(
+            client,
+            Options.Create(new TurnstileOptions
+            {
+                VerifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                ExpectedAction = expectedAction
+            }),
+            name => name == TurnstileOptions.SecretEnvironmentVariable ? "unit-test-secret" : null,
+            new CaptureLogger());
+
+    private sealed class HangHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly string _json;

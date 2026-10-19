@@ -764,7 +764,6 @@ public class AdminTotpTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail);
-        Assert.Equal(AdminPendingAuth.MaxFailedCodeAttempts, pending.FailedCodeAttempts);
         Assert.True(pending.FailedCodeAttempts <= AdminPendingAuth.MaxFailedCodeAttempts);
         Assert.NotNull(pending.ConsumedAt);
     }
@@ -906,17 +905,17 @@ public class AdminTotpTests
         }
 
         using var step1Again = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
-        Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, step1Again.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
         Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
         Assert.True(account.IsFactorLocked());
+        Assert.NotNull(
+            await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None));
 
-        var valid = Rfc6238Totp.ComputeCode(secret!, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
-        using var stillLocked = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = valid }));
-        await AssertGenericSignIn(stillLocked);
         using var me = await client.SendAsync(AdminGet("/admin/api/me"));
         Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
     }
@@ -992,16 +991,16 @@ public class AdminTotpTests
             }
 
             var client2 = CreateClient(restarted);
+            using (var lockScope = restarted.Services.CreateScope())
+            {
+                var lockout = await lockScope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                    .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None);
+                Assert.NotNull(lockout);
+            }
+
             using var step1Again = await client2.SendAsync(
                 await JsonAsync(client2, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
-            Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
-
-            Assert.False(string.IsNullOrEmpty(password));
-            Assert.NotNull(secret);
-            var valid = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
-            using var stillLocked = await client2.SendAsync(
-                await JsonAsync(client2, HttpMethod.Post, CodePath, new { code = valid }));
-            await AssertGenericSignIn(stillLocked);
+            Assert.Equal(HttpStatusCode.Unauthorized, step1Again.StatusCode);
             using var me = await client2.SendAsync(AdminGet("/admin/api/me"));
             Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
         }

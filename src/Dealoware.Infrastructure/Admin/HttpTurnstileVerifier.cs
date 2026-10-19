@@ -13,6 +13,7 @@ namespace Dealoware.Infrastructure.Admin;
 public sealed class HttpTurnstileVerifier : ITurnstileVerifier
 {
     public const string HttpClientName = "Turnstile";
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
     public const string FailClosedLogMessage = "Turnstile siteverify failed closed. error-codes={ErrorCodes}";
 
     private readonly HttpClient _httpClient;
@@ -50,14 +51,19 @@ public sealed class HttpTurnstileVerifier : ITurnstileVerifier
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            if (doc.RootElement.TryGetProperty("success", out var success)
-                && success.ValueKind == JsonValueKind.True)
+            if (!doc.RootElement.TryGetProperty("success", out var success)
+                || success.ValueKind != JsonValueKind.True)
             {
-                return true;
+                LogErrorCodesOnly(doc.RootElement);
+                return false;
             }
 
-            LogErrorCodesOnly(doc.RootElement);
-            return false;
+            if (!HostnameMatches(doc.RootElement) || !ActionMatches(doc.RootElement))
+            {
+                return false;
+            }
+
+            return true;
         }
         catch
         {
@@ -85,6 +91,32 @@ public sealed class HttpTurnstileVerifier : ITurnstileVerifier
         }
 
         _logger.LogWarning(FailClosedLogMessage, string.Join(",", codes));
+    }
+
+    private bool HostnameMatches(JsonElement root)
+    {
+        var expected = _options.ExpectedHostname;
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            expected = AdminHostOptions.ProductionAdminHost;
+        }
+
+        return root.TryGetProperty("hostname", out var hostname)
+            && hostname.ValueKind == JsonValueKind.String
+            && string.Equals(hostname.GetString(), expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ActionMatches(JsonElement root)
+    {
+        var expected = _options.ExpectedAction;
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return true;
+        }
+
+        return root.TryGetProperty("action", out var action)
+            && action.ValueKind == JsonValueKind.String
+            && string.Equals(action.GetString(), expected, StringComparison.Ordinal);
     }
 
     private IEnumerable<KeyValuePair<string, string>> BuildFields(string token, string? remoteIp)

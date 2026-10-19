@@ -9,6 +9,7 @@ public sealed class AdminAuthService
     public const int AccountFailureLimit = 5;
     public const int IpFailureLimit = 20;
     public const int PendingAttemptLimit = 5;
+    public const int MinimumPasswordLength = 15;
     public static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(5);
@@ -66,17 +67,21 @@ public sealed class AdminAuthService
             return AdminAuthOutcome.CaptchaFailed();
         }
 
-        if (await IsThrottledAsync(AdminAuthScopes.LoginIp, ip, now, ct).ConfigureAwait(false))
+        var accountKey = NormalizeEmail(email);
+        var ipReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
+        if (!ipReserved.Incremented)
         {
-            await AuditAsync(AdminAuthAction.LoginFailure, email, ipHmac, AdminAuthReason.RateLimited, ct)
+            await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.ThrottledSignIn();
         }
 
-        var accountKey = NormalizeEmail(email);
-        var reserved = await TryReserveAccountAttemptAsync(accountKey, ip, ipHmac, now, ct)
+        var accountReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.Account, accountKey, now, AccountFailureLimit, ct)
             .ConfigureAwait(false);
-        if (!reserved)
+        if (!accountReserved.Incremented)
         {
             await _credentials.RunDummyPasswordCheckAsync(ct).ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)
@@ -88,14 +93,22 @@ public sealed class AdminAuthService
             .ConfigureAwait(false);
         if (!passwordOk)
         {
-            await CountIpOnlyAsync(AdminAuthScopes.LoginIp, ip, now, ct).ConfigureAwait(false);
+            await ConfirmAccountLockAsync(accountReserved, accountKey, ipHmac, now, ct)
+                .ConfigureAwait(false);
+            await AdminLockoutFlow.ConfirmFailureAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, null, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.BadPassword, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.SignInFailed();
         }
 
-        await _lockouts.ClearAccountFailuresAsync(accountKey, ct).ConfigureAwait(false);
-        await _lockouts.SaveChangesAsync(ct).ConfigureAwait(false);
+        await AdminLockoutFlow.ReleaseSuccessAsync(
+                _lockouts, accountReserved, AdminAuthScopes.Account, accountKey, now, AccountFailureLimit, ct)
+            .ConfigureAwait(false);
+        await AdminLockoutFlow.ReleaseSuccessAsync(
+                _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
 
         var ownerKey = NormalizeEmail(_credentials.OwnerEmail);
         var rawPending = CreateOpaqueToken();
@@ -123,7 +136,10 @@ public sealed class AdminAuthService
         var ip = NormalizeIp(remoteIp);
         var ipHmac = HashIp(ip);
 
-        if (await IsThrottledAsync(AdminAuthScopes.LoginIp, ip, now, ct).ConfigureAwait(false))
+        var ipReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
+        if (!ipReserved.Incremented)
         {
             await AuditAsync(AdminAuthAction.LoginFailure, null, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
@@ -137,9 +153,12 @@ public sealed class AdminAuthService
         }
 
         var accountKey = NormalizeEmail(pending.Email);
-        if (!await _tokens.TryIncrementPendingAttemptAsync(pending.Id, now, PendingAttemptLimit, ct)
-                .ConfigureAwait(false)
-            || !await TryReserveAccountAttemptAsync(accountKey, ip, ipHmac, now, ct).ConfigureAwait(false))
+        var accountReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.Account, accountKey, now, AccountFailureLimit, ct)
+            .ConfigureAwait(false);
+        if (!accountReserved.Incremented
+            || !await _tokens.TryIncrementPendingAttemptAsync(pending.Id, now, PendingAttemptLimit, ct)
+                .ConfigureAwait(false))
         {
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)
                 .ConfigureAwait(false);
@@ -155,7 +174,11 @@ public sealed class AdminAuthService
 
         if (!ok)
         {
-            await CountIpOnlyAsync(AdminAuthScopes.LoginIp, ip, now, ct).ConfigureAwait(false);
+            await ConfirmAccountLockAsync(accountReserved, accountKey, ipHmac, now, ct)
+                .ConfigureAwait(false);
+            await AdminLockoutFlow.ConfirmFailureAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, null, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.SecondFactorFailed, accountKey, ipHmac, AdminAuthReason.Bad2Fa, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.SignInFailed();
@@ -166,8 +189,18 @@ public sealed class AdminAuthService
             return AdminAuthOutcome.SignInFailed();
         }
 
+        await AdminLockoutFlow.ReleaseSuccessAsync(
+                _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
         await _lockouts.ClearAccountFailuresAsync(accountKey, ct).ConfigureAwait(false);
-        await _lockouts.SaveChangesAsync(ct).ConfigureAwait(false);
+        await _lockouts.TryReleaseLockIfBelowLimitAsync(
+                AdminAuthScopes.Account,
+                accountKey,
+                now,
+                FailureWindow,
+                AccountFailureLimit,
+                ct)
+            .ConfigureAwait(false);
 
         var session = await RotateSessionAsync(accountKey, ipHmac, now, ct).ConfigureAwait(false);
         await AuditAsync(AdminAuthAction.LoginSuccess, accountKey, ipHmac, null, ct).ConfigureAwait(false);
@@ -192,34 +225,52 @@ public sealed class AdminAuthService
             return AdminAuthOutcome.CaptchaFailed();
         }
 
-        if (await IsThrottledAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false))
+        var ipReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
+        if (!ipReserved.Incremented)
         {
             await AuditAsync(AdminAuthAction.ResetRequest, accountKey, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.ThrottledReset();
         }
 
-        await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
-
-        AdminMailMessage? mail = null;
-        if (_credentials.IsOwnerEmail(accountKey))
+        if (ipReserved.Count >= IpFailureLimit)
         {
-            var ownerKey = NormalizeEmail(_credentials.OwnerEmail);
-            var raw = CreateOpaqueToken();
-            await _tokens.CancelUnusedAsync(AdminAuthToken.KindReset, ownerKey, now, ct)
-                .ConfigureAwait(false);
-            var token = AdminAuthToken.Create(
-                AdminAuthToken.KindReset,
-                HashToken(raw),
-                ownerKey,
-                now,
-                ResetLifetime);
-            await _tokens.AddAsync(token, ct).ConfigureAwait(false);
-            await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
-            mail = new AdminMailMessage(ownerKey, "Reset", AdminAuthLinks.ResetConfirm(raw));
-            await AuditAsync(AdminAuthAction.ResetRequest, ownerKey, ipHmac, null, ct)
+            await AdminLockoutFlow.ConfirmFailureAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
                 .ConfigureAwait(false);
         }
+
+        var tokenEmail = _credentials.IsOwnerEmail(accountKey)
+            ? NormalizeEmail(_credentials.OwnerEmail)
+            : accountKey;
+        var raw = CreateOpaqueToken();
+        await _tokens.CancelUnusedAsync(AdminAuthToken.KindReset, tokenEmail, now, ct)
+            .ConfigureAwait(false);
+        var token = AdminAuthToken.Create(
+            AdminAuthToken.KindReset,
+            HashToken(raw),
+            tokenEmail,
+            now,
+            ResetLifetime);
+        if (!_credentials.IsOwnerEmail(accountKey))
+        {
+            token.Consume(now);
+        }
+
+        await _tokens.AddAsync(token, ct).ConfigureAwait(false);
+        await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
+        AdminMailMessage? mail = _credentials.IsOwnerEmail(accountKey)
+            ? new AdminMailMessage(tokenEmail, "Reset", AdminAuthLinks.ResetConfirm(raw))
+            : null;
+        await AuditAsync(
+                AdminAuthAction.ResetRequest,
+                _credentials.IsOwnerEmail(accountKey) ? tokenEmail : "anonymous",
+                ipHmac,
+                null,
+                ct)
+            .ConfigureAwait(false);
 
         // Owner and unknown both enqueue one work item so the request returns
         // before SendAsync (SC-9).
@@ -250,7 +301,10 @@ public sealed class AdminAuthService
             return AdminAuthOutcome.CaptchaFailed();
         }
 
-        if (await IsThrottledAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false))
+        var ipReserved = await AdminLockoutFlow.ReserveAsync(
+                _lockouts, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, ct)
+            .ConfigureAwait(false);
+        if (!ipReserved.Incremented)
         {
             await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.RateLimited, ct)
                 .ConfigureAwait(false);
@@ -264,21 +318,25 @@ public sealed class AdminAuthService
             || string.Equals(claimedKey, NormalizeEmail(token.Email), StringComparison.Ordinal);
         if (token is null || !emailOk)
         {
-            await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
+            await AdminLockoutFlow.ConfirmFailureAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LinkRejected, claimedEmail, ipHmac, AdminAuthReason.InvalidLink, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.InvalidLink();
         }
 
-        if (string.IsNullOrWhiteSpace(password))
+        if (IsShortPassword(password))
         {
-            return new AdminAuthOutcome(400, "Use at least 15 characters.", null, null);
+            return new AdminAuthOutcome(400, AdminAuthCopy.PasswordTooShort, null, null);
         }
 
         var accountKey = NormalizeEmail(token.Email);
         if (!await _tokens.TryConsumeAsync(token.TokenHash, now, ct).ConfigureAwait(false))
         {
-            await CountIpOnlyAsync(AdminAuthScopes.ResetIp, ip, now, ct).ConfigureAwait(false);
+            await AdminLockoutFlow.ConfirmFailureAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LinkRejected, accountKey, ipHmac, AdminAuthReason.InvalidLink, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.InvalidLink();
@@ -340,60 +398,30 @@ public sealed class AdminAuthService
         return session;
     }
 
-    private async Task<bool> TryReserveAccountAttemptAsync(
+    public static bool IsShortPassword(string? password) =>
+        string.IsNullOrWhiteSpace(password) || password.Length < MinimumPasswordLength;
+
+    private Task ConfirmAccountLockAsync(
+        FailureIncrementResult reserved,
         string accountKey,
-        string ip,
         string ipHmac,
         DateTimeOffset now,
         CancellationToken ct)
-    {
-        if (!_credentials.IsOwnerEmail(accountKey))
-        {
-            return true;
-        }
-
-        var result = await _lockouts.TryIncrementFailureAsync(
-                AdminAuthScopes.Account,
-                accountKey,
-                now,
-                FailureWindow,
-                AccountFailureLimit,
-                LockDuration,
-                ct)
-            .ConfigureAwait(false);
-
-        if (result.LockCreated)
-        {
-            await AuditAsync(AdminAuthAction.LockStart, accountKey, ipHmac, AdminAuthReason.Locked, ct)
-                .ConfigureAwait(false);
-            await _tokens.ConsumeOutstandingPendingAsync(accountKey, now, ct).ConfigureAwait(false);
-            await _sessions.DeleteByEmailAsync(accountKey, ct).ConfigureAwait(false);
-        }
-
-        return result.Incremented;
-    }
-
-    private async Task CountIpOnlyAsync(string ipScope, string ip, DateTimeOffset now, CancellationToken ct)
-    {
-        await _lockouts.TryIncrementFailureAsync(
-                ipScope,
-                ip,
-                now,
-                FailureWindow,
-                IpFailureLimit,
-                LockDuration,
-                ct)
-            .ConfigureAwait(false);
-    }
-
-    private Task<bool> IsThrottledAsync(string scope, string subjectKey, DateTimeOffset now, CancellationToken ct)
-        => ActiveAsync(scope, subjectKey, now, ct);
-
-    private async Task<bool> ActiveAsync(string scope, string subjectKey, DateTimeOffset now, CancellationToken ct)
-    {
-        var lockout = await _lockouts.GetActiveLockoutAsync(scope, subjectKey, now, ct).ConfigureAwait(false);
-        return lockout is not null && lockout.IsActive(now);
-    }
+        => AdminLockoutFlow.ConfirmFailureAsync(
+            _lockouts,
+            reserved,
+            AdminAuthScopes.Account,
+            accountKey,
+            now,
+            AccountFailureLimit,
+            async () =>
+            {
+                await AuditAsync(AdminAuthAction.LockStart, accountKey, ipHmac, AdminAuthReason.Locked, ct)
+                    .ConfigureAwait(false);
+                await _tokens.ConsumeOutstandingPendingAsync(accountKey, now, ct).ConfigureAwait(false);
+                await _sessions.DeleteByEmailAsync(accountKey, ct).ConfigureAwait(false);
+            },
+            ct);
 
     private async Task<AdminAuthToken?> LoadUsableAsync(
         string? raw,

@@ -12,6 +12,9 @@ public static class AdminSignInDeny
     public static IResult Failure() =>
         Results.Json(new { error = GenericCopy }, statusCode: StatusCodes.Status401Unauthorized);
 
+    public static IResult Throttled() =>
+        Results.Json(new { error = GenericCopy }, statusCode: StatusCodes.Status429TooManyRequests);
+
     public static Task WriteFailureAsync(HttpContext context)
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;

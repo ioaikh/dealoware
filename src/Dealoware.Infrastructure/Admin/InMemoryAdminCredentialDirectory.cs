@@ -16,6 +16,7 @@ public sealed class InMemoryAdminCredentialDirectory : IAdminCredentialDirectory
     private string _passwordHash;
     private readonly HashSet<string> _recoveryHashes = new(StringComparer.Ordinal);
     private readonly HashSet<string> _totpCodes = new(StringComparer.Ordinal);
+    private int _passwordEvaluations;
 
     public InMemoryAdminCredentialDirectory(string ownerEmail)
     {
@@ -26,12 +27,15 @@ public sealed class InMemoryAdminCredentialDirectory : IAdminCredentialDirectory
 
     public string OwnerEmail { get; }
 
+    public int PasswordEvaluations => Volatile.Read(ref _passwordEvaluations);
+
     public bool IsOwnerEmail(string? email) =>
         !string.IsNullOrWhiteSpace(OwnerEmail)
         && string.Equals(AdminAuthService.NormalizeEmail(email), OwnerEmail, StringComparison.Ordinal);
 
     public Task<bool> VerifyPasswordAsync(string email, string password, CancellationToken ct)
     {
+        Interlocked.Increment(ref _passwordEvaluations);
         if (!IsOwnerEmail(email) || string.IsNullOrEmpty(password))
         {
             VerifySecret(_dummyHash, password ?? string.Empty);

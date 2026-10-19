@@ -49,5 +49,11 @@ public sealed class AdminAuthLockout
 
     public void BumpVersion() => Version++;
 
+    public void Deactivate()
+    {
+        StartedAt = DateTimeOffset.UnixEpoch;
+        ExpiresAt = DateTimeOffset.UnixEpoch;
+    }
+
     public bool IsActive(DateTimeOffset now) => now < ExpiresAt;
 }
