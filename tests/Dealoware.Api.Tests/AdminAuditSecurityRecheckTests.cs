@@ -84,6 +84,8 @@ public class AdminAuditSecurityRecheckTests
     [InlineData("B3m", "x-" + KidUnderscoreJwt)]
     [InlineData("B3n", "id_" + KidDashJwt)]
     [InlineData("B3o", SampleJwt + "." + EyAiJwt)]
+    [InlineData("CAP8seg", "a.b.c.d.e.f.g.h." + SampleJwt)]
+    [InlineData("CAP8delim", "a-b-c-d-e-f-g-h-" + SampleJwt)]
     [InlineData("NX02", "backup_codes=LEAK")]
     [InlineData("NX03", "mfa_codes=LEAK")]
     [InlineData("NX04", "pa55word=LEAK")]
@@ -246,6 +248,15 @@ public class AdminAuditSecurityRecheckTests
     }
 
     [Fact]
+    public void Recheck_Cap16Decodes_ThenEyAi_IsRedacted()
+    {
+        var note = string.Concat(Enumerable.Repeat("eyAaaaa.bbbb.cccc.", 20)) + EyAiJwt;
+        var output = AdminAuditSnapshots.Truncate(new JsonObject { ["note"] = note }.ToJsonString());
+        Assert.DoesNotContain("eyJzdWIiOiJleWFpIn0", output, StringComparison.Ordinal);
+        Assert.Contains("[redacted]", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Recheck_B3b_AccessTokenJwtJsonValue_IsRedacted()
     {
         var output = AdminAuditSnapshots.Truncate(
@@ -276,6 +287,7 @@ public class AdminAuditSecurityRecheckTests
     [InlineData("mail.example.com")]
     [InlineData("api.platform.dealoware.com")]
     [InlineData("a.b.c")]
+    [InlineData("a.b.c.d.e.f.g.h.i.j.k.example.com")]
     [InlineData("report.final.v2.pdf")]
     [InlineData("alex.doe@example.test")]
     [InlineData("price.list.updated")]
