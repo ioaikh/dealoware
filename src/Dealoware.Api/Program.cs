@@ -129,10 +129,11 @@ builder.Services.AddAdminAuthorizationResultHandler();
 
 try
 {
-    var ipHasher = IpHasher.Create(
+    var hmacKey = IpHasher.LoadKey(
         name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
         isDevelopment: builder.Environment.IsDevelopment());
-    builder.Services.AddSingleton<IIpHasher>(ipHasher);
+    builder.Services.AddSingleton<IIpHasher>(new IpHasher(hmacKey));
+    builder.Services.AddSingleton<IAuditActorHasher>(new AuditActorHasher(hmacKey));
     builder.Services.AddAdminTotp(builder.Configuration, builder.Environment.IsDevelopment());
 }
 catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)

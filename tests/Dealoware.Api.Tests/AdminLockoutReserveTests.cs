@@ -12,7 +12,7 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// R1 parallel reserve/consume tests. Names match the postgres-sec filter
-/// <c>FullyQualifiedName~SecR|FullyQualifiedName~SecSc</c>.
+/// <c>FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8</c>.
 /// </summary>
 [Collection("WebAppTests")]
 public class AdminLockoutReserveTests
@@ -569,18 +569,22 @@ public class AdminLockoutReserveTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
-        var expected = AdminAuthService.AccountSubjectKey(
+        var auditHasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
+        var expectedSubject = AdminAuthService.AccountSubjectKey(
             AdminAuthService.NormalizeEmail(unknown),
             isOwner: false,
             hasher);
+        var expectedActor = auditHasher.HashEmail(AdminAuthService.NormalizeEmail(unknown));
+        Assert.NotEqual(expectedSubject, expectedActor);
         Assert.DoesNotContain(unknown, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
         Assert.DoesNotContain(unknown, db.AdminAuthLockouts.Select(l => l.SubjectKey));
-        Assert.Contains(expected, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
-        Assert.Contains(expected, db.AdminAuthLockouts.Select(l => l.SubjectKey));
+        Assert.Contains(expectedSubject, db.AdminAuthFailureEvents.Select(e => e.SubjectKey));
+        Assert.Contains(expectedSubject, db.AdminAuthLockouts.Select(l => l.SubjectKey));
         Assert.DoesNotContain(unknown, db.AdminAuthTokens.Select(t => t.Email));
-        Assert.Contains(expected, db.AdminAuthTokens.Select(t => t.Email));
+        Assert.Contains(expectedSubject, db.AdminAuthTokens.Select(t => t.Email));
         Assert.DoesNotContain(unknown, db.AdminAuditLog.Select(e => e.ActorEmail));
-        Assert.Contains(expected, db.AdminAuditLog.Select(e => e.ActorEmail));
+        Assert.Contains(expectedActor, db.AdminAuditLog.Select(e => e.ActorEmail));
+        Assert.DoesNotContain(expectedSubject, db.AdminAuditLog.Select(e => e.ActorEmail));
     }
 
     [Fact]
@@ -671,11 +675,8 @@ public class AdminLockoutReserveTests
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
-            var expected = AdminAuthService.AccountSubjectKey(
-                AdminAuthService.NormalizeEmail(typed),
-                isOwner: false,
-                hasher);
+            var auditHasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
+            var expected = auditHasher.HashEmail(AdminAuthService.NormalizeEmail(typed));
             var actors = db.AdminAuditLog
                 .Where(e => e.Action == AdminAuthAction.LockStart)
                 .Select(e => e.ActorEmail)
@@ -702,6 +703,43 @@ public class AdminLockoutReserveTests
                 db.AdminAuditLog.Select(e => e.ActorEmail),
                 StringComparer.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public async Task SecN8_AuditActor_NeverEqualsFailureOrLockSubjectKey()
+    {
+        await ClearAsync();
+        const string typed = "distinct-audit@example.com";
+        var client = CreateClient();
+        using var response = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = typed, password = "wrong", turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        using var reset = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.ResetPath,
+            new { email = typed, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var subjects = db.AdminAuthFailureEvents.Select(e => e.SubjectKey)
+            .Concat(db.AdminAuthLockouts.Select(l => l.SubjectKey))
+            .AsEnumerable()
+            .ToHashSet(StringComparer.Ordinal);
+        var actors = db.AdminAuditLog
+            .Select(e => e.ActorEmail)
+            .AsEnumerable()
+            .Where(actor =>
+                !string.Equals(actor, OwnerEmail, StringComparison.Ordinal)
+                && !string.Equals(actor, "anonymous", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(actors);
+        Assert.DoesNotContain(typed, actors, StringComparer.OrdinalIgnoreCase);
+        Assert.All(actors, actor => Assert.DoesNotContain(actor, subjects));
     }
 
     [Fact]
@@ -889,11 +927,8 @@ public class AdminLockoutReserveTests
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
-        var expected = AdminAuthService.AccountSubjectKey(
-            AdminAuthService.NormalizeEmail(typedEmail),
-            isOwner: false,
-            hasher);
+        var hasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
+        var expected = hasher.HashEmail(AdminAuthService.NormalizeEmail(typedEmail));
         var actors = db.AdminAuditLog
             .Where(e => reason == null || e.ReasonClass == reason)
             .Select(e => e.ActorEmail)

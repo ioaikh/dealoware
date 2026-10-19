@@ -60,6 +60,13 @@ public sealed class IpHasher : IIpHasher
     /// Thrown in non-Development if DEALOWARE_ADMIN_IP_HMAC_KEY is not set.
     /// </exception>
     public static IpHasher Create(Func<string, string?> getEnvVar, bool isDevelopment)
+        => new(LoadKey(getEnvVar, isDevelopment));
+
+    /// <summary>
+    /// Loads DEALOWARE_ADMIN_IP_HMAC_KEY. Fail-closed outside Development.
+    /// The returned bytes are never logged.
+    /// </summary>
+    public static byte[] LoadKey(Func<string, string?> getEnvVar, bool isDevelopment)
     {
         var keyValue = getEnvVar(KeyEnvironmentVariable);
 
@@ -76,12 +83,18 @@ public sealed class IpHasher : IIpHasher
             // This is NOT for production - it means hashes won't be consistent across restarts.
             var devKey = new byte[32];
             RandomNumberGenerator.Fill(devKey);
-            return new IpHasher(devKey);
+            return devKey;
         }
 
         try
         {
-            return new IpHasher(keyValue);
+            var key = Convert.FromBase64String(keyValue);
+            if (key.Length < 32)
+            {
+                throw new ArgumentException("HMAC key must be at least 32 bytes", nameof(keyValue));
+            }
+
+            return key;
         }
         catch (FormatException ex)
         {

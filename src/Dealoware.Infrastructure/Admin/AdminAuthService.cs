@@ -27,6 +27,7 @@ public sealed class AdminAuthService
     private readonly IAdminAuditRepository _audit;
     private readonly IAdminMailQueue _mailQueue;
     private readonly IIpHasher _ipHasher;
+    private readonly IAuditActorHasher _auditActorHasher;
     private readonly IAdminClock _clock;
 
     public AdminAuthService(
@@ -38,6 +39,7 @@ public sealed class AdminAuthService
         IAdminAuditRepository audit,
         IAdminMailQueue mailQueue,
         IIpHasher ipHasher,
+        IAuditActorHasher auditActorHasher,
         IAdminClock clock)
     {
         _turnstile = turnstile;
@@ -48,6 +50,7 @@ public sealed class AdminAuthService
         _audit = audit;
         _mailQueue = mailQueue;
         _ipHasher = ipHasher;
+        _auditActorHasher = auditActorHasher;
         _clock = clock;
     }
 
@@ -503,7 +506,7 @@ public sealed class AdminAuthService
 
         return _credentials.IsOwnerEmail(key)
             ? key
-            : AccountSubjectKey(key, isOwner: false, _ipHasher);
+            : _auditActorHasher.HashEmail(key);
     }
 
     private string HashIp(string ip) => _ipHasher.Hash(ip);

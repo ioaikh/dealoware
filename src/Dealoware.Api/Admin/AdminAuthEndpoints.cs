@@ -187,6 +187,7 @@ public static class AdminAuthEndpoints
         IAdminCoreOwnerAccountRepository accounts,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
+        IAuditActorHasher auditActorHasher,
         TotpSecretProtector protector,
         IOptions<CoreOwnerOptions> coreOwnerOptions,
         ITurnstileVerifier turnstile,
@@ -275,6 +276,11 @@ public static class AdminAuthEndpoints
                 accountReserved,
                 accountKey,
                 isOwner ? ownerEmail : accountKey,
+                isOwner
+                    ? ownerEmail
+                    : string.IsNullOrEmpty(submittedEmail)
+                        ? "anonymous"
+                        : auditActorHasher.HashEmail(submittedEmail),
                 now,
                 ipHmac,
                 audit,
@@ -780,6 +786,7 @@ public static class AdminAuthEndpoints
             accountReserved,
             accountKey,
             account.Email,
+            account.Email,
             now,
             ipHmac,
             audit,
@@ -833,7 +840,8 @@ public static class AdminAuthEndpoints
         IAdminCoreOwnerAccountRepository accounts,
         FailureIncrementResult reserved,
         string accountSubject,
-        string accountEmail,
+        string cleanupEmail,
+        string auditActor,
         DateTimeOffset now,
         string ipHmac,
         IAdminAuditRepository audit,
@@ -848,13 +856,13 @@ public static class AdminAuthEndpoints
             AdminAuthService.AccountFailureLimit,
             async () =>
             {
-                await accounts.ConsumeOutstandingPendingAsync(accountEmail, now, context.RequestAborted);
+                await accounts.ConsumeOutstandingPendingAsync(cleanupEmail, now, context.RequestAborted);
                 var sessions = context.RequestServices.GetRequiredService<IAdminSessionRepository>();
-                await sessions.DeleteByEmailAsync(accountEmail, context.RequestAborted);
+                await sessions.DeleteByEmailAsync(cleanupEmail, context.RequestAborted);
                 await WriteAuthEventAsync(
                     audit,
                     AdminAuthAction.LockStart,
-                    accountEmail,
+                    auditActor,
                     ipHmac,
                     AdminAuthReason.Locked,
                     context.RequestAborted);
@@ -877,7 +885,7 @@ public static class AdminAuthEndpoints
         var ip = ClientIp(context) ?? "0.0.0.0";
         var accountKey = AdminAuthService.NormalizeEmail(account.Email);
         await ConfirmAccountLockAsync(
-            lockouts, accounts, accountReserved, accountKey, account.Email, now, ipHmac, audit, context);
+            lockouts, accounts, accountReserved, accountKey, account.Email, account.Email, now, ipHmac, audit, context);
         await AdminLockoutFlow.ConfirmFailureAsync(
             lockouts,
             ipReserved,
