@@ -18,7 +18,7 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 8; attempt++)
+        for (var attempt = 0; attempt < 24; attempt++)
         {
             var row = await _context.AdminResetIpCounters
                 .AsNoTracking()
@@ -63,16 +63,20 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
                 continue;
             }
 
-            var next = row.FailureCount + 1;
-            var lockUntil = next >= AdminResetIpCounter.Threshold
-                ? now.Add(AdminResetIpCounter.LockDuration)
-                : row.LockedUntil;
-            var updated = await Matching(row)
+            // Atomic +1 (R5): match WindowStartedAt and LockedUntil so a delayed
+            // reset cannot ride an increment, but do not CAS FailureCount — that
+            // lost updates under a parallel burst and stopped short of Threshold.
+            var lockAt = now.Add(AdminResetIpCounter.LockDuration);
+            var updated = await MatchingWindow(row)
                 .Where(c => c.FailureCount < AdminResetIpCounter.Threshold)
                 .ExecuteUpdateAsync(
                     setters => setters
-                        .SetProperty(c => c.FailureCount, next)
-                        .SetProperty(c => c.LockedUntil, lockUntil),
+                        .SetProperty(c => c.FailureCount, c => c.FailureCount + 1)
+                        .SetProperty(
+                            c => c.LockedUntil,
+                            c => c.FailureCount + 1 >= AdminResetIpCounter.Threshold
+                                ? lockAt
+                                : c.LockedUntil),
                     cancellationToken);
             if (updated == 1)
             {
@@ -84,13 +88,15 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
     }
 
     /// <summary>
-    /// R5 compare-and-set: a delayed reset cannot clear a newer lock, and a
-    /// burst against an expired row cannot pass the threshold.
+    /// R5 compare-and-set for window reset: a delayed reset cannot clear a
+    /// newer lock, and a burst against an expired row cannot pass the threshold.
     /// </summary>
     private IQueryable<AdminResetIpCounter> Matching(AdminResetIpCounter row)
+        => MatchingWindow(row).Where(c => c.FailureCount == row.FailureCount);
+
+    private IQueryable<AdminResetIpCounter> MatchingWindow(AdminResetIpCounter row)
         => _context.AdminResetIpCounters.Where(c =>
             c.IpHmac == row.IpHmac
-            && c.FailureCount == row.FailureCount
             && c.WindowStartedAt == row.WindowStartedAt
             && c.LockedUntil == row.LockedUntil);
 
