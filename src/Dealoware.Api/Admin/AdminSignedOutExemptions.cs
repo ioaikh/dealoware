@@ -84,8 +84,12 @@ public static class AdminSignedOutExemptions
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
+    /// <summary>
+    /// r5 C8: GET under /admin/auth/ is exempt only for static files (name.ext).
+    /// Extension-less handler-like paths are not anonymous and stay behind the session gate.
+    /// </summary>
     public static bool IsAnonymousAuthAsset(string canonicalPath)
-        => canonicalPath.StartsWith(AnonymousAuthAssetPrefix, StringComparison.OrdinalIgnoreCase);
+        => IsAuthStaticFile(canonicalPath);
 
     public static bool IsSignOut(string canonicalPath)
         => string.Equals(canonicalPath, SignOut, StringComparison.OrdinalIgnoreCase)
