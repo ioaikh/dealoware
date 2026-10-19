@@ -796,23 +796,20 @@ public static class AdminAuditSnapshots
         StringBuilder builder,
         ref int copyFrom)
     {
-        if (!TryMatchJwtPrefix(word, out var jwtLen) || jwtLen <= 0)
+        if (!TryMatchJwtPrefix(word, out var jwtStart, out var jwtLen) || jwtLen <= 0)
             return false;
 
-        var offset = 0;
         while (jwtLen > 0)
         {
-            var redactFrom = nameStart + offset;
+            var redactFrom = nameStart + jwtStart;
             builder.Append(text, copyFrom, redactFrom - copyFrom);
             builder.Append("[redacted]");
             copyFrom = redactFrom + jwtLen;
-            offset += jwtLen;
-            if (offset >= word.Length)
+            var next = SkipJwtDots(word, jwtStart + jwtLen);
+            if (next >= word.Length
+                || !TryMatchJwtPrefix(word[next..], out var relStart, out jwtLen))
                 return true;
-
-            offset = SkipJwtDots(word, offset);
-            if (offset >= word.Length || !TryMatchJwtPrefix(word[offset..], out jwtLen))
-                return true;
+            jwtStart = next + relStart;
         }
 
         return true;
@@ -825,19 +822,134 @@ public static class AdminAuditSnapshots
         return offset;
     }
 
+    private const int MaxJwtSegmentStarts = 8;
+    private const int MaxJwtHeaderCandidates = 8;
+    private const int MaxJwtHeaderDecodes = 16;
+
     /// <summary>
-    /// Compact JWT (3) or JWE (5). A non-<c>eyJ</c> header counts only when it
-    /// base64url-decodes to JSON containing <c>alg</c> or <c>enc</c>. One
-    /// delimiter prefix (<c>-</c> <c>_</c> <c>=</c> <c>:</c>) may sit before
-    /// that header. <c>eyJ</c> keeps the empty 2nd JWE / empty last JWT path.
-    /// Extra <c>.word</c> text after the leading 3 or 5 parts is left unmatched.
+    /// Compact JWT (3) or JWE (5). Candidate starts are the span start and each
+    /// <c>.</c> segment (capped). Inside a segment the header is tried as-is,
+    /// after each <c>-</c> <c>_</c> <c>=</c> <c>:</c>, and at each <c>eyJ</c>
+    /// / <c>eyA</c> (capped). A non-<c>eyJ</c> header must base64url-decode to
+    /// JSON with <c>alg</c> or <c>enc</c>. Never splits a real header on the
+    /// last <c>-</c>/<c>_</c>.
     /// </summary>
-    private static bool TryMatchJwtPrefix(ReadOnlySpan<char> text, out int matchLength)
+    private static bool TryMatchJwtPrefix(
+        ReadOnlySpan<char> text,
+        out int matchStart,
+        out int matchLength)
     {
+        matchStart = 0;
         matchLength = 0;
         if (text.Length < 4)
             return false;
 
+        Span<int> starts = stackalloc int[MaxJwtSegmentStarts];
+        var startCount = 0;
+        starts[startCount++] = 0;
+        for (var i = 0; i < text.Length && startCount < MaxJwtSegmentStarts; i++)
+        {
+            if (text[i] == '.' && i + 1 < text.Length)
+                starts[startCount++] = i + 1;
+        }
+
+        var decodes = 0;
+        for (var s = 0; s < startCount; s++)
+        {
+            var segmentStart = starts[s];
+            if (segmentStart >= text.Length || text[segmentStart] == '.')
+                continue;
+
+            var segmentEnd = text.Length;
+            for (var i = segmentStart; i < text.Length; i++)
+            {
+                if (text[i] != '.')
+                    continue;
+                segmentEnd = i;
+                break;
+            }
+
+            if (TryMatchJwtFromSegment(
+                    text,
+                    segmentStart,
+                    segmentEnd,
+                    ref decodes,
+                    out matchStart,
+                    out matchLength))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchJwtFromSegment(
+        ReadOnlySpan<char> text,
+        int segmentStart,
+        int segmentEnd,
+        ref int decodes,
+        out int matchStart,
+        out int matchLength)
+    {
+        matchStart = 0;
+        matchLength = 0;
+        var first = text[segmentStart..segmentEnd];
+        if (first.Length == 0)
+            return false;
+
+        Span<int> rel = stackalloc int[MaxJwtHeaderCandidates];
+        var n = 0;
+        AddJwtHeaderCandidate(rel, ref n, 0);
+        for (var i = 0; i < first.Length && n < MaxJwtHeaderCandidates; i++)
+        {
+            if (first[i] is '-' or '_' or '=' or ':')
+                AddJwtHeaderCandidate(rel, ref n, i + 1);
+        }
+
+        for (var i = 0; i + 3 <= first.Length && n < MaxJwtHeaderCandidates; i++)
+        {
+            if (first[i] == 'e'
+                && first[i + 1] == 'y'
+                && first[i + 2] is 'J' or 'A')
+                AddJwtHeaderCandidate(rel, ref n, i);
+        }
+
+        for (var c = 0; c < n; c++)
+        {
+            var headerAbs = segmentStart + rel[c];
+            var header = text[headerAbs..segmentEnd];
+            if (header.Length < 4)
+                continue;
+
+            var eyJ = header.StartsWith("eyJ", StringComparison.Ordinal);
+            if (!eyJ && !HeaderHasAlgOrEnc(header, ref decodes))
+                continue;
+
+            if (!TryParseJwtFrom(text[headerAbs..], eyJ, out matchLength))
+                continue;
+
+            matchStart = headerAbs;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void AddJwtHeaderCandidate(Span<int> rel, ref int n, int offset)
+    {
+        if (offset < 0 || n >= rel.Length)
+            return;
+        for (var i = 0; i < n; i++)
+        {
+            if (rel[i] == offset)
+                return;
+        }
+
+        rel[n++] = offset;
+    }
+
+    private static bool TryParseJwtFrom(ReadOnlySpan<char> text, bool eyJ, out int matchLength)
+    {
+        matchLength = 0;
         Span<int> ends = stackalloc int[6];
         Span<int> lengths = stackalloc int[6];
         var segments = 0;
@@ -860,17 +972,26 @@ public static class AdminAuditSnapshots
         if (segments < 3 || lengths[0] < 4)
             return false;
 
-        var header = UnwrapJwtHeader(text[..lengths[0]]);
-        var eyJ = header.StartsWith("eyJ", StringComparison.Ordinal);
-        var jwtHeader = eyJ || HeaderHasAlgOrEnc(header);
+        var nextHeader = ends[2] + 1;
+        if (segments >= 6
+            && nextHeader + 2 < text.Length
+            && text[nextHeader] == 'e'
+            && text[nextHeader + 1] == 'y'
+            && text[nextHeader + 2] is 'J' or 'A'
+            && (HasStrictJwtParts(lengths, segments, count: 3)
+                || (eyJ && lengths[1] > 0)))
+        {
+            matchLength = ends[2];
+            return true;
+        }
 
-        if (jwtHeader && HasStrictJwtParts(lengths, segments, count: 5))
+        if (HasStrictJwtParts(lengths, segments, count: 5))
         {
             matchLength = ends[4];
             return true;
         }
 
-        if (jwtHeader && HasStrictJwtParts(lengths, segments, count: 3))
+        if (HasStrictJwtParts(lengths, segments, count: 3))
         {
             matchLength = ends[2];
             return true;
@@ -897,26 +1018,17 @@ public static class AdminAuditSnapshots
         return false;
     }
 
-    private static ReadOnlySpan<char> UnwrapJwtHeader(ReadOnlySpan<char> first)
-    {
-        if (first.StartsWith("eyJ", StringComparison.Ordinal))
-            return first;
-
-        for (var i = 0; i < first.Length; i++)
-        {
-            if (first[i] is '-' or '_' or '=' or ':')
-                return first[(i + 1)..];
-        }
-
-        return first;
-    }
-
     private const int MaxJwtHeaderChars = 4096;
 
-    private static bool HeaderHasAlgOrEnc(ReadOnlySpan<char> header)
+    private static bool HeaderHasAlgOrEnc(ReadOnlySpan<char> header, ref int decodes)
     {
         if (header.Length < 4 || header.Length > MaxJwtHeaderChars)
             return false;
+        if (!header.StartsWith("ey", StringComparison.Ordinal))
+            return false;
+        if (decodes >= MaxJwtHeaderDecodes)
+            return false;
+        decodes++;
 
         var maxBytes = (header.Length + 3) / 4 * 3;
         Span<byte> bytes = maxBytes <= 512 ? stackalloc byte[512] : new byte[maxBytes];
@@ -973,7 +1085,8 @@ public static class AdminAuditSnapshots
     private static bool LooksLikeJwt(ReadOnlySpan<char> text)
     {
         text = TrimTrailingJwtPunct(text);
-        return TryMatchJwtPrefix(text, out var len) && len == text.Length;
+        return TryMatchJwtPrefix(text, out var start, out var len)
+               && start + len == text.Length;
     }
 
     private static bool IsBase64Url(ReadOnlySpan<char> span)

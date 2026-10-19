@@ -21,7 +21,12 @@ public class AdminAuditSecurityRecheckTests
     private const string CoreOwnerEmail = "io@aiknowhow.com";
     private const string SampleJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtaWQifQ.dGVzdHNpZ25hdHVyZQ";
     private const string SampleJwe = "eyJhbGciOiJSU0EtT0FFUCJ9.LEAK-key.iv-123.LEAKcipher.tag_12";
+    private const string DirJwe = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..iv12345.LEAKcipher.tag12";
     private const string EyAiJwt = "eyAiYWxnIjoibm9uZSJ9.eyJzdWIiOiJleWFpIn0.dGVzdA";
+    private const string KidUnderscoreJwt =
+        "eyJhbGciOiJIUzI1NiIsImtpZCI6ImFiKy8_PyJ9.eyJzdWIiOiJraWQxIn0.dGVzdA";
+    private const string KidDashJwt =
+        "eyJhbGciOiJIUzI1NiIsImtpZCI6IiA-In0.eyJzdWIiOiJraWQxIn0.dGVzdA";
     private const string MathBoldPassword =
         "\U0001D429\U0001D41A\U0001D42C\U0001D42C\U0001D430\U0001D428\U0001D42B\U0001D41D";
 
@@ -64,6 +69,21 @@ public class AdminAuditSecurityRecheckTests
     [InlineData("NA17", "id_" + SampleJwt)]
     [InlineData("NA30", "token_" + SampleJwt)]
     [InlineData("NA24", EyAiJwt)]
+    [InlineData("B3a", "my_id_" + SampleJwt)]
+    [InlineData("B3b", "access_token_" + SampleJwt)]
+    [InlineData("B3c", "x-y-" + SampleJwt)]
+    [InlineData("B3d", "__" + SampleJwt)]
+    [InlineData("B3e", "x--" + SampleJwt)]
+    [InlineData("B3f", "a" + SampleJwt)]
+    [InlineData("B3g", "my-x-" + EyAiJwt)]
+    [InlineData("B3h", "pre." + SampleJwt)]
+    [InlineData("B3i", "a.b." + SampleJwt)]
+    [InlineData("B3j", "a" + EyAiJwt)]
+    [InlineData("B3k", "prefix_" + DirJwe)]
+    [InlineData("B3l", KidUnderscoreJwt)]
+    [InlineData("B3m", "x-" + KidUnderscoreJwt)]
+    [InlineData("B3n", "id_" + KidDashJwt)]
+    [InlineData("B3o", SampleJwt + "." + EyAiJwt)]
     [InlineData("NX02", "backup_codes=LEAK")]
     [InlineData("NX03", "mfa_codes=LEAK")]
     [InlineData("NX04", "pa55word=LEAK")]
@@ -74,6 +94,7 @@ public class AdminAuditSecurityRecheckTests
         Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJzdWIiOiJ1In0", output, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJzdWIiOiJleWFpIn0", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("eyJzdWIiOiJraWQxIn0", output, StringComparison.Ordinal);
         Assert.DoesNotContain("LEAKcipher", output, StringComparison.Ordinal);
         Assert.True(
             output.Contains("[redacted]", StringComparison.Ordinal)
@@ -224,11 +245,39 @@ public class AdminAuditSecurityRecheckTests
         AssertLinearJwtScan("aaaa.b.c.", 'a', "B2 aaaa.b.c.");
     }
 
+    [Fact]
+    public void Recheck_B3b_AccessTokenJwtJsonValue_IsRedacted()
+    {
+        var output = AdminAuditSnapshots.Truncate(
+            new JsonObject { ["note"] = "access_token_" + SampleJwt }.ToJsonString());
+        Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Recheck_B3_CandidateSearch_IsLinearAt60Kb()
+    {
+        var unit = "x-y-eyJa.b.c.";
+        var note = string.Concat(Enumerable.Repeat(unit, 5_000));
+        var raw = new JsonObject { ["note"] = note }.ToJsonString();
+        Assert.True(note.Length >= 60_000);
+        Assert.True(Encoding.UTF8.GetByteCount(raw) <= AdminAuditSnapshots.MaxInputUtf8Bytes);
+
+        AdminAuditSnapshots.Truncate(raw);
+        var clock = Stopwatch.StartNew();
+        var output = AdminAuditSnapshots.Truncate(raw);
+        clock.Stop();
+
+        Assert.DoesNotContain("eyJa.b.c", output, StringComparison.Ordinal);
+        Assert.True(clock.ElapsedMilliseconds < 200, $"B3 candidate search took {clock.ElapsedMilliseconds}ms");
+    }
+
     [Theory]
     [InlineData("admin.core.dealoware.com")]
     [InlineData("mail.example.com")]
+    [InlineData("api.platform.dealoware.com")]
+    [InlineData("a.b.c")]
     [InlineData("report.final.v2.pdf")]
-    [InlineData("ivan.onuchin.test@example.test")]
+    [InlineData("alex.doe@example.test")]
     [InlineData("price.list.updated")]
     [InlineData("Release.2026.10")]
     public void Recheck_DottedNames_StayUnredacted(string note)
