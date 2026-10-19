@@ -5,6 +5,7 @@ using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
@@ -13,7 +14,7 @@ namespace Dealoware.Api.Tests;
 /// R1 parallel reserve/consume tests. Names match the postgres-sec filter
 /// <c>FullyQualifiedName~SecR|FullyQualifiedName~SecSc</c>.
 /// </summary>
-[Collection("AdminAuthTests")]
+[Collection("WebAppTests")]
 public class AdminLockoutReserveTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
@@ -93,12 +94,10 @@ public class AdminLockoutReserveTests
         var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
         Assert.False(string.IsNullOrEmpty(pending));
 
-        using var scope = _factory.Services.CreateScope();
-        var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
         var now = DateTimeOffset.UtcNow;
         var hash = AdminAuthService.HashToken(pending!);
         var results = await Task.WhenAll(
-            Enumerable.Range(0, 8).Select(_ => tokens.TryConsumeAsync(hash, now, CancellationToken.None)));
+            Enumerable.Range(0, 8).Select(_ => ConsumeOnNewScopeAsync(hash, now)));
         Assert.Equal(1, results.Count(ok => ok));
     }
 
@@ -122,7 +121,7 @@ public class AdminLockoutReserveTests
 
         var hash = AdminAuthService.HashToken(raw);
         var results = await Task.WhenAll(
-            Enumerable.Range(0, 8).Select(_ => tokens.TryConsumeAsync(hash, now, CancellationToken.None)));
+            Enumerable.Range(0, 8).Select(_ => ConsumeOnNewScopeAsync(hash, now)));
         Assert.Equal(1, results.Count(ok => ok));
     }
 
@@ -186,12 +185,21 @@ public class AdminLockoutReserveTests
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        db.AdminAuthFailureEvents.RemoveRange(db.AdminAuthFailureEvents);
-        db.AdminAuthLockouts.RemoveRange(db.AdminAuthLockouts);
-        db.AdminAuthTokens.RemoveRange(db.AdminAuthTokens);
-        db.AdminSessions.RemoveRange(db.AdminSessions);
-        await db.SaveChangesAsync();
+        await db.AdminAuthFailureEvents.ExecuteDeleteAsync();
+        await db.AdminAuthLockouts.ExecuteDeleteAsync();
+        await db.AdminAuthTokens.ExecuteDeleteAsync();
+        await db.AdminSessions.ExecuteDeleteAsync();
+        await db.AdminPendingAuths.ExecuteDeleteAsync();
+        await db.AdminRecoveryCodes.ExecuteDeleteAsync();
+        await db.AdminCoreOwnerAccounts.ExecuteDeleteAsync();
         _factory.Services.GetRequiredService<TestAdminClock>().UtcNow = DateTimeOffset.UtcNow;
+    }
+
+    private async Task<bool> ConsumeOnNewScopeAsync(string hash, DateTimeOffset now)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>()
+            .TryConsumeAsync(hash, now, CancellationToken.None);
     }
 
     private HttpClient CreateClient() =>
