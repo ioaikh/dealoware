@@ -5,19 +5,36 @@
 #
 #   ./e2e/reset-confirm/run.sh
 #
-# Requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com.
-# Throwaway cert and keys stay in mktemp. Nothing is written into the repo.
+# Origin is the production constant https://admin.core.dealoware.com (no port).
+# A high-port listen would send Origin :8443 and fail CSRF; no Testing/e2e
+# config can change that without production-code edits. Listen on 443.
+# If 443 is privileged, lower ip_unprivileged_port_start only after saving
+# the old value, and restore it on every EXIT. Throwaway certs stay in mktemp.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 E2E="$ROOT/e2e"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/dw-reset-confirm.XXXXXX")"
+UNPRIV_SYSCTL_KEY=net.ipv4.ip_unprivileged_port_start
+UNPRIV_OLD=""
+UNPRIV_CHANGED=0
+
+restore_unprivileged_port_start() {
+  if [[ "${UNPRIV_CHANGED}" -eq 1 ]]; then
+    if ! sudo -n sysctl -w "${UNPRIV_SYSCTL_KEY}=${UNPRIV_OLD}" >/dev/null; then
+      echo "e2e/reset-confirm: failed to restore ${UNPRIV_SYSCTL_KEY}=${UNPRIV_OLD}" >&2
+    fi
+    UNPRIV_CHANGED=0
+  fi
+}
+
 cleanup() {
   if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
     kill "$API_PID" 2>/dev/null || true
     wait "$API_PID" 2>/dev/null || true
   fi
   rm -rf "$WORKDIR"
+  restore_unprivileged_port_start
 }
 trap cleanup EXIT
 
@@ -36,10 +53,19 @@ PY
 }
 
 if ! can_bind_443; then
-  sudo -n sysctl -w net.ipv4.ip_unprivileged_port_start=0 >/dev/null 2>&1 || true
+  UNPRIV_OLD="$(cat /proc/sys/net/ipv4/ip_unprivileged_port_start)"
+  if [[ -z "${UNPRIV_OLD}" ]]; then
+    echo "e2e/reset-confirm: could not read ${UNPRIV_SYSCTL_KEY}" >&2
+    exit 1
+  fi
+  if ! sudo -n sysctl -w "${UNPRIV_SYSCTL_KEY}=0" >/dev/null; then
+    echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. Could not temporarily set ${UNPRIV_SYSCTL_KEY}=0. No high-port fallback." >&2
+    exit 1
+  fi
+  UNPRIV_CHANGED=1
 fi
 if ! can_bind_443; then
-  echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. No 8443 fallback." >&2
+  echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. Port 443 is unavailable. No high-port fallback." >&2
   exit 1
 fi
 
