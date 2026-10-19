@@ -125,9 +125,11 @@ public sealed class AdminSessionMiddleware
                     context, accounts, context.RequestAborted)
                 || await HasStep5TokenAsync(context, AdminAuthToken.KindPending, clock),
             AdminSignedOutExemptions.TokenKind.PasswordReset =>
-                await HasStep5TokenAsync(context, AdminAuthToken.KindReset, clock),
+                HttpMethods.IsGet(context.Request.Method)
+                || await HasStep5TokenAsync(context, AdminAuthToken.KindReset, clock),
             AdminSignedOutExemptions.TokenKind.Bootstrap =>
-                await HasStep5TokenAsync(context, AdminAuthToken.KindBootstrap, clock),
+                HttpMethods.IsGet(context.Request.Method)
+                || await HasStep5TokenAsync(context, AdminAuthToken.KindBootstrap, clock),
             _ => false
         };
     }

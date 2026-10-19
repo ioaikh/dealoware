@@ -398,53 +398,6 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
-    public void SecR10b_IsShortPassword_CountsTextElementsAfterStrippingFormat()
-    {
-        Assert.True(AdminAuthService.IsShortPassword(string.Concat(Enumerable.Repeat("\U0001F600", 8))));
-        Assert.True(AdminAuthService.IsShortPassword("e" + new string('\u0301', 14)));
-        Assert.True(AdminAuthService.IsShortPassword(new string('\u200B', 15)));
-        Assert.True(AdminAuthService.IsShortPassword(string.Concat(Enumerable.Repeat("\U0001F600", 7)) + "a"));
-        Assert.False(AdminAuthService.IsShortPassword(new string('a', 15)));
-    }
-
-    [Fact]
-    public async Task SecR10b_Bootstrap_RejectsEmojiCombiningAndZeroWidthPasswords()
-    {
-        await ClearAsync();
-        var client = CreateClient();
-        foreach (var password in new[]
-                 {
-                     string.Concat(Enumerable.Repeat("\U0001F600", 8)),
-                     "e" + new string('\u0301', 14),
-                     new string('\u200B', 15)
-                 })
-        {
-            var raw = AdminAuthService.CreateOpaqueToken();
-            using (var scope = _factory.Services.CreateScope())
-            {
-                var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
-                await tokens.AddAsync(
-                    AdminAuthToken.Create(
-                        AdminAuthToken.KindBootstrap,
-                        AdminAuthService.HashToken(raw),
-                        OwnerEmail.ToLowerInvariant(),
-                        DateTimeOffset.UtcNow,
-                        TimeSpan.FromHours(24)),
-                    CancellationToken.None);
-                await tokens.SaveChangesAsync(CancellationToken.None);
-            }
-
-            using var bootstrap = await SendAuthAsync(
-                client,
-                HttpMethod.Post,
-                AdminAuthEndpoints.BootstrapPath,
-                new { token = raw, email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-            Assert.Equal(HttpStatusCode.BadRequest, bootstrap.StatusCode);
-            Assert.Contains(AdminAuthCopy.PasswordTooShort, await bootstrap.Content.ReadAsStringAsync());
-        }
-    }
-
-    [Fact]
     public async Task SecR13_Step2Success_LeavesInFlightAndPostStep1Failures()
     {
         await ClearAsync();
@@ -650,41 +603,6 @@ public class AdminLockoutReserveTests
         Assert.NotEmpty(actors);
         Assert.DoesNotContain(typed, actors, StringComparer.OrdinalIgnoreCase);
         Assert.All(actors, actor => Assert.DoesNotContain(actor, subjects));
-    }
-
-    [Fact]
-    public async Task SecR10_Bootstrap_RejectPasswordShorterThan15()
-    {
-        await ClearAsync();
-        var client = CreateClient();
-        var bootstrapRaw = AdminAuthService.CreateOpaqueToken();
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
-            await tokens.AddAsync(
-                AdminAuthToken.Create(
-                    AdminAuthToken.KindBootstrap,
-                    AdminAuthService.HashToken(bootstrapRaw),
-                    OwnerEmail.ToLowerInvariant(),
-                    DateTimeOffset.UtcNow,
-                    TimeSpan.FromHours(24)),
-                CancellationToken.None);
-            await tokens.SaveChangesAsync(CancellationToken.None);
-        }
-
-        using var bootstrap = await SendAuthAsync(
-            client,
-            HttpMethod.Post,
-            AdminAuthEndpoints.BootstrapPath,
-            new
-            {
-                token = bootstrapRaw,
-                email = OwnerEmail,
-                password = "12345678901234",
-                turnstileToken = FakeTurnstileVerifier.ValidToken
-            });
-        Assert.Equal(HttpStatusCode.BadRequest, bootstrap.StatusCode);
-        Assert.Contains(AdminAuthCopy.PasswordTooShort, await bootstrap.Content.ReadAsStringAsync());
     }
 
     private async Task ClearAsync()

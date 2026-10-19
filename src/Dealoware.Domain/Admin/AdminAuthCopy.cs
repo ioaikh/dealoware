@@ -9,6 +9,4 @@ public static class AdminAuthCopy
         "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
 
     public const string VerificationFailed = "Verification failed, please try again.";
-
-    public const string PasswordTooShort = "Use at least 15 characters.";
 }

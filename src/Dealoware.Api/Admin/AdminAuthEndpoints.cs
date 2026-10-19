@@ -12,14 +12,13 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r5 §2.2 paths.
 /// No HTML pages (Step 14). Session stays unverified until TOTP or a recovery code passes.
-/// Reset/bootstrap and Turnstile/lockout (Step 5) share these routes.
+/// Turnstile and lockout (Step 5) share the sign-in routes.
 /// </summary>
 public static class AdminAuthEndpoints
 {
     public const string SignInPath = AdminSignedOutExemptions.ApiSignIn;
     public const string SignInCodePath = AdminSignedOutExemptions.ApiSignInCode;
     public const string SignInRecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;
-    public const string BootstrapPath = AdminSignedOutExemptions.ApiBootstrap;
     public const string SignOutPath = AdminSignedOutExemptions.ApiSignOut;
     public const string PageSignOutPath = AdminSignedOutExemptions.SignOut;
 
@@ -130,12 +129,6 @@ public static class AdminAuthEndpoints
         app.MapGet(AdminSignedOutExemptions.ResetSent, IssueAnonymousPage)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-        app.MapGet(AdminSignedOutExemptions.Bootstrap, IssueFragmentPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
-        app.MapPost(AdminSignedOutExemptions.ApiBootstrap, CompleteBootstrap)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
     }
 
     private sealed record SignInRequest(string? Email, string? Password, string? ReturnPath, string? TurnstileToken);
@@ -153,13 +146,6 @@ public static class AdminAuthEndpoints
 
     private static IResult IssueAnonymousPage(HttpContext context, AdminAntiForgeryService antiforgery)
         => antiforgery.IssuePage(context, "anonymous");
-
-    private static IResult IssueFragmentPage(HttpContext context)
-    {
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
-        return Results.NoContent();
-    }
 
     private static IResult GetSignInCodePage(HttpContext context, AdminAntiForgeryService antiforgery)
         => antiforgery.IssuePage(context, "sign-in-code");
@@ -944,18 +930,6 @@ public static class AdminAuthEndpoints
     private static void CryptographicClear(byte[] secret)
         => System.Security.Cryptography.CryptographicOperations.ZeroMemory(secret);
 
-    private static async Task<IResult> CompleteBootstrap(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
-        => await WriteStep5OutcomeAsync(
-            context,
-            await auth.CompleteLinkAsync(
-                AdminAuthToken.KindBootstrap,
-                body.EffectiveLinkToken,
-                body.Password,
-                body.Email,
-                body.TurnstileToken,
-                ClientIp(context),
-                context.RequestAborted));
-
     private static string? ClientIp(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString();
 
@@ -980,18 +954,4 @@ public static class AdminAuthEndpoints
 
         return Results.Json(new { error = outcome.Body }, statusCode: outcome.StatusCode);
     }
-}
-
-public sealed class AdminAuthRequest
-{
-    public string? Email { get; set; }
-    public string? Password { get; set; }
-    public string? TurnstileToken { get; set; }
-    public string? TotpCode { get; set; }
-    public string? RecoveryCode { get; set; }
-    public string? LinkToken { get; set; }
-    public string? Token { get; set; }
-
-    public string? EffectiveLinkToken =>
-        !string.IsNullOrWhiteSpace(Token) ? Token : LinkToken;
 }

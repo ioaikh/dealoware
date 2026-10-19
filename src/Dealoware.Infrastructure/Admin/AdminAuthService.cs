@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Dealoware.Domain.Admin;
@@ -10,13 +9,10 @@ public sealed class AdminAuthService
     public const int AccountFailureLimit = 5;
     public const int IpFailureLimit = 20;
     public const int PendingAttemptLimit = 5;
-    public const int MinimumPasswordLength = 15;
     public const string AccountKeyHmacPrefix = "account:";
     public static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan ResetLifetime = TimeSpan.FromMinutes(30);
-    public static readonly TimeSpan BootstrapLifetime = TimeSpan.FromHours(24);
     public const int LinkTokenByteCount = 32;
 
     private readonly ITurnstileVerifier _turnstile;
@@ -208,76 +204,6 @@ public sealed class AdminAuthService
         return AdminAuthOutcome.SignedIn(session.Id);
     }
 
-    public async Task<AdminAuthOutcome> CompleteLinkAsync(
-        string kind,
-        string? rawToken,
-        string? password,
-        string? claimedEmail,
-        string? turnstileToken,
-        string? remoteIp,
-        CancellationToken ct)
-    {
-        var now = _clock.UtcNow;
-        var ip = NormalizeIp(remoteIp);
-        var ipHmac = HashIp(ip);
-        var action = kind == AdminAuthToken.KindBootstrap
-            ? AdminAuthAction.BootstrapComplete
-            : AdminAuthAction.ResetComplete;
-
-        if (!await _turnstile.VerifyAsync(turnstileToken ?? string.Empty, ip, ct).ConfigureAwait(false))
-        {
-            await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.CaptchaFailed, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.CaptchaFailed();
-        }
-
-        var ipReserved = await AdminLockoutFlow.ReserveAsync(
-                _lockouts, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, ct)
-            .ConfigureAwait(false);
-        if (!ipReserved.Incremented)
-        {
-            await AuditAsync(action, claimedEmail, ipHmac, AdminAuthReason.RateLimited, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.ThrottledSignIn();
-        }
-
-        var token = await LoadUsableAsync(rawToken, kind, now, ct).ConfigureAwait(false);
-        var claimedKey = NormalizeEmail(claimedEmail);
-        var emailOk = token is null
-            || string.IsNullOrWhiteSpace(claimedEmail)
-            || string.Equals(claimedKey, NormalizeEmail(token.Email), StringComparison.Ordinal);
-        if (token is null || !emailOk)
-        {
-            await AdminLockoutFlow.ConfirmFailureAsync(
-                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
-                .ConfigureAwait(false);
-            await AuditAsync(AdminAuthAction.LinkRejected, claimedEmail, ipHmac, AdminAuthReason.InvalidLink, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.SignInFailed();
-        }
-
-        if (IsShortPassword(password))
-        {
-            return new AdminAuthOutcome(400, AdminAuthCopy.PasswordTooShort, null, null);
-        }
-
-        var accountKey = NormalizeEmail(token.Email);
-        if (!await _tokens.TryConsumeAsync(token.TokenHash, now, ct).ConfigureAwait(false))
-        {
-            await AdminLockoutFlow.ConfirmFailureAsync(
-                    _lockouts, ipReserved, AdminAuthScopes.ResetIp, ip, now, IpFailureLimit, null, ct)
-                .ConfigureAwait(false);
-            await AuditAsync(AdminAuthAction.LinkRejected, accountKey, ipHmac, AdminAuthReason.InvalidLink, ct)
-                .ConfigureAwait(false);
-            return AdminAuthOutcome.SignInFailed();
-        }
-
-        await _sessions.DeleteByEmailAsync(accountKey, ct).ConfigureAwait(false);
-        await _credentials.SetPasswordAsync(accountKey, password, ct).ConfigureAwait(false);
-        await AuditAsync(action, accountKey, ipHmac, null, ct).ConfigureAwait(false);
-        return AdminAuthOutcome.LinkCompleted();
-    }
-
     public Task<int> CountFailuresAsync(string scope, string subjectKey, CancellationToken ct)
     {
         var windowStart = _clock.UtcNow - FailureWindow;
@@ -298,21 +224,6 @@ public sealed class AdminAuthService
     public static string NormalizeIp(string? ip) =>
         string.IsNullOrWhiteSpace(ip) ? "0.0.0.0" : ip.Trim();
 
-    public async Task IssueLinkAsync(string kind, string email, string rawToken, CancellationToken ct)
-    {
-        var now = _clock.UtcNow;
-        var accountKey = NormalizeEmail(email);
-        await _tokens.CancelUnusedAsync(kind, accountKey, now, ct).ConfigureAwait(false);
-        var token = AdminAuthToken.Create(kind, HashToken(rawToken), accountKey, now, LifetimeFor(kind));
-        await _tokens.AddAsync(token, ct).ConfigureAwait(false);
-        await _tokens.SaveChangesAsync(ct).ConfigureAwait(false);
-    }
-
-    public static TimeSpan LifetimeFor(string kind) =>
-        kind == AdminAuthToken.KindBootstrap ? BootstrapLifetime
-        : kind == AdminAuthToken.KindPending ? PendingLifetime
-        : ResetLifetime;
-
     private async Task<AdminSession> RotateSessionAsync(
         string email,
         string ipHmac,
@@ -328,40 +239,10 @@ public sealed class AdminAuthService
         return session;
     }
 
-    public static bool IsShortPassword(string? password)
-    {
-        if (string.IsNullOrWhiteSpace(password))
-        {
-            return true;
-        }
-
-        var stripped = StripFormatCharacters(password);
-        if (string.IsNullOrWhiteSpace(stripped))
-        {
-            return true;
-        }
-
-        return new StringInfo(stripped).LengthInTextElements < MinimumPasswordLength;
-    }
-
     public static string AccountSubjectKey(string normalizedEmail, bool isOwner, IIpHasher hasher)
     {
         var hashed = hasher.Hash(AccountKeyHmacPrefix + normalizedEmail);
         return isOwner ? normalizedEmail : hashed;
-    }
-
-    private static string StripFormatCharacters(string value)
-    {
-        var builder = new StringBuilder(value.Length);
-        foreach (var ch in value)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.Format)
-            {
-                builder.Append(ch);
-            }
-        }
-
-        return builder.ToString();
     }
 
     private Task ConfirmAccountLockAsync(
@@ -467,9 +348,6 @@ public sealed record AdminAuthOutcome(
 
     public static AdminAuthOutcome ThrottledSignIn() =>
         new(429, AdminAuthCopy.SignInFailure, null, null);
-
-    public static AdminAuthOutcome LinkCompleted() =>
-        new(200, "ok", null, null);
 
     public static AdminAuthOutcome Pending(string token) =>
         new(200, "second_factor", token, null);

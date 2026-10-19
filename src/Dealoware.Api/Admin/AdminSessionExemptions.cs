@@ -24,8 +24,12 @@ public static class AdminSessionExemptions
         return Exact(path, "/admin/sign-in") && IsGetOrPost(method)
                || Exact(path, "/admin/reset") && IsGetOrPost(method)
                || Exact(path, "/admin/reset/sent") && HttpMethods.IsGet(method)
+               || Exact(path, "/admin/reset/confirm") && HttpMethods.IsGet(method)
                || Exact(path, "/admin/bootstrap") && HttpMethods.IsGet(method)
+               || Exact(path, "/admin/link-expired") && HttpMethods.IsGet(method)
                || Exact(path, "/admin/api/auth/sign-in") && HttpMethods.IsPost(method)
+               || Exact(path, "/admin/api/auth/reset") && HttpMethods.IsPost(method)
+               || Exact(path, "/admin/api/auth/reset/confirm") && HttpMethods.IsPost(method)
                || Exact(path, "/admin/api/auth/bootstrap") && HttpMethods.IsPost(method)
                || Exact(path, "/admin/sign-out") && HttpMethods.IsPost(method)
                || Exact(path, "/admin/api/auth/sign-out") && HttpMethods.IsPost(method);

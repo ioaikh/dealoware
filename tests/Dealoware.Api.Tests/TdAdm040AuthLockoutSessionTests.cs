@@ -410,115 +410,20 @@ public class TdAdm040AuthLockoutSessionTests
     }
 
     [Fact]
-    public async Task TdAdmSessionGate_BootstrapPath_MatchR2()
+    public async Task TdAdmSessionGate_ResetConfirmLinkExpiredAndBootstrap_GetIsNotUnauthorized()
     {
         await ClearAuthStateAsync();
         var client = CreateClient();
-        using var bootstrapMissing = await SendAuthAsync(
-            client, HttpMethod.Post, "/admin/api/auth/bootstrap",
-            new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.Unauthorized, bootstrapMissing.StatusCode);
-        Assert.Equal(SignInJson(), await bootstrapMissing.Content.ReadAsStringAsync());
-        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 1);
-        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthReason.InvalidLink);
-    }
-
-    [Fact]
-    public async Task TdAdmC4_GetBootstrap_TakeNoToken_NoStoreNoReferrer()
-    {
-        await ClearAuthStateAsync();
-        var client = CreateClient();
-        using var get = await SendAuthAsync(client, HttpMethod.Get, "/admin/bootstrap", null);
-        Assert.Equal(HttpStatusCode.NoContent, get.StatusCode);
-        Assert.True(
-            get.Headers.TryGetValues("Cache-Control", out var cache)
-            && cache.Any(v => v.Contains("no-store", StringComparison.OrdinalIgnoreCase)));
-        Assert.True(get.Headers.TryGetValues("Referrer-Policy", out var referrer));
-        Assert.Contains(referrer, v => string.Equals(v, "no-referrer", StringComparison.OrdinalIgnoreCase));
-        Assert.True(string.IsNullOrEmpty(ReadCookie(get, AdminSessionCookie.Name))
-                    || ReadCookie(get, AdminSessionCookie.Name) == string.Empty);
-        Assert.True(string.IsNullOrEmpty(ReadCookie(get, AdminSessionExemptions.PendingCookieName)));
-    }
-
-    [Fact]
-    public async Task TdAdmC4_QueryStringToken_IsIgnoredOnBootstrapPost()
-    {
-        await ClearAuthStateAsync();
-        var client = CreateClient();
-        var raw = await IssueBootstrapTokenAsync();
-        using var queryOnly = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath + "?token=" + raw,
-            new { password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.Unauthorized, queryOnly.StatusCode);
-        Assert.Equal(SignInJson(), await queryOnly.Content.ReadAsStringAsync());
-
-        using var bodyOk = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, bodyOk.StatusCode);
-        Assert.True(string.IsNullOrEmpty(ReadCookie(bodyOk, AdminSessionCookie.Name)));
-    }
-
-    [Fact]
-    public async Task TdAdmC4_UnknownUsedExpiredWrongAccount_SameGeneric_CountsIp_NoTokenInAudit()
-    {
-        await ClearAuthStateAsync();
-        var client = CreateClient();
-        var raw = await IssueBootstrapTokenAsync();
-        var unknown = AdminAuthService.CreateOpaqueToken();
-
-        using var unknownResponse = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = unknown, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(SignInJson(), await unknownResponse.Content.ReadAsStringAsync());
-
-        using var wrongAccount = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = raw, email = "other@example.com", password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(SignInJson(), await wrongAccount.Content.ReadAsStringAsync());
-
-        using var ok = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-
-        using var used = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = raw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(SignInJson(), await used.Content.ReadAsStringAsync());
-        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 3);
-
-        var expiredRaw = await IssueBootstrapTokenAsync();
-        _factory.Services.GetRequiredService<TestAdminClock>().Advance(TimeSpan.FromHours(24));
-        using var expired = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = expiredRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(SignInJson(), await expired.Content.ReadAsStringAsync());
-        Assert.True(await CountFailuresAsync(AdminAuthScopes.ResetIp, "127.0.0.1") >= 1);
-        foreach (var entry in await AuditAsync())
+        foreach (var path in new[]
+                 {
+                     AdminSignedOutExemptions.LinkExpired,
+                     AdminSignedOutExemptions.ResetConfirm,
+                     AdminSignedOutExemptions.Bootstrap
+                 })
         {
-            Assert.DoesNotContain(raw, entry.Action, StringComparison.Ordinal);
-            Assert.DoesNotContain(raw, entry.ActorEmail ?? "", StringComparison.Ordinal);
-            Assert.DoesNotContain(raw, entry.IpHmac ?? "", StringComparison.Ordinal);
-            Assert.DoesNotContain(raw, entry.ReasonClass ?? "", StringComparison.Ordinal);
-            Assert.DoesNotContain(raw, entry.BeforeSnapshot ?? "", StringComparison.Ordinal);
-            Assert.DoesNotContain(raw, entry.AfterSnapshot ?? "", StringComparison.Ordinal);
-            Assert.DoesNotContain(unknown, entry.BeforeSnapshot ?? "", StringComparison.Ordinal);
+            using var get = await SendAuthAsync(client, HttpMethod.Get, path, null);
+            Assert.NotEqual(HttpStatusCode.Unauthorized, get.StatusCode);
         }
-    }
-
-    [Fact]
-    public async Task TdAdmC4_BootstrapExpiresAt24Hours()
-    {
-        await ClearAuthStateAsync();
-        var client = CreateClient();
-        var clock = _factory.Services.GetRequiredService<TestAdminClock>();
-        var bootstrapRaw = await IssueBootstrapTokenAsync();
-        clock.Advance(TimeSpan.FromHours(24));
-        using var bootstrapExpired = await SendAuthAsync(
-            client, HttpMethod.Post, AdminAuthEndpoints.BootstrapPath,
-            new { token = bootstrapRaw, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
-        Assert.Equal(SignInJson(), await bootstrapExpired.Content.ReadAsStringAsync());
     }
 
     private HttpClient CreateClient() =>
@@ -660,15 +565,6 @@ public class TdAdm040AuthLockoutSessionTests
         }
 
         return null;
-    }
-
-    private async Task<string> IssueBootstrapTokenAsync()
-    {
-        var raw = AdminAuthService.CreateOpaqueToken();
-        using var scope = _factory.Services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
-            .IssueLinkAsync(AdminAuthToken.KindBootstrap, OwnerEmail, raw, CancellationToken.None);
-        return raw;
     }
 
     private static string SignInJson() => $$"""{"error":"{{SignInBody}}"}""";
