@@ -61,7 +61,9 @@ public static class AdminAuditSnapshots
         "turnstile",
         "credential",
         "privatekey",
-        "signature"
+        "signature",
+        "passphrase",
+        "accesskey"
     ];
 
     /// <summary>
@@ -148,7 +150,7 @@ public static class AdminAuditSnapshots
                 return FailClosedPlaceholder;
             return cleaned?.ToJsonString() ?? FailClosedPlaceholder;
         }
-        catch (JsonException)
+        catch (Exception)
         {
             return FailClosedPlaceholder;
         }
@@ -162,7 +164,11 @@ public static class AdminAuditSnapshots
         var normalized = NormalizeKey(name);
         if (normalized.Length == 0)
             return true;
-        if (normalized is "code" or "key")
+        if (ContainsNonAsciiLetter(normalized))
+            return true;
+        if (normalized is "code" or "key" or "pass" or "pin" or "auth")
+            return true;
+        if (normalized.EndsWith("code", StringComparison.Ordinal))
             return true;
 
         foreach (var fragment in ForbiddenFragments)
@@ -178,11 +184,19 @@ public static class AdminAuditSnapshots
     {
         var folded = key.Normalize(NormalizationForm.FormKD);
         var builder = new StringBuilder(folded.Length);
-        foreach (var ch in folded)
+        foreach (var rune in folded.EnumerateRunes())
         {
-            if (IsIgnorableKeyChar(ch) || ch is '_' or '-' or '.' || char.IsWhiteSpace(ch))
+            if (IsIgnorableRune(rune)
+                || rune.Value is '_' or '-' or '.'
+                || Rune.IsWhiteSpace(rune))
                 continue;
-            builder.Append(char.ToLowerInvariant(MapLookalike(ch)));
+            if (rune.Utf16SequenceLength == 1)
+            {
+                builder.Append(char.ToLowerInvariant(MapLookalike((char)rune.Value)));
+                continue;
+            }
+
+            builder.Append(rune);
         }
 
         return builder.ToString();
@@ -360,7 +374,7 @@ public static class AdminAuditSnapshots
             state.DepthExceeded = true;
             return promote ? null : "[redacted]";
         }
-        catch (JsonException)
+        catch (Exception)
         {
             return promote ? null : "[redacted]";
         }
@@ -439,18 +453,18 @@ public static class AdminAuditSnapshots
         var builder = new StringBuilder(text.Length);
         var i = 0;
         var copyFrom = 0;
-        while (i < span.Length)
+        while (i < text.Length)
         {
-            if (!IsBareNameStart(span[i]))
+            if (!IsWordStart(text, i))
             {
                 i++;
                 continue;
             }
 
             var nameStart = i;
-            i++;
-            while (i < span.Length && IsNameOrJwtContinue(span, i))
-                i++;
+            i += RuneLength(text, i);
+            while (i < text.Length && IsWordContinue(text, i))
+                i += RuneLength(text, i);
             var nameEnd = i;
             var word = span[nameStart..nameEnd];
 
@@ -467,24 +481,26 @@ public static class AdminAuditSnapshots
                         continue;
                     }
 
-                    var tokenEnd = ConsumeSchemeToken(span, afterScheme);
-                    if (tokenEnd > afterScheme)
+                    var lineEnd = ConsumeToEndOfLine(span, afterScheme);
+                    if (lineEnd > afterScheme)
                     {
                         builder.Append(text, copyFrom, afterScheme - copyFrom);
                         builder.Append("[redacted]");
-                        copyFrom = tokenEnd;
-                        i = tokenEnd;
+                        copyFrom = lineEnd;
+                        i = lineEnd;
                         continue;
                     }
                 }
             }
 
-            if (LooksLikeJwt(word))
+            var jwtWord = TrimTrailingJwtPunct(word);
+            if (LooksLikeJwt(jwtWord))
             {
+                var jwtEnd = nameStart + jwtWord.Length;
                 builder.Append(text, copyFrom, nameStart - copyFrom);
                 builder.Append("[redacted]");
-                copyFrom = nameEnd;
-                i = nameEnd;
+                copyFrom = jwtEnd;
+                i = jwtEnd;
                 continue;
             }
 
@@ -497,7 +513,7 @@ public static class AdminAuditSnapshots
                 || !IsForbiddenKey(word.ToString()))
                 continue;
 
-            var valueEnd = ConsumeAssignmentValue(span, afterSep);
+            var valueEnd = ConsumeAssignmentValue(span, afterSep, nameStart);
             var redactFrom = nameStart;
             if (redactFrom > 0 && span[redactFrom - 1] is '"' or '\'')
                 redactFrom--;
@@ -555,7 +571,7 @@ public static class AdminAuditSnapshots
         return false;
     }
 
-    private static int ConsumeAssignmentValue(ReadOnlySpan<char> span, int index)
+    private static int ConsumeAssignmentValue(ReadOnlySpan<char> span, int index, int lineContextStart)
     {
         index = SkipWhiteSpace(span, index);
         if (index >= span.Length)
@@ -563,6 +579,7 @@ public static class AdminAuditSnapshots
         if (span[index] is '"' or '\'')
         {
             var quote = span[index++];
+            var innerStart = index;
             while (index < span.Length)
             {
                 if (span[index] == '\\' && index + 1 < span.Length)
@@ -579,7 +596,10 @@ public static class AdminAuditSnapshots
                         continue;
                     }
 
-                    return index + 1;
+                    var after = index + 1;
+                    if (index == innerStart)
+                        return ConsumeUnquotedToLineEnd(span, after, lineContextStart);
+                    return after;
                 }
 
                 index++;
@@ -588,25 +608,39 @@ public static class AdminAuditSnapshots
             return index;
         }
 
-        while (index < span.Length
-               && span[index] is not ('\n' or '\r' or ',' or ';' or '&' or ')' or ']' or '}' or '>'))
+        return ConsumeUnquotedToLineEnd(span, index, lineContextStart);
+    }
+
+    private static int ConsumeUnquotedToLineEnd(ReadOnlySpan<char> span, int index, int lineContextStart)
+    {
+        while (index < span.Length && span[index] is not ('\n' or '\r'))
         {
+            if (span[index] == '&' && IsInsideUrlQuery(span, lineContextStart))
+                break;
             index++;
         }
 
         return index;
     }
 
-    private static int ConsumeSchemeToken(ReadOnlySpan<char> span, int index)
+    private static int ConsumeToEndOfLine(ReadOnlySpan<char> span, int index)
     {
-        while (index < span.Length
-               && !char.IsWhiteSpace(span[index])
-               && span[index] is not ('\n' or '\r' or ',' or ';' or '&' or ')' or ']' or '}' or '>'))
-        {
+        while (index < span.Length && span[index] is not ('\n' or '\r'))
             index++;
+        return index;
+    }
+
+    private static bool IsInsideUrlQuery(ReadOnlySpan<char> span, int index)
+    {
+        for (var i = Math.Min(index, span.Length - 1); i >= 0; i--)
+        {
+            if (span[i] is '\n' or '\r')
+                return false;
+            if (span[i] == '?')
+                return true;
         }
 
-        return index;
+        return false;
     }
 
     private static int SkipWhiteSpace(ReadOnlySpan<char> span, int index)
@@ -616,20 +650,24 @@ public static class AdminAuditSnapshots
         return index;
     }
 
-    private static bool IsBareNameStart(char ch)
-        => char.IsLetter(ch) || ch == '_';
-
-    private static bool IsBareNameContinue(char ch)
-        => char.IsLetterOrDigit(ch)
-           || ch is '_' or '-' or '.'
-           || IsIgnorableKeyChar(ch);
-
-    private static bool IsNameOrJwtContinue(ReadOnlySpan<char> span, int index)
+    private static bool IsWordStart(string text, int index)
     {
-        if (span[index] == '-' && index + 1 < span.Length && span[index + 1] == '>')
-            return false;
-        return IsBareNameContinue(span[index]);
+        var rune = Rune.GetRuneAt(text, index);
+        return Rune.IsLetter(rune) || rune.Value == '_';
     }
+
+    private static bool IsWordContinue(string text, int index)
+    {
+        if (text[index] == '-' && index + 1 < text.Length && text[index + 1] == '>')
+            return false;
+        var rune = Rune.GetRuneAt(text, index);
+        return Rune.IsLetterOrDigit(rune)
+               || IsIgnorableRune(rune)
+               || rune.Value is '_' or '-' or '.';
+    }
+
+    private static int RuneLength(string text, int index)
+        => Rune.GetRuneAt(text, index).Utf16SequenceLength;
 
     private static bool IsAuthScheme(ReadOnlySpan<char> word)
         => word.Equals("Bearer", StringComparison.OrdinalIgnoreCase)
@@ -648,6 +686,28 @@ public static class AdminAuditSnapshots
             or UnicodeCategory.SpacingCombiningMark
             or UnicodeCategory.EnclosingMark
             or UnicodeCategory.Format;
+    }
+
+    private static bool IsIgnorableRune(Rune rune)
+    {
+        if (rune.Utf16SequenceLength == 1)
+            return IsIgnorableKeyChar((char)rune.Value);
+        var category = Rune.GetUnicodeCategory(rune);
+        return category is UnicodeCategory.NonSpacingMark
+            or UnicodeCategory.SpacingCombiningMark
+            or UnicodeCategory.EnclosingMark
+            or UnicodeCategory.Format;
+    }
+
+    private static bool ContainsNonAsciiLetter(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (Rune.IsLetter(rune) && rune.Value > 0x7F)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -696,21 +756,35 @@ public static class AdminAuditSnapshots
     private static bool LooksLikeSecretValue(string text)
         => LooksLikeJwt(text);
 
+    private static ReadOnlySpan<char> TrimTrailingJwtPunct(ReadOnlySpan<char> text)
+    {
+        while (text.Length > 0 && text[^1] is '.' or '?' or '!' or ':')
+            text = text[..^1];
+        return text;
+    }
+
     private static bool LooksLikeJwt(ReadOnlySpan<char> text)
     {
-        var first = text.IndexOf('.');
-        if (first < 4)
+        text = TrimTrailingJwtPunct(text);
+        if (text.Length < 10)
             return false;
-        var remaining = text[(first + 1)..];
-        var secondRel = remaining.IndexOf('.');
-        if (secondRel <= 0 || secondRel == remaining.Length - 1)
-            return false;
-        var second = first + 1 + secondRel;
-        if (text[(second + 1)..].IndexOf('.') >= 0)
-            return false;
-        return IsBase64Url(text[..first])
-               && IsBase64Url(text[(first + 1)..second])
-               && IsBase64Url(text[(second + 1)..]);
+
+        var segments = 0;
+        var start = 0;
+        for (var i = 0; i <= text.Length; i++)
+        {
+            if (i < text.Length && text[i] != '.')
+                continue;
+            var length = i - start;
+            if (length == 0 || !IsBase64Url(text.Slice(start, length)))
+                return false;
+            if (segments == 0 && length < 4)
+                return false;
+            segments++;
+            start = i + 1;
+        }
+
+        return segments is 3 or 5;
     }
 
     private static bool IsBase64Url(ReadOnlySpan<char> span)

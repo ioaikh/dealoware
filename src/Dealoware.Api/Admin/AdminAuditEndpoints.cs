@@ -61,9 +61,17 @@ public static class AdminAuditEndpoints
         entityId = entry.EntityId,
         reasonClass = entry.ReasonClass,
         correlationId = entry.CorrelationId,
-        beforeSnapshot = entry.BeforeSnapshot,
-        afterSnapshot = entry.AfterSnapshot
+        beforeSnapshot = SanitizeStored(entry.BeforeSnapshot),
+        afterSnapshot = SanitizeStored(entry.AfterSnapshot)
     };
+
+    private static string? SanitizeStored(string? snapshot)
+    {
+        if (snapshot is null)
+            return null;
+        return AdminAuditSnapshots.StripForbiddenKeys(snapshot)
+               ?? AdminAuditSnapshots.FailClosedPlaceholder;
+    }
 
     private static string Prefix(string ipHmac)
     {

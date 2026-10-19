@@ -366,11 +366,11 @@ public class AdminAuditSecretStripTests
     {
         const string jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJpc2FhYyJ9.dGVzdHNpZ25hdHVyZQ";
         const string bearer = "Bearer LEAK-bearer-value-v1";
-        var raw = "{\"note\":\"" + jwt + "\",\"auth\":\"" + bearer + "\",\"displayName\":\"visible-audit-field\"}";
+        var raw = "{\"note\":\"" + jwt + "\",\"header\":\"" + bearer + "\",\"displayName\":\"visible-audit-field\"}";
         var stripped = AdminAuditSnapshots.StripForbiddenKeys(raw);
         using var doc = JsonDocument.Parse(stripped!);
         Assert.Equal("[redacted]", doc.RootElement.GetProperty("note").GetString());
-        Assert.Equal("Bearer [redacted]", doc.RootElement.GetProperty("auth").GetString());
+        Assert.Equal("Bearer [redacted]", doc.RootElement.GetProperty("header").GetString());
         Assert.Equal(VisibleMarker, doc.RootElement.GetProperty("displayName").GetString());
         Assert.DoesNotContain(jwt, stripped);
         Assert.DoesNotContain("LEAK-bearer-value-v1", stripped);
@@ -383,7 +383,7 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(BearerMidSecret, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(BearerMidSecret, body, StringComparison.Ordinal);
         using var doc = JsonDocument.Parse(stored);
-        Assert.Equal("see Bearer [redacted] later", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal("see Bearer [redacted]", doc.RootElement.GetProperty("note").GetString());
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(BasicMidSecret, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(BasicMidSecret, body, StringComparison.Ordinal);
         using var doc = JsonDocument.Parse(stored);
-        Assert.Equal("see Basic [redacted] later", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal("see Basic [redacted]", doc.RootElement.GetProperty("note").GetString());
     }
 
     [Fact]
@@ -403,7 +403,7 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(DigestMidSecret, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(DigestMidSecret, body, StringComparison.Ordinal);
         using var doc = JsonDocument.Parse(stored);
-        Assert.Equal("see Digest [redacted] later", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal("see Digest [redacted]", doc.RootElement.GetProperty("note").GetString());
     }
 
     [Fact]
@@ -413,7 +413,7 @@ public class AdminAuditSecretStripTests
         Assert.DoesNotContain(TokenSchemeSecret, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(TokenSchemeSecret, body, StringComparison.Ordinal);
         using var doc = JsonDocument.Parse(stored);
-        Assert.Equal("see Token [redacted] later", doc.RootElement.GetProperty("note").GetString());
+        Assert.Equal("see Token [redacted]", doc.RootElement.GetProperty("note").GetString());
     }
 
     [Fact]
