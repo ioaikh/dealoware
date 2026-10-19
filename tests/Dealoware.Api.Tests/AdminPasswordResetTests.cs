@@ -262,6 +262,8 @@ public class AdminPasswordResetTests
         Assert.Contains("role=\"alert\"", queryBody, StringComparison.Ordinal);
         Assert.Contains(">Change password</button>", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("Update password", queryBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-timeout-ms", queryBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("__dwResetTimeoutMs", queryBody, StringComparison.Ordinal);
         Assert.Contains($"src=\"{AdminPasswordResetCopy.ConfirmScriptPath}\"", queryBody);
         Assert.Contains("autocomplete=\"one-time-code\"", queryBody, StringComparison.Ordinal);
         Assert.Contains("name=\"dw-csrf\"", queryBody, StringComparison.Ordinal);
@@ -312,11 +314,19 @@ public class AdminPasswordResetTests
     {
         var showRetry = Regex.Match(script, @"function showRetry\([^)]*\) \{[\s\S]*?\n  \}");
         Assert.True(showRetry.Success, "showRetry() must be present");
+        Assert.Contains("retryAction = action || check", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.DoesNotContain("alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("retryBtn.hidden = false", showRetry.Value, StringComparison.Ordinal);
 
-        Assert.Contains("window.__dwResetTimeoutMs", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("__dwResetTimeoutMs", script, StringComparison.Ordinal);
+        Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
+        Assert.Contains("function submitConfirm()", script, StringComparison.Ordinal);
+        Assert.Contains("retryAction();", script, StringComparison.Ordinal);
+        Assert.Contains("totp-error", script, StringComparison.Ordinal);
+        Assert.Contains("Enter your authenticator code or a recovery code.", script, StringComparison.Ordinal);
+        Assert.Contains("totpVal ? \"\" : recVal", script, StringComparison.Ordinal);
+        Assert.Contains("showRetry(undefined, submitConfirm)", script, StringComparison.Ordinal);
         Assert.Contains("if (!token)", script, StringComparison.Ordinal);
         Assert.Contains("location.replace(EXPIRED)", script, StringComparison.Ordinal);
         Assert.Contains("newPassword-error", script, StringComparison.Ordinal);
@@ -329,10 +339,35 @@ public class AdminPasswordResetTests
         Assert.Contains("totpEl.value = \"\"", script, StringComparison.Ordinal);
         Assert.Contains("recoveryEl.value = \"\"", script, StringComparison.Ordinal);
         Assert.Contains("body.message", script, StringComparison.Ordinal);
-        Assert.Contains("field.focus()", script, StringComparison.Ordinal);
-        Assert.Contains("check();", script, StringComparison.Ordinal);
-        var beforeCheck = script[..script.LastIndexOf("check();", StringComparison.Ordinal)];
+        var beforeCheck = script[..script.LastIndexOf("\n  check();", StringComparison.Ordinal)];
         Assert.Contains("if (!token)", beforeCheck, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TD_ADM_031_ResetCopy_MatchesApprovedSentences()
+    {
+        Assert.Equal("If that account exists, we've sent instructions.", AdminPasswordResetCopy.RequestAccepted);
+        Assert.Equal("This link is no longer valid. Request a new one.", AdminPasswordResetCopy.InvalidLink);
+        Assert.Equal(
+            "We couldn't sign you in. Check your details and try again later. You can also reset your password.",
+            AdminPasswordResetCopy.SignInGeneric);
+
+        var endpoints = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
+        Assert.Contains("RequestThrottledResult()", endpoints, StringComparison.Ordinal);
+        Assert.Contains("ConfirmThrottledResult()", endpoints, StringComparison.Ordinal);
+        Assert.Contains(
+            "new { message = AdminPasswordResetCopy.RequestAccepted }",
+            endpoints,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new { message = AdminPasswordResetCopy.SignInGeneric }",
+            endpoints,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ConfirmThrottledResult()\n        => Results.Json(\n            new { message = AdminPasswordResetCopy.RequestAccepted }",
+            endpoints.Replace("\r\n", "\n"),
+            StringComparison.Ordinal);
     }
 
     [Fact]

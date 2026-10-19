@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Confirm-page Playwright over HTTPS (Chief UI/UX N5).
+# Confirm-page Playwright over HTTPS (Chief UI/UX N5 / P1 / P2 / P5).
 # Not wired into Admin UI CI (deny-live would reject the admin host; that
 # workflow's path filter is e2e/admin/**).
 #
 #   ./e2e/reset-confirm/run.sh
 #
+# Requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com.
 # Throwaway cert and keys stay in mktemp. Nothing is written into the repo.
 set -euo pipefail
 
@@ -19,6 +20,28 @@ cleanup() {
   rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
+
+can_bind_443() {
+  python3 - <<'PY'
+import socket, sys
+s = socket.socket()
+try:
+    s.bind(("127.0.0.1", 443))
+    sys.exit(0)
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+if ! can_bind_443; then
+  sudo -n sysctl -w net.ipv4.ip_unprivileged_port_start=0 >/dev/null 2>&1 || true
+fi
+if ! can_bind_443; then
+  echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. No 8443 fallback." >&2
+  exit 1
+fi
 
 umask 077
 PFX_PASS="$(openssl rand -base64 24)"
@@ -41,8 +64,11 @@ TOTP_KEY="$(openssl rand -base64 32)"
 RECOVERY_KEY="$(openssl rand -base64 32)"
 DB="$WORKDIR/e2e.db"
 OWNER="alex.doe@example.test"
+CURRENT_PASSWORD="radio station prior!"
 TOKEN="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+SUCCESS_TOKEN="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
 TOKEN_HASH="$(printf '%s' "$TOKEN" | openssl dgst -sha256 -hex | awk '{print toupper($NF)}')"
+SUCCESS_HASH="$(printf '%s' "$SUCCESS_TOKEN" | openssl dgst -sha256 -hex | awk '{print toupper($NF)}')"
 NOW="$(python3 - <<'PY'
 from datetime import datetime, timezone
 print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f') + '0Z')
@@ -53,39 +79,39 @@ from datetime import datetime, timezone, timedelta
 print((datetime.now(timezone.utc) + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S.%f') + '0Z')
 PY
 )"
-DUMMY_HASH='pbkdf2-sha512$220000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-ACCOUNT_ID="$(python3 - <<'PY'
-import uuid
-print(str(uuid.uuid4()))
+ACCOUNT_ID="$(python3 -c 'import uuid; print(str(uuid.uuid4()).upper())')"
+LIVE_TOKEN_ID="$(python3 -c 'import uuid; print(str(uuid.uuid4()).upper())')"
+SUCCESS_TOKEN_ID="$(python3 -c 'import uuid; print(str(uuid.uuid4()).upper())')"
+
+SEED_OUT="$(python3 - "$TOTP_KEY" "$CURRENT_PASSWORD" <<'PY'
+import base64, hashlib, os, sys
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+totp_key = base64.b64decode(sys.argv[1])
+password = sys.argv[2].encode("utf-8")
+salt = os.urandom(16)
+dk = hashlib.pbkdf2_hmac("sha512", password, salt, 220000, dklen=32)
+pw_hash = "pbkdf2-sha512$220000$%s$%s" % (
+    base64.b64encode(salt).decode("ascii"),
+    base64.b64encode(dk).decode("ascii"),
+)
+secret = os.urandom(20)
+aes = AESGCM(totp_key)
+nonce = os.urandom(12)
+raw = aes.encrypt(nonce, secret, None)
+ciphertext, tag = raw[:-16], raw[-16:]
+packed = nonce + tag + ciphertext
+print(pw_hash)
+print(base64.b64encode(packed).decode("ascii"))
+print(secret.hex())
 PY
 )"
-
-PORT=8443
-if python3 - <<'PY'
-import socket, sys
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", 443))
-    sys.exit(0)
-except OSError:
-    sys.exit(1)
-finally:
-    s.close()
-PY
-then
-  PORT=443
-fi
-
-if [[ "$PORT" -eq 443 ]]; then
-  BASE_URL="https://admin.core.dealoware.com"
-  LISTEN="https://127.0.0.1:443"
-else
-  BASE_URL="https://admin.core.dealoware.com:${PORT}"
-  LISTEN="https://127.0.0.1:${PORT}"
-fi
+PASSWORD_HASH="$(printf '%s\n' "$SEED_OUT" | sed -n '1p')"
+TOTP_CIPHER="$(printf '%s\n' "$SEED_OUT" | sed -n '2p')"
+TOTP_SECRET_HEX="$(printf '%s\n' "$SEED_OUT" | sed -n '3p')"
 
 export ASPNETCORE_ENVIRONMENT=Development
-export ASPNETCORE_URLS="$LISTEN"
+export ASPNETCORE_URLS="https://127.0.0.1:443"
 export ASPNETCORE_Kestrel__Certificates__Default__Path="$WORKDIR/cert.pfx"
 export ASPNETCORE_Kestrel__Certificates__Default__Password="$PFX_PASS"
 export ConnectionStrings__DefaultConnection="Data Source=${DB}"
@@ -101,7 +127,7 @@ API_PID=$!
 
 ready=0
 for _ in $(seq 1 90); do
-  if curl -skf "https://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+  if curl -skf "https://127.0.0.1:443/health" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -118,27 +144,35 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-python3 - "$DB" "$OWNER" "$TOKEN_HASH" "$NOW" "$EXPIRES" "$DUMMY_HASH" "$ACCOUNT_ID" <<'PY'
+python3 - "$DB" "$OWNER" "$PASSWORD_HASH" "$TOTP_CIPHER" "$NOW" "$EXPIRES" \
+  "$ACCOUNT_ID" "$LIVE_TOKEN_ID" "$TOKEN_HASH" "$SUCCESS_TOKEN_ID" "$SUCCESS_HASH" <<'PY'
 import sqlite3, sys
-db, owner, token_hash, now, expires, dummy_hash, account_id = sys.argv[1:]
+(db, owner, pw_hash, totp_cipher, now, expires,
+ account_id, live_id, live_hash, success_id, success_hash) = sys.argv[1:]
 con = sqlite3.connect(db)
 cur = con.cursor()
 cur.execute(
     "INSERT INTO AdminCredentials (Email, PasswordHash, PasswordUpdatedAt) VALUES (?, ?, ?)",
-    (owner, dummy_hash, now),
+    (owner, pw_hash, now),
 )
 cur.execute(
     """INSERT INTO AdminCoreOwnerAccounts (
          Id, Email, PasswordHash, TotpSecretCipher, TotpEnrolledAt,
          RecoveryCodesIssued, FailedFactorAttempts, CreatedAt
        ) VALUES (?, ?, ?, ?, ?, 1, 0, ?)""",
-    (account_id, owner, dummy_hash, "e2e-not-a-secret", now, now),
+    (account_id, owner, pw_hash, totp_cipher, now, now),
 )
 cur.execute(
     """INSERT INTO AdminPasswordResetTokens (
          Id, Email, TokenHash, CreatedAt, ExpiresAt, ConsumedAt, FailedCodeAttempts
        ) VALUES (?, ?, ?, ?, ?, NULL, 0)""",
-    (account_id, owner, token_hash, now, expires),
+    (live_id, owner, live_hash, now, expires),
+)
+cur.execute(
+    """INSERT INTO AdminPasswordResetTokens (
+         Id, Email, TokenHash, CreatedAt, ExpiresAt, ConsumedAt, FailedCodeAttempts
+       ) VALUES (?, ?, ?, ?, ?, NULL, 0)""",
+    (success_id, owner, success_hash, now, expires),
 )
 con.commit()
 con.close()
@@ -150,8 +184,10 @@ if [[ ! -d node_modules/@playwright/test ]]; then
 fi
 npx playwright install chromium >/dev/null
 
-export RESET_CONFIRM_BASE_URL="$BASE_URL"
+export RESET_CONFIRM_BASE_URL="https://admin.core.dealoware.com"
 export RESET_CONFIRM_TOKEN="$TOKEN"
+export RESET_CONFIRM_SUCCESS_TOKEN="$SUCCESS_TOKEN"
+export RESET_CONFIRM_TOTP_SECRET_HEX="$TOTP_SECRET_HEX"
 if [[ -d /opt/cursor/artifacts ]]; then
   export RESET_CONFIRM_ARTIFACTS=/opt/cursor/artifacts
 fi

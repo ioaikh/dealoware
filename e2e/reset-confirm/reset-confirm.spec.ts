@@ -1,15 +1,19 @@
-import { test, expect, chromium, type Page, type Route } from '@playwright/test';
+import { test, expect, chromium, type Page } from '@playwright/test';
+import crypto from 'crypto';
 
 const CHECK_PATH = '/admin/api/auth/reset/confirm/check';
 const CONFIRM_PATH = '/admin/api/auth/reset/confirm';
-const ORIGIN = 'https://admin.core.dealoware.com';
 const CHECK_RETRY = 'We couldn\'t check your link. Wait a moment and try again.';
 const SIGN_IN_GENERIC =
   'We couldn\'t sign you in. Check your details and try again later. You can also reset your password.';
 const LINK_EXPIRED = 'This link is no longer valid. Request a new one.';
 const NOSCRIPT = 'Turn on JavaScript to set your password.';
 const TOO_SHORT = 'Use at least 15 characters.';
+const FACTOR_ERROR = 'Enter your authenticator code or a recovery code.';
 const LIVE_TOKEN = process.env.RESET_CONFIRM_TOKEN ?? '';
+const SUCCESS_TOKEN = process.env.RESET_CONFIRM_SUCCESS_TOKEN ?? '';
+const TOTP_SECRET_HEX = process.env.RESET_CONFIRM_TOTP_SECRET_HEX ?? '';
+const NEW_PASSWORD = 'radio station later!';
 const CONFIRM_429_MESSAGE = 'Slow down. Wait a moment and try again.';
 const ARTIFACTS = process.env.RESET_CONFIRM_ARTIFACTS;
 
@@ -26,14 +30,19 @@ function isConfirm(url: string): boolean {
   return new URL(url).pathname === CONFIRM_PATH;
 }
 
-async function rewriteOrigin(route: Route): Promise<void> {
-  const method = route.request().method();
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
-    await route.continue();
-    return;
-  }
-  const headers = { ...route.request().headers(), origin: ORIGIN };
-  await route.continue({ headers });
+function totpCode(secretHex: string, nowMs = Date.now()): string {
+  const secret = Buffer.from(secretHex, 'hex');
+  const timestep = Math.floor(nowMs / 1000 / 30);
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(timestep));
+  const hmac = crypto.createHmac('sha1', secret).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24)
+    | (hmac[offset + 1] << 16)
+    | (hmac[offset + 2] << 8)
+    | hmac[offset + 3];
+  return String(binary % 1_000_000).padStart(6, '0');
 }
 
 async function expectNoSa5(page: Page): Promise<void> {
@@ -51,11 +60,12 @@ async function expectRetryFocused(page: Page, text: string): Promise<void> {
   await expectNoSa5(page);
 }
 
-test.describe.configure({ mode: 'serial' });
+async function openForm(page: Page, token = LIVE_TOKEN): Promise<void> {
+  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(token)}`);
+  await expect(page.locator('#reset-form')).toBeVisible();
+}
 
-test.beforeEach(async ({ page }) => {
-  await page.route('**/*', rewriteOrigin);
-});
+test.describe.configure({ mode: 'serial' });
 
 test('confirm page has exactly one nonce CSP and drops the fragment', async ({ page }) => {
   const response = await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
@@ -64,6 +74,8 @@ test('confirm page has exactly one nonce CSP and drops the fragment', async ({ p
     (h) => h.name.toLowerCase() === 'content-security-policy');
   expect(csp).toHaveLength(1);
   const html = await response!.text();
+  expect(html).not.toContain('data-timeout-ms');
+  expect(html).not.toContain('__dwResetTimeoutMs');
   const nonceMatch = html.match(/<script src="\/admin\/auth\/reset-confirm\.js" nonce="([^"]+)"><\/script>/);
   expect(nonceMatch).not.toBeNull();
   const nonce = nonceMatch![1];
@@ -95,8 +107,7 @@ test('dead token goes to link-expired', async ({ page }) => {
 });
 
 test('good token shows the form with focus on New password', async ({ page }) => {
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expect(page.locator('#reset-form')).toBeVisible();
+  await openForm(page);
   await expect(page.locator('#newPassword')).toBeFocused();
   await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
   await shot(page, 'reset_confirm_form_focus');
@@ -123,20 +134,19 @@ test('check 500 shows retry with Try again focused and no S-A5', async ({ page }
   await expectRetryFocused(page, CHECK_RETRY);
 });
 
-test('check timeout uses the injectable clock and focuses Try again', async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as Window & { __dwResetTimeoutMs?: number }).__dwResetTimeoutMs = 50;
-  });
+test('check timeout uses the Playwright clock and focuses Try again', async ({ page }) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
   await page.route((url) => isCheck(url.href), async () => {
-    await new Promise(() => { /* hang until the injectable timeout aborts */ });
+    await new Promise(() => { /* hang until the clock fires the 15 s abort */ });
   });
   await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
+  await page.clock.fastForward(15000);
   await expectRetryFocused(page, CHECK_RETRY);
 });
 
 test('submit 400 puts the server rule under New password and focuses it', async ({ page }) => {
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expect(page.locator('#newPassword')).toBeVisible();
+  await openForm(page);
   await page.locator('#newPassword').fill('short-value');
   await page.locator('#totp').fill('123456');
   await page.getByRole('button', { name: 'Change password', exact: true }).click();
@@ -162,9 +172,8 @@ test('submit 401 shows the sign-in alert, keeps the password, and clears 2FA', a
       body: JSON.stringify({ error: SIGN_IN_GENERIC }),
     });
   });
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expect(page.locator('#newPassword')).toBeVisible();
-  await page.locator('#newPassword').fill('radio station later!');
+  await openForm(page);
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
   await page.locator('#totp').fill('123456');
   await page.locator('#recoveryCode').fill('AAAA-BBBB');
   await page.getByRole('button', { name: 'Change password', exact: true }).click();
@@ -172,7 +181,7 @@ test('submit 401 shows the sign-in alert, keeps the password, and clears 2FA', a
   await expect(alert).toBeVisible();
   await expect(alert).toHaveText(SIGN_IN_GENERIC);
   await expect(alert).toBeFocused();
-  await expect(page.locator('#newPassword')).toHaveValue('radio station later!');
+  await expect(page.locator('#newPassword')).toHaveValue(NEW_PASSWORD);
   await expect(page.locator('#totp')).toHaveValue('');
   await expect(page.locator('#recoveryCode')).toHaveValue('');
   await expect(page.locator('#reset-form')).toBeVisible();
@@ -180,43 +189,149 @@ test('submit 401 shows the sign-in alert, keeps the password, and clears 2FA', a
   await shot(page, 'reset_confirm_submit_401');
 });
 
-test('submit 429 calls showRetry with the server message and focuses Try again', async ({ page }) => {
+test('submit 429 Try again resubmits once with zero check requests', async ({ page }) => {
+  let confirms = 0;
+  let checks = 0;
   await page.route((url) => isConfirm(url.href), async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
     }
+    confirms += 1;
+    if (confirms === 1) {
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: CONFIRM_429_MESSAGE }),
+      });
+      return;
+    }
+    const posted = route.request().postDataJSON() as {
+      newPassword?: string;
+      totp?: string;
+    };
+    expect(posted.newPassword).toBe(NEW_PASSWORD);
+    expect(posted.totp).toBe('123456');
     await route.fulfill({
-      status: 429,
+      status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ message: CONFIRM_429_MESSAGE }),
+      body: JSON.stringify({ message: 'ok' }),
     });
   });
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expect(page.locator('#newPassword')).toBeVisible();
-  await page.locator('#newPassword').fill('radio station later!');
+  page.on('request', (req) => {
+    if (isCheck(req.url())) checks += 1;
+  });
+  await openForm(page);
+  const checksAfterLoad = checks;
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
   await page.locator('#totp').fill('123456');
   await page.getByRole('button', { name: 'Change password', exact: true }).click();
   await expectRetryFocused(page, CONFIRM_429_MESSAGE);
+  await page.locator('#reset-retry').click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  expect(confirms).toBe(2);
+  expect(checks).toBe(checksAfterLoad);
+  await expectNoSa5(page);
 });
 
-test('submit timeout uses the injectable clock and the generic retry text', async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as Window & { __dwResetTimeoutMs?: number }).__dwResetTimeoutMs = 50;
-  });
+test('submit timeout Try again resubmits once with zero check requests', async ({ page }) => {
+  let confirms = 0;
+  let checks = 0;
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
   await page.route((url) => isConfirm(url.href), async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
     }
-    await new Promise(() => { /* hang until the injectable timeout aborts */ });
+    confirms += 1;
+    if (confirms === 1) {
+      await new Promise(() => { /* hang until the clock fires the 15 s abort */ });
+      return;
+    }
+    const posted = route.request().postDataJSON() as {
+      newPassword?: string;
+      totp?: string;
+    };
+    expect(posted.newPassword).toBe(NEW_PASSWORD);
+    expect(posted.totp).toBe('123456');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'ok' }),
+    });
   });
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expect(page.locator('#newPassword')).toBeVisible();
-  await page.locator('#newPassword').fill('radio station later!');
+  page.on('request', (req) => {
+    if (isCheck(req.url())) checks += 1;
+  });
+  await openForm(page);
+  const checksAfterLoad = checks;
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
   await page.locator('#totp').fill('123456');
   await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await page.clock.fastForward(15000);
   await expectRetryFocused(page, CHECK_RETRY);
+  await page.locator('#reset-retry').click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  expect(confirms).toBe(2);
+  expect(checks).toBe(checksAfterLoad);
+  await expectNoSa5(page);
+});
+
+test('neither 2FA field filled does not send and errors under Authenticator code', async ({ page }) => {
+  let confirms = 0;
+  page.on('request', (req) => {
+    if (isConfirm(req.url()) && req.method() === 'POST') confirms += 1;
+  });
+  await openForm(page);
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  const totp = page.locator('#totp');
+  await expect(page.locator('#totp-error')).toHaveText(FACTOR_ERROR);
+  await expect(totp).toHaveAttribute('aria-invalid', 'true');
+  await expect(totp).toHaveAttribute('aria-describedby', 'totp-error');
+  await expect(totp).toBeFocused();
+  expect(confirms).toBe(0);
+  await expect(page).not.toHaveURL(/\/admin\/link-expired/);
+  await expectNoSa5(page);
+});
+
+test('both 2FA fields filled sends only the authenticator code', async ({ page }) => {
+  let posted: { totp?: string; recoveryCode?: string } | undefined;
+  await page.route((url) => isConfirm(url.href), async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    posted = route.request().postDataJSON() as { totp?: string; recoveryCode?: string };
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: SIGN_IN_GENERIC }),
+    });
+  });
+  await openForm(page);
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
+  await page.locator('#totp').fill('123456');
+  await page.locator('#recoveryCode').fill('AAAA-BBBB');
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await expect(page.locator('#reset-alert')).toHaveText(SIGN_IN_GENERIC);
+  expect(posted?.totp).toBe('123456');
+  expect(posted?.recoveryCode).toBe('');
+  await expect(page).not.toHaveURL(/\/admin\/link-expired/);
+  await expectNoSa5(page);
+});
+
+test('wrong then right authenticator code completes the reset', async ({ page }) => {
+  await openForm(page, SUCCESS_TOKEN);
+  await page.locator('#newPassword').fill(NEW_PASSWORD);
+  await page.locator('#totp').fill('000000');
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await expect(page.locator('#reset-alert')).toHaveText(SIGN_IN_GENERIC);
+  await page.locator('#totp').fill(totpCode(TOTP_SECRET_HEX));
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  await expectNoSa5(page);
 });
 
 test('with JavaScript off, only the noscript text shows', async () => {
@@ -237,6 +352,7 @@ test('with JavaScript off, only the noscript text shows', async () => {
     const html = await page.content();
     expect(html).toContain(`<noscript>${NOSCRIPT}</noscript>`);
     expect(html).toContain('id="reset-status" role="status" hidden');
+    expect(html).not.toContain('data-timeout-ms');
     await expect(page.locator('#reset-status')).toBeHidden();
     await expect(page.locator('#reset-form')).toBeHidden();
     await expect(page.locator('#reset-alert')).toBeHidden();

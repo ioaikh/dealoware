@@ -3,10 +3,13 @@
   var CONFIRM = "/admin/api/auth/reset/confirm";
   var EXPIRED = "/admin/link-expired";
   var SIGN_IN = "/admin/sign-in";
-  var TIMEOUT_MS = window.__dwResetTimeoutMs || 15000;
+  var TIMEOUT_MS = 15000;
   var SIGN_IN_GENERIC =
     "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
+  var FACTOR_ERROR =
+    "Enter your authenticator code or a recovery code.";
   var PASSWORD_ERROR_ID = "newPassword-error";
+  var TOTP_ERROR_ID = "totp-error";
 
   var hash = location.hash;
   history.replaceState(null, "", location.pathname);
@@ -24,6 +27,7 @@
   var form = document.getElementById("reset-form");
   var main = document.getElementById("reset-main");
   var inflight = false;
+  var retryAction = check;
 
   function retryCopy() {
     return (alertEl && alertEl.getAttribute("data-retry")) || "";
@@ -33,25 +37,39 @@
     return document.getElementById("newPassword");
   }
 
-  function clearPasswordError() {
-    var field = newPasswordEl();
+  function totpFieldEl() {
+    return document.getElementById("totp");
+  }
+
+  function recoveryFieldEl() {
+    return document.getElementById("recoveryCode");
+  }
+
+  function clearDescribedError(id, field) {
     if (field) {
       field.removeAttribute("aria-invalid");
       field.removeAttribute("aria-describedby");
     }
-    var existing = document.getElementById(PASSWORD_ERROR_ID);
+    var existing = document.getElementById(id);
     if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
   }
 
-  function showPasswordError(message) {
-    clearPasswordError();
-    var field = newPasswordEl();
+  function clearPasswordError() {
+    clearDescribedError(PASSWORD_ERROR_ID, newPasswordEl());
+  }
+
+  function clearTotpError() {
+    clearDescribedError(TOTP_ERROR_ID, totpFieldEl());
+  }
+
+  function showFieldError(id, field, message) {
+    clearDescribedError(id, field);
     if (!field) return;
     var error = document.createElement("p");
-    error.id = PASSWORD_ERROR_ID;
+    error.id = id;
     error.textContent = message || "";
     field.setAttribute("aria-invalid", "true");
-    field.setAttribute("aria-describedby", PASSWORD_ERROR_ID);
+    field.setAttribute("aria-describedby", id);
     var label = field.closest("label") || field;
     if (label.parentNode) {
       if (label.nextSibling) label.parentNode.insertBefore(error, label.nextSibling);
@@ -60,7 +78,16 @@
     field.focus();
   }
 
-  function showRetry(message) {
+  function showPasswordError(message) {
+    showFieldError(PASSWORD_ERROR_ID, newPasswordEl(), message);
+  }
+
+  function showTotpError(message) {
+    showFieldError(TOTP_ERROR_ID, totpFieldEl(), message);
+  }
+
+  function showRetry(message, action) {
+    retryAction = action || check;
     if (statusEl) statusEl.hidden = true;
     if (form) form.hidden = true;
     if (alertEl) {
@@ -76,6 +103,7 @@
 
   function showForm() {
     clearPasswordError();
+    clearTotpError();
     if (statusEl) statusEl.hidden = true;
     if (alertEl) alertEl.hidden = true;
     if (retryBtn) retryBtn.hidden = true;
@@ -157,64 +185,78 @@
     });
   }
 
+  function submitConfirm() {
+    if (inflight) return;
+    inflight = true;
+    clearPasswordError();
+    clearTotpError();
+    if (alertEl) alertEl.hidden = true;
+    if (retryBtn) retryBtn.hidden = true;
+    if (form) form.hidden = false;
+
+    var totpEl = totpFieldEl();
+    var recoveryEl = recoveryFieldEl();
+    var totpVal = totpEl ? totpEl.value.trim() : "";
+    var recVal = recoveryEl ? recoveryEl.value.trim() : "";
+    if (!totpVal && !recVal) {
+      showTotpError(FACTOR_ERROR);
+      inflight = false;
+      return;
+    }
+
+    fetchWithTimeout(CONFIRM, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        token: document.getElementById("token").value,
+        newPassword: document.getElementById("newPassword").value,
+        totp: totpVal,
+        recoveryCode: totpVal ? "" : recVal
+      })
+    }).then(function (r) {
+      if (r.redirected) {
+        goExpired(r.url);
+        return;
+      }
+      if (r.ok) {
+        location.replace(SIGN_IN);
+        return;
+      }
+      if (r.status === 400) {
+        return readJson(r).then(function (body) {
+          showPasswordError(body && body.error ? body.error : "");
+          inflight = false;
+        });
+      }
+      if (r.status === 401) {
+        if (totpEl) totpEl.value = "";
+        if (recoveryEl) recoveryEl.value = "";
+        showSignInAlert();
+        inflight = false;
+        return;
+      }
+      if (r.status === 429) {
+        return readJson(r).then(function (body) {
+          showRetry(body && body.message ? body.message : retryCopy(), submitConfirm);
+          inflight = false;
+        });
+      }
+      showRetry(undefined, submitConfirm);
+      inflight = false;
+    }).catch(function () {
+      showRetry(undefined, submitConfirm);
+      inflight = false;
+    });
+  }
+
   if (retryBtn) {
-    retryBtn.addEventListener("click", function () { check(); });
+    retryBtn.addEventListener("click", function () { retryAction(); });
   }
 
   if (form) {
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (inflight) return;
-      inflight = true;
-      clearPasswordError();
-      if (alertEl) alertEl.hidden = true;
-      if (retryBtn) retryBtn.hidden = true;
-
-      fetchWithTimeout(CONFIRM, {
-        method: "POST",
-        headers: jsonHeaders(),
-        body: JSON.stringify({
-          token: document.getElementById("token").value,
-          newPassword: document.getElementById("newPassword").value,
-          totp: document.getElementById("totp").value,
-          recoveryCode: document.getElementById("recoveryCode").value
-        })
-      }).then(function (r) {
-        if (r.redirected) {
-          goExpired(r.url);
-          return;
-        }
-        if (r.ok) {
-          location.replace(SIGN_IN);
-          return;
-        }
-        if (r.status === 400) {
-          return readJson(r).then(function (body) {
-            showPasswordError(body && body.error ? body.error : "");
-            inflight = false;
-          });
-        }
-        if (r.status === 401) {
-          var totpEl = document.getElementById("totp");
-          var recoveryEl = document.getElementById("recoveryCode");
-          if (totpEl) totpEl.value = "";
-          if (recoveryEl) recoveryEl.value = "";
-          showSignInAlert();
-          inflight = false;
-          return;
-        }
-        if (r.status === 429) {
-          return readJson(r).then(function (body) {
-            showRetry(body && body.message ? body.message : retryCopy());
-            inflight = false;
-          });
-        }
-        showRetry();
-        inflight = false;
-      }).catch(function () {
-        showRetry();
-        inflight = false;
-      });
+      submitConfirm();
     });
   }
 
