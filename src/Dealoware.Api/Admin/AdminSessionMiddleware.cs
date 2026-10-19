@@ -124,12 +124,7 @@ public sealed class AdminSessionMiddleware
                 await AdminSignedOutExemptions.HasValidPendingTokenAsync(
                     context, accounts, context.RequestAborted)
                 || await HasStep5TokenAsync(context, AdminAuthToken.KindPending, clock),
-            AdminSignedOutExemptions.TokenKind.PasswordReset =>
-                HttpMethods.IsGet(context.Request.Method)
-                || await HasStep5TokenAsync(context, AdminAuthToken.KindReset, clock),
-            AdminSignedOutExemptions.TokenKind.Bootstrap =>
-                HttpMethods.IsGet(context.Request.Method)
-                || await HasStep5TokenAsync(context, AdminAuthToken.KindBootstrap, clock),
+            // Bootstrap / reset tokens are owned by Steps 2 and 4. Missing token → not exempt.
             _ => false
         };
     }

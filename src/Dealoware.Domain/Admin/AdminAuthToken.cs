@@ -7,7 +7,6 @@ public sealed class AdminAuthToken
 {
     public const string KindPending = "pending";
     public const string KindReset = "reset";
-    public const string KindBootstrap = "bootstrap";
 
     public Guid Id { get; private set; }
     public string Kind { get; private set; } = string.Empty;

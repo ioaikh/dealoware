@@ -410,20 +410,19 @@ public class TdAdm040AuthLockoutSessionTests
     }
 
     [Fact]
-    public async Task TdAdmSessionGate_ResetConfirmLinkExpiredAndBootstrap_GetIsNotUnauthorized()
+    public async Task TdAdmSessionGate_ResetConfirmLinkExpiredAndBootstrap_MatchMainSignedOutGets()
     {
         await ClearAuthStateAsync();
         var client = CreateClient();
-        foreach (var path in new[]
-                 {
-                     AdminSignedOutExemptions.LinkExpired,
-                     AdminSignedOutExemptions.ResetConfirm,
-                     AdminSignedOutExemptions.Bootstrap
-                 })
-        {
-            using var get = await SendAuthAsync(client, HttpMethod.Get, path, null);
-            Assert.NotEqual(HttpStatusCode.Unauthorized, get.StatusCode);
-        }
+
+        using var linkExpired = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.LinkExpired, null);
+        Assert.Equal(HttpStatusCode.NotFound, linkExpired.StatusCode);
+
+        using var resetConfirm = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.ResetConfirm, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, resetConfirm.StatusCode);
+
+        using var bootstrap = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, bootstrap.StatusCode);
     }
 
     private HttpClient CreateClient() =>
