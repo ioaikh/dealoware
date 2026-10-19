@@ -83,6 +83,9 @@ public sealed class AdminAuthService
         if (!accountReserved.Incremented)
         {
             await _credentials.RunDummyPasswordCheckAsync(ct).ConfigureAwait(false);
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.SignInFailed();
@@ -156,8 +159,17 @@ public sealed class AdminAuthService
         var accountReserved = await AdminLockoutFlow.ReserveAsync(
                 _lockouts, AdminAuthScopes.Account, accountSubject, now, AccountFailureLimit, ct)
             .ConfigureAwait(false);
-        if (!accountReserved.Incremented
-            || !await _tokens.TryIncrementPendingAttemptAsync(pending.Id, now, PendingAttemptLimit, ct)
+        if (!accountReserved.Incremented)
+        {
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+                .ConfigureAwait(false);
+            await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)
+                .ConfigureAwait(false);
+            return AdminAuthOutcome.SignInFailed();
+        }
+
+        if (!await _tokens.TryIncrementPendingAttemptAsync(pending.Id, now, PendingAttemptLimit, ct)
                 .ConfigureAwait(false))
         {
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)

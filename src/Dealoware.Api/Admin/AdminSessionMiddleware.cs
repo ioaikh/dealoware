@@ -137,18 +137,22 @@ public sealed class AdminSessionMiddleware
 
     private static async Task<bool> TryWritePendingThrottleAsync(HttpContext context, IAdminClock clock)
     {
-        var lockouts = context.RequestServices.GetService<IAdminLockoutStore>();
-        if (lockouts is null)
-        {
-            return false;
-        }
-
+        var lockouts = context.RequestServices.GetRequiredService<IAdminLockoutStore>();
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
+        var now = clock.UtcNow;
         var active = await lockouts.GetActiveLockoutAsync(
-            AdminAuthScopes.LoginIp, ip, clock.UtcNow, context.RequestAborted);
+            AdminAuthScopes.LoginIp, ip, now, context.RequestAborted);
         if (active is null)
         {
-            return false;
+            var prior = await lockouts.CountFailuresAsync(
+                AdminAuthScopes.LoginIp,
+                ip,
+                now - AdminAuthService.FailureWindow,
+                context.RequestAborted);
+            if (prior < AdminAuthService.IpFailureLimit)
+            {
+                return false;
+            }
         }
 
         await AdminSignInDeny.WriteThrottledAsync(context);

@@ -733,6 +733,81 @@ public class AdminLockoutReserveTests
         Assert.False(missing.Headers.Contains("Retry-After"));
     }
 
+    [Fact]
+    public async Task SecR2_ThrottledIp_CountAtLimitWithoutGate_PendingCookieVariants_Same429()
+    {
+        await ClearAsync();
+        var (password, secret) = await SeedEnrolledAccountAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminPendingAuthCookie.Name)
+            ?? ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        await FillLoginIpAbandonedReservationsAsync();
+        Assert.Null(await ActiveAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Equal(AdminAuthService.IpFailureLimit, await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+
+        var code = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var valid = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+        using var garbage = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}=not-a-pending-token");
+        using var missing = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, valid.StatusCode);
+        Assert.Equal(valid.StatusCode, garbage.StatusCode);
+        Assert.Equal(valid.StatusCode, missing.StatusCode);
+        var body = await valid.Content.ReadAsStringAsync();
+        Assert.Equal(body, await garbage.Content.ReadAsStringAsync());
+        Assert.Equal(body, await missing.Content.ReadAsStringAsync());
+        Assert.Contains(AdminAuthCopy.SignInFailure, body);
+        Assert.False(valid.Headers.Contains("Retry-After"));
+        Assert.False(garbage.Headers.Contains("Retry-After"));
+        Assert.False(missing.Headers.Contains("Retry-After"));
+    }
+
+    [Fact]
+    public async Task SecR12_AccountLockedRefusal_DoesNotGrowLoginIpCounter()
+    {
+        await ClearAsync();
+        await SeedEnrolledAccountAsync();
+        var client = CreateClient();
+        for (var i = 0; i < AdminAuthService.AccountFailureLimit; i++)
+        {
+            using var fail = await SendWrongAsync(client);
+            Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+
+        Assert.NotNull(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+        var ipBefore = await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1");
+        Assert.Equal(AdminAuthService.AccountFailureLimit, ipBefore);
+
+        using var locked = await SendWrongAsync(client);
+        Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
+        Assert.Contains(AdminAuthCopy.SignInFailure, await locked.Content.ReadAsStringAsync());
+        Assert.Equal(ipBefore, await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Equal(AdminAuthService.AccountFailureLimit, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.NotNull(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+    }
+
     private async Task ClearAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -785,6 +860,25 @@ public class AdminLockoutReserveTests
                     turnstileToken = FakeTurnstileVerifier.ValidToken
                 });
             Assert.Equal(HttpStatusCode.Unauthorized, fail.StatusCode);
+        }
+    }
+
+    private async Task FillLoginIpAbandonedReservationsAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var lockouts = scope.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
+        var clock = scope.ServiceProvider.GetRequiredService<IAdminClock>();
+        var now = clock.UtcNow;
+        for (var i = 0; i < AdminAuthService.IpFailureLimit; i++)
+        {
+            var reserved = await AdminLockoutFlow.ReserveAsync(
+                lockouts,
+                AdminAuthScopes.LoginIp,
+                "127.0.0.1",
+                now,
+                AdminAuthService.IpFailureLimit,
+                CancellationToken.None);
+            Assert.True(reserved.Incremented);
         }
     }
 

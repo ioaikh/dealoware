@@ -226,6 +226,14 @@ public static class AdminAuthEndpoints
         if (!accountReserved.Incremented)
         {
             AdminPasswordHasher.DummyVerify(password);
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                lockouts,
+                ipReserved,
+                AdminAuthScopes.LoginIp,
+                ip,
+                now,
+                AdminAuthService.IpFailureLimit,
+                context.RequestAborted);
             await WriteAuthEventAsync(
                 audit,
                 AdminAuthEvents.LoginFailure,
@@ -588,6 +596,8 @@ public static class AdminAuthEndpoints
         var ipHmac = HashIp(ipHasher, context);
         if (await accounts.IsFactorLockedAsync(account.Id, now, context.RequestAborted))
         {
+            await EvaluateLockedSecondFactorAsync(
+                body, useRecovery, account, now, accounts, protector, recoveryHasher, context);
             await WriteAuthEventAsync(
                 audit,
                 AdminAuthEvents.LoginFailure,
@@ -747,6 +757,14 @@ public static class AdminAuthEndpoints
             context.RequestAborted);
         if (!accountReserved.Incremented)
         {
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                lockouts,
+                ipReserved,
+                AdminAuthScopes.LoginIp,
+                ip,
+                now,
+                AdminAuthService.IpFailureLimit,
+                context.RequestAborted);
             await WriteAuthEventAsync(
                 audit,
                 AdminAuthEvents.LoginFailure,
@@ -788,6 +806,43 @@ public static class AdminAuthEndpoints
             AdminAuthEvents.ReasonBad2Fa,
             context.RequestAborted);
         return (false, ipReserved, accountReserved);
+    }
+
+    private static async Task EvaluateLockedSecondFactorAsync(
+        TotpCodeRequest? body,
+        bool useRecovery,
+        AdminCoreOwnerAccount account,
+        DateTimeOffset now,
+        IAdminCoreOwnerAccountRepository accounts,
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher,
+        HttpContext context)
+    {
+        if (!useRecovery)
+        {
+            if (string.IsNullOrEmpty(account.TotpSecretCipher))
+                return;
+
+            try
+            {
+                var secret = protector.Decrypt(account.TotpSecretCipher);
+                _ = Rfc6238Totp.TryVerify(
+                    secret, body?.Code ?? string.Empty, now, account.LastUsedTotpTimestep, out _);
+                CryptographicClear(secret);
+            }
+            catch
+            {
+                // Decrypt failure still returns the generic 401.
+            }
+
+            return;
+        }
+
+        Rfc6238Totp.RecordEvaluation();
+        var presentedHash = recoveryHasher.Hash(body?.RecoveryCode ?? body?.Code ?? string.Empty);
+        var codes = await accounts.GetRecoveryCodesAsync(account.Id, context.RequestAborted);
+        foreach (var stored in codes)
+            _ = AdminRecoveryCodes.FixedTimeEquals(stored.CodeHash, presentedHash);
     }
 
     private static IResult SecondFactorDeny(FailureIncrementResult ipReserved)
