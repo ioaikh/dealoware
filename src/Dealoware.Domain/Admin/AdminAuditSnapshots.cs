@@ -784,9 +784,10 @@ public static class AdminAuditSnapshots
     }
 
     /// <summary>
-    /// Redacts every compact JWT/JWE prefix inside an already-scanned word, then
-    /// leaves the caller at <c>nameEnd</c>. After the first hit, further matches
-    /// are sought only in the leftover suffix so the word is never re-walked.
+    /// Redacts compact JWT/JWE prefixes inside an already-scanned word, then
+    /// leaves the caller at <c>nameEnd</c>. Follow-up matches are tried only at
+    /// the next <c>.</c> segment start. A failed follow-up stops; the leftover
+    /// is never retried at every offset.
     /// </summary>
     private static bool TryRedactJwtsInWord(
         string text,
@@ -799,35 +800,37 @@ public static class AdminAuditSnapshots
             return false;
 
         var offset = 0;
-        while (offset < word.Length)
+        while (jwtLen > 0)
         {
-            if (jwtLen > 0)
-            {
-                var redactFrom = nameStart + offset;
-                builder.Append(text, copyFrom, redactFrom - copyFrom);
-                builder.Append("[redacted]");
-                copyFrom = redactFrom + jwtLen;
-                offset += jwtLen;
-            }
-            else
-            {
-                offset++;
-            }
+            var redactFrom = nameStart + offset;
+            builder.Append(text, copyFrom, redactFrom - copyFrom);
+            builder.Append("[redacted]");
+            copyFrom = redactFrom + jwtLen;
+            offset += jwtLen;
+            if (offset >= word.Length)
+                return true;
 
-            jwtLen = 0;
-            if (offset < word.Length)
-                TryMatchJwtPrefix(word[offset..], out jwtLen);
+            offset = SkipJwtDots(word, offset);
+            if (offset >= word.Length || !TryMatchJwtPrefix(word[offset..], out jwtLen))
+                return true;
         }
 
         return true;
     }
 
+    private static int SkipJwtDots(ReadOnlySpan<char> word, int offset)
+    {
+        while (offset < word.Length && word[offset] == '.')
+            offset++;
+        return offset;
+    }
+
     /// <summary>
-    /// Compact JWT (3) or JWE (5). The general shape is any 3/5 non-empty
-    /// base64url parts whose first part is at least 4 characters (the c89f7ece
-    /// check). When the first part starts with <c>eyJ</c>, an empty 2nd JWE
-    /// segment (<c>alg: dir</c>) and an empty last JWT segment (unsecured) are
-    /// also accepted. Extra <c>.word</c> text after those parts is left unmatched.
+    /// Compact JWT (3) or JWE (5). A non-<c>eyJ</c> header counts only when it
+    /// base64url-decodes to JSON containing <c>alg</c> or <c>enc</c>. One
+    /// delimiter prefix (<c>-</c> <c>_</c> <c>=</c> <c>:</c>) may sit before
+    /// that header. <c>eyJ</c> keeps the empty 2nd JWE / empty last JWT path.
+    /// Extra <c>.word</c> text after the leading 3 or 5 parts is left unmatched.
     /// </summary>
     private static bool TryMatchJwtPrefix(ReadOnlySpan<char> text, out int matchLength)
     {
@@ -854,23 +857,29 @@ public static class AdminAuditSnapshots
             start = i + 1;
         }
 
-        if (HasStrictJwtParts(lengths, segments, count: 5))
+        if (segments < 3 || lengths[0] < 4)
+            return false;
+
+        var header = UnwrapJwtHeader(text[..lengths[0]]);
+        var eyJ = header.StartsWith("eyJ", StringComparison.Ordinal);
+        var jwtHeader = eyJ || HeaderHasAlgOrEnc(header);
+
+        if (jwtHeader && HasStrictJwtParts(lengths, segments, count: 5))
         {
             matchLength = ends[4];
             return true;
         }
 
-        if (HasStrictJwtParts(lengths, segments, count: 3))
+        if (jwtHeader && HasStrictJwtParts(lengths, segments, count: 3))
         {
             matchLength = ends[2];
             return true;
         }
 
-        if (!text.StartsWith("eyJ", StringComparison.Ordinal))
+        if (!eyJ)
             return false;
 
         if (segments >= 5
-            && lengths[0] >= 4
             && lengths[2] > 0
             && lengths[3] > 0
             && lengths[4] > 0)
@@ -879,15 +888,73 @@ public static class AdminAuditSnapshots
             return true;
         }
 
-        if (segments >= 3
-            && lengths[0] >= 4
-            && lengths[1] > 0)
+        if (segments >= 3 && lengths[1] > 0)
         {
             matchLength = ends[2];
             return true;
         }
 
         return false;
+    }
+
+    private static ReadOnlySpan<char> UnwrapJwtHeader(ReadOnlySpan<char> first)
+    {
+        if (first.StartsWith("eyJ", StringComparison.Ordinal))
+            return first;
+
+        for (var i = 0; i < first.Length; i++)
+        {
+            if (first[i] is '-' or '_' or '=' or ':')
+                return first[(i + 1)..];
+        }
+
+        return first;
+    }
+
+    private const int MaxJwtHeaderChars = 4096;
+
+    private static bool HeaderHasAlgOrEnc(ReadOnlySpan<char> header)
+    {
+        if (header.Length < 4 || header.Length > MaxJwtHeaderChars)
+            return false;
+
+        var maxBytes = (header.Length + 3) / 4 * 3;
+        Span<byte> bytes = maxBytes <= 512 ? stackalloc byte[512] : new byte[maxBytes];
+        if (!TryDecodeBase64Url(header, bytes, out var written) || written == 0)
+            return false;
+
+        try
+        {
+            var node = JsonNode.Parse(bytes[..written]);
+            return node is JsonObject obj
+                   && (obj.ContainsKey("alg") || obj.ContainsKey("enc"));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryDecodeBase64Url(ReadOnlySpan<char> text, Span<byte> dest, out int written)
+    {
+        written = 0;
+        var pad = (4 - (text.Length % 4)) % 4;
+        Span<char> padded = stackalloc char[text.Length + pad];
+        text.CopyTo(padded);
+        for (var i = 0; i < text.Length; i++)
+        {
+            padded[i] = padded[i] switch
+            {
+                '-' => '+',
+                '_' => '/',
+                _ => padded[i]
+            };
+        }
+
+        for (var i = 0; i < pad; i++)
+            padded[text.Length + i] = '=';
+
+        return Convert.TryFromBase64Chars(padded[..(text.Length + pad)], dest, out written);
     }
 
     private static bool HasStrictJwtParts(ReadOnlySpan<int> lengths, int segments, int count)

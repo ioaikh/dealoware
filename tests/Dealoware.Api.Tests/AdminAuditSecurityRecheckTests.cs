@@ -212,6 +212,50 @@ public class AdminAuditSecurityRecheckTests
     }
 
     [Fact]
+    public void Recheck_B2_JwtThenLongSegment_IsLinearAt60Kb()
+    {
+        var output = AssertLinearJwtScan(SampleJwt + ".a", 'a', "B2 JWT+a");
+        Assert.DoesNotContain("eyJzdWIiOiJtaWQifQ", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Recheck_B2_GenericThenLongSegment_IsLinearAt60Kb()
+    {
+        AssertLinearJwtScan("aaaa.b.c.", 'a', "B2 aaaa.b.c.");
+    }
+
+    [Theory]
+    [InlineData("admin.core.dealoware.com")]
+    [InlineData("mail.example.com")]
+    [InlineData("report.final.v2.pdf")]
+    [InlineData("ivan.onuchin.test@example.test")]
+    [InlineData("price.list.updated")]
+    [InlineData("Release.2026.10")]
+    public void Recheck_DottedNames_StayUnredacted(string note)
+    {
+        var output = AdminAuditSnapshots.Truncate(new JsonObject { ["note"] = note }.ToJsonString());
+        Assert.Contains(note, output, StringComparison.Ordinal);
+        Assert.DoesNotContain("[redacted]", output, StringComparison.Ordinal);
+    }
+
+    private static string AssertLinearJwtScan(string prefix, char fill, string label)
+    {
+        var fillLen = 60_000 - prefix.Length;
+        Assert.True(fillLen > 0);
+        var note = prefix + new string(fill, fillLen);
+        var raw = "{\"note\":\"" + note + "\"}";
+        Assert.True(note.Length >= 60_000);
+        Assert.True(Encoding.UTF8.GetByteCount(raw) <= AdminAuditSnapshots.MaxInputUtf8Bytes);
+
+        AdminAuditSnapshots.Truncate(raw);
+        var clock = Stopwatch.StartNew();
+        var output = AdminAuditSnapshots.Truncate(raw);
+        clock.Stop();
+        Assert.True(clock.ElapsedMilliseconds < 200, $"{label} took {clock.ElapsedMilliseconds}ms");
+        return output;
+    }
+
+    [Fact]
     public async Task Recheck_GetPath_ReredactsStoredSnapshot()
     {
         const string leak = "LEAK-get-path-v1";
