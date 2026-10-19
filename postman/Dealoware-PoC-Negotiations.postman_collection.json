@@ -605,11 +605,11 @@
 									"",
 									"if (pm.response.code !== 200) { return; }",
 									"",
-									"pm.test(\"NegotiationResponse includes id and offers array\", function () {",
+									"pm.test(\"NegotiationResponse includes id; offers omitted until any exist\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('id');",
 									"    pm.expect(jsonData.status).to.eql('Open');",
-									"    pm.expect(jsonData.offers).to.be.an('array');",
+									"    pm.expect(jsonData.offers == null || Array.isArray(jsonData.offers)).to.be.true;",
 									"});"
 								],
 								"type": "text/javascript"
@@ -634,7 +634,7 @@
 								"{{negotiationId}}"
 							]
 						},
-						"description": "GET /negotiations/{id} — party-only get with embedded offers. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse including offers[]. Non-party → 404."
+						"description": "GET /negotiations/{id} — party-only get. Auth: ApiKey {{sellerApiKey}}. Response NegotiationResponse; offers is present only when the negotiation has offers. Non-party → 404."
 					},
 					"response": []
 				}
