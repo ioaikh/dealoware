@@ -146,6 +146,7 @@ public static class AdminPasswordResetEndpoints
         ResetCompleteBody? body,
         IAdminPasswordResetTokenRepository tokens,
         IAdminCredentialStore credentials,
+        IAdminCoreOwnerAccountRepository accounts,
         IAdminSecondFactorVerifier secondFactor,
         IAdminPasswordHasher hasher,
         IAdminSessionRepository sessions,
@@ -222,7 +223,10 @@ public static class AdminPasswordResetEndpoints
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        credential.ReplacePassword(hasher.Hash(AdminPasswordRules.Normalize(proposed)), now);
+        var passwordHash = hasher.Hash(AdminPasswordRules.Normalize(proposed));
+        credential.ReplacePassword(passwordHash, now);
+        var account = await accounts.GetByEmailAsync(ownerEmail, http.RequestAborted);
+        account?.SetPasswordHash(passwordHash);
         await credentials.SaveChangesAsync(http.RequestAborted);
         await sessions.RevokeAllForEmailAsync(ownerEmail, http.RequestAborted);
 

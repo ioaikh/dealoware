@@ -74,6 +74,24 @@ public partial class AdminPasswordResetTokens : Migration
             {
                 table.PrimaryKey("PK_AdminResetIpCounters", x => x.IpHmac);
             });
+
+        migrationBuilder.CreateTable(
+            name: "AdminResetIpEvents",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(nullable: false),
+                IpHmac = table.Column<string>(maxLength: 128, nullable: false),
+                OccurredAt = table.Column<DateTimeOffset>(nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_AdminResetIpEvents", x => x.Id);
+            });
+
+        migrationBuilder.CreateIndex(
+            name: "IX_AdminResetIpEvents_IpHmac_OccurredAt",
+            table: "AdminResetIpEvents",
+            columns: new[] { "IpHmac", "OccurredAt" });
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
@@ -81,5 +99,6 @@ public partial class AdminPasswordResetTokens : Migration
         migrationBuilder.DropTable(name: "AdminPasswordResetTokens");
         migrationBuilder.DropTable(name: "AdminCredentials");
         migrationBuilder.DropTable(name: "AdminResetIpCounters");
+        migrationBuilder.DropTable(name: "AdminResetIpEvents");
     }
 }

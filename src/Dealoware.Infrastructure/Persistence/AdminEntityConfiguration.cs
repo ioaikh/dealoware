@@ -250,3 +250,22 @@ public class AdminResetIpCounterEntityConfiguration : IEntityTypeConfiguration<A
             .IsRequired();
     }
 }
+
+public class AdminResetIpEventEntityConfiguration : IEntityTypeConfiguration<AdminResetIpEvent>
+{
+    public void Configure(EntityTypeBuilder<AdminResetIpEvent> builder)
+    {
+        builder.ToTable("AdminResetIpEvents");
+
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.IpHmac)
+            .IsRequired()
+            .HasMaxLength(128);
+
+        builder.Property(e => e.OccurredAt)
+            .IsRequired();
+
+        builder.HasIndex(e => new { e.IpHmac, e.OccurredAt });
+    }
+}

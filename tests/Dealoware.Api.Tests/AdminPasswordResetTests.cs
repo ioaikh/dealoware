@@ -620,65 +620,179 @@ public class AdminPasswordResetTests
     public async Task TD_ADM_030_SC6_R3_ParallelBurst_AtMostTwentyPassOrIssueTokens()
     {
         const string ipHmac = "burst-ip-hmac";
-        SqliteConnection? keepAlive = null;
-        DbContextOptions<DealowareDbContext> options;
-        if (IsolatedWebApplicationFactory.TryBuildTestPostgresConnectionString(out var postgres))
-        {
-            options = new DbContextOptionsBuilder<DealowareDbContext>()
-                .UseNpgsql(postgres)
-                .Options;
-        }
-        else
-        {
-            keepAlive = new SqliteConnection("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared");
-            await keepAlive.OpenAsync();
-            await using (var busy = keepAlive.CreateCommand())
-            {
-                busy.CommandText = "PRAGMA busy_timeout = 5000;";
-                await busy.ExecuteNonQueryAsync();
-            }
+        await using var store = await OpenThrottleStoreAsync("ResetIpBurst");
+        await ClearThrottleIpAsync(store.Options, ipHmac);
 
-            options = new DbContextOptionsBuilder<DealowareDbContext>()
-                .UseSqlite("Data Source=ResetIpBurst;Mode=Memory;Cache=Shared")
-                .Options;
-        }
+        var now = DateTimeOffset.UtcNow;
+        var results = await ParallelReserveAsync(store.Options, ipHmac, now, 40);
 
-        try
-        {
-            await using (var created = new DealowareDbContext(options))
-            {
-                await created.Database.EnsureCreatedAsync();
-                await created.AdminResetIpCounters
-                    .Where(c => c.IpHmac == ipHmac)
-                    .ExecuteDeleteAsync();
-            }
+        Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
+        Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
 
-            var now = DateTimeOffset.UtcNow;
-            var results = await Task.WhenAll(Enumerable.Range(0, 40).Select(async _ =>
-            {
-                await using var db = new DealowareDbContext(options);
-                return await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, now, CancellationToken.None);
-            }));
-
-            Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
-            Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
-
-            await using var check = new DealowareDbContext(options);
-            var row = check.AdminResetIpCounters.Single(c => c.IpHmac == ipHmac);
-            Assert.Equal(AdminResetIpCounter.Threshold, row.FailureCount);
-            Assert.True(row.IsLocked(now));
-        }
-        finally
-        {
-            if (keepAlive is not null)
-            {
-                await keepAlive.DisposeAsync();
-            }
-        }
+        await using var check = new DealowareDbContext(store.Options);
+        var row = check.AdminResetIpCounters.Single(c => c.IpHmac == ipHmac);
+        Assert.Equal(AdminResetIpCounter.Threshold, row.FailureCount);
+        Assert.True(row.IsLocked(now));
     }
 
     [Fact]
-    public async Task TD_ADM_031_SC6_F2_BadToken_TwentyThen429_PasswordRuleDoesNotCount()
+    public async Task TD_ADM_030_SC6_R5_ExpiredRowParallelBurst_AtMostTwenty()
+    {
+        const string ipHmac = "r5-expired-burst";
+        await using var store = await OpenThrottleStoreAsync("ResetIpR5Burst");
+        await ClearThrottleIpAsync(store.Options, ipHmac);
+
+        var now = DateTimeOffset.UtcNow;
+        await SeedExpiredLockedRowAsync(
+            store.Options,
+            ipHmac,
+            windowStartedAt: now - TimeSpan.FromMinutes(20),
+            lockedUntil: now - TimeSpan.FromSeconds(1),
+            eventCount: AdminResetIpCounter.Threshold);
+
+        var results = await ParallelReserveAsync(store.Options, ipHmac, now, 40);
+
+        Assert.Equal(AdminResetIpCounter.Threshold, results.Count(reserved => reserved));
+        Assert.Equal(40 - AdminResetIpCounter.Threshold, results.Count(reserved => !reserved));
+
+        await using var check = new DealowareDbContext(store.Options);
+        var row = check.AdminResetIpCounters.Single(c => c.IpHmac == ipHmac);
+        Assert.Equal(AdminResetIpCounter.Threshold, row.FailureCount);
+        Assert.True(row.IsLocked(now));
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_R5_DelayedReset_LeavesNewerLock()
+    {
+        const string ipHmac = "r5-delayed-reset";
+        await using var store = await OpenThrottleStoreAsync("ResetIpR5Delay");
+        await ClearThrottleIpAsync(store.Options, ipHmac);
+
+        var t0 = new DateTimeOffset(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+        var lockUntil = t0.Add(AdminResetIpCounter.LockDuration);
+        var staleNow = lockUntil.AddSeconds(1);
+        await SeedExpiredLockedRowAsync(
+            store.Options,
+            ipHmac,
+            windowStartedAt: t0,
+            lockedUntil: lockUntil,
+            eventCount: AdminResetIpCounter.Threshold);
+
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            await using var dbB = new DealowareDbContext(store.Options);
+            Assert.True(await new AdminResetIpThrottle(dbB).TryReserveAsync(
+                ipHmac, staleNow, CancellationToken.None));
+        }
+
+        await using var stale = new DealowareDbContext(store.Options);
+        var overwritten = await stale.AdminResetIpCounters
+            .Where(c =>
+                c.IpHmac == ipHmac
+                && c.FailureCount == AdminResetIpCounter.Threshold
+                && c.WindowStartedAt == t0
+                && c.LockedUntil == lockUntil)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.FailureCount, 1)
+                .SetProperty(c => c.WindowStartedAt, staleNow)
+                .SetProperty(c => c.LockedUntil, (DateTimeOffset?)null));
+        Assert.Equal(0, overwritten);
+
+        await using var check = new DealowareDbContext(store.Options);
+        var row = check.AdminResetIpCounters.Single(c => c.IpHmac == ipHmac);
+        Assert.Equal(AdminResetIpCounter.Threshold, row.FailureCount);
+        Assert.True(row.IsLocked(staleNow));
+        Assert.NotEqual(t0, row.WindowStartedAt);
+
+        var source = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "AdminResetIpThrottle.cs"));
+        Assert.Contains("c.WindowStartedAt == row.WindowStartedAt", source, StringComparison.Ordinal);
+        Assert.Contains("c.LockedUntil == row.LockedUntil", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_SC6_R8_WindowEdge_DoesNotDoubleBudget()
+    {
+        const string ipHmac = "r8-window-edge";
+        await using var store = await OpenThrottleStoreAsync("ResetIpR8Edge");
+        await ClearThrottleIpAsync(store.Options, ipHmac);
+
+        var t0 = new DateTimeOffset(2026, 10, 12, 14, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 10; i++)
+        {
+            await using var db = new DealowareDbContext(store.Options);
+            Assert.True(await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, t0, CancellationToken.None));
+        }
+
+        var tLate = t0.AddMinutes(14);
+        for (var i = 0; i < 9; i++)
+        {
+            await using var db = new DealowareDbContext(store.Options);
+            Assert.True(await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, tLate, CancellationToken.None));
+        }
+
+        var tEdge = t0.Add(AdminResetIpCounter.Window);
+        var late = 0;
+        for (var i = 0; i < 19; i++)
+        {
+            await using var db = new DealowareDbContext(store.Options);
+            if (await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, tEdge, CancellationToken.None))
+                late++;
+        }
+
+        Assert.True(9 + late <= AdminResetIpCounter.Threshold);
+        Assert.InRange(late, 0, 11);
+
+        await using var check = new DealowareDbContext(store.Options);
+        var inWindow = check.AdminResetIpEvents.Count(e =>
+            e.IpHmac == ipHmac && e.OccurredAt > tEdge - AdminResetIpCounter.Window);
+        Assert.True(inWindow <= AdminResetIpCounter.Threshold);
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_RealVerifier_AcceptsEnrolledTotp()
+    {
+        const string email = "reset-2fa-verifier@aiknowhow.com";
+        using var scope = _factory.Services.CreateScope();
+        var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
+        var recoveryHasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
+        var clock = scope.ServiceProvider.GetRequiredService<IAdminClock>();
+        var accounts = scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+
+        var secret = Rfc6238Totp.GenerateSecret();
+        var account = AdminCoreOwnerAccount.Create(email);
+        account.SetPasswordHash("unused-hash");
+        account.CompleteEnrollment(protector.Encrypt(secret), now: clock.UtcNow);
+        db.AdminCoreOwnerAccounts.Add(account);
+        await db.SaveChangesAsync();
+
+        var verifier = new AdminSecondFactorVerifier(accounts, protector, recoveryHasher, clock);
+        var code = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(clock.UtcNow));
+        var ok = await verifier.VerifyAsync(email, code, null);
+        Assert.True(ok.Succeeded);
+        Assert.False(ok.UsedRecoveryCode);
+
+        var bad = await verifier.VerifyAsync(email, "000000", null);
+        Assert.False(bad.Succeeded);
+    }
+
+    [Fact]
+    public void TD_ADM_031_AddAdminTotp_RegistersRealSecondFactorVerifier()
+    {
+        var totp = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminTotpServiceExtensions.cs"));
+        Assert.Contains(
+            "AddScoped<IAdminSecondFactorVerifier, AdminSecondFactorVerifier>",
+            totp,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("PendingStep3SecondFactorVerifier", totp, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Infrastructure", "Admin", "PendingStep3SecondFactorVerifier.cs")));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_SC6_F2_BadToken_TwentyThen429_PasswordRuleCounts()
     {
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
@@ -890,6 +1004,7 @@ public class AdminPasswordResetTests
         var hasher = scope.ServiceProvider.GetRequiredService<IAdminPasswordHasher>();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
+        db.AdminResetIpEvents.RemoveRange(db.AdminResetIpEvents);
         var existing = db.AdminCredentials.SingleOrDefault(c => c.Email == CoreOwnerEmail);
         if (existing is null)
         {
@@ -1013,6 +1128,7 @@ public class AdminPasswordResetTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
+        db.AdminResetIpEvents.RemoveRange(db.AdminResetIpEvents);
         await db.SaveChangesAsync();
     }
 
@@ -1106,5 +1222,112 @@ public class AdminPasswordResetTests
         var store = scope.ServiceProvider.GetRequiredService<IAdminCredentialStore>();
         var credential = await store.GetByEmailAsync(CoreOwnerEmail);
         return credential is not null && hasher.Verify(password, credential.PasswordHash);
+    }
+
+    private static async Task<ThrottleStore> OpenThrottleStoreAsync(string sqliteName)
+    {
+        if (IsolatedWebApplicationFactory.TryBuildTestPostgresConnectionString(out var postgres))
+        {
+            var options = new DbContextOptionsBuilder<DealowareDbContext>()
+                .UseNpgsql(postgres)
+                .Options;
+            await using (var created = new DealowareDbContext(options))
+            {
+                await created.Database.EnsureCreatedAsync();
+            }
+
+            return new ThrottleStore(options, null);
+        }
+
+        var keepAlive = new SqliteConnection($"Data Source={sqliteName};Mode=Memory;Cache=Shared");
+        await keepAlive.OpenAsync();
+        await using (var busy = keepAlive.CreateCommand())
+        {
+            busy.CommandText = "PRAGMA busy_timeout = 5000;";
+            await busy.ExecuteNonQueryAsync();
+        }
+
+        var sqlite = new DbContextOptionsBuilder<DealowareDbContext>()
+            .UseSqlite(keepAlive.ConnectionString)
+            .Options;
+        await using (var created = new DealowareDbContext(sqlite))
+        {
+            await created.Database.EnsureCreatedAsync();
+        }
+
+        return new ThrottleStore(sqlite, keepAlive);
+    }
+
+    private static async Task ClearThrottleIpAsync(DbContextOptions<DealowareDbContext> options, string ipHmac)
+    {
+        await using var db = new DealowareDbContext(options);
+        await db.AdminResetIpEvents.Where(e => e.IpHmac == ipHmac).ExecuteDeleteAsync();
+        await db.AdminResetIpCounters.Where(c => c.IpHmac == ipHmac).ExecuteDeleteAsync();
+    }
+
+    private static async Task SeedExpiredLockedRowAsync(
+        DbContextOptions<DealowareDbContext> options,
+        string ipHmac,
+        DateTimeOffset windowStartedAt,
+        DateTimeOffset lockedUntil,
+        int eventCount)
+    {
+        await using var db = new DealowareDbContext(options);
+        db.AdminResetIpCounters.Add(AdminResetIpCounter.Start(ipHmac, windowStartedAt));
+        for (var i = 0; i < eventCount; i++)
+        {
+            db.AdminResetIpEvents.Add(AdminResetIpEvent.Create(ipHmac, windowStartedAt));
+        }
+
+        await db.SaveChangesAsync();
+        await db.AdminResetIpCounters
+            .Where(c => c.IpHmac == ipHmac)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.FailureCount, eventCount)
+                .SetProperty(c => c.WindowStartedAt, windowStartedAt)
+                .SetProperty(c => c.LockedUntil, lockedUntil));
+    }
+
+    private static Task<bool[]> ParallelReserveAsync(
+        DbContextOptions<DealowareDbContext> options,
+        string ipHmac,
+        DateTimeOffset now,
+        int count)
+        => Task.WhenAll(Enumerable.Range(0, count).Select(async _ =>
+        {
+            await using var db = new DealowareDbContext(options);
+            return await new AdminResetIpThrottle(db).TryReserveAsync(ipHmac, now, CancellationToken.None);
+        }));
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Dealoware.sln")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repo root.");
+    }
+
+    private sealed class ThrottleStore : IAsyncDisposable
+    {
+        public ThrottleStore(DbContextOptions<DealowareDbContext> options, SqliteConnection? keepAlive)
+        {
+            Options = options;
+            _keepAlive = keepAlive;
+        }
+
+        public DbContextOptions<DealowareDbContext> Options { get; }
+
+        private readonly SqliteConnection? _keepAlive;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_keepAlive is not null)
+                await _keepAlive.DisposeAsync();
+        }
     }
 }

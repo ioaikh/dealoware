@@ -33,7 +33,8 @@ public sealed class AdminResetIpCounter
         => LockedUntil is { } until && until > now;
 
     /// <summary>
-    /// OQ3 sliding 15-minute window: an event exactly 15 minutes old is outside.
+    /// OQ3 sliding 15-minute window: an event exactly 15 minutes old is outside
+    /// (<c>WindowStartedAt &gt; now - Window</c>).
     /// </summary>
     public bool WindowOpen(DateTimeOffset now)
         => WindowStartedAt > now - Window;

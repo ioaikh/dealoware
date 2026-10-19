@@ -13,7 +13,6 @@ public static class AdminPasswordResetServiceExtensions
         services.AddSingleton<IAdminClock, SystemAdminClock>();
         services.AddSingleton<AdminMailSendQueue>();
         services.AddHostedService(sp => sp.GetRequiredService<AdminMailSendQueue>());
-        services.AddSingleton<IAdminSecondFactorVerifier, PendingStep3SecondFactorVerifier>();
         services.AddScoped<IAdminResetIpThrottle, AdminResetIpThrottle>();
         return services;
     }

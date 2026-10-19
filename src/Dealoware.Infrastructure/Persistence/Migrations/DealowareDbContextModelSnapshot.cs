@@ -324,6 +324,27 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminResetIpCounters", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminResetIpEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IpHmac")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IpHmac", "OccurredAt");
+
+                    b.ToTable("AdminResetIpEvents", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Artifacts.Artifact", b =>
                 {
                     b.Property<Guid>("Id")

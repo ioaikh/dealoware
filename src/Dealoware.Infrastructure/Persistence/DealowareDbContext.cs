@@ -67,6 +67,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminResetIpCounter> AdminResetIpCounters => Set<AdminResetIpCounter>();
 
+    /// <summary>
+    /// A7 Step 4 / R8: per-event reset IP hits for the exclusive 15-minute sliding window.
+    /// Incremental after the frozen 15-table stamp — not a BaselineSchema table.
+    /// </summary>
+    public DbSet<AdminResetIpEvent> AdminResetIpEvents => Set<AdminResetIpEvent>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -140,6 +146,7 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminPasswordResetTokenEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminResetIpCounterEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminResetIpEventEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)
