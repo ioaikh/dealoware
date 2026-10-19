@@ -4,6 +4,7 @@ using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
@@ -135,21 +136,21 @@ public class AdminLockoutReserveTests
     public async Task SecSc9_ResetMail_LeavesRequestBeforeSend()
     {
         await ClearAsync();
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blocking = new BlockingMailSender(gate.Task);
         using var factory = _factory.WithWebHostBuilder(builder =>
         {
-            builder.ConfigureServices(services =>
+            builder.ConfigureTestServices(services =>
             {
-                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IAdminMailSender)).ToList())
+                foreach (var descriptor in services
+                             .Where(d => d.ImplementationType == typeof(AdminMailQueueHostedService))
+                             .ToList())
                 {
                     services.Remove(descriptor);
                 }
-
-                services.AddSingleton<IAdminMailSender>(blocking);
             });
         });
 
+        var mailer = factory.Services.GetRequiredService<RecordingMailSender>();
+        var before = mailer.SendCount;
         var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
@@ -163,7 +164,7 @@ public class AdminLockoutReserveTests
             AdminAuthEndpoints.ResetPath,
             new { email = OwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
-        Assert.Equal(0, blocking.Started);
+        Assert.Equal(before, mailer.SendCount);
 
         using var unknown = await SendAuthAsync(
             client,
@@ -171,9 +172,14 @@ public class AdminLockoutReserveTests
             AdminAuthEndpoints.ResetPath,
             new { email = "nobody@example.com", turnstileToken = FakeTurnstileVerifier.ValidToken });
         Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+        Assert.Equal(before, mailer.SendCount);
         Assert.Equal(await owner.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
 
-        gate.TrySetResult();
+        var queue = factory.Services.GetRequiredService<AdminMailQueue>();
+        Assert.True(queue.Reader.TryRead(out var ownerMail));
+        Assert.NotNull(ownerMail);
+        Assert.True(queue.Reader.TryRead(out var unknownMail));
+        Assert.Null(unknownMail);
     }
 
     private async Task ClearAsync()
@@ -267,21 +273,5 @@ public class AdminLockoutReserveTests
         }
 
         return null;
-    }
-
-    private sealed class BlockingMailSender : IAdminMailSender
-    {
-        private readonly Task _gate;
-        private int _started;
-
-        public BlockingMailSender(Task gate) => _gate = gate;
-
-        public int Started => Volatile.Read(ref _started);
-
-        public async Task SendAsync(AdminMailMessage message, CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref _started);
-            await _gate.WaitAsync(cancellationToken);
-        }
     }
 }

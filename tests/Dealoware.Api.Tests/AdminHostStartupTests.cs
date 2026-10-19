@@ -183,6 +183,9 @@ file sealed class AdminHostConfigWebApplicationFactory : IsolatedWebApplicationF
             builder.UseSetting(
                 "ConnectionStrings:DefaultConnection",
                 "Host=127.0.0.1;Port=5432;Database=dealoware_test;Username=test;Password=test");
+            builder.UseSetting(
+                ForwardedHeadersTrust.ConfigurationKey,
+                EnvironmentWebApplicationFactory.TestKnownNetworks);
         }
 
         _configure?.Invoke(builder);
