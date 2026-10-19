@@ -40,6 +40,33 @@ public sealed class FakeAdminSecondFactorVerifier : IAdminSecondFactorVerifier
         return Task.FromResult(AdminSecondFactorVerifyResult.Failed);
     }
 
+    public Task<AdminSecondFactorVerifyResult> EvaluateWithoutCommitAsync(
+        string email,
+        string? totpCode,
+        string? recoveryCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(totpCode) && !string.IsNullOrWhiteSpace(recoveryCode))
+        {
+            return Task.FromResult(AdminSecondFactorVerifyResult.Failed);
+        }
+
+        if (!string.IsNullOrWhiteSpace(totpCode)
+            && string.Equals(totpCode.Trim(), ValidTotp, StringComparison.Ordinal))
+        {
+            return Task.FromResult(AdminSecondFactorVerifyResult.TotpSucceeded);
+        }
+
+        if (!string.IsNullOrWhiteSpace(recoveryCode)
+            && string.Equals(recoveryCode.Trim(), ValidRecoveryCode, StringComparison.Ordinal)
+            && !SpentRecoveryCodes.Contains(recoveryCode.Trim()))
+        {
+            return Task.FromResult(AdminSecondFactorVerifyResult.RecoverySucceeded);
+        }
+
+        return Task.FromResult(AdminSecondFactorVerifyResult.Failed);
+    }
+
     public void Reset()
     {
         SpentRecoveryCodes.Clear();

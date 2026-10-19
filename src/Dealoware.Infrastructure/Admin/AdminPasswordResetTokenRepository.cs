@@ -67,14 +67,17 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
                 cancellationToken);
     }
 
-    public async Task RecordFailedCodeAttemptAsync(
+    public async Task<bool> TryRecordFailedCodeAttemptAsync(
         string tokenHash,
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
         const int max = AdminPasswordResetToken.MaxFailedCodeAttempts;
-        await _context.AdminPasswordResetTokens
-            .Where(t => t.TokenHash == tokenHash && t.ConsumedAt == null)
+        var updated = await _context.AdminPasswordResetTokens
+            .Where(t =>
+                t.TokenHash == tokenHash
+                && t.ConsumedAt == null
+                && t.FailedCodeAttempts < max)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(t => t.FailedCodeAttempts, t => t.FailedCodeAttempts + 1)
@@ -82,5 +85,6 @@ public sealed class AdminPasswordResetTokenRepository : IAdminPasswordResetToken
                         t => t.ConsumedAt,
                         t => t.FailedCodeAttempts + 1 >= max ? now : t.ConsumedAt),
                 cancellationToken);
+        return updated == 1;
     }
 }

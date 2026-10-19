@@ -16,17 +16,35 @@ public interface IAdminSecondFactorVerifier
         string? totpCode,
         string? recoveryCode,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same match as <see cref="VerifyAsync"/> but does not record a TOTP
+    /// timestep or redeem a recovery code. Reset confirm commits those only
+    /// after the password update succeeds.
+    /// </summary>
+    Task<AdminSecondFactorVerifyResult> EvaluateWithoutCommitAsync(
+        string email,
+        string? totpCode,
+        string? recoveryCode,
+        CancellationToken cancellationToken = default);
 }
 
 /// <param name="Succeeded">True when the presented factor is valid and unused.</param>
 /// <param name="UsedRecoveryCode">True only when a recovery code was consumed.</param>
 public readonly record struct AdminSecondFactorVerifyResult(
     bool Succeeded,
-    bool UsedRecoveryCode)
+    bool UsedRecoveryCode,
+    long? TotpTimestep = null,
+    string? RecoveryCodeHash = null)
 {
     public static AdminSecondFactorVerifyResult Failed { get; } = new(false, false);
 
     public static AdminSecondFactorVerifyResult TotpSucceeded { get; } = new(true, false);
 
     public static AdminSecondFactorVerifyResult RecoverySucceeded { get; } = new(true, true);
+
+    public static AdminSecondFactorVerifyResult TotpAt(long timestep) => new(true, false, timestep);
+
+    public static AdminSecondFactorVerifyResult RecoveryHash(string codeHash)
+        => new(true, true, RecoveryCodeHash: codeHash);
 }

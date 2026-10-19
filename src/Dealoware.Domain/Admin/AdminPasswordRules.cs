@@ -32,9 +32,9 @@ public static class AdminPasswordRules
     public const string TooShortMessage = "Use at least 15 characters.";
     public const string TooLongMessage = "Use at most 128 characters.";
     public const string CommonOrContextMessage =
-        "Choose a different password. That one is too common or matches this account.";
+        "This password is too common. Choose another.";
     public const string SameAsCurrentMessage =
-        "Choose a password that is different from your current password.";
+        "Choose a password that is different from your current one.";
 
     /// <summary>Fixture name for the bundled blocklist entry used in tests.</summary>
     public const string BundledBlocklistFixtureName = "bundled-common-password";

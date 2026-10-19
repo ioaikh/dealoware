@@ -60,6 +60,22 @@ public class AdminSecurityHeadersTests
     }
 
     [Fact]
+    public async Task ConfirmPage_NonceCsp_IsNotOverwrittenBySiteWideMiddleware()
+    {
+        using var response = await SendAdminAsync("/admin/reset/confirm", https: true);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        var csp = GetHeader(response, "Content-Security-Policy");
+        Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
+        Assert.Contains("script-src 'nonce-", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
+        Assert.Contains("object-src 'none'", csp, StringComparison.Ordinal);
+        Assert.Contains("/admin/auth/reset-confirm.js", html, StringComparison.Ordinal);
+        Assert.Equal(AdminSecurityHeadersMiddleware.Nosniff, GetHeader(response, "X-Content-Type-Options"));
+        Assert.Equal(AdminSecurityHeadersMiddleware.FrameOptions, GetHeader(response, "X-Frame-Options"));
+    }
+
+    [Fact]
     public async Task AdminAuthStaticFile_HasHardeningHeaders()
     {
         using var response = await SendAdminAsync("/admin/auth/signed-out.css", https: true);

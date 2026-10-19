@@ -25,11 +25,26 @@ public sealed class AdminSecondFactorVerifier : IAdminSecondFactorVerifier
         _clock = clock;
     }
 
-    public async Task<AdminSecondFactorVerifyResult> VerifyAsync(
+    public Task<AdminSecondFactorVerifyResult> VerifyAsync(
         string email,
         string? totpCode,
         string? recoveryCode,
         CancellationToken cancellationToken = default)
+        => EvaluateCoreAsync(email, totpCode, recoveryCode, commit: true, cancellationToken);
+
+    public Task<AdminSecondFactorVerifyResult> EvaluateWithoutCommitAsync(
+        string email,
+        string? totpCode,
+        string? recoveryCode,
+        CancellationToken cancellationToken = default)
+        => EvaluateCoreAsync(email, totpCode, recoveryCode, commit: false, cancellationToken);
+
+    private async Task<AdminSecondFactorVerifyResult> EvaluateCoreAsync(
+        string email,
+        string? totpCode,
+        string? recoveryCode,
+        bool commit,
+        CancellationToken cancellationToken)
     {
         var totp = string.IsNullOrWhiteSpace(totpCode) ? null : totpCode.Trim();
         var recovery = string.IsNullOrWhiteSpace(recoveryCode) ? null : recoveryCode.Trim();
@@ -41,6 +56,8 @@ public sealed class AdminSecondFactorVerifier : IAdminSecondFactorVerifier
             return AdminSecondFactorVerifyResult.Failed;
 
         var now = _clock.UtcNow;
+        var codes = await _accounts.GetRecoveryCodesAsync(account.Id, cancellationToken);
+
         if (totp is not null)
         {
             byte[] secret;
@@ -65,10 +82,11 @@ public sealed class AdminSecondFactorVerifier : IAdminSecondFactorVerifier
                     return AdminSecondFactorVerifyResult.Failed;
                 }
 
-                if (!await _accounts.TryRecordTotpTimestepAsync(account.Id, step, cancellationToken))
+                if (commit
+                    && !await _accounts.TryRecordTotpTimestepAsync(account.Id, step, cancellationToken))
                     return AdminSecondFactorVerifyResult.Failed;
 
-                return AdminSecondFactorVerifyResult.TotpSucceeded;
+                return AdminSecondFactorVerifyResult.TotpAt(step);
             }
             finally
             {
@@ -78,7 +96,6 @@ public sealed class AdminSecondFactorVerifier : IAdminSecondFactorVerifier
 
         Rfc6238Totp.RecordEvaluation();
         var presentedHash = _recoveryHasher.Hash(recovery!);
-        var codes = await _accounts.GetRecoveryCodesAsync(account.Id, cancellationToken);
         string? matchedHash = null;
         foreach (var stored in codes)
         {
@@ -88,12 +105,15 @@ public sealed class AdminSecondFactorVerifier : IAdminSecondFactorVerifier
                 matchedHash = stored.CodeHash;
         }
 
-        if (matchedHash is null
-            || !await _accounts.TryRedeemRecoveryCodeAsync(account.Id, matchedHash, now, cancellationToken))
+        if (matchedHash is null)
+            return AdminSecondFactorVerifyResult.Failed;
+
+        if (commit
+            && !await _accounts.TryRedeemRecoveryCodeAsync(account.Id, matchedHash, now, cancellationToken))
         {
             return AdminSecondFactorVerifyResult.Failed;
         }
 
-        return AdminSecondFactorVerifyResult.RecoverySucceeded;
+        return AdminSecondFactorVerifyResult.RecoveryHash(matchedHash);
     }
 }

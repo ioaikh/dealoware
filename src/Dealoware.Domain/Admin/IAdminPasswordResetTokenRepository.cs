@@ -24,10 +24,13 @@ public interface IAdminPasswordResetTokenRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Increments failed 2FA attempts on the unused row. Consumes the token when
-    /// the count reaches <see cref="AdminPasswordResetToken.MaxFailedCodeAttempts"/>.
+    /// Atomically increments failed 2FA attempts on the unused row while
+    /// <see cref="AdminPasswordResetToken.FailedCodeAttempts"/> is under
+    /// <see cref="AdminPasswordResetToken.MaxFailedCodeAttempts"/>. Burns the
+    /// token on the fifth increment. Returns false when the row is already
+    /// consumed or at the cap.
     /// </summary>
-    Task RecordFailedCodeAttemptAsync(
+    Task<bool> TryRecordFailedCodeAttemptAsync(
         string tokenHash,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);

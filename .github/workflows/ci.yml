@@ -87,7 +87,7 @@ jobs:
         run: >
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
-          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm|FullyQualifiedName~C2_PostgresParallelWrongCodes"
 
       - name: Upload PostgreSQL test results
         uses: actions/upload-artifact@v4

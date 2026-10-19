@@ -34,7 +34,15 @@ public static class AdminDeny
     public static Task WriteForbiddenAsync(HttpContext context)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.ContentType = "application/json";
-        return context.Response.WriteAsync("""{"error":"Forbidden"}""");
+        var path = context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/admin/api/", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsync("""{"error":"Forbidden"}""");
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        return context.Response.WriteAsync(
+            """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Forbidden</p></body></html>""");
     }
 }

@@ -17,5 +17,20 @@ public static class AdminPasswordResetCopy
     public const string CompleteFailed = "We couldn't complete this reset. Check your details and try again.";
 
     public const string CompleteSucceeded =
-        "Your password has been updated. Sign in with your authenticator to continue.";
+        "Your password has been changed. Sign in with your new password and authenticator code.";
+
+    public const string ConfirmPageTitle = "Set a new password · Dealoware admin";
+
+    public const string LinkExpiredPageTitle = "This link no longer works · Dealoware admin";
+
+    public const string ConfirmNoscript = "Turn on JavaScript to set your password.";
+
+    public const string CheckingLink = "Checking your link…";
+
+    public const string CheckRetry =
+        "We couldn't check your link. Wait a moment and try again.";
+
+    public const string TryAgain = "Try again";
+
+    public const string ConfirmScriptPath = "/admin/auth/reset-confirm.js";
 }

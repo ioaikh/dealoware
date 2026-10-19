@@ -17,9 +17,11 @@ public static class AdminPasswordResetEndpoints
 {
     public const string RequestApiPath = AdminSignedOutExemptions.ResetApi;
     public const string ConfirmApiPath = AdminSignedOutExemptions.ResetConfirmApi;
+    public const string ConfirmCheckApiPath = AdminSignedOutExemptions.ResetConfirmCheckApi;
     public const string RequestPagePath = AdminSignedOutExemptions.ResetPage;
     public const string ConfirmPagePath = AdminSignedOutExemptions.ResetConfirmPage;
     public const string LinkExpiredPath = AdminSignedOutExemptions.LinkExpiredPage;
+    public const string ConfirmScriptPath = AdminPasswordResetCopy.ConfirmScriptPath;
     public const int TokenEntropyBytes = 32;
 
     public static void MapAdminPasswordReset(this WebApplication app)
@@ -65,26 +67,47 @@ public static class AdminPasswordResetEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status303SeeOther)
             .Produces(StatusCodes.Status429TooManyRequests);
+
+        app.MapPost(ConfirmCheckApiPath, CheckReset)
+            .WithName("AdminPasswordResetConfirmCheck")
+            .WithTags("Admin")
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status429TooManyRequests);
     }
+
+    public static string ConfirmPageContentSecurityPolicy(string nonce)
+        => "default-src 'none'; "
+           + $"script-src 'nonce-{nonce}'; "
+           + "connect-src 'self'; "
+           + "frame-ancestors 'none'; "
+           + "base-uri 'none'; "
+           + "form-action 'self'; "
+           + "object-src 'none'";
 
     private static IResult ConfirmPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
     {
         ApplyNoStoreNoReferrer(http);
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-        http.Response.Headers.ContentSecurityPolicy =
-            $"default-src 'none'; script-src 'nonce-{nonce}'; form-action 'self'; base-uri 'none'";
+        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
         var csrf = antiforgery.Issue(http);
         var html =
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            "<title>Reset password</title></head><body>" +
-            $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\">" +
+            $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
+            $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title></head>" +
+            "<body><main id=\"reset-main\" aria-busy=\"true\">" +
+            $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
+            $"<p id=\"reset-status\" role=\"status\">{AdminPasswordResetCopy.CheckingLink}</p>" +
+            $"<p id=\"reset-alert\" role=\"alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
+            $"<button type=\"button\" id=\"reset-retry\" hidden>{AdminPasswordResetCopy.TryAgain}</button>" +
+            $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\" hidden>" +
             "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
             "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
             "<label>Authenticator code <input name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
-            "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"off\"></label>" +
+            "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></label>" +
             "<button type=\"submit\">Update password</button></form>" +
-            $"<script nonce=\"{nonce}\">(function(){{window.__dwCsrf={System.Text.Json.JsonSerializer.Serialize(csrf)};var h=location.hash;history.replaceState(null,\"\",location.pathname);var m=/[#&]token=([^&]*)/.exec(h);var el=document.getElementById(\"token\");if(el&&m)el.value=decodeURIComponent(m[1].replace(/\\+/g,\" \"));var f=document.getElementById(\"reset-form\");if(!f)return;f.addEventListener(\"submit\",function(e){{e.preventDefault();fetch({System.Text.Json.JsonSerializer.Serialize(ConfirmApiPath)},{{method:\"POST\",credentials:\"same-origin\",headers:{{ \"Content-Type\":\"application/json\",\"{AdminAntiForgeryService.HeaderName}\":window.__dwCsrf }},body:JSON.stringify({{token:document.getElementById(\"token\").value,newPassword:document.getElementById(\"newPassword\").value,totp:document.getElementById(\"totp\").value,recoveryCode:document.getElementById(\"recoveryCode\").value}})}}).then(function(r){{if(r.status===303){{var loc=r.headers.get(\"Location\");if(loc)location.assign(loc);return;}}if(r.ok){{location.assign({System.Text.Json.JsonSerializer.Serialize(AdminSignedOutExemptions.SignIn)});return;}}r.text().then(function(){{}});}});}});}})();</script>" +
-            "</body></html>";
+            $"<script src=\"{ConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
+            "</main></body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
     }
 
@@ -93,7 +116,8 @@ public static class AdminPasswordResetEndpoints
         ApplyNoStoreNoReferrer(http);
         var html =
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            $"<title>Link expired</title></head><body><p>{AdminPasswordResetCopy.InvalidLink}</p></body></html>";
+            $"<title>{AdminPasswordResetCopy.LinkExpiredPageTitle}</title></head>" +
+            $"<body><p>{AdminPasswordResetCopy.InvalidLink}</p></body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
     }
 
@@ -166,12 +190,8 @@ public static class AdminPasswordResetEndpoints
 
         var presented = NullIfWhiteSpace(body?.Token)
                         ?? await AdminSignedOutExemptions.ReadResetTokenAsync(http, http.RequestAborted);
-        var hash = string.IsNullOrWhiteSpace(presented)
-            ? null
-            : AdminPasswordResetToken.HashRaw(presented.Trim());
-        var row = hash is null
-            ? null
-            : await tokens.FindUsableByHashAsync(hash, now, http.RequestAborted);
+        var hash = AdminPasswordResetToken.HashRaw(presented ?? string.Empty);
+        var row = await tokens.FindUsableByHashAsync(hash, now, ct);
 
         if (row is null
             || !string.Equals(row.Email, ownerEmail, StringComparison.Ordinal))
@@ -179,7 +199,7 @@ public static class AdminPasswordResetEndpoints
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        var credential = await credentials.GetByEmailAsync(ownerEmail, http.RequestAborted);
+        var credential = await credentials.GetByEmailAsync(ownerEmail, ct);
         if (credential is null)
         {
             return await FailExpiredAsync(audit, ipHmac, now, http);
@@ -203,58 +223,103 @@ public static class AdminPasswordResetEndpoints
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        var account = await accounts.GetByEmailAsync(ownerEmail, http.RequestAborted);
+        var account = await accounts.GetByEmailAsync(ownerEmail, ct);
         if (account is null || !account.IsTotpEnrolled)
         {
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        if (!await accounts.TryRecordFailedFactorAttemptAsync(account.Id, now, ct))
+        if (account.IsFactorLocked(now))
         {
+            await using var lockedTx = await db.Database.BeginTransactionAsync(ct);
+            await BurnAccountResetStateAsync(tokens, sessions, ownerEmail, now, ct);
+            await lockedTx.CommitAsync(ct);
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
-        var factor = await secondFactor.VerifyAsync(
-            ownerEmail,
-            totp,
-            recovery,
-            http.RequestAborted);
+        var factor = await secondFactor.EvaluateWithoutCommitAsync(ownerEmail, totp, recovery, ct);
         if (!factor.Succeeded)
         {
-            await tokens.RecordFailedCodeAttemptAsync(hash!, now, ct);
+            return await FailWrongFactorAsync(
+                tokens, accounts, sessions, db, ownerEmail, account.Id, hash, now, http, ct);
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (!await tokens.TryConsumeAsync(hash, now, ct))
+        {
+            await tx.RollbackAsync(ct);
+            return await FailExpiredAsync(audit, ipHmac, now, http);
+        }
+
+        if (factor.UsedRecoveryCode)
+        {
+            if (string.IsNullOrEmpty(factor.RecoveryCodeHash)
+                || !await accounts.TryRedeemRecoveryCodeAsync(account.Id, factor.RecoveryCodeHash, now, ct))
+            {
+                await tx.RollbackAsync(ct);
+                return await FailExpiredAsync(audit, ipHmac, now, http);
+            }
+        }
+        else if (factor.TotpTimestep is { } step
+                 && !await accounts.TryRecordTotpTimestepAsync(account.Id, step, ct))
+        {
+            await tx.RollbackAsync(ct);
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
 
         await accounts.ClearFactorLockAsync(account.Id, ct);
         account.ClearFactorFailures();
 
-        await using var tx = await db.Database.BeginTransactionAsync(http.RequestAborted);
-        if (!await tokens.TryConsumeAsync(hash!, now, http.RequestAborted))
-        {
-            await tx.RollbackAsync(http.RequestAborted);
-            return await FailExpiredAsync(audit, ipHmac, now, http);
-        }
-
         var passwordHash = hasher.Hash(AdminPasswordRules.Normalize(proposed));
         credential.ReplacePassword(passwordHash, now);
         account.SetPasswordHash(passwordHash);
-        await credentials.SaveChangesAsync(http.RequestAborted);
-        await sessions.RevokeAllForEmailAsync(ownerEmail, http.RequestAborted);
+        await credentials.SaveChangesAsync(ct);
+        await sessions.RevokeAllForEmailAsync(ownerEmail, ct);
 
         await audit.AddAsync(
             AdminAuditEntry.CreateAuthEvent("reset_complete", ownerEmail, ipHmac, timestamp: now),
-            http.RequestAborted);
+            ct);
         if (factor.UsedRecoveryCode)
         {
             await audit.AddAsync(
                 AdminAuditEntry.CreateAuthEvent("recovery_code_use", ownerEmail, ipHmac, timestamp: now),
-                http.RequestAborted);
+                ct);
         }
 
-        await audit.SaveChangesAsync(http.RequestAborted);
-        await tx.CommitAsync(http.RequestAborted);
+        await audit.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         return Results.Json(new { message = AdminPasswordResetCopy.CompleteSucceeded });
+    }
+
+    private static async Task<IResult> CheckReset(
+        ResetCompleteBody? body,
+        IAdminPasswordResetTokenRepository tokens,
+        IAdminResetIpThrottle throttle,
+        IIpHasher ipHasher,
+        IAdminClock clock,
+        IOptions<CoreOwnerOptions> coreOwner,
+        ILoggerFactory loggers,
+        HttpContext http)
+    {
+        var now = clock.UtcNow;
+        var ownerEmail = NormalizeEmail(coreOwner.Value.Email);
+        var ipHmac = HashClientIp(ipHasher, http);
+        var ct = http.RequestAborted;
+        if (!await throttle.TryReserveAsync(ipHmac, now, ct))
+        {
+            return ConfirmThrottledResult();
+        }
+
+        var presented = NullIfWhiteSpace(body?.Token);
+        var hash = AdminPasswordResetToken.HashRaw(presented ?? string.Empty);
+        var row = await tokens.FindUsableByHashAsync(hash, now, ct);
+        var valid = row is not null
+                    && string.Equals(row.Email, ownerEmail, StringComparison.Ordinal);
+        loggers.CreateLogger("Dealoware.Api.Admin.ResetCheck")
+            .LogInformation("Admin reset check: {OutcomeClass}", valid ? "valid" : "invalid");
+        ApplyNoStoreNoReferrer(http);
+        return Results.Json(new { valid });
     }
 
     private static async Task<IResult> FailExpiredAsync(
@@ -273,6 +338,66 @@ public static class AdminPasswordResetEndpoints
             http.RequestAborted);
         await audit.SaveChangesAsync(http.RequestAborted);
 
+        ApplyNoStoreNoReferrer(http);
+        http.Response.Headers.Location = LinkExpiredPath;
+        return Results.StatusCode(StatusCodes.Status303SeeOther);
+    }
+
+    private static async Task<IResult> FailWrongFactorAsync(
+        IAdminPasswordResetTokenRepository tokens,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions,
+        DealowareDbContext db,
+        string ownerEmail,
+        Guid accountId,
+        string tokenHash,
+        DateTimeOffset now,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var tokenSlot = await tokens.TryRecordFailedCodeAttemptAsync(tokenHash, now, ct);
+        await accounts.TryRecordFailedFactorAttemptAsync(accountId, now, ct);
+        if (await accounts.IsFactorLockedAsync(accountId, now, ct))
+        {
+            await BurnAccountResetStateAsync(tokens, sessions, ownerEmail, now, ct);
+        }
+
+        await tx.CommitAsync(ct);
+        if (!tokenSlot)
+        {
+            return WrongFactorExpiredResult(http);
+        }
+
+        return WrongFactorUnauthorizedResult(http);
+    }
+
+    /// <summary>
+    /// Account-wide A16 lock: burn every unused reset token (and bootstrap
+    /// tokens, when that table exists) and end every session for the owner,
+    /// in the caller's transaction.
+    /// </summary>
+    private static async Task BurnAccountResetStateAsync(
+        IAdminPasswordResetTokenRepository tokens,
+        IAdminSessionRepository sessions,
+        string ownerEmail,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        await tokens.InvalidateUnusedForEmailAsync(ownerEmail, now, ct);
+        await sessions.RevokeAllForEmailAsync(ownerEmail, ct);
+    }
+
+    private static IResult WrongFactorUnauthorizedResult(HttpContext http)
+    {
+        ApplyNoStoreNoReferrer(http);
+        return Results.Json(
+            new { error = AdminPasswordResetCopy.SignInGeneric },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    private static IResult WrongFactorExpiredResult(HttpContext http)
+    {
         ApplyNoStoreNoReferrer(http);
         http.Response.Headers.Location = LinkExpiredPath;
         return Results.StatusCode(StatusCodes.Status303SeeOther);

@@ -31,6 +31,7 @@ public static class AdminSignedOutExemptions
     public const string ApiSignInRecovery = "/admin/api/auth/sign-in/recovery";
     public const string ApiReset = "/admin/api/auth/reset";
     public const string ApiResetConfirm = "/admin/api/auth/reset/confirm";
+    public const string ApiResetConfirmCheck = "/admin/api/auth/reset/confirm/check";
     public const string ApiBootstrap = "/admin/api/auth/bootstrap";
     public const string ApiSignOut = "/admin/api/auth/sign-out";
 
@@ -40,6 +41,7 @@ public static class AdminSignedOutExemptions
     public const string LinkExpiredPage = LinkExpired;
     public const string ResetApi = ApiReset;
     public const string ResetConfirmApi = ApiResetConfirm;
+    public const string ResetConfirmCheckApi = ApiResetConfirmCheck;
     public const string AuthStaticPrefix = "/admin/auth";
 
     public enum TokenKind
@@ -81,6 +83,7 @@ public static class AdminSignedOutExemptions
         new(ApiReset, HttpMethod.Post, TokenKind.None),
         new(ApiBootstrap, HttpMethod.Post, TokenKind.Bootstrap),
         new(ApiResetConfirm, HttpMethod.Post, TokenKind.None),
+        new(ApiResetConfirmCheck, HttpMethod.Post, TokenKind.None),
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
@@ -101,7 +104,8 @@ public static class AdminSignedOutExemptions
            || string.Equals(canonicalPath, ResetConfirm, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, LinkExpired, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase);
+           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiResetConfirmCheck, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsAuthPost(string canonicalPath)
         => string.Equals(canonicalPath, SignIn, StringComparison.OrdinalIgnoreCase)
@@ -113,7 +117,8 @@ public static class AdminSignedOutExemptions
            || string.Equals(canonicalPath, ApiSignInRecovery, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiBootstrap, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase);
+           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(canonicalPath, ApiResetConfirmCheck, StringComparison.OrdinalIgnoreCase);
 
     public static ExemptionRule? FindRule(string canonicalPath, string method)
     {
