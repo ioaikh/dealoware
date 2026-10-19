@@ -202,6 +202,8 @@ internal sealed class SharedFileSqliteFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, _hasherKey);
+        builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, _hasherKey);
+        builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, _hasherKey);
         builder.ConfigureTestServices(services =>
         {
             foreach (var descriptor in services

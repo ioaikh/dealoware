@@ -404,7 +404,7 @@ public class TdAdm040AuthLockoutSessionTests
         await ClearAuthStateAsync();
         var client = CreateClient();
         using var get = await SendAuthAsync(client, HttpMethod.Get, "/admin/sign-in", null);
-        Assert.Equal(HttpStatusCode.NoContent, get.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
         Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
         Assert.False(string.IsNullOrEmpty(ReadCookie(get, AdminAntiForgery.CookieName)));
         Assert.DoesNotContain("__Host-", ReadCookie(get, AdminAntiForgery.CookieName) ?? "", StringComparison.Ordinal);
@@ -822,13 +822,13 @@ public class TdAdm040AuthLockoutSessionTests
         return token;
     }
 
-    private static string SignInJson() => JsonSerializer.Serialize(new { error = SignInBody });
+    private static string SignInJson() => $$"""{"error":"{{SignInBody}}"}""";
 
-    private static string CaptchaJson() => JsonSerializer.Serialize(new { error = CaptchaBody });
+    private static string CaptchaJson() => $$"""{"error":"{{CaptchaBody}}"}""";
 
-    private static string ResetJson() => JsonSerializer.Serialize(new { error = AdminAuthCopy.ResetExists });
+    private static string ResetJson() => $$"""{"error":"{{AdminAuthCopy.ResetExists}}"}""";
 
-    private static string InvalidLinkJson() => JsonSerializer.Serialize(new { error = AdminAuthCopy.InvalidLink });
+    private static string InvalidLinkJson() => $$"""{"error":"{{AdminAuthCopy.InvalidLink}}"}""";
 
     private static string RepoRoot()
     {

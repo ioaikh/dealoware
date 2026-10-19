@@ -275,6 +275,9 @@ public static class AdminAuthEndpoints
         await lockouts.ClearAccountFailuresAsync(ownerEmail, context.RequestAborted);
         await lockouts.SaveChangesAsync(context.RequestAborted);
 
+        account = await accounts.GetByEmailAsync(ownerEmail, context.RequestAborted)
+                  ?? account;
+
         await accounts.ConsumeOutstandingPendingAsync(ownerEmail, now, context.RequestAborted);
         account.ClearRecoveryCodesReveal();
 

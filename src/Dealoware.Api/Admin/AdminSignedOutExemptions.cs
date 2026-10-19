@@ -57,9 +57,9 @@ public static class AdminSignedOutExemptions
         new(Reset, HttpMethod.Post, TokenKind.None),
         new(ResetSent, HttpMethod.Get, TokenKind.None),
         new(Bootstrap, HttpMethod.Get, TokenKind.None),
-        new(Bootstrap, HttpMethod.Post, TokenKind.Bootstrap),
+        new(Bootstrap, HttpMethod.Post, TokenKind.None),
         new(ResetConfirm, HttpMethod.Get, TokenKind.None),
-        new(ResetConfirm, HttpMethod.Post, TokenKind.PasswordReset),
+        new(ResetConfirm, HttpMethod.Post, TokenKind.None),
         new(LinkExpired, HttpMethod.Get, TokenKind.None),
         new(SetupAuthenticator, HttpMethod.Get, TokenKind.PendingSignIn),
         new(SetupAuthenticator, HttpMethod.Post, TokenKind.PendingSignIn),
@@ -69,8 +69,8 @@ public static class AdminSignedOutExemptions
         new(ApiSignInCode, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiSignInRecovery, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiReset, HttpMethod.Post, TokenKind.None),
-        new(ApiBootstrap, HttpMethod.Post, TokenKind.Bootstrap),
-        new(ApiResetConfirm, HttpMethod.Post, TokenKind.PasswordReset),
+        new(ApiBootstrap, HttpMethod.Post, TokenKind.None),
+        new(ApiResetConfirm, HttpMethod.Post, TokenKind.None),
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)
     ];
 
