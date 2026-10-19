@@ -48,6 +48,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
 - [Dealoware-PoC-Negotiations.postman_collection.json](../postman/Dealoware-PoC-Negotiations.postman_collection.json) — Core API negotiations collection aligned to main d33a6d9c
+- [Dealoware-api-core.postman_environment.json](../postman/Dealoware-api-core.postman_environment.json) — LIVE Core API override environment. A live run writes to production and may only be used after Ivan's go through BM (T-G-08).
 - [2026-09-21__product__note__brief-4-status-reply.md](product/2026-09-21__product__note__brief-4-status-reply.md)
 - [2026-09-21__product__proposal__grok-bot-internal-test-connector.md](product/2026-09-21__product__proposal__grok-bot-internal-test-connector.md)
 
