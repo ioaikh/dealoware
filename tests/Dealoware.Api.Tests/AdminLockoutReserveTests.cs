@@ -111,7 +111,7 @@ public class AdminLockoutReserveTests
         var now = DateTimeOffset.UtcNow;
         await tokens.AddAsync(
             AdminAuthToken.Create(
-                AdminAuthToken.KindReset,
+                AdminAuthToken.KindPending,
                 AdminAuthService.HashToken(raw),
                 OwnerEmail.ToLowerInvariant(),
                 now,
@@ -605,6 +605,134 @@ public class AdminLockoutReserveTests
         Assert.All(actors, actor => Assert.DoesNotContain(actor, subjects));
     }
 
+    [Fact]
+    public async Task SecR16_ResetSideFactorLock_BlocksCorrectTotpAndRecovery()
+    {
+        await ClearAsync();
+        var (password, secret, recovery) = await SeedEnrolledAccountWithRecoveryAsync();
+        await TripFactorLockAsync();
+
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminPendingAuthCookie.Name)
+            ?? ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        var code = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var totp = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+        Assert.Equal(HttpStatusCode.Unauthorized, totp.StatusCode);
+        Assert.Contains(AdminAuthCopy.SignInFailure, await totp.Content.ReadAsStringAsync());
+        Assert.True(await IsFactorLockedAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Contains(db.AdminAuditLog, e => e.ReasonClass == AdminAuthReason.Locked);
+        }
+
+        using var recoveryResponse = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInRecoveryPath,
+            new { recoveryCode = recovery, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+        Assert.Equal(HttpStatusCode.Unauthorized, recoveryResponse.StatusCode);
+        Assert.Contains(AdminAuthCopy.SignInFailure, await recoveryResponse.Content.ReadAsStringAsync());
+        Assert.True(await IsFactorLockedAsync());
+    }
+
+    [Fact]
+    public async Task SecR16_WrongSignInCodes_TripAccountLock_DoNotWriteFactorLock()
+    {
+        await ClearAsync();
+        var (password, _) = await SeedEnrolledAccountAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminPendingAuthCookie.Name)
+            ?? ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+
+        for (var i = 0; i < AdminAuthService.AccountFailureLimit; i++)
+        {
+            using var wrong = await SendAuthAsync(
+                client,
+                HttpMethod.Post,
+                AdminAuthEndpoints.SignInCodePath,
+                new { code = "000000", turnstileToken = FakeTurnstileVerifier.ValidToken },
+                extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+
+        Assert.NotNull(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.False(await IsFactorLockedAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail);
+        Assert.Null(account.FactorLockedUntil);
+        Assert.Equal(0, account.FailedFactorAttempts);
+    }
+
+    [Fact]
+    public async Task SecR2_ThrottledIp_PendingCookieVariants_Same429()
+    {
+        await ClearAsync();
+        var (password, secret) = await SeedEnrolledAccountAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminPendingAuthCookie.Name)
+            ?? ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        await FillLoginIpAsync(client);
+        var code = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using var valid = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}={pending}");
+        using var garbage = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminPendingAuthCookie.Name}=not-a-pending-token");
+        using var missing = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { code, turnstileToken = FakeTurnstileVerifier.ValidToken });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, valid.StatusCode);
+        Assert.Equal(valid.StatusCode, garbage.StatusCode);
+        Assert.Equal(valid.StatusCode, missing.StatusCode);
+        var body = await valid.Content.ReadAsStringAsync();
+        Assert.Equal(body, await garbage.Content.ReadAsStringAsync());
+        Assert.Equal(body, await missing.Content.ReadAsStringAsync());
+        Assert.Contains(AdminAuthCopy.SignInFailure, body);
+        Assert.False(valid.Headers.Contains("Retry-After"));
+        Assert.False(garbage.Headers.Contains("Retry-After"));
+        Assert.False(missing.Headers.Contains("Retry-After"));
+    }
+
     private async Task ClearAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -704,6 +832,61 @@ public class AdminLockoutReserveTests
         db.AdminCoreOwnerAccounts.Add(account);
         await db.SaveChangesAsync();
         return (password, secret);
+    }
+
+    private async Task<(string Password, byte[] Secret, string Recovery)> SeedEnrolledAccountWithRecoveryAsync()
+    {
+        var password = $"Pw-{Guid.NewGuid():N}-xY9!";
+        var recovery = AdminRecoveryCodes.Generate()[0];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
+        var hasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
+        var existing = db.AdminCoreOwnerAccounts.SingleOrDefault(a => a.Email == OwnerEmail);
+        if (existing is not null)
+        {
+            db.AdminRecoveryCodes.RemoveRange(db.AdminRecoveryCodes.Where(c => c.AccountId == existing.Id));
+            db.AdminPendingAuths.RemoveRange(db.AdminPendingAuths.Where(p => p.Email == OwnerEmail));
+            db.AdminSessions.RemoveRange(db.AdminSessions.Where(s => s.Email == OwnerEmail));
+            db.AdminCoreOwnerAccounts.Remove(existing);
+            await db.SaveChangesAsync();
+        }
+
+        var account = AdminCoreOwnerAccount.Create(OwnerEmail);
+        account.SetPasswordHash(AdminPasswordHasher.Hash(password));
+        var secret = Rfc6238Totp.GenerateSecret();
+        db.AdminRecoveryCodes.Add(AdminRecoveryCode.Create(account.Id, hasher.Hash(recovery)));
+        account.MarkRecoveryCodesIssued();
+        account.CompleteEnrollment(protector.Encrypt(secret));
+        db.AdminCoreOwnerAccounts.Add(account);
+        await db.SaveChangesAsync();
+        return (password, secret, recovery);
+    }
+
+    private async Task TripFactorLockAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var accounts = scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<IAdminClock>();
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail);
+        var now = clock.UtcNow;
+        for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts; i++)
+        {
+            Assert.True(await accounts.TryRecordFailedFactorAttemptAsync(account.Id, now));
+        }
+
+        Assert.True(await accounts.IsFactorLockedAsync(account.Id, now));
+    }
+
+    private async Task<bool> IsFactorLockedAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var accounts = scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<IAdminClock>();
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail);
+        return await accounts.IsFactorLockedAsync(account.Id, clock.UtcNow);
     }
 
     private async Task<Guid> SignInFullFallbackAsync(HttpClient client)

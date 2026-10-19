@@ -117,6 +117,12 @@ public sealed class AdminSessionMiddleware
             return false;
         }
 
+        if (rule.Value.Token == AdminSignedOutExemptions.TokenKind.PendingSignIn
+            && await TryWritePendingThrottleAsync(context, clock))
+        {
+            return false;
+        }
+
         return rule.Value.Token switch
         {
             AdminSignedOutExemptions.TokenKind.None => true,
@@ -127,6 +133,27 @@ public sealed class AdminSessionMiddleware
             // Bootstrap / reset tokens are owned by Steps 2 and 4. Missing token → not exempt.
             _ => false
         };
+    }
+
+    private static async Task<bool> TryWritePendingThrottleAsync(HttpContext context, IAdminClock clock)
+    {
+        var lockouts = context.RequestServices.GetService<IAdminLockoutStore>();
+        if (lockouts is null)
+        {
+            return false;
+        }
+
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
+        var active = await lockouts.GetActiveLockoutAsync(
+            AdminAuthScopes.LoginIp, ip, clock.UtcNow, context.RequestAborted);
+        if (active is null)
+        {
+            return false;
+        }
+
+        await AdminSignInDeny.WriteThrottledAsync(context);
+        context.Items[AntiForgeryDeniedKey] = true;
+        return true;
     }
 
     private static async Task<bool> HasStep5TokenAsync(

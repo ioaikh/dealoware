@@ -21,7 +21,6 @@ public sealed class AdminAuthService
     private readonly IAdminCredentialDirectory _credentials;
     private readonly IAdminSessionRepository _sessions;
     private readonly IAdminAuditRepository _audit;
-    private readonly IAdminMailQueue _mailQueue;
     private readonly IIpHasher _ipHasher;
     private readonly IAuditActorHasher _auditActorHasher;
     private readonly IAdminClock _clock;
@@ -33,7 +32,6 @@ public sealed class AdminAuthService
         IAdminCredentialDirectory credentials,
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
-        IAdminMailQueue mailQueue,
         IIpHasher ipHasher,
         IAuditActorHasher auditActorHasher,
         IAdminClock clock)
@@ -44,7 +42,6 @@ public sealed class AdminAuthService
         _credentials = credentials;
         _sessions = sessions;
         _audit = audit;
-        _mailQueue = mailQueue;
         _ipHasher = ipHasher;
         _auditActorHasher = auditActorHasher;
         _clock = clock;

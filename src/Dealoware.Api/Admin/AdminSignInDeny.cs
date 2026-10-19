@@ -23,4 +23,12 @@ public static class AdminSignInDeny
         return context.Response.WriteAsync(
             $$"""{"error":"{{AdminAuthCopy.SignInFailure}}"}""");
     }
+
+    public static Task WriteThrottledAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.Response.ContentType = "application/json";
+        return context.Response.WriteAsync(
+            $$"""{"error":"{{AdminAuthCopy.SignInFailure}}"}""");
+    }
 }

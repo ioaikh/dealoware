@@ -7,5 +7,4 @@ public static class AdminAuthScopes
 {
     public const string Account = "account";
     public const string LoginIp = "login_ip";
-    public const string ResetIp = "reset_ip";
 }

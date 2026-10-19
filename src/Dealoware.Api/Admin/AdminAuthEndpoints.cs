@@ -453,7 +453,6 @@ public static class AdminAuthEndpoints
         }
 
         await ReleaseSecondFactorSuccessAsync(account, now, context, ipReserved, accountReserved);
-        await accounts.ClearFactorLockAsync(account.Id, context.RequestAborted);
         await WriteAuthEventAsync(
             audit,
             AdminAuthEvents.TotpEnroll,
@@ -587,6 +586,18 @@ public static class AdminAuthEndpoints
 
         var now = DateTimeOffset.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
+        if (await accounts.IsFactorLockedAsync(account.Id, now, context.RequestAborted))
+        {
+            await WriteAuthEventAsync(
+                audit,
+                AdminAuthEvents.LoginFailure,
+                account.Email,
+                ipHmac,
+                AdminAuthReason.Locked,
+                context.RequestAborted);
+            return AdminSignInDeny.Failure();
+        }
+
         var accepted = false;
         var usedRecovery = false;
         var (ok, ipReserved, accountReserved) = await ReserveSecondFactorAsync(
@@ -650,7 +661,6 @@ public static class AdminAuthEndpoints
 
         await ReleaseSecondFactorSuccessAsync(account, now, context, ipReserved, accountReserved);
         await accounts.ClearRecoveryCodesRevealAsync(account.Id, context.RequestAborted);
-        await accounts.ClearFactorLockAsync(account.Id, context.RequestAborted);
 
         var session = AdminSession.Create(account.Email, ipHmac, now);
         session.MarkTotpVerified();
