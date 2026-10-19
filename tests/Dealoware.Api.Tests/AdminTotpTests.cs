@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
@@ -64,6 +65,10 @@ public class AdminTotpTests
             db.AdminCoreOwnerAccounts.Remove(existing);
             await db.SaveChangesAsync();
         }
+
+        db.AdminAuthFailureEvents.RemoveRange(db.AdminAuthFailureEvents);
+        db.AdminAuthLockouts.RemoveRange(db.AdminAuthLockouts);
+        await db.SaveChangesAsync();
 
         var account = AdminCoreOwnerAccount.Create(CoreOwnerEmail);
         account.SetPasswordHash(AdminPasswordHasher.Hash(password));
@@ -134,7 +139,18 @@ public class AdminTotpTests
         }
 
         if (body is not null)
-            request.Content = JsonContent.Create(body);
+        {
+            var node = JsonSerializer.SerializeToNode(body);
+            if (node is JsonObject obj
+                && HttpMethod.Post.Equals(method)
+                && !obj.ContainsKey("turnstileToken"))
+            {
+                obj["turnstileToken"] = FakeTurnstileVerifier.ValidToken;
+            }
+
+            request.Content = JsonContent.Create(node);
+        }
+
         return request;
     }
 

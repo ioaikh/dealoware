@@ -28,6 +28,7 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.AdminTablesMigrationId,
         DatabaseMigrationBaseline.UpdatedAtMigrationId,
         DatabaseMigrationBaseline.TotpRecoveryMigrationId,
+        DatabaseMigrationBaseline.LockoutStateMigrationId,
         AdminAuditLogAppendOnly.MigrationId
     ];
 
@@ -712,7 +713,8 @@ public class DatabaseMigrationBaselineTests
         Assert.Equal(DatabaseMigrationBaseline.AdminTablesMigrationId, migrations[1]);
         Assert.Equal(DatabaseMigrationBaseline.UpdatedAtMigrationId, migrations[2]);
         Assert.Equal(DatabaseMigrationBaseline.TotpRecoveryMigrationId, migrations[3]);
-        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[4]);
+        Assert.Equal(DatabaseMigrationBaseline.LockoutStateMigrationId, migrations[4]);
+        Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[5]);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
@@ -10,9 +11,68 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r5 §2.2 paths.
 /// No HTML pages (Step 14). Session stays unverified until TOTP or a recovery code passes.
+/// Reset/bootstrap and Turnstile/lockout (Step 5) share these routes.
 /// </summary>
 public static class AdminAuthEndpoints
 {
+    public const string SignInPath = AdminSignedOutExemptions.ApiSignIn;
+    public const string SignInCodePath = AdminSignedOutExemptions.ApiSignInCode;
+    public const string SignInRecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;
+    public const string ResetPath = AdminSignedOutExemptions.ApiReset;
+    public const string ResetConfirmPath = AdminSignedOutExemptions.ApiResetConfirm;
+    public const string BootstrapPath = AdminSignedOutExemptions.ApiBootstrap;
+    public const string SignOutPath = AdminSignedOutExemptions.ApiSignOut;
+    public const string PageSignOutPath = AdminSignedOutExemptions.SignOut;
+
+    public static IServiceCollection AddAdminAuth(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
+    {
+        services.Configure<TurnstileOptions>(configuration.GetSection(TurnstileOptions.SectionName));
+        services.AddScoped<IAdminLockoutStore, AdminLockoutStore>();
+        services.AddScoped<IAdminAuthTokenStore, AdminAuthTokenStore>();
+        services.AddSingleton<IAdminClock, SystemAdminClock>();
+        services.AddScoped<AdminAuthService>();
+
+        if (environment.IsDevelopment())
+        {
+            var ownerEmail = configuration[$"{CoreOwnerOptions.SectionName}:Email"];
+            if (string.IsNullOrWhiteSpace(ownerEmail))
+            {
+                throw new InvalidOperationException(
+                    "CoreOwner:Email is required to register the Development credential directory. No owner fallback is used.");
+            }
+
+            var directory = new InMemoryAdminCredentialDirectory(ownerEmail);
+            services.AddSingleton(directory);
+            services.AddSingleton<IAdminCredentialDirectory>(directory);
+        }
+        else
+        {
+            services.AddScoped<IAdminCredentialDirectory, CoreOwnerAccountCredentialDirectory>();
+        }
+
+        var queue = new AdminMailQueue();
+        services.AddSingleton(queue);
+        services.AddSingleton<IAdminMailQueue>(queue);
+        services.AddHostedService<AdminMailQueueHostedService>();
+
+        services.AddAntiforgery(AdminAntiForgery.Configure);
+
+        services.AddHttpClient(HttpTurnstileVerifier.HttpClientName);
+        services.AddSingleton<ITurnstileVerifier>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            var options = sp.GetRequiredService<IOptions<TurnstileOptions>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HttpTurnstileVerifier>>();
+            return new HttpTurnstileVerifier(
+                factory.CreateClient(HttpTurnstileVerifier.HttpClientName),
+                options,
+                name => configuration[name] ?? Environment.GetEnvironmentVariable(name),
+                logger);
+        });
+
+        return services;
+    }
+
     public static void MapAdminAuthEndpoints(this WebApplication app)
     {
         app.MapGet(AdminSignedOutExemptions.SignIn, GetSignInPage)
@@ -61,14 +121,55 @@ public static class AdminAuthEndpoints
         app.MapPost(AdminSignedOutExemptions.ApiSignOut, SignOut)
             .WithTags("AdminAuth")
             .AllowAnonymous();
+
+        app.MapGet(AdminSignedOutExemptions.Reset, IssueAnonymousPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapGet(AdminSignedOutExemptions.ResetSent, IssueAnonymousPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapGet(AdminSignedOutExemptions.LinkExpired, IssueAnonymousPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapGet(AdminSignedOutExemptions.ResetConfirm, IssueFragmentPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapGet(AdminSignedOutExemptions.Bootstrap, IssueFragmentPage)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.ApiReset, RequestReset)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.ApiResetConfirm, CompleteReset)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
+        app.MapPost(AdminSignedOutExemptions.ApiBootstrap, CompleteBootstrap)
+            .WithTags("AdminAuth")
+            .AllowAnonymous();
     }
 
-    private sealed record SignInRequest(string? Email, string? Password, string? ReturnPath);
+    private sealed record SignInRequest(string? Email, string? Password, string? ReturnPath, string? TurnstileToken);
 
-    private sealed record TotpCodeRequest(string? Code, string? RecoveryCode);
+    private sealed record TotpCodeRequest(string? Code, string? RecoveryCode, string? TotpCode);
 
     private static IResult GetSignInPage(HttpContext context, AdminAntiForgeryService antiforgery)
-        => antiforgery.IssuePage(context, "sign-in");
+    {
+        SetNoStore(context);
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        var token = antiforgery.Issue(context);
+        context.Response.Headers[AdminAntiForgeryService.HeaderName] = token;
+        return Results.Json(new { screen = "sign-in", csrfToken = token });
+    }
+
+    private static IResult IssueAnonymousPage(HttpContext context, AdminAntiForgeryService antiforgery)
+        => antiforgery.IssuePage(context, "anonymous");
+
+    private static IResult IssueFragmentPage(HttpContext context)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        return Results.NoContent();
+    }
 
     private static IResult GetSignInCodePage(HttpContext context, AdminAntiForgeryService antiforgery)
         => antiforgery.IssuePage(context, "sign-in-code");
@@ -83,29 +184,83 @@ public static class AdminAuthEndpoints
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
         TotpSecretProtector protector,
-        IOptions<CoreOwnerOptions> coreOwnerOptions)
+        IOptions<CoreOwnerOptions> coreOwnerOptions,
+        ITurnstileVerifier turnstile,
+        IAdminLockoutStore lockouts,
+        IAdminClock clock,
+        AdminAuthService step5Auth)
     {
-        var ownerEmail = coreOwnerOptions.Value.Email;
-        var submittedEmail = (body?.Email ?? string.Empty).Trim();
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
+        if (!await turnstile.VerifyAsync(body?.TurnstileToken ?? string.Empty, ip, context.RequestAborted))
+        {
+            await WriteAuthEventAsync(
+                audit,
+                AdminAuthEvents.LoginFailure,
+                body?.Email ?? "unknown",
+                HashIp(ipHasher, context),
+                AdminAuthReason.CaptchaFailed,
+                context.RequestAborted);
+            return Results.Json(
+                new { error = AdminAuthCopy.VerificationFailed },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var ownerEmail = AdminAuthService.NormalizeEmail(coreOwnerOptions.Value.Email);
+        var submittedEmail = AdminAuthService.NormalizeEmail(body?.Email);
         var password = body?.Password ?? string.Empty;
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
         var returnPath = AdminReturnPath.Resolve(body?.ReturnPath);
 
-        var isOwner = !string.IsNullOrWhiteSpace(ownerEmail)
-                      && string.Equals(submittedEmail, ownerEmail, StringComparison.OrdinalIgnoreCase);
-
-        AdminCoreOwnerAccount? account = null;
-        if (isOwner)
+        var account = string.IsNullOrWhiteSpace(ownerEmail)
+            ? null
+            : await accounts.GetByEmailAsync(ownerEmail, context.RequestAborted);
+        if (account is null)
         {
-            account = await accounts.GetByEmailAsync(ownerEmail, context.RequestAborted);
+            return await WriteStep5OutcomeAsync(
+                context,
+                await step5Auth.SignInAsync(
+                    submittedEmail, password, body?.TurnstileToken, ip, context.RequestAborted));
         }
 
-        var passwordOk = account is not null && !string.IsNullOrEmpty(account.PasswordHash)
+        var isOwner = string.Equals(submittedEmail, ownerEmail, StringComparison.Ordinal);
+
+        if (isOwner)
+        {
+            var reserved = await lockouts.TryIncrementFailureAsync(
+                AdminAuthScopes.Account,
+                ownerEmail,
+                now,
+                AdminAuthService.FailureWindow,
+                AdminAuthService.AccountFailureLimit,
+                AdminAuthService.LockDuration,
+                context.RequestAborted);
+            if (!reserved.Incremented)
+            {
+                AdminPasswordHasher.DummyVerify(password);
+                await WriteAuthEventAsync(
+                    audit,
+                    AdminAuthEvents.LoginFailure,
+                    ownerEmail,
+                    ipHmac,
+                    AdminAuthReason.Locked,
+                    context.RequestAborted);
+                return AdminSignInDeny.Failure();
+            }
+
+            if (reserved.LockCreated)
+            {
+                await accounts.ConsumeOutstandingPendingAsync(ownerEmail, now, context.RequestAborted);
+                var sessions = context.RequestServices.GetRequiredService<IAdminSessionRepository>();
+                await sessions.DeleteByEmailAsync(ownerEmail, context.RequestAborted);
+            }
+        }
+
+        var passwordOk = isOwner && !string.IsNullOrEmpty(account.PasswordHash)
             ? AdminPasswordHasher.Verify(password, account.PasswordHash)
             : AdminPasswordHasher.DummyVerify(password);
 
-        if (!isOwner || account is null || !passwordOk)
+        if (!isOwner || !passwordOk)
         {
             await WriteAuthEventAsync(
                 audit,
@@ -116,6 +271,9 @@ public static class AdminAuthEndpoints
                 context.RequestAborted);
             return AdminSignInDeny.Failure();
         }
+
+        await lockouts.ClearAccountFailuresAsync(ownerEmail, context.RequestAborted);
+        await lockouts.SaveChangesAsync(context.RequestAborted);
 
         await accounts.ConsumeOutstandingPendingAsync(ownerEmail, now, context.RequestAborted);
         account.ClearRecoveryCodesReveal();
@@ -356,6 +514,36 @@ public static class AdminAuthEndpoints
             recoveryHasher);
 
     private static async Task<IResult> CompleteSecondFactorAsync(
+        TotpCodeRequest? body,
+        bool useRecovery,
+        HttpContext context,
+        IAdminCoreOwnerAccountRepository accounts,
+        IAdminSessionRepository sessions,
+        IAdminAuditRepository audit,
+        IIpHasher ipHasher,
+        TotpSecretProtector protector,
+        AdminRecoveryCodeHasher recoveryHasher)
+    {
+        var step5Pending = context.Request.Cookies[AdminSessionExemptions.PendingCookieName];
+        var step3Pending = await LoadUsablePendingAsync(context, accounts);
+        if (step3Pending is null && !string.IsNullOrWhiteSpace(step5Pending))
+        {
+            var step5 = context.RequestServices.GetRequiredService<AdminAuthService>();
+            return await WriteStep5OutcomeAsync(
+                context,
+                await step5.VerifySecondFactorAsync(
+                    step5Pending,
+                    useRecovery ? null : body?.TotpCode ?? body?.Code,
+                    useRecovery ? body?.RecoveryCode ?? body?.Code : null,
+                    ClientIp(context),
+                    context.RequestAborted));
+        }
+
+        return await CompleteEnrolledSecondFactorAsync(
+            body, useRecovery, context, accounts, sessions, audit, ipHasher, protector, recoveryHasher);
+    }
+
+    private static async Task<IResult> CompleteEnrolledSecondFactorAsync(
         TotpCodeRequest? body,
         bool useRecovery,
         HttpContext context,
@@ -613,4 +801,73 @@ public static class AdminAuthEndpoints
 
     private static void CryptographicClear(byte[] secret)
         => System.Security.Cryptography.CryptographicOperations.ZeroMemory(secret);
+
+    private static async Task<IResult> RequestReset(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
+        => await WriteStep5OutcomeAsync(
+            context,
+            await auth.RequestResetAsync(
+                body.Email, body.TurnstileToken, ClientIp(context), context.RequestAborted));
+
+    private static async Task<IResult> CompleteReset(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
+        => await WriteStep5OutcomeAsync(
+            context,
+            await auth.CompleteLinkAsync(
+                AdminAuthToken.KindReset,
+                body.EffectiveLinkToken,
+                body.Password,
+                body.Email,
+                body.TurnstileToken,
+                ClientIp(context),
+                context.RequestAborted));
+
+    private static async Task<IResult> CompleteBootstrap(HttpContext context, AdminAuthService auth, AdminAuthRequest body)
+        => await WriteStep5OutcomeAsync(
+            context,
+            await auth.CompleteLinkAsync(
+                AdminAuthToken.KindBootstrap,
+                body.EffectiveLinkToken,
+                body.Password,
+                body.Email,
+                body.TurnstileToken,
+                ClientIp(context),
+                context.RequestAborted));
+
+    private static string? ClientIp(HttpContext context) =>
+        context.Connection.RemoteIpAddress?.ToString();
+
+    private static async Task<IResult> WriteStep5OutcomeAsync(HttpContext context, AdminAuthOutcome outcome)
+    {
+        if (outcome.PendingToken is not null)
+        {
+            context.Response.Cookies.Append(
+                AdminSessionExemptions.PendingCookieName,
+                outcome.PendingToken,
+                AdminSessionCookie.CreateOptions());
+        }
+
+        if (outcome.SessionId is { } sessionId)
+        {
+            context.Response.Cookies.Delete(AdminSessionExemptions.PendingCookieName, AdminSessionCookie.ExpiredOptions());
+            context.Response.Cookies.Append(
+                AdminSessionCookie.Name,
+                sessionId.ToString("D"),
+                AdminSessionCookie.CreateOptions());
+        }
+
+        return Results.Json(new { error = outcome.Body }, statusCode: outcome.StatusCode);
+    }
+}
+
+public sealed class AdminAuthRequest
+{
+    public string? Email { get; set; }
+    public string? Password { get; set; }
+    public string? TurnstileToken { get; set; }
+    public string? TotpCode { get; set; }
+    public string? RecoveryCode { get; set; }
+    public string? LinkToken { get; set; }
+    public string? Token { get; set; }
+
+    public string? EffectiveLinkToken =>
+        !string.IsNullOrWhiteSpace(Token) ? Token : LinkToken;
 }

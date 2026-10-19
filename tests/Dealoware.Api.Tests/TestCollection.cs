@@ -136,12 +136,24 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
                 options.AddInterceptors(new SqliteBusyTimeoutInterceptor());
             });
 
-            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IAdminMailSender)).ToList())
+            foreach (var descriptor in services
+                         .Where(d => d.ServiceType == typeof(IAdminMailSender)
+                                     || d.ServiceType == typeof(ITurnstileVerifier)
+                                     || d.ServiceType == typeof(IAdminClock)
+                                     || d.ServiceType == typeof(FakeTurnstileVerifier)
+                                     || d.ServiceType == typeof(TestAdminClock)
+                                     || d.ServiceType == typeof(RecordingMailSender))
+                         .ToList())
             {
                 services.Remove(descriptor);
             }
 
-            services.AddSingleton<IAdminMailSender, RecordingMailSender>();
+            services.AddSingleton<RecordingMailSender>();
+            services.AddSingleton<IAdminMailSender>(sp => sp.GetRequiredService<RecordingMailSender>());
+            services.AddSingleton<FakeTurnstileVerifier>();
+            services.AddSingleton<ITurnstileVerifier>(sp => sp.GetRequiredService<FakeTurnstileVerifier>());
+            services.AddSingleton<TestAdminClock>();
+            services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<TestAdminClock>());
         });
     }
 
@@ -162,6 +174,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 /// </summary>
 [CollectionDefinition("WebAppTests")]
 public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
+{
+}
+
+[CollectionDefinition("AdminAuthTests")]
+public class AdminAuthTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
 {
 }
 
