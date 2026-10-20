@@ -375,7 +375,7 @@ public class TdAdm040AuthLockoutSessionTests
             turnstileToken = FakeTurnstileVerifier.ValidToken
         });
         using var response = await client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, await CountFailuresAsync(AdminAuthScopes.Account, OwnerEmail.ToLowerInvariant()));
     }
 
@@ -416,10 +416,10 @@ public class TdAdm040AuthLockoutSessionTests
         var client = CreateClient();
 
         using var linkExpired = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.LinkExpired, null);
-        Assert.Equal(HttpStatusCode.NotFound, linkExpired.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, linkExpired.StatusCode);
 
         using var resetConfirm = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.ResetConfirm, null);
-        Assert.Equal(HttpStatusCode.Unauthorized, resetConfirm.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, resetConfirm.StatusCode);
 
         using var bootstrap = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap, null);
         Assert.Equal(HttpStatusCode.Unauthorized, bootstrap.StatusCode);

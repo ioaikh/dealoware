@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Security.Cryptography;
+using System.Threading;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
@@ -31,6 +33,10 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     public string RecoveryHmacKey { get; }
 
     public string IpHmacKey { get; }
+
+    public CollectingLoggerProvider LogCollector { get; } = new();
+
+    public CountingDbCommandInterceptor CommandCounter { get; } = new();
 
     public IsolatedWebApplicationFactory()
         : this(
@@ -109,6 +115,11 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, TotpKey);
         builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, RecoveryHmacKey);
 
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddProvider(LogCollector);
+        });
+
         // After the app registers its provider (SQLite or Npgsql), replace it. The
         // default is isolated in-memory SQLite. When DB_HOST is set (postgres CI job)
         // use that server with SSL Mode=Disable. An explicit sqlite path (SC-6) wins.
@@ -126,6 +137,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<DealowareDbContext>(options =>
             {
+                options.AddInterceptors(CommandCounter);
                 if (_postgresConnectionString is not null)
                 {
                     options.UseNpgsql(_postgresConnectionString);
@@ -142,6 +154,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
                                      || d.ServiceType == typeof(IAdminClock)
                                      || d.ServiceType == typeof(FakeTurnstileVerifier)
                                      || d.ServiceType == typeof(TestAdminClock)
+                                     || d.ServiceType == typeof(FakeAdminClock)
                                      || d.ServiceType == typeof(RecordingMailSender))
                          .ToList())
             {
@@ -152,9 +165,31 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAdminMailSender>(sp => sp.GetRequiredService<RecordingMailSender>());
             services.AddSingleton<FakeTurnstileVerifier>();
             services.AddSingleton<ITurnstileVerifier>(sp => sp.GetRequiredService<FakeTurnstileVerifier>());
-            services.AddSingleton<TestAdminClock>();
-            services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<TestAdminClock>());
+            services.AddSingleton<FakeAdminClock>();
+            services.AddSingleton<TestAdminClock>(sp => sp.GetRequiredService<FakeAdminClock>());
+            services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<FakeAdminClock>());
         });
+    }
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        base.ConfigureClient(client);
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Origin",
+            AdminHostOptions.ProductionAdminOrigin);
+    }
+
+    private static void ReplaceSingleton<TService, TImpl>(IServiceCollection services)
+        where TService : class
+        where TImpl : class, TService
+    {
+        foreach (var descriptor in services.Where(d => d.ServiceType == typeof(TService)).ToList())
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddSingleton<TImpl>();
+        services.AddSingleton<TService>(sp => sp.GetRequiredService<TImpl>());
     }
 
     protected override void Dispose(bool disposing)
@@ -192,6 +227,75 @@ public sealed class SharedStoreWebApplicationFactory : IsolatedWebApplicationFac
         string ipHmacKey)
         : base(sqliteConnectionString, totpKey, recoveryHmacKey, ipHmacKey)
     {
+    }
+}
+
+/// <summary>Counts EF commands so owner vs non-owner reset-request DB work can be compared.</summary>
+public sealed class CountingDbCommandInterceptor : DbCommandInterceptor
+{
+    private int _count;
+
+    public int Count => Volatile.Read(ref _count);
+
+    public void Reset() => Volatile.Write(ref _count, 0);
+
+    private void Hit() => Interlocked.Increment(ref _count);
+
+    public override InterceptionResult<DbDataReader> ReaderExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result)
+    {
+        Hit();
+        return base.ReaderExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override InterceptionResult<int> NonQueryExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result)
+    {
+        Hit();
+        return base.NonQueryExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override InterceptionResult<object> ScalarExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result)
+    {
+        Hit();
+        return base.ScalarExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
     }
 }
 

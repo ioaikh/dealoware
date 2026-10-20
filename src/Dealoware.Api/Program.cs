@@ -119,6 +119,8 @@ catch (InvalidOperationException ex)
     throw;
 }
 
+builder.Services.AddAdminPasswordReset();
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AdminSessionMiddleware.PolicyName, policy =>
@@ -333,6 +335,8 @@ app.MapAdminReadEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();
+app.MapAdminCsrfProbeEndpoint();
+app.MapAdminPasswordReset();
 
 app.Run();
 

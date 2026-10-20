@@ -122,13 +122,6 @@ public static class AdminAuthEndpoints
         app.MapPost(AdminSignedOutExemptions.ApiSignOut, SignOut)
             .WithTags("AdminAuth")
             .AllowAnonymous();
-
-        app.MapGet(AdminSignedOutExemptions.Reset, IssueAnonymousPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
-        app.MapGet(AdminSignedOutExemptions.ResetSent, IssueAnonymousPage)
-            .WithTags("AdminAuth")
-            .AllowAnonymous();
     }
 
     private sealed record SignInRequest(string? Email, string? Password, string? ReturnPath, string? TurnstileToken);
@@ -143,9 +136,6 @@ public static class AdminAuthEndpoints
         context.Response.Headers[AdminAntiForgeryService.HeaderName] = token;
         return Results.Json(new { screen = "sign-in", csrfToken = token });
     }
-
-    private static IResult IssueAnonymousPage(HttpContext context, AdminAntiForgeryService antiforgery)
-        => antiforgery.IssuePage(context, "anonymous");
 
     private static IResult GetSignInCodePage(HttpContext context, AdminAntiForgeryService antiforgery)
         => antiforgery.IssuePage(context, "sign-in-code");
