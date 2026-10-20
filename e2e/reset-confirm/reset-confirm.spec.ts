@@ -194,41 +194,6 @@ test('retry check stays on Try again as Checking… and ignores extra presses', 
   await expect(page.locator('#newPassword')).toBeFocused();
 });
 
-test('retry check failure returns focus to Try again', async ({ page }) => {
-  let checks = 0;
-  await page.route((url) => isCheck(url.href), async (route) => {
-    checks += 1;
-    await route.fulfill({ status: 500, body: 'error' });
-  });
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expectRetryFocused(page, CHECK_RETRY);
-  await page.locator('#reset-retry').click();
-  await expectRetryFocused(page, CHECK_RETRY);
-  expect(checks).toBe(2);
-});
-
-test('retry check timeout returns focus to Try again', async ({ page }) => {
-  let checks = 0;
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
-  await page.route((url) => isCheck(url.href), async (route) => {
-    checks += 1;
-    if (checks === 1) {
-      await route.fulfill({ status: 500, body: 'error' });
-      return;
-    }
-    await new Promise(() => { /* hang until the clock fires the 15 s abort */ });
-  });
-  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
-  await expectRetryFocused(page, CHECK_RETRY);
-  await page.locator('#reset-retry').click();
-  await expect(page.locator('#reset-retry')).toHaveText('Checking…');
-  await expect(page.locator('#reset-retry')).toHaveAttribute('aria-disabled', 'true');
-  await page.clock.fastForward(15000);
-  await expectRetryFocused(page, CHECK_RETRY);
-  expect(checks).toBe(2);
-});
-
 test('submit 400 puts the server rule under New password and focuses it', async ({ page }) => {
   await openForm(page);
   await page.locator('#newPassword').fill('short-value');

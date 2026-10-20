@@ -205,6 +205,12 @@
       if (main) main.setAttribute("aria-busy", "true");
     }
 
+    function endCheckFailure() {
+      // TODO T-A-02 v1.9: when a retry check fails or times out again, leave
+      // the existing showRetry() path unchanged until that spec lands.
+      showRetry();
+    }
+
     fetchWithTimeout(CHECK, {
       method: "POST",
       headers: jsonHeaders(),
@@ -215,11 +221,11 @@
         return;
       }
       if (r.status === 429 || r.status >= 500) {
-        showRetry();
+        endCheckFailure();
         return;
       }
       if (!r.ok) {
-        showRetry();
+        endCheckFailure();
         return;
       }
       return r.json().then(function (body) {
@@ -227,7 +233,7 @@
         else goExpired(EXPIRED);
       });
     }).catch(function () {
-      showRetry();
+      endCheckFailure();
     }).finally(function () {
       inflight = false;
     });
