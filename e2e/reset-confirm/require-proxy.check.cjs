@@ -21,6 +21,7 @@ throws(() => requireResetConfirmProxy(""), "empty");
 throws(() => requireResetConfirmProxy("http://10.0.0.1:18080"), "non-loopback");
 throws(() => requireResetConfirmProxy("http://localhost:18080"), "hostname localhost");
 throws(() => requireResetConfirmProxy("http://127.0.0.1:80"), "low port");
+throws(() => requireResetConfirmProxy("http://127.0.0.1:1023"), "port 1023");
 throws(() => requireResetConfirmProxy("http://127.0.0.1"), "implicit port");
 throws(() => requireResetConfirmProxy("http://[::1]:18080"), "::1");
 throws(() => requireResetConfirmProxy("http://0.0.0.0:18080"), "0.0.0.0");
@@ -42,6 +43,10 @@ assert.strictEqual(ok.server, "http://127.0.0.1:18080");
 assert.strictEqual(
   requireResetConfirmProxy("  http://127.0.0.1:1024/  ").server,
   "http://127.0.0.1:1024"
+);
+assert.strictEqual(
+  requireResetConfirmProxy("http://127.0.0.1:65535").server,
+  "http://127.0.0.1:65535"
 );
 
 throws(() => requireResetConfirmBaseUrl(undefined), "base missing");

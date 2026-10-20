@@ -1456,6 +1456,12 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var spec = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "reset-confirm", "reset-confirm.spec.ts"));
         Assert.DoesNotContain("host-resolver-rules", spec, StringComparison.Ordinal);
         Assert.DoesNotContain("chromium.launch", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("launchPersistentContext", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("newContext(", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("proxy: undefined", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("proxy:undefined", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("test.use({proxy", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("test.use({ proxy", spec, StringComparison.Ordinal);
         Assert.Contains("test.use({ javaScriptEnabled: false })", spec, StringComparison.Ordinal);
         foreach (Match match in Regex.Matches(code, @"(?<=\d):(\d{2,5})(?!\d)(?!\.)"))
         {
