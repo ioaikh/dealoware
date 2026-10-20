@@ -803,7 +803,12 @@ public class AdminPasswordResetTests
         var signInAf = await IssueSignInAntiForgeryAsync(client);
         using var step1 = await client.SendAsync(SignInJson(
             AdminSignedOutExemptions.ApiSignIn,
-            new { email = CoreOwnerEmail, password = NextPassword },
+            new
+            {
+                email = CoreOwnerEmail,
+                password = NextPassword,
+                turnstileToken = FakeTurnstileVerifier.ValidToken
+            },
             signInAf));
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
@@ -817,7 +822,7 @@ public class AdminPasswordResetTests
         var codeAf = await IssueSignInAntiForgeryAsync(client, AdminSignedOutExemptions.SignInCode);
         using var step2 = await client.SendAsync(SignInJson(
             AdminSignedOutExemptions.ApiSignInCode,
-            new { code = signInCode },
+            new { code = signInCode, turnstileToken = FakeTurnstileVerifier.ValidToken },
             codeAf));
         Assert.Equal(HttpStatusCode.OK, step2.StatusCode);
     }
@@ -989,7 +994,12 @@ public class AdminPasswordResetTests
             var signInAf = await IssueSignInAntiForgeryAsync(client);
             using var step1 = await client.SendAsync(SignInJson(
                 AdminSignedOutExemptions.ApiSignIn,
-                new { email = CoreOwnerEmail, password = NextPassword },
+                new
+                {
+                    email = CoreOwnerEmail,
+                    password = NextPassword,
+                    turnstileToken = FakeTurnstileVerifier.ValidToken
+                },
                 signInAf));
             Assert.Equal(HttpStatusCode.Unauthorized, step1.StatusCode);
         }
