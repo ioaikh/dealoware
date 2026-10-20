@@ -8,8 +8,10 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Fail-closed session gate for all /admin routes (route-prefix note r3 §2 + §10 C1–C8).
 /// Consulted only after AdminHostMiddleware accepts the admin host (C7).
-/// Exempts only exact canonical path+method pairs. Token rows require a server-validated
-/// pending token. /admin/api/** is never exempt except the listed auth API rows.
+/// State-changing methods default-deny: Origin (R13) plus keyed token (R9/R15/R16).
+/// Exceptions are an explicit allow-list (empty). Sign-out with no session still
+/// requires the token. Rejects are a generic 403 (R17).
+/// Exempts only exact canonical path+method pairs for the session cookie.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
 /// </summary>
 public sealed class AdminSessionMiddleware
@@ -17,6 +19,14 @@ public sealed class AdminSessionMiddleware
     public const string AuthenticationType = "AdminSession";
     public const string CoreOwnerRole = "CoreOwner";
     public const string PolicyName = "CoreOwner";
+    public const string CsrfMissing = "csrf_missing";
+    public const string CsrfInvalid = "csrf_invalid";
+
+    /// <summary>
+    /// State-changing /admin paths that skip the CSRF token. Origin is still required.
+    /// Empty: coverage defaults to deny.
+    /// </summary>
+    internal static readonly HashSet<string> AntiForgeryTokenAllowList = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly RequestDelegate _next;
 
@@ -31,12 +41,31 @@ public sealed class AdminSessionMiddleware
         IAdminCoreOwnerAccountRepository accounts,
         AdminAntiForgeryService antiforgery,
         IOptions<CoreOwnerOptions> coreOwnerOptions,
-        IAdminClock clock)
+        IAdminClock clock,
+        ILogger<AdminSessionMiddleware> logger)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
         {
             await _next(context);
             return;
+        }
+
+        if (AdminOriginGate.IsStateChanging(context.Request))
+        {
+            if (!AdminOriginGate.TryValidate(context, out var originReason))
+            {
+                logger.LogWarning("Admin request rejected: {ReasonClass}", originReason);
+                await AdminDeny.WriteForbiddenAsync(context);
+                return;
+            }
+
+            if (!IsAntiForgeryAllowListed(context) && !antiforgery.TryValidate(context))
+            {
+                var csrfReason = HasPresentedAntiForgery(context) ? CsrfInvalid : CsrfMissing;
+                logger.LogWarning("Admin request rejected: {ReasonClass}", csrfReason);
+                await AdminDeny.WriteForbiddenAsync(context);
+                return;
+            }
         }
 
         if (await IsSignedOutExemptAsync(context, accounts, antiforgery, clock))
@@ -196,6 +225,14 @@ public sealed class AdminSessionMiddleware
     }
 
     internal const string AntiForgeryDeniedKey = "AdminAntiForgeryDenied";
+
+    private static bool IsAntiForgeryAllowListed(HttpContext context)
+        => AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)
+           && AntiForgeryTokenAllowList.Contains(canonical);
+
+    private static bool HasPresentedAntiForgery(HttpContext context)
+        => context.Request.Headers.ContainsKey(AdminAntiForgeryService.HeaderName)
+           || context.Request.Cookies.ContainsKey(AdminAntiForgeryService.CookieName);
 
     private static bool TryGetSessionId(HttpContext context, out Guid sessionId)
     {

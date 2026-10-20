@@ -130,7 +130,7 @@ public class AdminTotpTests
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
-        if (includeCsrf && HttpMethod.Post.Equals(method))
+        if (includeCsrf && IsStateChanging(method))
         {
             request.Headers.TryAddWithoutValidation(
                 AdminAntiForgeryCookie.HeaderName,
@@ -152,6 +152,12 @@ public class AdminTotpTests
 
         return request;
     }
+
+    private static bool IsStateChanging(HttpMethod method)
+        => HttpMethod.Post.Equals(method)
+           || HttpMethod.Put.Equals(method)
+           || HttpMethod.Delete.Equals(method)
+           || string.Equals(method.Method, "PATCH", StringComparison.OrdinalIgnoreCase);
 
     private static void AssertNoStore(HttpResponseMessage response)
     {
@@ -185,6 +191,17 @@ public class AdminTotpTests
         Assert.DoesNotContain("Retry-After", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("attempt", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("remaining", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task AssertGenericForbidden(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal("""{"error":"Forbidden"}""", body);
+        Assert.DoesNotContain("origin", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("csrf", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("anti-forgery", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(AdminSignInDeny.GenericCopy, body);
     }
 
     [Fact]
@@ -307,10 +324,11 @@ public class AdminTotpTests
             request.Headers.Host = AdminHost;
             using var response = await client.SendAsync(request);
             Assert.True(
-                response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed or HttpStatusCode.Unauthorized,
+                response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed
+                    or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden,
                 $"{path} returned {response.StatusCode}");
             if (path.StartsWith("/admin/api/auth/", StringComparison.Ordinal))
-                Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
     }
 
@@ -586,7 +604,7 @@ public class AdminTotpTests
             new { email = CoreOwnerEmail, password },
             includeCsrf: false);
         using var response = await client.SendAsync(request);
-        await AssertGenericSignIn(response);
+        await AssertGenericForbidden(response);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();

@@ -1,5 +1,7 @@
 using System.Data.Common;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -8,9 +10,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
+using Npgsql;
+
+// Inferred cause (no hang dump): HostFactoryResolver.HostingListener
+// (DiagnosticListener) deadlocks when WebApplicationFactory<Program>
+// CreateHost/Dispose overlap. The password-reset collection was a third
+// parallel TestServer. Restore collection parallelism once a dump confirms it.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Dealoware.Api.Tests;
 
@@ -31,6 +41,10 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     public string RecoveryHmacKey { get; }
 
     public string IpHmacKey { get; }
+
+    public CollectingLoggerProvider LogCollector { get; } = new();
+
+    public CountingDbCommandInterceptor CommandCounter { get; } = new();
 
     public IsolatedWebApplicationFactory()
         : this(
@@ -59,8 +73,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         {
             _sqliteConnectionString = sqliteConnectionString;
         }
-        else if (TryBuildTestPostgresConnectionString(out var postgres))
+        else if (TryBuildTestPostgresConnectionString(out var postgres, PostgresDatabaseName))
         {
+            EnsurePostgresDatabase(postgres);
             _postgresConnectionString = postgres;
         }
         else
@@ -76,9 +91,20 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Optional dedicated PostgreSQL database so a fixture with its own CoreOwner
+    /// config does not share rows with other collections on DB_NAME.
+    /// </summary>
+    protected virtual string? PostgresDatabaseName => null;
+
+    /// <summary>
     /// CI postgres:16 has no TLS. Build a throwaway SSL Mode=Disable string from DB_*.
     /// </summary>
     internal static bool TryBuildTestPostgresConnectionString(out string connectionString)
+        => TryBuildTestPostgresConnectionString(out connectionString, databaseOverride: null);
+
+    internal static bool TryBuildTestPostgresConnectionString(
+        out string connectionString,
+        string? databaseOverride)
     {
         var host = Environment.GetEnvironmentVariable("DB_HOST");
         if (string.IsNullOrWhiteSpace(host))
@@ -90,7 +116,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         var port = Environment.GetEnvironmentVariable("DB_PORT");
         if (string.IsNullOrWhiteSpace(port))
             port = "5432";
-        var database = Environment.GetEnvironmentVariable("DB_NAME");
+        var database = string.IsNullOrWhiteSpace(databaseOverride)
+            ? Environment.GetEnvironmentVariable("DB_NAME")
+            : databaseOverride;
         if (string.IsNullOrWhiteSpace(database))
             database = "dealoware_ci";
         var username = Environment.GetEnvironmentVariable("DB_USERNAME");
@@ -102,12 +130,45 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         return true;
     }
 
+    private static void EnsurePostgresDatabase(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        var database = builder.Database;
+        if (string.IsNullOrWhiteSpace(database)
+            || !Regex.IsMatch(database, "^[a-z][a-z0-9_]*$"))
+        {
+            throw new InvalidOperationException("PostgreSQL test database name is not a safe identifier.");
+        }
+
+        builder.Database = "postgres";
+        using var conn = new NpgsqlConnection(builder.ConnectionString);
+        conn.Open();
+        using (var exists = conn.CreateCommand())
+        {
+            exists.CommandText = "SELECT 1 FROM pg_database WHERE datname = @n";
+            exists.Parameters.AddWithValue("n", database);
+            if (exists.ExecuteScalar() is not null)
+            {
+                return;
+            }
+        }
+
+        using var create = conn.CreateCommand();
+        create.CommandText = "CREATE DATABASE " + database;
+        create.ExecuteNonQuery();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Runtime-generated key so Production test hosts pass IIpHasher fail-closed.
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, IpHmacKey);
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, TotpKey);
         builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, RecoveryHmacKey);
+
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddProvider(LogCollector);
+        });
 
         // After the app registers its provider (SQLite or Npgsql), replace it. The
         // default is isolated in-memory SQLite. When DB_HOST is set (postgres CI job)
@@ -126,6 +187,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<DealowareDbContext>(options =>
             {
+                options.AddInterceptors(CommandCounter);
                 if (_postgresConnectionString is not null)
                 {
                     options.UseNpgsql(_postgresConnectionString);
@@ -142,6 +204,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
                                      || d.ServiceType == typeof(IAdminClock)
                                      || d.ServiceType == typeof(FakeTurnstileVerifier)
                                      || d.ServiceType == typeof(TestAdminClock)
+                                     || d.ServiceType == typeof(FakeAdminClock)
                                      || d.ServiceType == typeof(RecordingMailSender))
                          .ToList())
             {
@@ -152,9 +215,31 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAdminMailSender>(sp => sp.GetRequiredService<RecordingMailSender>());
             services.AddSingleton<FakeTurnstileVerifier>();
             services.AddSingleton<ITurnstileVerifier>(sp => sp.GetRequiredService<FakeTurnstileVerifier>());
-            services.AddSingleton<TestAdminClock>();
-            services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<TestAdminClock>());
+            services.AddSingleton<FakeAdminClock>();
+            services.AddSingleton<TestAdminClock>(sp => sp.GetRequiredService<FakeAdminClock>());
+            services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<FakeAdminClock>());
         });
+    }
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        base.ConfigureClient(client);
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Origin",
+            AdminHostOptions.ProductionAdminOrigin);
+    }
+
+    private static void ReplaceSingleton<TService, TImpl>(IServiceCollection services)
+        where TService : class
+        where TImpl : class, TService
+    {
+        foreach (var descriptor in services.Where(d => d.ServiceType == typeof(TService)).ToList())
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddSingleton<TImpl>();
+        services.AddSingleton<TService>(sp => sp.GetRequiredService<TImpl>());
     }
 
     protected override void Dispose(bool disposing)
@@ -171,6 +256,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 /// Collection definition for tests that use IsolatedWebApplicationFactory.
 /// All test classes in this collection share the same factory instance
 /// and run serially within the collection.
+/// Password-reset tests stay in this collection as a class fixture so they
+/// are not a third parallel xUnit collection next to WebAppTests and AdminAuthTests.
 /// </summary>
 [CollectionDefinition("WebAppTests")]
 public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
@@ -180,6 +267,22 @@ public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFac
 [CollectionDefinition("AdminAuthTests")]
 public class AdminAuthTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
 {
+}
+
+/// <summary>
+/// Password-reset suite sets CoreOwner through test config, not appsettings.
+/// </summary>
+public sealed class PasswordResetWebApplicationFactory : IsolatedWebApplicationFactory
+{
+    public const string OwnerEmail = "owner@example.test";
+
+    protected override string? PostgresDatabaseName => "dealoware_ci_pwreset";
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("CoreOwner:Email", OwnerEmail);
+        base.ConfigureWebHost(builder);
+    }
 }
 
 /// <summary>File-backed host used only by SC-6 restart tests. Not a collection fixture.</summary>
@@ -192,6 +295,75 @@ public sealed class SharedStoreWebApplicationFactory : IsolatedWebApplicationFac
         string ipHmacKey)
         : base(sqliteConnectionString, totpKey, recoveryHmacKey, ipHmacKey)
     {
+    }
+}
+
+/// <summary>Counts EF commands so owner vs non-owner reset-request DB work can be compared.</summary>
+public sealed class CountingDbCommandInterceptor : DbCommandInterceptor
+{
+    private int _count;
+
+    public int Count => Volatile.Read(ref _count);
+
+    public void Reset() => Volatile.Write(ref _count, 0);
+
+    private void Hit() => Interlocked.Increment(ref _count);
+
+    public override InterceptionResult<DbDataReader> ReaderExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result)
+    {
+        Hit();
+        return base.ReaderExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override InterceptionResult<int> NonQueryExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result)
+    {
+        Hit();
+        return base.NonQueryExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override InterceptionResult<object> ScalarExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result)
+    {
+        Hit();
+        return base.ScalarExecuting(command, eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result,
+        CancellationToken cancellationToken = default)
+    {
+        Hit();
+        return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
     }
 }
 

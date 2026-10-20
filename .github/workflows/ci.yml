@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: true
@@ -19,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -36,13 +41,16 @@ jobs:
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=test-results.trx"
           --filter "FullyQualifiedName!~AdminAuditPostgres"
+          --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
-          path: '**/TestResults/*.trx'
+          path: |
+            **/TestResults/*.trx
+            **/TestResults/**/Sequence_*.xml
           retention-days: 30
 
   postgres-sec:
@@ -71,6 +79,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -83,16 +93,19 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run Sec* parallel tests and one full second-factor sign-in
+      - name: Run Sec* parallel tests, one full second-factor sign-in, and reset IP bursts
         run: >
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
-          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm|FullyQualifiedName~C2_PostgresParallelWrongCodes|FullyQualifiedName~B2_PostgresFactorLock|FullyQualifiedName~G1_PostgresUnknownEmail"
+          --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: Upload PostgreSQL test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: postgres-sec-test-results
-          path: '**/TestResults/*.trx'
+          path: |
+            **/TestResults/*.trx
+            **/TestResults/**/Sequence_*.xml
           retention-days: 30

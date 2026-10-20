@@ -172,6 +172,12 @@ public sealed class AdminAuthService
         if (!await _tokens.TryIncrementPendingAttemptAsync(pending.Id, now, PendingAttemptLimit, ct)
                 .ConfigureAwait(false))
         {
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+                .ConfigureAwait(false);
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, accountReserved, AdminAuthScopes.Account, accountSubject, now, AccountFailureLimit, ct)
+                .ConfigureAwait(false);
             await AuditAsync(AdminAuthAction.LoginFailure, accountKey, ipHmac, AdminAuthReason.Locked, ct)
                 .ConfigureAwait(false);
             return AdminAuthOutcome.SignInFailed();
@@ -198,6 +204,12 @@ public sealed class AdminAuthService
 
         if (!await _tokens.TryConsumeAsync(pending.TokenHash, now, ct).ConfigureAwait(false))
         {
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, ipReserved, AdminAuthScopes.LoginIp, ip, now, IpFailureLimit, ct)
+                .ConfigureAwait(false);
+            await AdminLockoutFlow.ReleaseSuccessAsync(
+                    _lockouts, accountReserved, AdminAuthScopes.Account, accountSubject, now, AccountFailureLimit, ct)
+                .ConfigureAwait(false);
             return AdminAuthOutcome.SignInFailed();
         }
 
