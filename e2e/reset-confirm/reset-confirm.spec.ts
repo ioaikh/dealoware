@@ -6,7 +6,8 @@ const CONFIRM_PATH = '/admin/api/auth/reset/confirm';
 const CHECK_RETRY = 'We couldn\'t check your link. Wait a moment and try again.';
 const SIGN_IN_GENERIC =
   'We couldn\'t sign you in. Check your details and try again later. You can also reset your password.';
-const LINK_EXPIRED = 'This link is no longer valid. Request a new one.';
+const LINK_EXPIRED_HEADING = 'This link no longer works';
+const LINK_EXPIRED_RESET = 'Reset links work once and expire after 1 hour.';
 const NOSCRIPT = 'Turn on JavaScript to set your password.';
 const TOO_SHORT = 'Use at least 15 characters.';
 const FACTOR_ERROR = 'Enter your authenticator code or a recovery code.';
@@ -46,7 +47,7 @@ function totpCode(secretHex: string, nowMs = Date.now()): string {
 }
 
 async function expectNoSa5(page: Page): Promise<void> {
-  await expect(page.getByText(LINK_EXPIRED, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: LINK_EXPIRED_HEADING, exact: true })).toHaveCount(0);
 }
 
 async function expectNonLiveMessage(page: Page, text: string): Promise<string> {
@@ -158,15 +159,17 @@ test('no fragment goes to link-expired with zero check requests', async ({ page 
     if (isCheck(req.url())) checks += 1;
   });
   await page.goto('/admin/reset/confirm');
-  await expect(page).toHaveURL(/\/admin\/link-expired$/);
-  await expect(page.getByText(LINK_EXPIRED, { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/link-expired\?for=reset$/);
+  await expect(page.getByRole('heading', { name: LINK_EXPIRED_HEADING, exact: true })).toBeVisible();
+  await expect(page.getByText(LINK_EXPIRED_RESET, { exact: true })).toBeVisible();
   expect(checks).toBe(0);
 });
 
 test('dead token goes to link-expired', async ({ page }) => {
   await page.goto('/admin/reset/confirm#token=dead-token-not-issued');
-  await expect(page).toHaveURL(/\/admin\/link-expired$/);
-  await expect(page.getByText(LINK_EXPIRED, { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/link-expired\?for=reset$/);
+  await expect(page.getByRole('heading', { name: LINK_EXPIRED_HEADING, exact: true })).toBeVisible();
+  await expect(page.getByText(LINK_EXPIRED_RESET, { exact: true })).toBeVisible();
 });
 
 test('good token shows the form with focus on New password', async ({ page }) => {
@@ -320,6 +323,7 @@ test('submit 401 shows the sign-in alert, keeps the password, and clears 2FA', a
   const alert = page.locator('#reset-alert');
   await expect(alert).toBeVisible();
   await expect(alert).toHaveText(SIGN_IN_GENERIC);
+  await expect(alert).toHaveAttribute('role', 'alert');
   await expect(alert).toBeFocused();
   await expect(page.locator('#newPassword')).toHaveValue(NEW_PASSWORD);
   await expect(page.locator('#totp')).toHaveValue('');
@@ -497,8 +501,11 @@ test('with JavaScript off, only the noscript text shows', async () => {
     await expect(page.locator('#reset-form')).toBeHidden();
     await expect(page.locator('#reset-alert')).toBeHidden();
     await expect(page.locator('#reset-retry')).toBeHidden();
+    await expect(page.locator('#reset-heading')).toBeVisible();
+    await expect(page.locator('#reset-heading')).toHaveText('Set a new password');
     const visible = (await page.locator('body').innerText()).trim();
-    expect(visible).toBe(NOSCRIPT);
+    expect(visible).toContain('Set a new password');
+    expect(visible).toContain(NOSCRIPT);
     expect(visible).not.toContain('Checking your link');
     await shot(page, 'reset_confirm_js_off');
   } finally {

@@ -5,6 +5,10 @@ if (!baseURL) {
   throw new Error('RESET_CONFIRM_BASE_URL is required');
 }
 
+const proxy = process.env.RESET_CONFIRM_PROXY
+  ? { server: process.env.RESET_CONFIRM_PROXY }
+  : undefined;
+
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.ts',
@@ -16,6 +20,7 @@ export default defineConfig({
   use: {
     baseURL,
     ignoreHTTPSErrors: true,
+    proxy,
     trace: 'off',
     screenshot: 'off',
     video: 'off',
@@ -26,9 +31,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ignoreHTTPSErrors: true,
-        launchOptions: {
-          args: ['--host-resolver-rules=MAP admin.core.dealoware.com 127.0.0.1'],
-        },
+        proxy,
       },
     },
   ],

@@ -78,6 +78,23 @@ public class AdminSecurityHeadersTests
     }
 
     [Fact]
+    public async Task LinkExpiredPage_NonceCsp_MatchesOtherAuthPages()
+    {
+        using var response = await SendAdminAsync("/admin/link-expired?for=reset", https: true);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        var csp = GetHeader(response, "Content-Security-Policy");
+        Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
+        Assert.Contains("script-src 'nonce-", csp, StringComparison.Ordinal);
+        Assert.Contains("<h1 id=\"link-expired-heading\"", html, StringComparison.Ordinal);
+        Assert.Contains(AdminPasswordResetCopy.LinkExpiredResetBody, html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<form", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(AdminSecurityHeadersMiddleware.Nosniff, GetHeader(response, "X-Content-Type-Options"));
+        Assert.Equal(AdminSecurityHeadersMiddleware.CacheControl, GetHeader(response, "Cache-Control"));
+        Assert.Equal(AdminSecurityHeadersMiddleware.ReferrerPolicy, GetHeader(response, "Referrer-Policy"));
+    }
+
+    [Fact]
     public async Task AdminAuthStaticFile_HasHardeningHeaders()
     {
         using var response = await SendAdminAsync("/admin/auth/signed-out.css", https: true);

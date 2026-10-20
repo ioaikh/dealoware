@@ -21,7 +21,25 @@ public static class AdminPasswordResetCopy
 
     public const string ConfirmPageTitle = "Set a new password · Dealoware admin";
 
+    public const string ConfirmHeading = "Set a new password";
+
+    public const string BootstrapConfirmHeading = "Set your admin password";
+
+    public const string BootstrapConfirmPageTitle = "Set your admin password · Dealoware admin";
+
+    public const string SetupConfirmScriptPath = "/admin/auth/setup-confirm.js";
+
     public const string LinkExpiredPageTitle = "This link no longer works · Dealoware admin";
+
+    public const string LinkExpiredHeading = "This link no longer works";
+
+    public const string LinkExpiredResetBody =
+        "Reset links work once and expire after 1 hour.";
+
+    public const string LinkExpiredResetAction = "Request a new link";
+
+    public const string LinkExpiredSetupBody =
+        "Ask the operator for a new bootstrap link. This page cannot send another one.";
 
     public const string ConfirmNoscript = "Turn on JavaScript to set your password.";
 

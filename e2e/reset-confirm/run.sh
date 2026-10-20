@@ -6,68 +6,29 @@
 #   ./e2e/reset-confirm/run.sh
 #
 # Origin is the production constant https://admin.core.dealoware.com (no port).
-# A high-port listen would send Origin :8443 and fail CSRF; no Testing/e2e
-# config can change that without production-code edits. Listen on 443.
-# If 443 is privileged, lower ip_unprivileged_port_start only after saving
-# the old value, and restore it on every EXIT. Throwaway certs stay in mktemp.
+# Kestrel listens on 127.0.0.1:18443. A local CONNECT proxy on 127.0.0.1:18080
+# forwards the admin host HTTPS origin to that listener so Playwright can
+# keep Origin exact without privileged ports, sysctl, or host-file edits.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 E2E="$ROOT/e2e"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/dw-reset-confirm.XXXXXX")"
-UNPRIV_SYSCTL_KEY=net.ipv4.ip_unprivileged_port_start
-UNPRIV_OLD=""
-UNPRIV_CHANGED=0
-
-restore_unprivileged_port_start() {
-  if [[ "${UNPRIV_CHANGED}" -eq 1 ]]; then
-    if ! sudo -n sysctl -w "${UNPRIV_SYSCTL_KEY}=${UNPRIV_OLD}" >/dev/null; then
-      echo "e2e/reset-confirm: failed to restore ${UNPRIV_SYSCTL_KEY}=${UNPRIV_OLD}" >&2
-    fi
-    UNPRIV_CHANGED=0
-  fi
-}
+API_PORT=18443
+PROXY_PORT=18080
 
 cleanup() {
+  if [[ -n "${PROXY_PID:-}" ]] && kill -0 "$PROXY_PID" 2>/dev/null; then
+    kill "$PROXY_PID" 2>/dev/null || true
+    wait "$PROXY_PID" 2>/dev/null || true
+  fi
   if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
     kill "$API_PID" 2>/dev/null || true
     wait "$API_PID" 2>/dev/null || true
   fi
   rm -rf "$WORKDIR"
-  restore_unprivileged_port_start
 }
 trap cleanup EXIT
-
-can_bind_443() {
-  python3 - <<'PY'
-import socket, sys
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", 443))
-    sys.exit(0)
-except OSError:
-    sys.exit(1)
-finally:
-    s.close()
-PY
-}
-
-if ! can_bind_443; then
-  UNPRIV_OLD="$(cat /proc/sys/net/ipv4/ip_unprivileged_port_start)"
-  if [[ -z "${UNPRIV_OLD}" ]]; then
-    echo "e2e/reset-confirm: could not read ${UNPRIV_SYSCTL_KEY}" >&2
-    exit 1
-  fi
-  if ! sudo -n sysctl -w "${UNPRIV_SYSCTL_KEY}=0" >/dev/null; then
-    echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. Could not temporarily set ${UNPRIV_SYSCTL_KEY}=0. No high-port fallback." >&2
-    exit 1
-  fi
-  UNPRIV_CHANGED=1
-fi
-if ! can_bind_443; then
-  echo "e2e/reset-confirm requires 127.0.0.1:443 so Origin is exactly https://admin.core.dealoware.com. Port 443 is unavailable. No high-port fallback." >&2
-  exit 1
-fi
 
 umask 077
 PFX_PASS="$(openssl rand -base64 24)"
@@ -137,7 +98,7 @@ TOTP_CIPHER="$(printf '%s\n' "$SEED_OUT" | sed -n '2p')"
 TOTP_SECRET_HEX="$(printf '%s\n' "$SEED_OUT" | sed -n '3p')"
 
 export ASPNETCORE_ENVIRONMENT=Development
-export ASPNETCORE_URLS="https://127.0.0.1:443"
+export ASPNETCORE_URLS="https://127.0.0.1:${API_PORT}"
 export ASPNETCORE_Kestrel__Certificates__Default__Path="$WORKDIR/cert.pfx"
 export ASPNETCORE_Kestrel__Certificates__Default__Password="$PFX_PASS"
 export ConnectionStrings__DefaultConnection="Data Source=${DB}"
@@ -153,7 +114,7 @@ API_PID=$!
 
 ready=0
 for _ in $(seq 1 90); do
-  if curl -skf "https://127.0.0.1:443/health" >/dev/null 2>&1; then
+  if curl -skf "https://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -167,6 +128,80 @@ done
 if [[ "$ready" -ne 1 ]]; then
   echo "API did not become healthy" >&2
   cat "$WORKDIR/api.log" >&2 || true
+  exit 1
+fi
+
+python3 - "$PROXY_PORT" "$API_PORT" <<'PY' &
+import select, socket, sys, threading
+
+listen_port = int(sys.argv[1])
+target_port = int(sys.argv[2])
+listen = ("127.0.0.1", listen_port)
+target = ("127.0.0.1", target_port)
+
+def handle(conn: socket.socket) -> None:
+    try:
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return
+            data += chunk
+        first = data.split(b"\r\n", 1)[0].decode("latin1", "replace")
+        if not first.upper().startswith("CONNECT "):
+            conn.sendall(b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n")
+            return
+        dest = socket.create_connection(target)
+        conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        sockets = [conn, dest]
+        while True:
+            readable, _, _ = select.select(sockets, [], [])
+            for sock in readable:
+                other = dest if sock is conn else conn
+                buf = sock.recv(65536)
+                if not buf:
+                    dest.close()
+                    return
+                other.sendall(buf)
+    finally:
+        conn.close()
+
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(listen)
+server.listen(50)
+while True:
+    client, _ = server.accept()
+    threading.Thread(target=handle, args=(client,), daemon=True).start()
+PY
+PROXY_PID=$!
+
+proxy_ready=0
+for _ in $(seq 1 40); do
+  if python3 - "$PROXY_PORT" <<'PY'
+import socket, sys
+s = socket.socket()
+try:
+    s.settimeout(0.2)
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+    sys.exit(0)
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+  then
+    proxy_ready=1
+    break
+  fi
+  if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+    echo "proxy exited before listen" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+if [[ "$proxy_ready" -ne 1 ]]; then
+  echo "proxy did not listen on 127.0.0.1:${PROXY_PORT}" >&2
   exit 1
 fi
 
@@ -211,6 +246,7 @@ fi
 npx playwright install chromium >/dev/null
 
 export RESET_CONFIRM_BASE_URL="https://admin.core.dealoware.com"
+export RESET_CONFIRM_PROXY="http://127.0.0.1:${PROXY_PORT}"
 export RESET_CONFIRM_TOKEN="$TOKEN"
 export RESET_CONFIRM_SUCCESS_TOKEN="$SUCCESS_TOKEN"
 export RESET_CONFIRM_TOTP_SECRET_HEX="$TOTP_SECRET_HEX"

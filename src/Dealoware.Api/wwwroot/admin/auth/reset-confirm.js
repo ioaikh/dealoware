@@ -1,7 +1,27 @@
-(function () {
+(function (global) {
+  function dwClassifyCheckResponse(status, redirected, bodyText) {
+    if (redirected) return "retry";
+    if (status !== 200) return "retry";
+    var body;
+    try {
+      body = JSON.parse(bodyText);
+    } catch (e) {
+      return "retry";
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return "retry";
+    var keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== "valid") return "retry";
+    if (body.valid === true) return "form";
+    if (body.valid === false) return "expired";
+    return "retry";
+  }
+
+  global.dwClassifyCheckResponse = dwClassifyCheckResponse;
+  if (global.__dwResetConfirmSkipBoot) return;
+
   var CHECK = "/admin/api/auth/reset/confirm/check";
   var CONFIRM = "/admin/api/auth/reset/confirm";
-  var EXPIRED = "/admin/link-expired";
+  var EXPIRED = "/admin/link-expired?for=reset";
   var SIGN_IN = "/admin/sign-in";
   var TIMEOUT_MS = 15000;
   var SIGN_IN_GENERIC =
@@ -64,6 +84,13 @@
       retryBtn.removeAttribute("aria-disabled");
       retryBtn.textContent = retryIdleLabel;
     }
+  }
+
+  function hideRetry() {
+    if (!retryBtn) return;
+    retryBtn.hidden = true;
+    retryBtn.removeAttribute("aria-describedby");
+    setRetryBusy(false);
   }
 
   function clearDescribedError(id, field) {
@@ -141,10 +168,7 @@
     setRetryBusy(false);
     if (statusEl) statusEl.hidden = true;
     if (alertEl) alertEl.hidden = true;
-    if (retryBtn) {
-      retryBtn.hidden = true;
-      retryBtn.removeAttribute("aria-describedby");
-    }
+    hideRetry();
     if (form) form.hidden = false;
     if (main) main.removeAttribute("aria-busy");
     var field = newPasswordEl();
@@ -154,12 +178,10 @@
   function showSignInAlert() {
     if (statusEl) statusEl.hidden = true;
     if (form) form.hidden = false;
-    if (retryBtn) {
-      retryBtn.hidden = true;
-      retryBtn.removeAttribute("aria-describedby");
-    }
-    setRetryBusy(false);
+    hideRetry();
     if (alertEl) {
+      alertEl.setAttribute("role", "alert");
+      alertEl.removeAttribute("aria-live");
       alertEl.hidden = false;
       alertEl.textContent = SIGN_IN_GENERIC;
       alertEl.focus();
@@ -177,17 +199,22 @@
     return headers;
   }
 
-  function fetchWithTimeout(url, options) {
-    var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, TIMEOUT_MS);
-    options = options || {};
-    options.signal = controller.signal;
-    options.credentials = "same-origin";
-    return fetch(url, options).finally(function () { clearTimeout(timer); });
+  function isRedirectResponse(r) {
+    return !!(r && (r.redirected || r.type === "opaqueredirect"));
   }
 
-  function readJson(r) {
-    return r.json().catch(function () { return null; });
+  function startTimeout() {
+    var controller = new AbortController();
+    var timedOut = false;
+    var timer = setTimeout(function () {
+      timedOut = true;
+      controller.abort();
+    }, TIMEOUT_MS);
+    return {
+      signal: controller.signal,
+      didTimeout: function () { return timedOut; },
+      done: function () { clearTimeout(timer); }
+    };
   }
 
   function check() {
@@ -201,14 +228,9 @@
       retryBtn.hidden = false;
       setRetryBusy(true);
       retryBtn.focus();
-      if (main) main.setAttribute("aria-busy", "true");
     } else {
       if (alertEl) alertEl.hidden = true;
-      if (retryBtn) {
-        retryBtn.hidden = true;
-        retryBtn.removeAttribute("aria-describedby");
-        setRetryBusy(false);
-      }
+      hideRetry();
       if (form) form.hidden = true;
       if (statusEl) statusEl.hidden = false;
       if (main) main.setAttribute("aria-busy", "true");
@@ -221,30 +243,27 @@
       showRetry(undefined, undefined, retrying);
     }
 
-    fetchWithTimeout(CHECK, {
+    var timeout = startTimeout();
+    fetch(CHECK, {
       method: "POST",
       headers: jsonHeaders(),
-      body: JSON.stringify({ token: token })
+      body: JSON.stringify({ token: token }),
+      credentials: "same-origin",
+      redirect: "manual",
+      signal: timeout.signal
     }).then(function (r) {
-      if (r.redirected) {
-        goExpired(r.url);
-        return;
-      }
-      if (r.status === 429 || r.status >= 500) {
-        endCheckFailure();
-        return;
-      }
-      if (!r.ok) {
-        endCheckFailure();
-        return;
-      }
-      return r.json().then(function (body) {
-        if (body && body.valid === true) showForm();
-        else goExpired(EXPIRED);
+      if (timeout.didTimeout()) return;
+      return r.text().then(function (text) {
+        if (timeout.didTimeout()) return;
+        var outcome = dwClassifyCheckResponse(r.status, isRedirectResponse(r), text);
+        if (outcome === "form") showForm();
+        else if (outcome === "expired") goExpired(EXPIRED);
+        else endCheckFailure();
       });
     }).catch(function () {
       endCheckFailure();
     }).finally(function () {
+      timeout.done();
       inflight = false;
     });
   }
@@ -254,25 +273,32 @@
     inflight = true;
     clearPasswordError();
     clearTotpError();
-    if (alertEl) alertEl.hidden = true;
-    if (retryBtn) {
-      retryBtn.hidden = true;
-      retryBtn.removeAttribute("aria-describedby");
+    var retrying = isRetryVisible();
+    if (retrying) {
+      if (alertEl) alertEl.hidden = false;
+      retryBtn.hidden = false;
+      setRetryBusy(true);
+      retryBtn.focus();
+    } else {
+      if (alertEl) alertEl.hidden = true;
+      hideRetry();
+      if (form) form.hidden = false;
     }
-    setRetryBusy(false);
-    if (form) form.hidden = false;
 
     var totpEl = totpFieldEl();
     var recoveryEl = recoveryFieldEl();
     var totpVal = totpEl ? totpEl.value.trim() : "";
     var recVal = recoveryEl ? recoveryEl.value.trim() : "";
     if (!totpVal && !recVal) {
+      hideRetry();
+      if (form) form.hidden = false;
       showTotpError(FACTOR_ERROR);
       inflight = false;
       return;
     }
 
-    fetchWithTimeout(CONFIRM, {
+    var timeout = startTimeout();
+    fetch(CONFIRM, {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify({
@@ -280,8 +306,15 @@
         newPassword: document.getElementById("newPassword").value,
         totp: totpVal,
         recoveryCode: totpVal ? "" : recVal
-      })
+      }),
+      credentials: "same-origin",
+      signal: timeout.signal
     }).then(function (r) {
+      if (timeout.didTimeout()) {
+        showRetry(undefined, submitConfirm, retrying);
+        inflight = false;
+        return;
+      }
       if (r.redirected) {
         goExpired(r.url);
         return;
@@ -291,7 +324,16 @@
         return;
       }
       if (r.status === 400) {
-        return readJson(r).then(function (body) {
+        hideRetry();
+        if (form) form.hidden = false;
+        return r.text().then(function (text) {
+          if (timeout.didTimeout()) {
+            showRetry(undefined, submitConfirm, retrying);
+            inflight = false;
+            return;
+          }
+          var body = null;
+          try { body = JSON.parse(text); } catch (e) { body = null; }
           showPasswordError(body && body.error ? body.error : "");
           inflight = false;
         });
@@ -304,16 +346,25 @@
         return;
       }
       if (r.status === 429) {
-        return readJson(r).then(function (body) {
-          showRetry(body && body.message ? body.message : retryCopy(), submitConfirm);
+        return r.text().then(function (text) {
+          if (timeout.didTimeout()) {
+            showRetry(undefined, submitConfirm, retrying);
+            inflight = false;
+            return;
+          }
+          var body = null;
+          try { body = JSON.parse(text); } catch (e) { body = null; }
+          showRetry(body && body.message ? body.message : retryCopy(), submitConfirm, retrying);
           inflight = false;
         });
       }
-      showRetry(undefined, submitConfirm);
+      showRetry(undefined, submitConfirm, retrying);
       inflight = false;
     }).catch(function () {
-      showRetry(undefined, submitConfirm);
+      showRetry(undefined, submitConfirm, retrying);
       inflight = false;
+    }).finally(function () {
+      timeout.done();
     });
   }
 
@@ -340,4 +391,4 @@
   }
 
   check();
-})();
+})(typeof globalThis !== "undefined" ? globalThis : this);

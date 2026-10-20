@@ -48,8 +48,7 @@ public static class AdminSignedOutExemptions
     {
         None,
         PendingSignIn,
-        Bootstrap,
-        PasswordReset
+        Bootstrap
     }
 
     public readonly record struct ExemptionRule(
@@ -68,7 +67,7 @@ public static class AdminSignedOutExemptions
         new(Reset, HttpMethod.Get, TokenKind.None),
         new(Reset, HttpMethod.Post, TokenKind.None),
         new(ResetSent, HttpMethod.Get, TokenKind.None),
-        new(Bootstrap, HttpMethod.Get, TokenKind.Bootstrap),
+        new(Bootstrap, HttpMethod.Get, TokenKind.None),
         new(Bootstrap, HttpMethod.Post, TokenKind.Bootstrap),
         new(ResetConfirm, HttpMethod.Get, TokenKind.None),
         new(ResetConfirm, HttpMethod.Post, TokenKind.None),
@@ -97,15 +96,6 @@ public static class AdminSignedOutExemptions
     public static bool IsSignOut(string canonicalPath)
         => string.Equals(canonicalPath, SignOut, StringComparison.OrdinalIgnoreCase)
            || string.Equals(canonicalPath, ApiSignOut, StringComparison.OrdinalIgnoreCase);
-
-    public static bool IsResetPath(string canonicalPath)
-        => string.Equals(canonicalPath, Reset, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ResetSent, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ResetConfirm, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, LinkExpired, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiReset, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiResetConfirm, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(canonicalPath, ApiResetConfirmCheck, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsAuthPost(string canonicalPath)
         => string.Equals(canonicalPath, SignIn, StringComparison.OrdinalIgnoreCase)
@@ -154,21 +144,6 @@ public static class AdminSignedOutExemptions
     public static bool TryGetCanonicalPath(HttpContext context, out string path)
         => AdminPathCanonicalizer.TryGetComparablePath(context, out path);
 
-    public static bool IsFormGet(HttpContext context)
-    {
-        if (!HttpMethods.IsGet(context.Request.Method)
-            || !TryGetCanonicalPath(context, out var path)
-            || IsAuthStaticFile(path))
-        {
-            return false;
-        }
-
-        return PathEquals(path, ResetPage)
-               || PathEquals(path, ResetSentPage)
-               || PathEquals(path, ResetConfirmPage)
-               || PathEquals(path, LinkExpiredPage);
-    }
-
     public static bool IsAuthStaticFile(string canonicalPath)
     {
         if (!canonicalPath.StartsWith(AuthStaticPrefix + "/", StringComparison.OrdinalIgnoreCase)
@@ -188,9 +163,6 @@ public static class AdminSignedOutExemptions
         var dot = fileName.LastIndexOf('.');
         return dot > 0 && dot < fileName.Length - 1;
     }
-
-    public static bool PathEquals(string path, string expected)
-        => string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
 
     public static async Task<string?> ReadResetTokenAsync(
         HttpContext context,

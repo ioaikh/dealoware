@@ -21,7 +21,10 @@ public static class AdminPasswordResetEndpoints
     public const string RequestPagePath = AdminSignedOutExemptions.ResetPage;
     public const string ConfirmPagePath = AdminSignedOutExemptions.ResetConfirmPage;
     public const string LinkExpiredPath = AdminSignedOutExemptions.LinkExpiredPage;
+    public const string LinkExpiredResetLocation = LinkExpiredPath + "?for=reset";
+    public const string LinkExpiredSetupLocation = LinkExpiredPath + "?for=setup";
     public const string ConfirmScriptPath = AdminPasswordResetCopy.ConfirmScriptPath;
+    public const string SetupConfirmScriptPath = AdminPasswordResetCopy.SetupConfirmScriptPath;
     public const int TokenEntropyBytes = 32;
 
     public static void MapAdminPasswordReset(this WebApplication app)
@@ -38,6 +41,11 @@ public static class AdminPasswordResetEndpoints
 
         app.MapGet(ConfirmPagePath, ConfirmPageGet)
             .WithName("AdminPasswordResetConfirmPageGet")
+            .WithTags("Admin")
+            .AllowAnonymous();
+
+        app.MapGet(AdminSignedOutExemptions.Bootstrap, BootstrapPageGet)
+            .WithName("AdminBootstrapConfirmPageGet")
             .WithTags("Admin")
             .AllowAnonymous();
 
@@ -109,6 +117,7 @@ public static class AdminPasswordResetEndpoints
             $"<style nonce=\"{nonce}\">#reset-alert:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
             "</head>" +
             "<body><main id=\"reset-main\" aria-busy=\"true\">" +
+            $"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.ConfirmHeading}</h1>" +
             $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
             $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +
             $"<p id=\"reset-alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
@@ -120,6 +129,33 @@ public static class AdminPasswordResetEndpoints
             "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></label>" +
             "<button type=\"submit\">Change password</button></form>" +
             $"<script src=\"{ConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
+            "</main></body></html>";
+        return Results.Content(html, "text/html; charset=utf-8");
+    }
+
+    private static IResult BootstrapPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
+    {
+        ApplyNoStoreNoReferrer(http);
+        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
+        var csrf = antiforgery.Issue(http);
+        var html =
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+            $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
+            $"<title>{AdminPasswordResetCopy.BootstrapConfirmPageTitle}</title>" +
+            $"<style nonce=\"{nonce}\">#reset-alert:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
+            "</head>" +
+            "<body><main id=\"reset-main\" aria-busy=\"true\">" +
+            $"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.BootstrapConfirmHeading}</h1>" +
+            $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
+            $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +
+            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
+            $"<button type=\"button\" id=\"reset-retry\" hidden>{AdminPasswordResetCopy.TryAgain}</button>" +
+            $"<form method=\"post\" action=\"{AdminSignedOutExemptions.Bootstrap}\" id=\"reset-form\" hidden>" +
+            "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
+            "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
+            "<button type=\"submit\">Set password</button></form>" +
+            $"<script src=\"{SetupConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
             "</main></body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
     }
@@ -139,11 +175,37 @@ public static class AdminPasswordResetEndpoints
     private static IResult LinkExpiredGet(HttpContext http)
     {
         ApplyNoStoreNoReferrer(http);
+        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
+        var setup = IsExactSetupForQuery(http);
+        var body = setup
+            ? AdminPasswordResetCopy.LinkExpiredSetupBody
+            : AdminPasswordResetCopy.LinkExpiredResetBody;
+        var action = setup
+            ? string.Empty
+            : $"<p><a href=\"{RequestPagePath}\" id=\"request-new-link\">{AdminPasswordResetCopy.LinkExpiredResetAction}</a></p>";
         var html =
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            $"<title>{AdminPasswordResetCopy.LinkExpiredPageTitle}</title></head>" +
-            $"<body><p>{AdminPasswordResetCopy.InvalidLink}</p></body></html>";
+            $"<title>{AdminPasswordResetCopy.LinkExpiredPageTitle}</title>" +
+            $"<style nonce=\"{nonce}\">#link-expired-heading:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
+            "</head>" +
+            "<body>" +
+            $"<h1 id=\"link-expired-heading\" tabindex=\"-1\" autofocus>{AdminPasswordResetCopy.LinkExpiredHeading}</h1>" +
+            $"<p id=\"link-expired-body\">{body}</p>" +
+            action +
+            $"<script nonce=\"{nonce}\">document.getElementById(\"link-expired-heading\").focus();</script>" +
+            "</body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
+    }
+
+    private static bool IsExactSetupForQuery(HttpContext http)
+    {
+        if (!http.Request.Query.TryGetValue("for", out var values) || values.Count != 1)
+        {
+            return false;
+        }
+
+        return string.Equals(values[0], "setup", StringComparison.Ordinal);
     }
 
     private static async Task<IResult> RequestReset(
@@ -153,6 +215,7 @@ public static class AdminPasswordResetEndpoints
         IAdminResetIpThrottle throttle,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
+        IAuditActorHasher auditActorHasher,
         IAdminClock clock,
         IOptions<CoreOwnerOptions> coreOwner,
         HttpContext http)
@@ -172,16 +235,18 @@ public static class AdminPasswordResetEndpoints
                     && !string.IsNullOrEmpty(ownerEmail);
         var raw = CreateRawToken();
         var hash = AdminPasswordResetToken.HashRaw(raw);
-        var stagedEmail = known ? ownerEmail : submitted;
-        await tokens.InvalidateUnusedForEmailAsync(stagedEmail, now, ct);
-        await tokens.AddAsync(AdminPasswordResetToken.Create(stagedEmail, hash, now), ct);
+        var actor = known
+            ? ownerEmail
+            : auditActorHasher.HashEmail(string.IsNullOrEmpty(submitted) ? "anonymous" : submitted);
+        await tokens.InvalidateUnusedForEmailAsync(actor, now, ct);
+        await tokens.AddAsync(AdminPasswordResetToken.Create(actor, hash, now), ct);
         if (known)
         {
             mail.EnqueuePasswordReset(ownerEmail, raw, http.TraceIdentifier);
         }
 
         await audit.AddAsync(
-            AdminAuditEntry.CreateAuthEvent("reset_request", submitted, ipHmac, timestamp: now),
+            AdminAuditEntry.CreateAuthEvent("reset_request", actor, ipHmac, timestamp: now),
             ct);
         await audit.SaveChangesAsync(ct);
 
@@ -361,7 +426,7 @@ public static class AdminPasswordResetEndpoints
         await audit.SaveChangesAsync(http.RequestAborted);
 
         ApplyNoStoreNoReferrer(http);
-        http.Response.Headers.Location = LinkExpiredPath;
+        http.Response.Headers.Location = LinkExpiredResetLocation;
         return Results.StatusCode(StatusCodes.Status303SeeOther);
     }
 
@@ -421,7 +486,7 @@ public static class AdminPasswordResetEndpoints
     private static IResult WrongFactorExpiredResult(HttpContext http)
     {
         ApplyNoStoreNoReferrer(http);
-        http.Response.Headers.Location = LinkExpiredPath;
+        http.Response.Headers.Location = LinkExpiredResetLocation;
         return Results.StatusCode(StatusCodes.Status303SeeOther);
     }
 
