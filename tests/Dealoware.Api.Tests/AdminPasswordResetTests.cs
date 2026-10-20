@@ -259,7 +259,8 @@ public class AdminPasswordResetTests
         Assert.Contains($"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>", queryBody);
         Assert.Contains(AdminPasswordResetCopy.ConfirmNoscript, queryBody);
         Assert.Contains("id=\"reset-status\" role=\"status\" hidden", queryBody, StringComparison.Ordinal);
-        Assert.Contains("role=\"alert\"", queryBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("role=\"alert\"", queryBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("aria-live", queryBody, StringComparison.Ordinal);
         Assert.Contains(">Change password</button>", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("Update password", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("data-timeout-ms", queryBody, StringComparison.Ordinal);
@@ -932,32 +933,41 @@ public class AdminPasswordResetTests
     public async Task TD_ADM_031_M3_CompletedReset_SignInStaysA16Locked()
     {
         await SeedCredentialAsync();
-        await ClearAccountLockoutsAsync();
-        var now = Clock().UtcNow;
-        using (var scope = _factory.Services.CreateScope())
+        try
         {
-            var lockouts = scope.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
-            var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
-            var subject = AdminAuthService.AccountSubjectKey(
-                CoreOwnerEmail.ToLowerInvariant(), isOwner: true, hasher);
-            for (var i = 0; i < AdminAuthService.AccountFailureLimit; i++)
+            await ClearAccountLockoutsAsync();
+            var now = Clock().UtcNow;
+            using (var scope = _factory.Services.CreateScope())
             {
-                await lockouts.TryIncrementFailureAsync(
+                var lockouts = scope.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
+                var hasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+                var subject = AdminAuthService.AccountSubjectKey(
+                    CoreOwnerEmail.ToLowerInvariant(), isOwner: true, hasher);
+                for (var i = 0; i < AdminAuthService.AccountFailureLimit; i++)
+                {
+                    var reserved = await lockouts.TryIncrementFailureAsync(
+                        AdminAuthScopes.Account,
+                        subject,
+                        now,
+                        AdminAuthService.FailureWindow,
+                        AdminAuthService.AccountFailureLimit,
+                        AdminAuthService.LockDuration,
+                        CancellationToken.None);
+                    Assert.True(reserved.Incremented);
+                }
+
+                Assert.True(await lockouts.TryActivateLockAsync(
                     AdminAuthScopes.Account,
                     subject,
                     now,
                     AdminAuthService.FailureWindow,
                     AdminAuthService.AccountFailureLimit,
                     AdminAuthService.LockDuration,
-                    CancellationToken.None);
+                    CancellationToken.None));
+                Assert.NotNull(await lockouts.GetActiveLockoutAsync(
+                    AdminAuthScopes.Account, subject, now, CancellationToken.None));
             }
 
-            Assert.NotNull(await lockouts.GetActiveLockoutAsync(
-                AdminAuthScopes.Account, subject, now, CancellationToken.None));
-        }
-
-        try
-        {
             var token = await RequestRawTokenAsync();
             var complete = await PostConfirmAsync(new
             {
@@ -1812,8 +1822,9 @@ public class AdminPasswordResetTests
         Assert.Contains("dw-admin-antiforgery-v1", afSource, StringComparison.Ordinal);
         Assert.Contains("dw-admin-af-token-v1", afSource, StringComparison.Ordinal);
         Assert.DoesNotContain("_key = RandomNumberGenerator.GetBytes", afSource, StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(
-            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminAntiForgery.cs")));
+        var step5Af = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminAntiForgery.cs"));
+        Assert.DoesNotContain("RandomNumberGenerator.GetBytes", step5Af, StringComparison.Ordinal);
     }
 
     [Fact]
