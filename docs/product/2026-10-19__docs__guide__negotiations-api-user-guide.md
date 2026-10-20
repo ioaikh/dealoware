@@ -1,12 +1,12 @@
 # Dealoware Core API: negotiations user guide
 
-This guide walks a seller and a buyer through one negotiation on the Dealoware Core API. It follows the folder order of the Postman collection `postman/Dealoware-PoC-Negotiations.postman_collection.json`. Every endpoint claim cites a file and line on main `d33a6d9c`.
+This guide walks a seller and a buyer through one negotiation on the Dealoware Core API. It follows the folder order of the Postman collection `postman/Dealoware-PoC-Negotiations.postman_collection.json`. Every endpoint claim cites a file and line on main `cb372f9b`.
 
 ## Hosts
 
 ### Local default
 
-The collection's `baseUrl` defaults to local Development at `http://localhost:5287`. Start the API locally and run the collection as it is. Swagger is enabled only in the Development environment (`src/Dealoware.Api/Program.cs:250`), so you can also browse it locally.
+The collection's `baseUrl` defaults to local Development at `http://localhost:5287`. Start the API locally and run the collection as it is. Swagger is enabled only in the Development environment (`src/Dealoware.Api/Program.cs:265`), so you can also browse it locally.
 
 ### Live override
 
@@ -46,7 +46,7 @@ Register and token requests are rate limited per client (`src/Dealoware.Api/Endp
 
 ### 00-Health
 
-Check that the host is up with `GET /health`. No credentials are needed (`src/Dealoware.Api/Program.cs:300`).
+Check that the host is up with `GET /health`. No credentials are needed (`src/Dealoware.Api/Program.cs:316`).
 
 ### 01-Auth
 
