@@ -17,8 +17,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
 
-[Collection("PasswordResetTests")]
-public class AdminPasswordResetTests
+[Collection("WebAppTests")]
+public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplicationFactory>
 {
     private const string AdminHost = "admin.core.dealoware.com";
     private const string CoreOwnerEmail = PasswordResetWebApplicationFactory.OwnerEmail;

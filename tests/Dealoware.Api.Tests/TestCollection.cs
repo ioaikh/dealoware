@@ -16,6 +16,11 @@ using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Npgsql;
 
+// HostFactoryResolver.HostingListener (DiagnosticListener) deadlocks when
+// WebApplicationFactory<Program> CreateHost/Dispose overlap. The password-reset
+// collection was a third parallel TestServer; keep one in-process host at a time.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
 namespace Dealoware.Api.Tests;
 
 /// <summary>
@@ -250,6 +255,8 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 /// Collection definition for tests that use IsolatedWebApplicationFactory.
 /// All test classes in this collection share the same factory instance
 /// and run serially within the collection.
+/// Password-reset tests stay in this collection as a class fixture so they
+/// are not a third parallel xUnit collection next to WebAppTests and AdminAuthTests.
 /// </summary>
 [CollectionDefinition("WebAppTests")]
 public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
@@ -258,11 +265,6 @@ public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFac
 
 [CollectionDefinition("AdminAuthTests")]
 public class AdminAuthTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
-{
-}
-
-[CollectionDefinition("PasswordResetTests")]
-public class PasswordResetTestCollection : ICollectionFixture<PasswordResetWebApplicationFactory>
 {
 }
 
