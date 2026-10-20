@@ -68,6 +68,8 @@ public class AdminSecurityHeadersTests
         var csp = GetHeader(response, "Content-Security-Policy");
         Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
         Assert.Contains("script-src 'nonce-", csp, StringComparison.Ordinal);
+        Assert.Contains("style-src 'nonce-", csp, StringComparison.Ordinal);
+        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
         Assert.Contains("object-src 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("/admin/auth/reset-confirm.js", html, StringComparison.Ordinal);

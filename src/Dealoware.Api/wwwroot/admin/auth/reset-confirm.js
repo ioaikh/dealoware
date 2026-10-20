@@ -107,7 +107,7 @@
     showFieldError(TOTP_ERROR_ID, totpFieldEl(), message);
   }
 
-  function showRetry(message, action) {
+  function showRetry(message, action, focusMessage) {
     retryAction = action || check;
     setRetryBusy(false);
     if (statusEl) statusEl.hidden = true;
@@ -121,9 +121,13 @@
     if (retryBtn) {
       retryBtn.hidden = false;
       if (alertEl && alertEl.id) retryBtn.setAttribute("aria-describedby", alertEl.id);
-      retryBtn.focus();
     }
     if (main) main.removeAttribute("aria-busy");
+    // State 4 first failure (v1.14 L242): focus Try again.
+    // Rule C repeat failure (v1.14 L248 / UXR-A26 r4): focus the message.
+    // 312ca380 Rule A item 6 is superseded.
+    if (focusMessage && alertEl) alertEl.focus();
+    else if (retryBtn) retryBtn.focus();
   }
 
   function showForm() {
@@ -206,9 +210,10 @@
     }
 
     function endCheckFailure() {
-      // TODO T-A-02 v1.10: when a retry check fails or times out again, leave
-      // the existing showRetry() path unchanged until that spec lands.
-      showRetry();
+      // Spec v1.14 L248 Rule C / UXR-A26 r4: a retry from state 4 that fails
+      // or times out again restores "Try again", drops aria-disabled, keeps
+      // the same non-live copy, and moves focus to the message.
+      showRetry(undefined, undefined, retrying);
     }
 
     fetchWithTimeout(CHECK, {

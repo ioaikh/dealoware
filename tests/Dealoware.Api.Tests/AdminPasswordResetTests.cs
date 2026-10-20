@@ -310,10 +310,45 @@ public class AdminPasswordResetTests
         Assert.DoesNotContain("id=\\\"reset-alert\\\" role=\\\"alert\\\"", html, StringComparison.Ordinal);
         Assert.Contains("<button type=\\\"submit\\\">Change password</button>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Update password", html, StringComparison.Ordinal);
+        AssertConfirmPageRuleAbcMarkup(html);
 
         var script = File.ReadAllText(Path.Combine(
             RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin", "auth", "reset-confirm.js"));
         AssertConfirmClientSource(script);
+    }
+
+    [Fact]
+    public void TD_ADM_031_ConfirmClient_SpecV114_RulesABC()
+    {
+        var html = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
+        AssertConfirmPageRuleAbcMarkup(html);
+
+        var script = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin", "auth", "reset-confirm.js"));
+        AssertConfirmClientSource(script);
+        AssertConfirmClientRuleAbc(script);
+    }
+
+    private static void AssertConfirmPageRuleAbcMarkup(string html)
+    {
+        var alertIdx = html.IndexOf("id=\\\"reset-alert\\\"", StringComparison.Ordinal);
+        var retryIdx = html.IndexOf("id=\\\"reset-retry\\\"", StringComparison.Ordinal);
+        var statusIdx = html.IndexOf("id=\\\"reset-status\\\"", StringComparison.Ordinal);
+        var mainIdx = html.IndexOf("<main id=\\\"reset-main\\\"", StringComparison.Ordinal);
+        Assert.True(mainIdx >= 0 && statusIdx > mainIdx, "reset-status must sit inside main");
+        Assert.True(alertIdx > statusIdx, "reset-alert follows reset-status");
+        Assert.True(retryIdx > alertIdx, "reset-alert comes before reset-retry in DOM/reading order (v1.14 L248 Rule C)");
+        Assert.Contains("tabindex=\\\"-1\\\"", html, StringComparison.Ordinal);
+        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
+        Assert.Contains("outline:2px solid currentColor", html, StringComparison.Ordinal);
+        Assert.Contains("outline-offset:2px", html, StringComparison.Ordinal);
+        Assert.Contains("style-src 'nonce-", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("aria-live", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("role=\\\"alert\\\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("overflow:hidden", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outline:none", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outline: none", html, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertConfirmClientSource(string script)
@@ -321,11 +356,13 @@ public class AdminPasswordResetTests
         var showRetry = Regex.Match(script, @"function showRetry\([^)]*\) \{[\s\S]*?\n  \}");
         Assert.True(showRetry.Success, "showRetry() must be present");
         Assert.Contains("retryAction = action || check", showRetry.Value, StringComparison.Ordinal);
-        Assert.Contains("retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
-        Assert.DoesNotContain("alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("function showRetry(message, action, focusMessage)", script, StringComparison.Ordinal);
+        Assert.Contains("if (focusMessage && alertEl) alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("else if (retryBtn) retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("retryBtn.hidden = false", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("removeAttribute(\"role\")", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("removeAttribute(\"aria-live\")", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("aria-describedby", showRetry.Value, StringComparison.Ordinal);
 
         Assert.DoesNotContain("__dwResetTimeoutMs", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
@@ -333,7 +370,9 @@ public class AdminPasswordResetTests
         Assert.Contains("retryAction();", script, StringComparison.Ordinal);
         Assert.Contains("aria-disabled", script, StringComparison.Ordinal);
         Assert.Contains("Checking…", script, StringComparison.Ordinal);
-        Assert.Contains("TODO T-A-02 v1.10", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("TODO T-A-02", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("T-A-02 v1.9", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("T-A-02 v1.10", script, StringComparison.Ordinal);
         Assert.DoesNotContain("retryBtn.disabled", script, StringComparison.Ordinal);
         Assert.DoesNotContain("retryBtn.disabled =", script, StringComparison.Ordinal);
         Assert.Contains("totp-error", script, StringComparison.Ordinal);
@@ -354,6 +393,58 @@ public class AdminPasswordResetTests
         Assert.Contains("body.message", script, StringComparison.Ordinal);
         var beforeCheck = script[..script.LastIndexOf("\n  check();", StringComparison.Ordinal)];
         Assert.Contains("if (!token)", beforeCheck, StringComparison.Ordinal);
+        AssertConfirmClientRuleAbc(script);
+    }
+
+    private static void AssertConfirmClientRuleAbc(string script)
+    {
+        var check = Regex.Match(script, @"function check\(\) \{[\s\S]*?\n  \}");
+        Assert.True(check.Success, "check() must be present");
+        Assert.Contains("var retrying = isRetryVisible()", check.Value, StringComparison.Ordinal);
+
+        var retryingBranch = Regex.Match(
+            check.Value,
+            @"if \(retrying\) \{[\s\S]*?\} else \{");
+        Assert.True(retryingBranch.Success, "Rule B (v1.14 L245): retrying branch of check()");
+        Assert.Contains("setRetryBusy(true)", retryingBranch.Value, StringComparison.Ordinal);
+        Assert.Contains("retryBtn.focus()", retryingBranch.Value, StringComparison.Ordinal);
+        Assert.Contains("statusEl.hidden = true", retryingBranch.Value, StringComparison.Ordinal);
+        Assert.Contains("alertEl.hidden = false", retryingBranch.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("role =", retryingBranch.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("aria-live", retryingBranch.Value, StringComparison.Ordinal);
+
+        var firstCheckBranch = Regex.Match(
+            check.Value,
+            @"\} else \{[\s\S]*?statusEl.hidden = false[\s\S]*?\}");
+        Assert.True(firstCheckBranch.Success, "first check keeps role=status Checking your link…");
+        Assert.Contains("statusEl.hidden = false", firstCheckBranch.Value, StringComparison.Ordinal);
+        Assert.Contains("alertEl.hidden = true", firstCheckBranch.Value, StringComparison.Ordinal);
+
+        var endCheck = Regex.Match(script, @"function endCheckFailure\(\) \{[\s\S]*?\n    \}");
+        Assert.True(endCheck.Success, "endCheckFailure() must be present");
+        Assert.Contains("Spec v1.14", endCheck.Value, StringComparison.Ordinal);
+        Assert.Contains("Rule C", endCheck.Value, StringComparison.Ordinal);
+        Assert.Contains("showRetry(undefined, undefined, retrying)", endCheck.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("TODO", endCheck.Value, StringComparison.Ordinal);
+
+        var showForm = Regex.Match(script, @"function showForm\(\) \{[\s\S]*?\n  \}");
+        Assert.True(showForm.Success, "showForm() must be present");
+        Assert.Contains("field.focus()", showForm.Value, StringComparison.Ordinal);
+        Assert.Contains("newPasswordEl()", showForm.Value, StringComparison.Ordinal);
+
+        var click = Regex.Match(
+            script,
+            @"retryBtn\.addEventListener\(""click"", function \(e\) \{[\s\S]*?\n    \}\);");
+        Assert.True(click.Success, "Try again click handler");
+        Assert.Contains("if (isRetryBusy())", click.Value, StringComparison.Ordinal);
+        Assert.Contains("e.preventDefault()", click.Value, StringComparison.Ordinal);
+
+        Assert.Contains("setRetryBusy(false)", script, StringComparison.Ordinal);
+        Assert.Contains("removeAttribute(\"aria-disabled\")", script, StringComparison.Ordinal);
+        Assert.Contains("312ca380 Rule A item 6 is superseded", script, StringComparison.Ordinal);
+        Assert.Contains("v1.14 L242", script, StringComparison.Ordinal);
+        Assert.Contains("v1.14 L248", script, StringComparison.Ordinal);
+        Assert.Contains("UXR-A26 r4", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2205,6 +2296,8 @@ public class AdminPasswordResetTests
             AdminPasswordResetEndpoints.ConfirmPageContentSecurityPolicy(nonce),
             csp);
         Assert.Contains($"script-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
+        Assert.Contains($"style-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
+        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("*", csp, StringComparison.Ordinal);

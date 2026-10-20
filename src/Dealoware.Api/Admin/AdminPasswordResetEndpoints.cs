@@ -89,6 +89,7 @@ public static class AdminPasswordResetEndpoints
     public static string ConfirmPageContentSecurityPolicy(string nonce)
         => "default-src 'none'; "
            + $"script-src 'nonce-{nonce}'; "
+           + $"style-src 'nonce-{nonce}'; "
            + "connect-src 'self'; "
            + "frame-ancestors 'none'; "
            + "base-uri 'none'; "
@@ -104,7 +105,9 @@ public static class AdminPasswordResetEndpoints
         var html =
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
             $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
-            $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title></head>" +
+            $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>" +
+            $"<style nonce=\"{nonce}\">#reset-alert:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
+            "</head>" +
             "<body><main id=\"reset-main\" aria-busy=\"true\">" +
             $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
             $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +

@@ -49,22 +49,72 @@ async function expectNoSa5(page: Page): Promise<void> {
   await expect(page.getByText(LINK_EXPIRED, { exact: true })).toHaveCount(0);
 }
 
-async function expectRetryFocused(page: Page, text: string): Promise<void> {
+async function expectNonLiveMessage(page: Page, text: string): Promise<string> {
   const alert = page.locator('#reset-alert');
   const retry = page.locator('#reset-retry');
   await expect(alert).toBeVisible();
   await expect(alert).toHaveText(text);
+  await expect(alert).toHaveAttribute('tabindex', '-1');
   await expect(alert).not.toHaveAttribute('role');
   await expect(alert).not.toHaveAttribute('aria-live');
   await expect(retry).toBeVisible();
-  await expect(retry).toBeFocused();
   await expect(retry).toHaveText('Try again');
   await expect(retry).not.toHaveAttribute('aria-disabled');
   await expect(retry).not.toHaveAttribute('disabled');
   const alertId = await alert.getAttribute('id');
   expect(alertId).toBeTruthy();
   await expect(retry).toHaveAttribute('aria-describedby', alertId!);
+  const order = await page.evaluate(() => {
+    const message = document.getElementById('reset-alert');
+    const button = document.getElementById('reset-retry');
+    if (!message || !button) return 0;
+    return message.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING;
+  });
+  expect(order).toBeTruthy();
+  const liveAncestor = await alert.evaluate((el) => {
+    let node: HTMLElement | null = el.parentElement;
+    while (node) {
+      const role = node.getAttribute('role');
+      if (node.getAttribute('aria-live') || role === 'alert' || role === 'status') {
+        return node.id || node.tagName;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  });
+  expect(liveAncestor).toBeNull();
   await expectNoSa5(page);
+  return alertId!;
+}
+
+async function expectRetryFocused(page: Page, text: string): Promise<void> {
+  await expectNonLiveMessage(page, text);
+  await expect(page.locator('#reset-retry')).toBeFocused();
+}
+
+async function expectRepeatFailureFocused(page: Page, text: string): Promise<void> {
+  await expectNonLiveMessage(page, text);
+  const alert = page.locator('#reset-alert');
+  await expect(alert).toBeFocused();
+  const box = await alert.boundingBox();
+  expect(box).toBeTruthy();
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+  const focusStyle = await alert.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+      outlineOffset: style.outlineOffset,
+    };
+  });
+  expect(focusStyle.outlineStyle).not.toBe('none');
+  expect(focusStyle.outlineWidth).not.toBe('0px');
+  expect(focusStyle.outlineOffset).toBe('2px');
 }
 
 async function openForm(page: Page, token = LIVE_TOKEN): Promise<void> {
@@ -88,7 +138,7 @@ test('confirm page has exactly one nonce CSP and drops the fragment', async ({ p
   const nonce = nonceMatch![1];
   expect(nonce.length).toBeGreaterThan(0);
   expect(csp[0].value).toBe(
-    `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; `
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; `
     + 'frame-ancestors \'none\'; base-uri \'none\'; form-action \'self\'; object-src \'none\'');
   expect(await page.locator('script[src="/admin/auth/reset-confirm.js"]').evaluate((el) => (el as HTMLScriptElement).nonce)).toBe(nonce);
   await expect(page.locator('#reset-form')).toBeVisible();
@@ -192,6 +242,41 @@ test('retry check stays on Try again as Checking… and ignores extra presses', 
   releaseSecond!();
   await expect(page.locator('#reset-form')).toBeVisible();
   await expect(page.locator('#newPassword')).toBeFocused();
+});
+
+test('repeat check 500 restores Try again and focuses the non-live message', async ({ page }) => {
+  let checks = 0;
+  await page.route((url) => isCheck(url.href), async (route) => {
+    checks += 1;
+    await route.fulfill({ status: 500, body: 'error' });
+  });
+  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
+  await expectRetryFocused(page, CHECK_RETRY);
+  const retry = page.locator('#reset-retry');
+  await retry.click();
+  await expect(retry).toHaveAttribute('aria-disabled', 'true');
+  await expect(retry).toHaveText('Checking…');
+  await expectRepeatFailureFocused(page, CHECK_RETRY);
+  expect(checks).toBe(2);
+  await retry.click();
+  await expect(retry).toHaveAttribute('aria-disabled', 'true');
+  await expectRepeatFailureFocused(page, CHECK_RETRY);
+  expect(checks).toBe(3);
+});
+
+test('repeat check timeout restores Try again and focuses the non-live message', async ({ page }) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.route((url) => isCheck(url.href), async () => {
+    await new Promise(() => { /* hang until the clock fires the 15 s abort */ });
+  });
+  await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
+  await page.clock.fastForward(15000);
+  await expectRetryFocused(page, CHECK_RETRY);
+  await page.locator('#reset-retry').click();
+  await expect(page.locator('#reset-retry')).toHaveText('Checking…');
+  await page.clock.fastForward(15000);
+  await expectRepeatFailureFocused(page, CHECK_RETRY);
 });
 
 test('submit 400 puts the server rule under New password and focuses it', async ({ page }) => {
