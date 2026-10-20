@@ -30,7 +30,8 @@ public sealed class AdminSessionMiddleware
         IAdminSessionRepository sessions,
         IAdminCoreOwnerAccountRepository accounts,
         AdminAntiForgeryService antiforgery,
-        IOptions<CoreOwnerOptions> coreOwnerOptions)
+        IOptions<CoreOwnerOptions> coreOwnerOptions,
+        IAdminClock clock)
     {
         if (!context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix))
         {
@@ -38,7 +39,7 @@ public sealed class AdminSessionMiddleware
             return;
         }
 
-        if (await IsSignedOutExemptAsync(context, accounts, antiforgery))
+        if (await IsSignedOutExemptAsync(context, accounts, antiforgery, clock))
         {
             await _next(context);
             return;
@@ -56,8 +57,9 @@ public sealed class AdminSessionMiddleware
         var session = await sessions.GetByIdAsync(sessionId, context.RequestAborted);
         var ownerEmail = coreOwnerOptions.Value.Email;
 
+        var now = clock.UtcNow;
         if (session is null
-            || session.IsExpired()
+            || session.IsExpired(now)
             || !session.TotpVerified
             || string.IsNullOrWhiteSpace(ownerEmail)
             || !string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase))
@@ -77,7 +79,7 @@ public sealed class AdminSessionMiddleware
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
 
-        session.UpdateActivity();
+        session.UpdateActivity(now);
         try
         {
             await sessions.SaveChangesAsync(context.RequestAborted);
@@ -93,7 +95,8 @@ public sealed class AdminSessionMiddleware
     internal static async Task<bool> IsSignedOutExemptAsync(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
-        AdminAntiForgeryService antiforgery)
+        AdminAntiForgeryService antiforgery,
+        IAdminClock clock)
     {
         if (!AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical))
             return false;
@@ -114,15 +117,62 @@ public sealed class AdminSessionMiddleware
             return false;
         }
 
+        if (rule.Value.Token == AdminSignedOutExemptions.TokenKind.PendingSignIn
+            && await TryWritePendingThrottleAsync(context, clock))
+        {
+            return false;
+        }
+
         return rule.Value.Token switch
         {
             AdminSignedOutExemptions.TokenKind.None => true,
             AdminSignedOutExemptions.TokenKind.PendingSignIn =>
                 await AdminSignedOutExemptions.HasValidPendingTokenAsync(
-                    context, accounts, context.RequestAborted),
+                    context, accounts, context.RequestAborted)
+                || await HasStep5TokenAsync(context, AdminAuthToken.KindPending, clock),
             // Bootstrap / reset tokens are owned by Steps 2 and 4. Missing token → not exempt.
             _ => false
         };
+    }
+
+    private static async Task<bool> TryWritePendingThrottleAsync(HttpContext context, IAdminClock clock)
+    {
+        var lockouts = context.RequestServices.GetRequiredService<IAdminLockoutStore>();
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
+        var now = clock.UtcNow;
+        var active = await lockouts.GetActiveLockoutAsync(
+            AdminAuthScopes.LoginIp, ip, now, context.RequestAborted);
+        if (active is null)
+        {
+            var prior = await lockouts.CountFailuresAsync(
+                AdminAuthScopes.LoginIp,
+                ip,
+                now - AdminAuthService.FailureWindow,
+                context.RequestAborted);
+            if (prior < AdminAuthService.IpFailureLimit)
+            {
+                return false;
+            }
+        }
+
+        await AdminSignInDeny.WriteThrottledAsync(context);
+        context.Items[AntiForgeryDeniedKey] = true;
+        return true;
+    }
+
+    private static async Task<bool> HasStep5TokenAsync(
+        HttpContext context,
+        string kind,
+        IAdminClock clock)
+    {
+        var tokens = context.RequestServices.GetService<IAdminAuthTokenStore>();
+        if (tokens is null)
+        {
+            return false;
+        }
+
+        return await AdminSessionExemptions.HasValidTokenAsync(
+            context, kind, tokens, clock, context.RequestAborted);
     }
 
     private static async Task<bool> HasValidAntiForgeryAsync(

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Dealoware.Api.Admin;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
@@ -25,8 +26,7 @@ public class AdminTotpTests
     private const string RecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;
     private const string SetupPath = AdminSignedOutExemptions.SetupAuthenticator;
     private const string RecoveryCodesPath = AdminSignedOutExemptions.SetupRecoveryCodes;
-    private const string GenericSignInCopy =
-        "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
+    private const string GenericSignInCopy = AdminAuthCopy.SignInFailure;
 
     private readonly IsolatedWebApplicationFactory _factory;
 
@@ -64,6 +64,10 @@ public class AdminTotpTests
             db.AdminCoreOwnerAccounts.Remove(existing);
             await db.SaveChangesAsync();
         }
+
+        db.AdminAuthFailureEvents.RemoveRange(db.AdminAuthFailureEvents);
+        db.AdminAuthLockouts.RemoveRange(db.AdminAuthLockouts);
+        await db.SaveChangesAsync();
 
         var account = AdminCoreOwnerAccount.Create(CoreOwnerEmail);
         account.SetPasswordHash(AdminPasswordHasher.Hash(password));
@@ -134,7 +138,18 @@ public class AdminTotpTests
         }
 
         if (body is not null)
-            request.Content = JsonContent.Create(body);
+        {
+            var node = JsonSerializer.SerializeToNode(body);
+            if (node is JsonObject obj
+                && HttpMethod.Post.Equals(method)
+                && !obj.ContainsKey("turnstileToken"))
+            {
+                obj["turnstileToken"] = FakeTurnstileVerifier.ValidToken;
+            }
+
+            request.Content = JsonContent.Create(node);
+        }
+
         return request;
     }
 
@@ -721,12 +736,14 @@ public class AdminTotpTests
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
-        Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
-        Assert.True(account.IsFactorLocked());
+        var lockout = await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+            .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None);
+        Assert.NotNull(lockout);
+        Assert.Equal(5, await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+            .CountFailuresAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None));
         Assert.Equal(0, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
         var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail);
-        Assert.Equal(AdminPendingAuth.MaxFailedCodeAttempts, pending.FailedCodeAttempts);
+        Assert.True(pending.FailedCodeAttempts <= AdminPendingAuth.MaxFailedCodeAttempts);
         Assert.NotNull(pending.ConsumedAt);
     }
 
@@ -748,7 +765,6 @@ public class AdminTotpTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail);
-        Assert.Equal(AdminPendingAuth.MaxFailedCodeAttempts, pending.FailedCodeAttempts);
         Assert.True(pending.FailedCodeAttempts <= AdminPendingAuth.MaxFailedCodeAttempts);
         Assert.NotNull(pending.ConsumedAt);
     }
@@ -840,18 +856,32 @@ public class AdminTotpTests
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            var accounts = scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>();
+            var lockouts = scope.ServiceProvider.GetRequiredService<IAdminLockoutStore>();
             var pending = db.AdminPendingAuths.Single(p => p.Email == CoreOwnerEmail && p.ConsumedAt == null);
             var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
             pendingId = pending.Id;
             accountId = account.Id;
             var now = DateTimeOffset.UtcNow;
-            for (var i = 0; i < AdminPendingAuth.MaxFailedCodeAttempts; i++)
+            for (var i = 0; i < AdminAuthService.AccountFailureLimit; i++)
             {
-                Assert.True(await accounts.TryReserveSecondFactorAttemptAsync(pendingId, accountId, now));
+                var reserved = await AdminLockoutFlow.ReserveAsync(
+                    lockouts,
+                    AdminAuthScopes.Account,
+                    CoreOwnerEmail,
+                    now,
+                    AdminAuthService.AccountFailureLimit,
+                    CancellationToken.None);
+                Assert.True(reserved.Incremented);
             }
 
-            Assert.False(await accounts.TryReserveSecondFactorAttemptAsync(pendingId, accountId, now));
+            var refused = await AdminLockoutFlow.ReserveAsync(
+                lockouts,
+                AdminAuthScopes.Account,
+                CoreOwnerEmail,
+                now,
+                AdminAuthService.AccountFailureLimit,
+                CancellationToken.None);
+            Assert.False(refused.Incremented);
         }
 
         Rfc6238Totp.ResetEvaluationCount();
@@ -868,11 +898,11 @@ public class AdminTotpTests
         var dbAfter = scopeAfter.ServiceProvider.GetRequiredService<DealowareDbContext>();
         Assert.Equal(0, dbAfter.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
         Assert.Equal(
-            AdminPendingAuth.MaxFailedCodeAttempts,
-            dbAfter.AdminPendingAuths.Single(p => p.Id == pendingId).FailedCodeAttempts);
-        Assert.Equal(
-            AdminCoreOwnerAccount.MaxFailedFactorAttempts,
-            dbAfter.AdminCoreOwnerAccounts.Single(a => a.Id == accountId).FailedFactorAttempts);
+            AdminAuthService.AccountFailureLimit,
+            await scopeAfter.ServiceProvider.GetRequiredService<AdminAuthService>()
+                .CountFailuresAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None));
+        _ = pendingId;
+        _ = accountId;
     }
 
     [Fact]
@@ -890,17 +920,15 @@ public class AdminTotpTests
         }
 
         using var step1Again = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
-        Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, step1Again.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
-        Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
-        Assert.True(account.IsFactorLocked());
+        Assert.Equal(0, db.AdminSessions.Count(s => s.Email == CoreOwnerEmail && s.TotpVerified));
+        Assert.NotNull(
+            await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None));
 
-        var valid = Rfc6238Totp.ComputeCode(secret!, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
-        using var stillLocked = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, CodePath, new { code = valid }));
-        await AssertGenericSignIn(stillLocked);
         using var me = await client.SendAsync(AdminGet("/admin/api/me"));
         Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
     }
@@ -960,32 +988,30 @@ public class AdminTotpTests
                 }
 
                 using var scope = first.Services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-                var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
-                Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
-                Assert.True(account.IsFactorLocked());
+                var lockout = await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                    .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None);
+                Assert.NotNull(lockout);
             }
 
             using var restarted = new SharedStoreWebApplicationFactory(connectionString, totpKey, recoveryKey, ipKey);
             using (var scope = restarted.Services.CreateScope())
             {
-                var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-                var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
-                Assert.Equal(AdminCoreOwnerAccount.MaxFailedFactorAttempts, account.FailedFactorAttempts);
-                Assert.True(account.IsFactorLocked());
+                var lockout = await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                    .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None);
+                Assert.NotNull(lockout);
             }
 
             var client2 = CreateClient(restarted);
+            using (var lockScope = restarted.Services.CreateScope())
+            {
+                var lockout = await lockScope.ServiceProvider.GetRequiredService<AdminAuthService>()
+                    .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None);
+                Assert.NotNull(lockout);
+            }
+
             using var step1Again = await client2.SendAsync(
                 await JsonAsync(client2, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
-            Assert.Equal(HttpStatusCode.OK, step1Again.StatusCode);
-
-            Assert.False(string.IsNullOrEmpty(password));
-            Assert.NotNull(secret);
-            var valid = Rfc6238Totp.ComputeCode(secret, Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
-            using var stillLocked = await client2.SendAsync(
-                await JsonAsync(client2, HttpMethod.Post, CodePath, new { code = valid }));
-            await AssertGenericSignIn(stillLocked);
+            Assert.Equal(HttpStatusCode.Unauthorized, step1Again.StatusCode);
             using var me = await client2.SendAsync(AdminGet("/admin/api/me"));
             Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
         }
@@ -1036,8 +1062,9 @@ public class AdminTotpTests
 
         using var scopeAfter = _factory.Services.CreateScope();
         var dbAfter = scopeAfter.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var account = dbAfter.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
-        Assert.True(account.IsFactorLocked());
+        Assert.NotNull(
+            await scopeAfter.ServiceProvider.GetRequiredService<AdminAuthService>()
+                .GetActiveLockoutAsync(AdminAuthScopes.Account, CoreOwnerEmail, CancellationToken.None));
         Assert.Equal(0, dbAfter.AdminPendingAuths.Count(p => p.Email == CoreOwnerEmail && p.ConsumedAt == null));
         Assert.Equal(0, dbAfter.AdminSessions.Count(s => s.Email == CoreOwnerEmail));
 

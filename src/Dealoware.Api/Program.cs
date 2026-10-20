@@ -97,6 +97,7 @@ builder.Services.Configure<CoreOwnerOptions>(
     builder.Configuration.GetSection(CoreOwnerOptions.SectionName));
 builder.Services.Configure<AdminHostOptions>(
     builder.Configuration.GetSection(AdminHostOptions.SectionName));
+builder.Services.AddAdminAuth(builder.Configuration, builder.Environment);
 
 try
 {
@@ -128,10 +129,11 @@ builder.Services.AddAdminAuthorizationResultHandler();
 
 try
 {
-    var ipHasher = IpHasher.Create(
+    var hmacKey = IpHasher.LoadKey(
         name => builder.Configuration[name] ?? Environment.GetEnvironmentVariable(name),
         isDevelopment: builder.Environment.IsDevelopment());
-    builder.Services.AddSingleton<IIpHasher>(ipHasher);
+    builder.Services.AddSingleton<IIpHasher>(new IpHasher(hmacKey));
+    builder.Services.AddSingleton<IAuditActorHasher>(new AuditActorHasher(hmacKey));
     builder.Services.AddAdminTotp(builder.Configuration, builder.Environment.IsDevelopment());
 }
 catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -157,17 +159,30 @@ var rateLimitOptions = builder.Configuration
 Console.WriteLine($"[RateLimiting] AuthRegister: {rateLimitOptions.AuthRegister.PermitLimit}/{rateLimitOptions.AuthRegister.WindowSeconds}s, " +
                   $"AuthToken: {rateLimitOptions.AuthToken.PermitLimit}/{rateLimitOptions.AuthToken.WindowSeconds}s");
 
-// The API runs behind a load balancer that is its only ingress, so the TCP peer is the balancer,
-// not the client. Read the client IP from X-Forwarded-For (and scheme from X-Forwarded-Proto) and
-// trust whichever proxy hop sends them, instead of the default loopback-only list (the balancer's
-// address is not fixed). ForwardLimit stays at the default of 1: only the right-most entry, which
-// the balancer appends itself, is used, so client-supplied entries to its left cannot pick the bucket.
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
+// F3: Admin:ForwardedHeaders:KnownNetworks is one comma-separated CIDR string
+// (env Admin__ForwardedHeaders__KnownNetworks). ForwardLimit=1; no CIDRs
+// hard-coded. Outside Development an empty or invalid value refuses startup.
+IReadOnlyList<System.Net.IPNetwork> forwardedNetworks;
+try
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownIPNetworks.Clear();
-    options.KnownProxies.Clear();
-});
+    forwardedNetworks = ForwardedHeadersTrust.Resolve(
+        builder.Configuration[ForwardedHeadersTrust.ConfigurationKey],
+        requireConfigured: !builder.Environment.IsDevelopment());
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+    if (string.Equals(entryName, "Dealoware.Api", StringComparison.Ordinal))
+    {
+        Environment.Exit(1);
+    }
+
+    throw;
+}
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    ForwardedHeadersTrust.Apply(options, forwardedNetworks));
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -264,6 +279,7 @@ app.UseRateLimiter();
 
 app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthorization();
+app.UseAntiforgery();
 
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.

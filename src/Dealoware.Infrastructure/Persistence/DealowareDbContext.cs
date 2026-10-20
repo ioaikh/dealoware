@@ -51,6 +51,12 @@ public class DealowareDbContext : DbContext
 
     public DbSet<AdminPendingAuth> AdminPendingAuths => Set<AdminPendingAuth>();
 
+    public DbSet<AdminAuthFailureEvent> AdminAuthFailureEvents => Set<AdminAuthFailureEvent>();
+
+    public DbSet<AdminAuthLockout> AdminAuthLockouts => Set<AdminAuthLockout>();
+
+    public DbSet<AdminAuthToken> AdminAuthTokens => Set<AdminAuthToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -121,6 +127,9 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminCoreOwnerAccountEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminRecoveryCodeEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminPendingAuthEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthFailureEventEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthLockoutEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminAuthTokenEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)
