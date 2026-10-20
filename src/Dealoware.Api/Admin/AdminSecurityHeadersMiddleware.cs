@@ -87,7 +87,8 @@ public sealed class AdminSecurityHeadersMiddleware
         if (context.Request.IsHttps)
             headers.StrictTransportSecurity = StrictTransportSecurity;
 
-        headers.ContentSecurityPolicy = ContentSecurityPolicy;
+        if (string.IsNullOrEmpty(headers.ContentSecurityPolicy))
+            headers.ContentSecurityPolicy = ContentSecurityPolicy;
         headers.XContentTypeOptions = Nosniff;
         headers["Referrer-Policy"] = ReferrerPolicy;
         headers["X-Robots-Tag"] = RobotsTag;

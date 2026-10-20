@@ -1,3 +1,4 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 
 namespace Dealoware.Api.Admin;
@@ -11,7 +12,8 @@ public static class AdminTotpServiceExtensions
         var protector = TotpSecretProtector.Create(get, isDevelopment);
         services.AddSingleton(protector);
         services.AddSingleton(AdminRecoveryCodeHasher.Create(get));
-        services.AddSingleton<AdminAntiForgeryService>();
+        services.AddSingleton(AdminAntiForgeryService.Create(get, isDevelopment));
+        services.AddScoped<IAdminSecondFactorVerifier, AdminSecondFactorVerifier>();
         return services;
     }
 }

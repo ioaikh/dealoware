@@ -138,6 +138,7 @@ public sealed class TdAdmSc6CounterIntegrityTests : IDisposable
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("Origin", AdminHostOptions.ProductionAdminOrigin);
         request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         if (HttpMethod.Post.Equals(method))
         {
@@ -233,5 +234,13 @@ internal sealed class SharedFileSqliteFactory : WebApplicationFactory<Program>
             services.AddSingleton<TestAdminClock>();
             services.AddSingleton<IAdminClock>(sp => sp.GetRequiredService<TestAdminClock>());
         });
+    }
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        base.ConfigureClient(client);
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Origin",
+            AdminHostOptions.ProductionAdminOrigin);
     }
 }

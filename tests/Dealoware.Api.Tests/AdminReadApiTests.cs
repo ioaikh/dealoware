@@ -818,9 +818,8 @@ public class AdminReadApiTests
                 request.Headers.Host = AdminHost;
                 request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={session:D}");
                 using var response = await client.SendAsync(request);
-                Assert.True(
-                    response.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotFound,
-                    $"{method} {path} returned {response.StatusCode}");
+                Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+                Assert.Equal("""{"error":"Forbidden"}""", await response.Content.ReadAsStringAsync());
             }
         }
     }

@@ -785,6 +785,101 @@ public class AdminLockoutReserveTests
     }
 
     [Fact]
+    public async Task SecR_PendingCapRefusal_DoesNotGrowLoginIpOrAccountCounters()
+    {
+        await ClearAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        var now = DateTimeOffset.UtcNow;
+        var hash = AdminAuthService.HashToken(pending!);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var tokens = scope.ServiceProvider.GetRequiredService<IAdminAuthTokenStore>();
+            var row = await tokens.GetByHashAsync(hash, CancellationToken.None);
+            Assert.NotNull(row);
+            for (var i = 0; i < AdminAuthService.PendingAttemptLimit; i++)
+            {
+                Assert.True(await tokens.TryIncrementPendingAttemptAsync(
+                    row.Id, now, AdminAuthService.PendingAttemptLimit, CancellationToken.None));
+            }
+
+            Assert.False(await tokens.TryIncrementPendingAttemptAsync(
+                row.Id, now, AdminAuthService.PendingAttemptLimit, CancellationToken.None));
+        }
+
+        var ipBefore = await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1");
+        var accountBefore = await CountAsync(AdminAuthScopes.Account, OwnerEmail);
+
+        using var refused = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInCodePath,
+            new { totpCode = "246813", turnstileToken = FakeTurnstileVerifier.ValidToken },
+            extraCookie: $"{AdminSessionExemptions.PendingCookieName}={pending}");
+        Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        Assert.Contains(AdminAuthCopy.SignInFailure, await refused.Content.ReadAsStringAsync());
+        Assert.Equal(ipBefore, await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Equal(accountBefore, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.Null(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.Null(await ActiveAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+    }
+
+    [Fact]
+    public async Task SecR_PendingTokenConsumeRace_ReleasesIpAndAccountReservations()
+    {
+        await ClearAsync();
+        var client = CreateClient();
+        using var step1 = await SendAuthAsync(
+            client,
+            HttpMethod.Post,
+            AdminAuthEndpoints.SignInPath,
+            new { email = OwnerEmail, password = _password, turnstileToken = FakeTurnstileVerifier.ValidToken });
+        step1.EnsureSuccessStatusCode();
+        var pending = ReadCookie(step1, AdminSessionExemptions.PendingCookieName);
+        Assert.False(string.IsNullOrEmpty(pending));
+
+        var ipBefore = await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1");
+        var accountBefore = await CountAsync(AdminAuthScopes.Account, OwnerEmail);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var sp = scope.ServiceProvider;
+            var auth = new AdminAuthService(
+                sp.GetRequiredService<ITurnstileVerifier>(),
+                sp.GetRequiredService<IAdminLockoutStore>(),
+                new ConsumeRaceLostStore(sp.GetRequiredService<IAdminAuthTokenStore>()),
+                sp.GetRequiredService<IAdminCredentialDirectory>(),
+                sp.GetRequiredService<IAdminSessionRepository>(),
+                sp.GetRequiredService<IAdminAuditRepository>(),
+                sp.GetRequiredService<IIpHasher>(),
+                sp.GetRequiredService<IAuditActorHasher>(),
+                sp.GetRequiredService<IAdminClock>());
+            var lost = await auth.VerifySecondFactorAsync(
+                pending,
+                "246813",
+                null,
+                "127.0.0.1",
+                CancellationToken.None);
+            Assert.Equal(401, lost.StatusCode);
+            Assert.Equal(AdminAuthCopy.SignInFailure, lost.Body);
+            Assert.Null(lost.SessionId);
+        }
+
+        Assert.Equal(ipBefore, await CountAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+        Assert.Equal(accountBefore, await CountAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.Null(await ActiveAsync(AdminAuthScopes.Account, OwnerEmail));
+        Assert.Null(await ActiveAsync(AdminAuthScopes.LoginIp, "127.0.0.1"));
+    }
+
+    [Fact]
     public async Task SecR12_AccountLockedRefusal_DoesNotGrowLoginIpCounter()
     {
         await ClearAsync();
@@ -1102,5 +1197,40 @@ public class AdminLockoutReserveTests
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Lost the consume CAS at AdminAuthService.cs:205-213: GetByHash still
+    /// sees a usable pending row, TryConsumeAsync returns false.
+    /// </summary>
+    private sealed class ConsumeRaceLostStore : IAdminAuthTokenStore
+    {
+        private readonly IAdminAuthTokenStore _inner;
+
+        public ConsumeRaceLostStore(IAdminAuthTokenStore inner) => _inner = inner;
+
+        public Task<AdminAuthToken?> GetByHashAsync(string tokenHash, CancellationToken ct)
+            => _inner.GetByHashAsync(tokenHash, ct);
+
+        public Task AddAsync(AdminAuthToken token, CancellationToken ct)
+            => _inner.AddAsync(token, ct);
+
+        public Task CancelUnusedAsync(string kind, string email, DateTimeOffset now, CancellationToken ct)
+            => _inner.CancelUnusedAsync(kind, email, now, ct);
+
+        public Task ConsumeOutstandingPendingAsync(string email, DateTimeOffset now, CancellationToken ct)
+            => _inner.ConsumeOutstandingPendingAsync(email, now, ct);
+
+        public Task<bool> TryConsumeAsync(string tokenHash, DateTimeOffset now, CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> TryIncrementPendingAttemptAsync(
+            Guid id,
+            DateTimeOffset now,
+            int maxAttempts,
+            CancellationToken ct)
+            => _inner.TryIncrementPendingAttemptAsync(id, now, maxAttempts, ct);
+
+        public Task SaveChangesAsync(CancellationToken ct) => _inner.SaveChangesAsync(ct);
     }
 }

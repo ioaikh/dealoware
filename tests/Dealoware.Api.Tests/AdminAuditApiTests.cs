@@ -54,13 +54,38 @@ public class AdminAuditApiTests
         return entry;
     }
 
-    private static HttpRequestMessage AdminRequest(HttpMethod method, string path, Guid? sessionId = null)
+    private static HttpRequestMessage AdminRequest(
+        HttpMethod method,
+        string path,
+        Guid? sessionId = null,
+        string? csrf = null,
+        string? csrfCookie = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
+        var cookies = new List<string>();
         if (sessionId is { } id)
-            request.Headers.TryAddWithoutValidation("Cookie", $"{AdminSessionCookie.Name}={id:D}");
+            cookies.Add($"{AdminSessionCookie.Name}={id:D}");
+        if (!string.IsNullOrWhiteSpace(csrfCookie))
+            cookies.Add(csrfCookie);
+        if (cookies.Count > 0)
+            request.Headers.TryAddWithoutValidation("Cookie", string.Join("; ", cookies));
+        if (!string.IsNullOrWhiteSpace(csrf))
+            request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, csrf);
         return request;
+    }
+
+    private static async Task<(string Token, string CookieHeader)> IssueCsrfAsync(HttpClient client)
+    {
+        using var request = AdminRequest(HttpMethod.Get, AdminSignedOutExemptions.SignIn);
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = payload.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        Assert.True(response.Headers.TryGetValues("Set-Cookie", out var setCookies));
+        var af = setCookies.Single(c => c.StartsWith(AdminAntiForgeryCookie.Name + "=", StringComparison.Ordinal));
+        return (token!, af.Split(';', 2)[0]);
     }
 
     private static async Task AssertGenericUnauthorized(HttpResponseMessage response)
@@ -115,9 +140,10 @@ public class AdminAuditApiTests
     {
         var id = await SeedSessionAsync();
         var client = CreateClient();
-        using var patch = await client.SendAsync(AdminRequest(HttpMethod.Patch, "/admin/api/audit", id));
-        using var delete = await client.SendAsync(AdminRequest(HttpMethod.Delete, "/admin/api/audit", id));
-        using var put = await client.SendAsync(AdminRequest(HttpMethod.Put, "/admin/api/audit", id));
+        var (csrf, csrfCookie) = await IssueCsrfAsync(client);
+        using var patch = await client.SendAsync(AdminRequest(HttpMethod.Patch, "/admin/api/audit", id, csrf, csrfCookie));
+        using var delete = await client.SendAsync(AdminRequest(HttpMethod.Delete, "/admin/api/audit", id, csrf, csrfCookie));
+        using var put = await client.SendAsync(AdminRequest(HttpMethod.Put, "/admin/api/audit", id, csrf, csrfCookie));
         Assert.Equal(HttpStatusCode.MethodNotAllowed, patch.StatusCode);
         Assert.Equal(HttpStatusCode.MethodNotAllowed, delete.StatusCode);
         Assert.Equal(HttpStatusCode.MethodNotAllowed, put.StatusCode);
