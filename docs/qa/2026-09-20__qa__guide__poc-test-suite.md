@@ -76,22 +76,22 @@ npm run test:newman
 
 | Scenario | Description | xUnit Test | Postman Folder |
 |----------|-------------|------------|----------------|
-| S1.1 | Register Seller | `S1_1_RegisterSeller_*` | 01-Bootstrap |
-| S1.2 | Register Buyer | `S1_2_RegisterBuyer_*` | 01-Bootstrap |
-| S2.1 | Create Sell Artifact | `S2_1_SellerCreatesArtifact_*` | 01-Bootstrap |
-| S3.1 | Create Negotiation (sell↔buy) | `S3_1_SellerCreatesNegotiation_*` | 02-Happy-Path-Deal |
-| S4.1 | Seller Places Offer | `S4_1_SellerPlacesOffer_*` | 02-Happy-Path-Deal |
-| S5.1 | Buyer Counters | `S5_1_BuyerCounters_*` | 02-Happy-Path-Deal |
-| S6.1 | Seller Accepts Counter | `S6_1_SellerAcceptsCounter_*` | 02-Happy-Path-Deal |
-| S6.2 | View Final State | `S6_2_ViewFinalNegotiationState_*` | 02-Happy-Path-Deal |
-| S7.1 | Buyer Declines | `S7_1_BuyerDeclinesOffer_*` | 03-Alternate-Decline |
-| S8.1 | Close Negotiation | `S8_1_CloseNegotiation_*` | 04-Alternate-Close |
-| S9.1 | Non-Complementary Intents | `S9_1_NonComplementaryIntents_*` | 05-Negative-Cases |
-| S10 | Non-Party GET → 404 | `S10_NonPartyGet_*` | 05-Negative-Cases |
-| S11 | Duplicate Open Offer | `S11_SecondOpenOfferSameSide_*` | 05-Negative-Cases |
-| S12 | Mutate After Close | `S12_MutationsAfterClose_*` | 05-Negative-Cases |
-| S13 | Expiration via EndsAt | `S13_ExpiredNegotiation_*` | 06-Optional-Expiration |
-| S14.1 | Provide ↔ Consume | `S14_1_ProvideConsume_*` | 07-Optional-Other-Intents |
+| S1.1 | Register Seller | `S1_1_RegisterSeller_*` | 01-Auth |
+| S1.2 | Register Buyer | `S1_2_RegisterBuyer_*` | 01-Auth |
+| S2.1 | Create Sell Artifact | `S2_1_SellerCreatesArtifact_*` | 02-Artifact |
+| S3.1 | Create Negotiation (sell↔buy) | `S3_1_SellerCreatesNegotiation_*` | 03-Negotiation |
+| S4.1 | Seller Places Offer | `S4_1_SellerPlacesOffer_*` | 04-Offer |
+| S5.1 | Buyer Counters | `S5_1_BuyerCounters_*` | 05-Counter |
+| S6.1 | Seller Accepts Counter | `S6_1_SellerAcceptsCounter_*` | 06-Accept-or-Decline |
+| S6.2 | View Final State | `S6_2_ViewFinalNegotiationState_*` | 06-Accept-or-Decline |
+| S7.1 | Buyer Declines | `S7_1_BuyerDeclinesOffer_*` | 06-Accept-or-Decline |
+| S8.1 | Close Negotiation | `S8_1_CloseNegotiation_*` | 07-Close |
+| S9.1 | Non-Complementary Intents | `S9_1_NonComplementaryIntents_*` | 08-Negative-Cases |
+| S10 | Non-Party GET → 404 | `S10_NonPartyGet_*` | 08-Negative-Cases |
+| S11 | Duplicate Open Offer | `S11_SecondOpenOfferSameSide_*` | 08-Negative-Cases |
+| S12 | Mutate After Close | `S12_MutationsAfterClose_*` | 08-Negative-Cases |
+| S13 | Expiration via EndsAt | `S13_ExpiredNegotiation_*` | 09-Expiration |
+| S14.1 | Provide ↔ Consume | `S14_1_ProvideConsume_*` | 10-Other-Intents |
 | S14 | Complementary pairs (buy↔sell, provide↔consume) | `S14_ComplementaryPairs_*` | Theory |
 
 ## Intent Pairs in This Suite
@@ -137,7 +137,7 @@ dotnet ef database update --project src/Dealoware.Infrastructure
 
 ### Newman reports 401 Unauthorized
 
-The collection auto-captures API keys. Run folders in order starting with `01-Bootstrap`.
+The collection auto-captures API keys. Run folders in order starting with `00-Health`.
 
 ## Adding New Tests
 
