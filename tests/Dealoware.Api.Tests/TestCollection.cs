@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
+using Npgsql;
 
 namespace Dealoware.Api.Tests;
 
@@ -65,8 +67,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         {
             _sqliteConnectionString = sqliteConnectionString;
         }
-        else if (TryBuildTestPostgresConnectionString(out var postgres))
+        else if (TryBuildTestPostgresConnectionString(out var postgres, PostgresDatabaseName))
         {
+            EnsurePostgresDatabase(postgres);
             _postgresConnectionString = postgres;
         }
         else
@@ -82,9 +85,20 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Optional dedicated PostgreSQL database so a fixture with its own CoreOwner
+    /// config does not share rows with other collections on DB_NAME.
+    /// </summary>
+    protected virtual string? PostgresDatabaseName => null;
+
+    /// <summary>
     /// CI postgres:16 has no TLS. Build a throwaway SSL Mode=Disable string from DB_*.
     /// </summary>
     internal static bool TryBuildTestPostgresConnectionString(out string connectionString)
+        => TryBuildTestPostgresConnectionString(out connectionString, databaseOverride: null);
+
+    internal static bool TryBuildTestPostgresConnectionString(
+        out string connectionString,
+        string? databaseOverride)
     {
         var host = Environment.GetEnvironmentVariable("DB_HOST");
         if (string.IsNullOrWhiteSpace(host))
@@ -96,7 +110,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         var port = Environment.GetEnvironmentVariable("DB_PORT");
         if (string.IsNullOrWhiteSpace(port))
             port = "5432";
-        var database = Environment.GetEnvironmentVariable("DB_NAME");
+        var database = string.IsNullOrWhiteSpace(databaseOverride)
+            ? Environment.GetEnvironmentVariable("DB_NAME")
+            : databaseOverride;
         if (string.IsNullOrWhiteSpace(database))
             database = "dealoware_ci";
         var username = Environment.GetEnvironmentVariable("DB_USERNAME");
@@ -106,6 +122,34 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
         connectionString =
             $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Disable";
         return true;
+    }
+
+    private static void EnsurePostgresDatabase(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        var database = builder.Database;
+        if (string.IsNullOrWhiteSpace(database)
+            || !Regex.IsMatch(database, "^[a-z][a-z0-9_]*$"))
+        {
+            throw new InvalidOperationException("PostgreSQL test database name is not a safe identifier.");
+        }
+
+        builder.Database = "postgres";
+        using var conn = new NpgsqlConnection(builder.ConnectionString);
+        conn.Open();
+        using (var exists = conn.CreateCommand())
+        {
+            exists.CommandText = "SELECT 1 FROM pg_database WHERE datname = @n";
+            exists.Parameters.AddWithValue("n", database);
+            if (exists.ExecuteScalar() is not null)
+            {
+                return;
+            }
+        }
+
+        using var create = conn.CreateCommand();
+        create.CommandText = "CREATE DATABASE " + database;
+        create.ExecuteNonQuery();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -215,6 +259,27 @@ public class WebAppTestCollection : ICollectionFixture<IsolatedWebApplicationFac
 [CollectionDefinition("AdminAuthTests")]
 public class AdminAuthTestCollection : ICollectionFixture<IsolatedWebApplicationFactory>
 {
+}
+
+[CollectionDefinition("PasswordResetTests")]
+public class PasswordResetTestCollection : ICollectionFixture<PasswordResetWebApplicationFactory>
+{
+}
+
+/// <summary>
+/// Password-reset suite sets CoreOwner through test config, not appsettings.
+/// </summary>
+public sealed class PasswordResetWebApplicationFactory : IsolatedWebApplicationFactory
+{
+    public const string OwnerEmail = "owner@example.test";
+
+    protected override string? PostgresDatabaseName => "dealoware_ci_pwreset";
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("CoreOwner:Email", OwnerEmail);
+        base.ConfigureWebHost(builder);
+    }
 }
 
 /// <summary>File-backed host used only by SC-6 restart tests. Not a collection fixture.</summary>

@@ -5,7 +5,7 @@ namespace Dealoware.Api.Tests;
 
 public class AdminPasswordRulesTests
 {
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = "owner@example.test";
 
     [Theory]
     [InlineData("tr-TR")]
@@ -26,10 +26,10 @@ public class AdminPasswordRulesTests
 
             Assert.True(AdminPasswordRules.IsCommonOrContext(
                 AdminPasswordRules.Normalize("io2026!!!"),
-                CoreOwnerEmail));
+                "io@example.test"));
             Assert.True(AdminPasswordRules.IsCommonOrContext(
                 AdminPasswordRules.Normalize("io$$$2026$$$"),
-                CoreOwnerEmail));
+                "io@example.test"));
         }
         finally
         {

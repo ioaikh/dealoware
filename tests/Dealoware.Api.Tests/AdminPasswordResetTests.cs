@@ -17,11 +17,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Dealoware.Api.Tests;
 
-[Collection("WebAppTests")]
+[Collection("PasswordResetTests")]
 public class AdminPasswordResetTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = PasswordResetWebApplicationFactory.OwnerEmail;
     private const string CurrentPassword = "radio station prior!";
     private const string NextPassword = "radio station later!";
 
@@ -29,7 +29,7 @@ public class AdminPasswordResetTests
     private byte[]? _totpSecret;
     private IReadOnlyList<string>? _recoveryCodes;
 
-    public AdminPasswordResetTests(IsolatedWebApplicationFactory factory)
+    public AdminPasswordResetTests(PasswordResetWebApplicationFactory factory)
     {
         _factory = factory;
     }
@@ -41,7 +41,7 @@ public class AdminPasswordResetTests
         Mail().Clear();
 
         var known = await PostRequestAsync(CoreOwnerEmail);
-        var unknown = await PostRequestAsync("nobody@example.com");
+        var unknown = await PostRequestAsync("nobody@example.test");
         var locked = await PostRequestAsync(CoreOwnerEmail);
 
         var knownBody = await known.Content.ReadAsStringAsync();
@@ -318,6 +318,8 @@ public class AdminPasswordResetTests
         Assert.DoesNotContain("id=\\\"reset-alert\\\" role=\\\"alert\\\"", html, StringComparison.Ordinal);
         Assert.Contains("<button type=\\\"submit\\\">Change password</button>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Update password", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("setup-confirm.js", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("BootstrapPageGet", html, StringComparison.Ordinal);
         AssertConfirmPageRuleAbcMarkup(html);
 
         var script = File.ReadAllText(Path.Combine(
@@ -401,11 +403,8 @@ public class AdminPasswordResetTests
             "200-valid-true-extra",
             "200-valid-false-reason"
         };
-        foreach (var page in new[] { "reset", "setup" })
-        {
-            foreach (var reply in replies)
-                yield return new object[] { page, reply };
-        }
+        foreach (var reply in replies)
+            yield return new object[] { "reset", reply };
     }
 
     [Theory]
@@ -419,7 +418,6 @@ public class AdminPasswordResetTests
 
     [Theory]
     [InlineData("reset")]
-    [InlineData("setup")]
     public async Task TD_ADM_031_TokAc14_ExactValidTrue_ShowsForm_NeverSa5(string page)
     {
         var stdout = await RunTokenCheckHarnessAsync(page, "200-valid-true");
@@ -428,7 +426,6 @@ public class AdminPasswordResetTests
 
     [Theory]
     [InlineData("reset")]
-    [InlineData("setup")]
     public async Task TD_ADM_031_TokAc14_ExactValidFalse_GoesToSa5ForPageType(string page)
     {
         var stdout = await RunTokenCheckHarnessAsync(page, "200-valid-false");
@@ -437,7 +434,6 @@ public class AdminPasswordResetTests
 
     [Theory]
     [InlineData("reset")]
-    [InlineData("setup")]
     public async Task TD_ADM_031_TokAc15_LateAnswerIgnored_NewCheckProceeds(string page)
     {
         var stdout = await RunTokenCheckHarnessAsync(page, "tok-ac-15");
@@ -446,7 +442,6 @@ public class AdminPasswordResetTests
 
     [Theory]
     [InlineData("reset")]
-    [InlineData("setup")]
     public async Task TD_ADM_031_TokAc16_RuleC_RepeatFailureFocusesNonLiveMessage(string page)
     {
         var stdout = await RunTokenCheckHarnessAsync(page, "tok-ac-16");
@@ -467,6 +462,7 @@ public class AdminPasswordResetTests
         Assert.True(retryIdx > alertIdx, "reset-alert comes before reset-retry in DOM/reading order (v1.14 L248 Rule C)");
         Assert.Contains("tabindex=\\\"-1\\\"", html, StringComparison.Ordinal);
         Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
+        Assert.Contains("#reset-retry:focus", html, StringComparison.Ordinal);
         Assert.Contains("outline:2px solid currentColor", html, StringComparison.Ordinal);
         Assert.Contains("outline-offset:2px", html, StringComparison.Ordinal);
         Assert.Contains("style-src 'nonce-", html, StringComparison.Ordinal);
@@ -595,15 +591,13 @@ public class AdminPasswordResetTests
             "We couldn't sign you in. Check your details and try again later. You can also reset your password.",
             AdminPasswordResetCopy.SignInGeneric);
         Assert.Equal("Set a new password", AdminPasswordResetCopy.ConfirmHeading);
-        Assert.Equal("Set your admin password", AdminPasswordResetCopy.BootstrapConfirmHeading);
-        Assert.Equal("Set your admin password · Dealoware admin", AdminPasswordResetCopy.BootstrapConfirmPageTitle);
         Assert.Equal("This link no longer works", AdminPasswordResetCopy.LinkExpiredHeading);
         Assert.Equal(
             "Reset links work once and expire after 1 hour.",
             AdminPasswordResetCopy.LinkExpiredResetBody);
         Assert.Equal("Request a new link", AdminPasswordResetCopy.LinkExpiredResetAction);
         Assert.Equal(
-            "Ask the operator for a new bootstrap link. This page cannot send another one.",
+            "Setup links work once and expire after 24 hours. Ask for a new setup link through the same channel you got this one.",
             AdminPasswordResetCopy.LinkExpiredSetupBody);
 
         var endpoints = File.ReadAllText(Path.Combine(
@@ -636,7 +630,7 @@ public class AdminPasswordResetTests
         using var confirmGet = await SendAsync(
             HttpMethod.Get,
             $"/admin/reset/confirm?token={Uri.EscapeDataString(token)}");
-        using var authStatic = await SendAsync(HttpMethod.Get, "/admin/auth/reset.css");
+        using var authStatic = await SendAsync(HttpMethod.Get, AdminPasswordResetCopy.ConfirmScriptPath);
 
         Assert.Equal(HttpStatusCode.OK, resetGet.StatusCode);
         Assert.Equal(HttpStatusCode.OK, resetSent.StatusCode);
@@ -688,8 +682,12 @@ public class AdminPasswordResetTests
     [Fact]
     public async Task TD_ADM_031_TokAc17_SA5_SetupBody_OnlyExactForSetup_NoResend()
     {
-        using var response = await SendAsync(HttpMethod.Get, "/admin/link-expired?for=setup");
+        using var response = await SendAsync(HttpMethod.Get, AdminPasswordResetEndpoints.LinkExpiredSetupLocation);
         var html = await AssertSa5ShellAsync(response, setup: true);
+        Assert.Contains(
+            "Setup links work once and expire after 24 hours. Ask for a new setup link through the same channel you got this one.",
+            html,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"request-new-link\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain(AdminPasswordResetCopy.LinkExpiredResetAction, html, StringComparison.Ordinal);
         Assert.DoesNotContain(AdminSignedOutExemptions.ResetPage + "\"", html, StringComparison.Ordinal);
@@ -934,7 +932,7 @@ public class AdminPasswordResetTests
         var knownBody = await known.Content.ReadAsStringAsync();
 
         _factory.CommandCounter.Reset();
-        using var unknown = await PostRequestAsync("nobody@example.com");
+        using var unknown = await PostRequestAsync("nobody@example.test");
         var unknownCommands = _factory.CommandCounter.Count;
         var unknownBody = await unknown.Content.ReadAsStringAsync();
 
@@ -949,9 +947,9 @@ public class AdminPasswordResetTests
         Assert.Equal(2, db.AdminPasswordResetTokens.Count());
         Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == CoreOwnerEmail);
         var hasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
-        var unknownActor = hasher.HashEmail("nobody@example.com");
+        var unknownActor = hasher.HashEmail("nobody@example.test");
         Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == unknownActor);
-        Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.Email == "nobody@example.com");
+        Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.Email == "nobody@example.test");
     }
 
     [Fact]
@@ -1390,7 +1388,7 @@ public class AdminPasswordResetTests
     {
         await SeedCredentialAsync();
         Mail().Clear();
-        const string typed = "nobody@example.com";
+        const string typed = "nobody@example.test";
         using var response = await PostRequestAsync(typed);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -1426,6 +1424,8 @@ public class AdminPasswordResetTests
         Assert.DoesNotContain("sudo", code, StringComparison.Ordinal);
         Assert.DoesNotContain("sysctl", code, StringComparison.Ordinal);
         Assert.DoesNotContain("/proc/sys", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("setcap", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("/etc/hosts", code, StringComparison.Ordinal);
         Assert.Contains("API_PORT=18443", code, StringComparison.Ordinal);
         Assert.Contains("PROXY_PORT=18080", code, StringComparison.Ordinal);
         Assert.Contains("https://127.0.0.1:${API_PORT}", code, StringComparison.Ordinal);
@@ -1804,13 +1804,11 @@ public class AdminPasswordResetTests
             e => e.RoutePattern.RawText is { } raw
                  && raw.StartsWith("/admin/auth", StringComparison.OrdinalIgnoreCase));
 
-        using var css = await SendAsync(HttpMethod.Get, "/admin/auth/reset.css");
         using var script = await SendAsync(HttpMethod.Get, AdminPasswordResetCopy.ConfirmScriptPath);
         using var directory = await SendAsync(HttpMethod.Get, "/admin/auth/");
         using var handlerLike = await SendAsync(HttpMethod.Get, "/admin/auth/handler");
-        using var postFile = await SendAsync(HttpMethod.Post, "/admin/auth/reset.css");
+        using var postFile = await SendAsync(HttpMethod.Post, AdminPasswordResetCopy.ConfirmScriptPath);
 
-        Assert.Equal(HttpStatusCode.OK, css.StatusCode);
         Assert.Equal(HttpStatusCode.OK, script.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, directory.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, handlerLike.StatusCode);
@@ -1859,7 +1857,7 @@ public class AdminPasswordResetTests
         using var known = await PostRequestAsync(CoreOwnerEmail);
         knownSw.Stop();
         var unknownSw = System.Diagnostics.Stopwatch.StartNew();
-        using var unknown = await PostRequestAsync("nobody@example.com");
+        using var unknown = await PostRequestAsync("nobody@example.test");
         unknownSw.Stop();
         var lockedSw = System.Diagnostics.Stopwatch.StartNew();
         using var locked = await PostRequestAsync(CoreOwnerEmail);
@@ -1892,7 +1890,7 @@ public class AdminPasswordResetTests
         _factory.LogCollector.Clear();
 
         using var known = await PostRequestAsync(CoreOwnerEmail);
-        using var unknown = await PostRequestAsync("nobody@example.com");
+        using var unknown = await PostRequestAsync("nobody@example.test");
         var knownBody = await known.Content.ReadAsStringAsync();
         var unknownBody = await unknown.Content.ReadAsStringAsync();
 
@@ -1907,7 +1905,7 @@ public class AdminPasswordResetTests
         Assert.Contains("TraceId=", dispatch, StringComparison.Ordinal);
         var all = string.Join("\n", _factory.LogCollector.Lines);
         Assert.DoesNotContain(CoreOwnerEmail, all, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("nobody@example.com", all, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("nobody@example.test", all, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("#token=", all, StringComparison.Ordinal);
         Assert.DoesNotContain("/admin/reset/confirm", all, StringComparison.Ordinal);
         mail.FailWithDisabledSender = false;
@@ -1921,7 +1919,7 @@ public class AdminPasswordResetTests
         for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
         {
             lastOk?.Dispose();
-            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.com");
+            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.test");
             Assert.Equal(HttpStatusCode.OK, lastOk.StatusCode);
             Assert.DoesNotContain(
                 "Retry-After",
@@ -1940,7 +1938,7 @@ public class AdminPasswordResetTests
 
         Mail().Clear();
         using var knownLocked = await PostRequestAsync(CoreOwnerEmail);
-        using var unknownLocked = await PostRequestAsync("nobody@example.com");
+        using var unknownLocked = await PostRequestAsync("nobody@example.test");
         var knownLockedBody = await AssertRequestThrottledAsync(knownLocked);
         var unknownLockedBody = await AssertRequestThrottledAsync(unknownLocked);
         Assert.Equal(knownLockedBody, unknownLockedBody);
@@ -2045,7 +2043,7 @@ public class AdminPasswordResetTests
     [Fact]
     public async Task TD_ADM_031_RealVerifier_AcceptsEnrolledTotp()
     {
-        const string email = "reset-2fa-verifier@aiknowhow.com";
+        const string email = "alex.doe@example.test";
         using var scope = _factory.Services.CreateScope();
         var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
         var recoveryHasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
@@ -2148,7 +2146,7 @@ public class AdminPasswordResetTests
         for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
         {
             lastOk?.Dispose();
-            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.com");
+            lastOk = await PostRequestAsync(i % 2 == 0 ? CoreOwnerEmail : "nobody@example.test");
             Assert.Equal(HttpStatusCode.OK, lastOk.StatusCode);
         }
 
@@ -2187,7 +2185,7 @@ public class AdminPasswordResetTests
         Assert.Equal(1, (await ResetCounterAsync())!.FailureCount);
 
         Clock().Advance(AdminResetIpCounter.Window);
-        using var agedOut = await PostRequestAsync("nobody@example.com");
+        using var agedOut = await PostRequestAsync("nobody@example.test");
         Assert.Equal(HttpStatusCode.OK, agedOut.StatusCode);
 
         var after = await ResetCounterAsync();
@@ -2633,7 +2631,9 @@ public class AdminPasswordResetTests
             csp);
         Assert.Contains($"script-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
         Assert.Contains($"style-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("style-src 'self'", csp, StringComparison.Ordinal);
         Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
+        Assert.Contains("#reset-retry:focus", html, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("*", csp, StringComparison.Ordinal);
@@ -2856,12 +2856,8 @@ public class AdminPasswordResetTests
 
     private async Task<string> RunTokenCheckHarnessAsync(string page, string? only = null)
     {
-        var pagePath = page == "setup"
-            ? AdminSignedOutExemptions.Bootstrap
-            : AdminSignedOutExemptions.ResetConfirmPage;
-        var scriptPath = page == "setup"
-            ? AdminPasswordResetCopy.SetupConfirmScriptPath
-            : AdminPasswordResetCopy.ConfirmScriptPath;
+        var pagePath = AdminSignedOutExemptions.ResetConfirmPage;
+        var scriptPath = AdminPasswordResetCopy.ConfirmScriptPath;
 
         using var htmlResponse = await SendAsync(HttpMethod.Get, pagePath);
         Assert.Equal(HttpStatusCode.OK, htmlResponse.StatusCode);

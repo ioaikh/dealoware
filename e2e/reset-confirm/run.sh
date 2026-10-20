@@ -250,7 +250,6 @@ export RESET_CONFIRM_PROXY="http://127.0.0.1:${PROXY_PORT}"
 export RESET_CONFIRM_TOKEN="$TOKEN"
 export RESET_CONFIRM_SUCCESS_TOKEN="$SUCCESS_TOKEN"
 export RESET_CONFIRM_TOTP_SECRET_HEX="$TOTP_SECRET_HEX"
-if [[ -d /opt/cursor/artifacts ]]; then
-  export RESET_CONFIRM_ARTIFACTS=/opt/cursor/artifacts
-fi
+export RESET_CONFIRM_ARTIFACTS="$E2E/reset-confirm/test-results"
+mkdir -p "$RESET_CONFIRM_ARTIFACTS"
 npx playwright test -c reset-confirm/playwright.config.ts

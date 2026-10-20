@@ -24,7 +24,6 @@ public static class AdminPasswordResetEndpoints
     public const string LinkExpiredResetLocation = LinkExpiredPath + "?for=reset";
     public const string LinkExpiredSetupLocation = LinkExpiredPath + "?for=setup";
     public const string ConfirmScriptPath = AdminPasswordResetCopy.ConfirmScriptPath;
-    public const string SetupConfirmScriptPath = AdminPasswordResetCopy.SetupConfirmScriptPath;
     public const int TokenEntropyBytes = 32;
 
     public static void MapAdminPasswordReset(this WebApplication app)
@@ -41,11 +40,6 @@ public static class AdminPasswordResetEndpoints
 
         app.MapGet(ConfirmPagePath, ConfirmPageGet)
             .WithName("AdminPasswordResetConfirmPageGet")
-            .WithTags("Admin")
-            .AllowAnonymous();
-
-        app.MapGet(AdminSignedOutExemptions.Bootstrap, BootstrapPageGet)
-            .WithName("AdminBootstrapConfirmPageGet")
             .WithTags("Admin")
             .AllowAnonymous();
 
@@ -114,7 +108,7 @@ public static class AdminPasswordResetEndpoints
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
             $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
             $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>" +
-            $"<style nonce=\"{nonce}\">#reset-alert:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
+            $"<style nonce=\"{nonce}\">#reset-alert:focus,#reset-retry:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
             "</head>" +
             "<body><main id=\"reset-main\" aria-busy=\"true\">" +
             $"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.ConfirmHeading}</h1>" +
@@ -129,33 +123,6 @@ public static class AdminPasswordResetEndpoints
             "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></label>" +
             "<button type=\"submit\">Change password</button></form>" +
             $"<script src=\"{ConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
-            "</main></body></html>";
-        return Results.Content(html, "text/html; charset=utf-8");
-    }
-
-    private static IResult BootstrapPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
-    {
-        ApplyNoStoreNoReferrer(http);
-        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
-        var csrf = antiforgery.Issue(http);
-        var html =
-            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
-            $"<title>{AdminPasswordResetCopy.BootstrapConfirmPageTitle}</title>" +
-            $"<style nonce=\"{nonce}\">#reset-alert:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
-            "</head>" +
-            "<body><main id=\"reset-main\" aria-busy=\"true\">" +
-            $"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.BootstrapConfirmHeading}</h1>" +
-            $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
-            $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +
-            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
-            $"<button type=\"button\" id=\"reset-retry\" hidden>{AdminPasswordResetCopy.TryAgain}</button>" +
-            $"<form method=\"post\" action=\"{AdminSignedOutExemptions.Bootstrap}\" id=\"reset-form\" hidden>" +
-            "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
-            "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
-            "<button type=\"submit\">Set password</button></form>" +
-            $"<script src=\"{SetupConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
             "</main></body></html>";
         return Results.Content(html, "text/html; charset=utf-8");
     }

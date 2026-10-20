@@ -67,7 +67,7 @@ public static class AdminSignedOutExemptions
         new(Reset, HttpMethod.Get, TokenKind.None),
         new(Reset, HttpMethod.Post, TokenKind.None),
         new(ResetSent, HttpMethod.Get, TokenKind.None),
-        new(Bootstrap, HttpMethod.Get, TokenKind.None),
+        new(Bootstrap, HttpMethod.Get, TokenKind.Bootstrap),
         new(Bootstrap, HttpMethod.Post, TokenKind.Bootstrap),
         new(ResetConfirm, HttpMethod.Get, TokenKind.None),
         new(ResetConfirm, HttpMethod.Post, TokenKind.None),

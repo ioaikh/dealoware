@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 const jsPath = args[0];
 const htmlPath = args[1];
 if (!jsPath || !htmlPath) {
-  throw new Error("usage: node reset-confirm-harness.js <served-js> <served-html> [--page=reset|setup] [--only=case]");
+  throw new Error("usage: node reset-confirm-harness.js <served-js> <served-html> [--page=reset] [--only=case]");
 }
 
 let page = "reset";
@@ -17,15 +17,15 @@ for (const arg of args.slice(2)) {
   if (arg.startsWith("--page=")) page = arg.slice("--page=".length);
   else if (arg.startsWith("--only=")) only = arg.slice("--only=".length);
 }
-if (page !== "reset" && page !== "setup") {
-  throw new Error("page must be reset or setup");
+if (page !== "reset") {
+  throw new Error("page must be reset");
 }
 
 const scriptSource = fs.readFileSync(jsPath, "utf8");
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
-const headingText = page === "setup" ? "Set your admin password" : "Set a new password";
-const expiredUrl = page === "setup" ? "/admin/link-expired?for=setup" : "/admin/link-expired?for=reset";
-const pathname = page === "setup" ? "/admin/bootstrap" : "/admin/reset/confirm";
+const headingText = "Set a new password";
+const expiredUrl = "/admin/link-expired?for=reset";
+const pathname = "/admin/reset/confirm";
 const retryCopy = "We couldn't check your link. Wait a moment and try again.";
 
 function classifyContext() {
@@ -606,7 +606,7 @@ const retryReplies = {
       assert.deepStrictEqual(session.replaced, [expiredUrl]);
       assert.ok(session.fetchCalls[0].init.redirect === "manual");
     })().then(() => results.push(
-      "PASS exact valid false goes to S-A5 " + (page === "setup" ? "?for=setup" : "?for=reset")
+      "PASS exact valid false goes to S-A5 ?for=reset"
       + " without following redirects"
     ))
       .catch((err) => results.push("FAIL expired redirect: " + err.stack));
@@ -617,7 +617,7 @@ const retryReplies = {
       assert.deepStrictEqual(session.replaced, [expiredUrl]);
       assert.strictEqual(session.fetchCalls.length, 0);
     })().then(() => results.push(
-      "PASS no fragment goes to S-A5 " + (page === "setup" ? "?for=setup" : "?for=reset") + " with no check"
+      "PASS no fragment goes to S-A5 ?for=reset with no check"
     ))
       .catch((err) => results.push("FAIL no fragment: " + err.stack));
   }

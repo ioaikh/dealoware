@@ -422,9 +422,7 @@ public class TdAdm040AuthLockoutSessionTests
         Assert.Equal(HttpStatusCode.OK, resetConfirm.StatusCode);
 
         using var bootstrap = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap, null);
-        Assert.Equal(HttpStatusCode.OK, bootstrap.StatusCode);
-        var bootstrapHtml = await bootstrap.Content.ReadAsStringAsync();
-        Assert.Contains(AdminPasswordResetCopy.BootstrapConfirmHeading, bootstrapHtml, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Unauthorized, bootstrap.StatusCode);
     }
 
     private HttpClient CreateClient() =>
