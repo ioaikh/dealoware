@@ -83,6 +83,12 @@ async function expectNonLiveMessage(page: Page, text: string): Promise<string> {
     return null;
   });
   expect(liveAncestor).toBeNull();
+  const status = page.locator('#reset-status');
+  if (await status.count()) {
+    await expect(status).toBeHidden();
+    await expect(status).toHaveText('');
+    await expect(status).not.toHaveAttribute('aria-live');
+  }
   await expectNoSa5(page);
   return alertId!;
 }

@@ -360,9 +360,13 @@ public class AdminPasswordResetTests
         Assert.Contains("if (focusMessage && alertEl) alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("else if (retryBtn) retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("retryBtn.hidden = false", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("statusEl.textContent = \"\"", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("statusEl.hidden = true", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("removeAttribute(\"role\")", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("removeAttribute(\"aria-live\")", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("aria-describedby", showRetry.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("statusEl.setAttribute(\"role\"", showRetry.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("statusEl.setAttribute(\"aria-live\"", showRetry.Value, StringComparison.Ordinal);
 
         Assert.DoesNotContain("__dwResetTimeoutMs", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
@@ -401,6 +405,14 @@ public class AdminPasswordResetTests
         var check = Regex.Match(script, @"function check\(\) \{[\s\S]*?\n  \}");
         Assert.True(check.Success, "check() must be present");
         Assert.Contains("var retrying = isRetryVisible()", check.Value, StringComparison.Ordinal);
+
+        var showRetry = Regex.Match(script, @"function showRetry\([^)]*\) \{[\s\S]*?\n  \}");
+        Assert.True(showRetry.Success, "showRetry() must be present for Rule B");
+        Assert.Contains("v1.14 L245", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("statusEl.textContent = \"\"", showRetry.Value, StringComparison.Ordinal);
+        Assert.Contains("statusEl.hidden = true", showRetry.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("statusEl.setAttribute(\"role\"", showRetry.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("statusEl.setAttribute(\"aria-live\"", showRetry.Value, StringComparison.Ordinal);
 
         var retryingBranch = Regex.Match(
             check.Value,

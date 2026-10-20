@@ -110,7 +110,12 @@
   function showRetry(message, action, focusMessage) {
     retryAction = action || check;
     setRetryBusy(false);
-    if (statusEl) statusEl.hidden = true;
+    // v1.14 L245 / r4 Rule B: when state 4 renders, empty the state 1
+    // role=status region. Hidden alone is not enough. Do not add a live region.
+    if (statusEl) {
+      statusEl.textContent = "";
+      statusEl.hidden = true;
+    }
     if (form) form.hidden = true;
     if (alertEl) {
       alertEl.removeAttribute("role");
