@@ -12,9 +12,11 @@ The collection's `baseUrl` defaults to local Development at `http://localhost:52
 
 The live Core API host is `https://api.core.dealoware.com`. The environment file `postman/Dealoware-api-core.postman_environment.json` is the only route to production. Import it in Postman, or run `newman run postman/Dealoware-PoC-Negotiations.postman_collection.json -e postman/Dealoware-api-core.postman_environment.json`.
 
-> **Warning:** a run against the live host creates real participants and writes to production. Use the live override only after Ivan's go through BM (T-G-08).
+> **Warning:** a run against the live host creates real participants and writes to production. Use the live override only after Ivan's go through BM (T-G-08) every time.
 
 Put API keys only in Postman's local current value, and never export or commit a filled environment, because the secret type only masks the value on screen.
+
+Don't put keys or tokens on a command line (for example `newman … --env-var sellerApiKey=…`), where they land in shell history, and don't paste or share newman `--verbose` output or Postman console logs, which show the `Authorization` header.
 
 Swagger is not available in production, so the Postman collection is the HTTP reference for the live host.
 
@@ -112,6 +114,7 @@ These steps use a separate participant so the main keys keep working.
 - Register the demo participant with `POST /auth/register` (`src/Dealoware.Api/Endpoints/AuthEndpoints.cs:23`).
 - Replace its key with `POST /auth/rotate-key` (`src/Dealoware.Api/Endpoints/AuthEndpoints.cs:43`).
 - Revoke a key with `POST /auth/revoke` (`src/Dealoware.Api/Endpoints/AuthEndpoints.cs:37`).
+- If a key leaks, rotate it with `POST /auth/rotate-key` or revoke it with `POST /auth/revoke` straight away.
 
 ## Out of scope
 
