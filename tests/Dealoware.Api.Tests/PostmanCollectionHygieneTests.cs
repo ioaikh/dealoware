@@ -2037,6 +2037,31 @@ public class PostmanCollectionHygieneTests
     }
 
     [Fact]
+    public void HygieneScan_T3_FailsAnyAtInUrlAuthorityEvenWhenHostAfterAtIsLocal()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "t3-at-authority.postman_collection.json"),
+            """
+            {
+              "info": {
+                "_postman_id": "t3-at",
+                "name": "t3-at",
+                "description": "see http://evil.example.test@localhost"
+              },
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("http(s) or // to a non-local host", StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains(HostAllowMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void HygieneScan_N01_FailsAllowlistedHashOnWrongItem()
     {
         using var temp = new TempPostmanDir();
@@ -2231,6 +2256,48 @@ public class PostmanCollectionHygieneTests
         DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
         var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
         Assert.Contains(failures, f => f.Contains("exactly one baseUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_T4_FailsLiveEnvWhenBaseUrlDisabled()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "Dealoware-api-core.postman_environment.json"),
+            """
+            {
+              "values": [
+                { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default", "enabled": false }
+              ]
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("baseUrl must be enabled", StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains("exactly one baseUrl", StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains($"baseUrl value must be {LiveCoreBaseUrl}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_T4_FailsLiveEnvWhenBaseUrlNotPinnedValue()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "Dealoware-api-core.postman_environment.json"),
+            """
+            {
+              "values": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "default", "enabled": true }
+              ]
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains($"baseUrl value must be {LiveCoreBaseUrl}", StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains("baseUrl must be enabled", StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains("exactly one baseUrl", StringComparison.Ordinal));
     }
 
     [Fact]
