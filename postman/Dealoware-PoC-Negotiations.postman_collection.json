@@ -1277,6 +1277,7 @@
 									"    jsonData.offers.forEach(function (offer) {",
 									"        pm.expect(offer.status).to.be.oneOf(['Accepted', 'Declined', 'Superseded', 'Cancelled']);",
 									"    });",
+									"    pm.expect(jsonData.offers.some(function (offer) { return offer.status === 'Cancelled'; }), 'at least one Cancelled offer').to.be.true;",
 									"});"
 								],
 								"type": "text/javascript"
