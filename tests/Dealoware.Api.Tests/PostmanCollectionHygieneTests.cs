@@ -23,9 +23,14 @@ public class PostmanCollectionHygieneTests
         LiveCoreBaseUrl
     };
 
-    private static readonly HashSet<string> SkipDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> SkipDirectoryNamesAnyDepth = new(StringComparer.Ordinal)
     {
-        "bin", "obj", "node_modules", ".git", "test-results", ".vs", "artifacts"
+        "bin", "obj", "node_modules", ".git", ".vs"
+    };
+
+    private static readonly HashSet<string> SkipDirectoryNamesRepoRootOnly = new(StringComparer.Ordinal)
+    {
+        "artifacts", "test-results"
     };
 
     private static readonly HashSet<string> AllowedHostArray = new(StringComparer.Ordinal)
@@ -80,10 +85,23 @@ public class PostmanCollectionHygieneTests
             || key.EndsWith("Id", StringComparison.Ordinal);
     }
 
+    private static bool ShouldSkipDirectory(string scanRoot, string directory)
+    {
+        var name = Path.GetFileName(directory);
+        if (SkipDirectoryNamesAnyDepth.Contains(name))
+            return true;
+        if (!SkipDirectoryNamesRepoRootOnly.Contains(name))
+            return false;
+        var parent = Path.GetDirectoryName(Path.GetFullPath(directory));
+        return parent is not null
+               && string.Equals(Path.GetFullPath(parent), scanRoot, StringComparison.Ordinal);
+    }
+
     internal static IEnumerable<string> EnumeratePostmanFiles(string root, string searchPattern)
     {
+        var scanRoot = Path.GetFullPath(root);
         var stack = new Stack<string>();
-        stack.Push(root);
+        stack.Push(scanRoot);
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
@@ -91,7 +109,7 @@ public class PostmanCollectionHygieneTests
                 yield return file;
             foreach (var sub in Directory.GetDirectories(dir))
             {
-                if (SkipDirectoryNames.Contains(Path.GetFileName(sub)))
+                if (ShouldSkipDirectory(scanRoot, sub))
                     continue;
                 stack.Push(sub);
             }
@@ -467,6 +485,38 @@ public class PostmanCollectionHygieneTests
     }
 
     [Fact]
+    public void HygieneScan_FindsLiveHostCollection_UnderSrcApplicationArtifacts()
+    {
+        using var temp = new TempPostmanDir();
+        var plantedDir = Path.Combine(temp.Root.FullName, "src", "Dealoware.Application", "Artifacts");
+        Directory.CreateDirectory(plantedDir);
+        WriteLiveHostCollection(plantedDir, "src-artifacts.postman_collection.json");
+
+        DiscoverPostmanFiles(temp.Root.FullName, out var files, out _);
+        Assert.Contains(files, f => f.Contains(
+            $"{Path.DirectorySeparatorChar}src{Path.DirectorySeparatorChar}Dealoware.Application{Path.DirectorySeparatorChar}Artifacts{Path.DirectorySeparatorChar}",
+            StringComparison.Ordinal));
+        var failures = CollectCollectionFailures(files);
+        Assert.Contains(failures, f => f.Contains("request URL", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FindsLiveHostCollection_UnderNestedArtifactsFolder()
+    {
+        using var temp = new TempPostmanDir();
+        var plantedDir = Path.Combine(temp.Root.FullName, "docs", "artifacts");
+        Directory.CreateDirectory(plantedDir);
+        WriteLiveHostCollection(plantedDir, "nested-artifacts.postman_collection.json");
+
+        DiscoverPostmanFiles(temp.Root.FullName, out var files, out _);
+        Assert.Contains(files, f => f.Contains(
+            $"{Path.DirectorySeparatorChar}docs{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}",
+            StringComparison.Ordinal));
+        var failures = CollectCollectionFailures(files);
+        Assert.Contains(failures, f => f.Contains("request URL", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void HygieneScan_FindsDisguisedPostmanJson_ByTopLevelMarkers()
     {
         using var temp = new TempPostmanDir();
@@ -682,6 +732,28 @@ public class PostmanCollectionHygieneTests
                   "request": {
                     "method": "GET",
                     "url": { "raw": "{{raw}}", "host": {{host}} }
+                  }
+                }
+              ]
+            }
+            """);
+    }
+
+    private static void WriteLiveHostCollection(string directory, string name)
+    {
+        File.WriteAllText(
+            Path.Combine(directory, name),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "item": [
+                {
+                  "name": "Live health",
+                  "request": {
+                    "method": "GET",
+                    "url": { "raw": "https://api.core.dealoware.com/health", "host": ["api.core.dealoware.com"] }
                   }
                 }
               ]
