@@ -44,6 +44,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 
 - [CEO-ORIGINAL-BRIEF.md](product/CEO-ORIGINAL-BRIEF.md) — **original** (verbatim CEO; already mirrored to GitHub `docs/product/`)
 - [PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — **processed summary** (Product-owned refresh; GitHub `docs/product/PRODUCT-BRIEF.md`; must stay distinct from original)
+- [2026-10-19__docs__guide__negotiations-api-user-guide.md](product/2026-10-19__docs__guide__negotiations-api-user-guide.md) — Negotiations API user guide (T-B-05). How to run the PoC negotiations API with the Postman collection; local by default, and the api.core environment file is the only route to production, which needs Ivan's go through BM (T-G-08).
 - [2026-10-05__product__note__core-admin-dashboard-scope.md](product/2026-10-05__product__note__core-admin-dashboard-scope.md) — Core admin dashboard goals + AC at admin.core.dealoware.com. Soft HOLD build. PoC $0.
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
