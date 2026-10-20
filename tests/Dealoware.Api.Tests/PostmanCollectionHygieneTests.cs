@@ -73,6 +73,13 @@ public class PostmanCollectionHygieneTests
     private const string VariableValueTypeMsg = "variable value must be a string";
     private const string VariableKeyWhitespaceMsg = "variable key must not have leading or trailing whitespace";
     private const string BaseUrlKeyCaseMsg = "baseUrl key must be exactly 'baseUrl'";
+    private const string ProtocolPortOnBaseUrlMsg = "protocol and port are not allowed when host is {{baseUrl}}";
+    private const string NewmanResultsFileName = "newman-results.json";
+
+    private static readonly HashSet<string> JsonLikeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".json", ".jsonc", ".txt", ".bak", ".orig", ".md", ".old", ".log", ".json~"
+    };
 
     private static readonly HashSet<string> V1CollectionShapeKeys = new(StringComparer.Ordinal)
     {
@@ -381,22 +388,18 @@ public class PostmanCollectionHygieneTests
         return false;
     }
 
-    private static string StripLeadingIgnorable(string text)
+    private static bool IsIgnorableJsonPadding(char c) =>
+        c == '\uFEFF' || char.IsWhiteSpace(c) || c is '\u00A0' or '\u2028' or '\u2029';
+
+    private static string StripIgnorable(string text)
     {
-        var i = 0;
-        while (i < text.Length)
-        {
-            var c = text[i];
-            if (c == '\uFEFF' || char.IsWhiteSpace(c) || c is '\u00A0' or '\u2028' or '\u2029')
-            {
-                i++;
-                continue;
-            }
-
-            break;
-        }
-
-        return i == 0 ? text : text[i..];
+        var start = 0;
+        while (start < text.Length && IsIgnorableJsonPadding(text[start]))
+            start++;
+        var end = text.Length;
+        while (end > start && IsIgnorableJsonPadding(text[end - 1]))
+            end--;
+        return start == 0 && end == text.Length ? text : text[start..end];
     }
 
     internal static IEnumerable<string> EnumeratePostmanFiles(string root, string searchPattern)
@@ -464,11 +467,7 @@ public class PostmanCollectionHygieneTests
             }
 
             var extension = Path.GetExtension(file);
-            var jsonLike = extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
-                           || extension.Equals(".jsonc", StringComparison.OrdinalIgnoreCase)
-                           || extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
-                           || extension.Equals(".bak", StringComparison.OrdinalIgnoreCase)
-                           || extension.Length == 0;
+            var jsonLike = extension.Length == 0 || JsonLikeExtensions.Contains(extension);
             if (!jsonLike)
                 continue;
             var full = Path.GetFullPath(file);
@@ -490,7 +489,7 @@ public class PostmanCollectionHygieneTests
         isEnvironment = false;
         try
         {
-            var text = StripLeadingIgnorable(File.ReadAllText(file));
+            var text = StripIgnorable(File.ReadAllText(file));
             if (text.Length == 0 || (text[0] != '{' && text[0] != '['))
                 return false;
             using var doc = JsonDocument.Parse(text);
@@ -572,7 +571,8 @@ public class PostmanCollectionHygieneTests
 
         if (root.TryGetProperty("_postman_variable_scope", out _))
             return true;
-        return root.TryGetProperty("values", out var values) && values.ValueKind == JsonValueKind.Array;
+        return root.TryGetProperty("values", out var values)
+               && values.ValueKind is JsonValueKind.Array or JsonValueKind.Object;
     }
 
     private static bool LooksLikeEnvironmentArray(JsonElement root)
@@ -3890,6 +3890,112 @@ public class PostmanCollectionHygieneTests
     }
 
     [Fact]
+    public void HygieneScan_R84_SkipsExactNewmanResultsJson()
+    {
+        using var temp = new TempPostmanDir();
+        var planted = Path.Combine(temp.Root.FullName, "test-results");
+        Directory.CreateDirectory(planted);
+        WriteLiveHostCollection(planted, NewmanResultsFileName);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out var discovered, out _);
+        Assert.DoesNotContain(discovered, f => f.EndsWith($"{Path.DirectorySeparatorChar}{NewmanResultsFileName}", StringComparison.Ordinal));
+        var locationFailures = CollectForbiddenLocationFailures(temp.Root.FullName);
+        Assert.DoesNotContain(locationFailures, f => f.Contains(NewmanResultsFileName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R84_TrapsNewmanResultsJsonWrongCase()
+    {
+        using var temp = new TempPostmanDir();
+        var planted = Path.Combine(temp.Root.FullName, "test-results");
+        Directory.CreateDirectory(planted);
+        WriteLiveHostCollection(planted, "Newman-Results.JSON");
+
+        var locationFailures = CollectForbiddenLocationFailures(temp.Root.FullName);
+        Assert.Contains(locationFailures, f => f.Contains(ForbiddenLocationMsg, StringComparison.Ordinal)
+            && f.Contains("Newman-Results.JSON", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R84_TrapsRunPlusCollectionUnderTestResults()
+    {
+        using var temp = new TempPostmanDir();
+        var planted = Path.Combine(temp.Root.FullName, "test-results");
+        Directory.CreateDirectory(planted);
+        File.WriteAllText(
+            Path.Combine(planted, "newman-export.json"),
+            """
+            {
+              "run": { "stats": {} },
+              "collection": {
+                "info": { "name": "wrapped" },
+                "item": [
+                  { "request": { "url": "{{baseUrl}}@evil.example.test/health" } }
+                ]
+              }
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out var discovered, out _);
+        Assert.DoesNotContain(discovered, f => f.EndsWith($"{Path.DirectorySeparatorChar}newman-export.json", StringComparison.Ordinal));
+        var locationFailures = CollectForbiddenLocationFailures(temp.Root.FullName);
+        Assert.Contains(locationFailures, f => f.Contains(ForbiddenLocationMsg, StringComparison.Ordinal)
+            && f.Contains("newman-export.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R84_TrapsRunPlusEnvironmentUnderTestResults()
+    {
+        using var temp = new TempPostmanDir();
+        var planted = Path.Combine(temp.Root.FullName, "test-results");
+        Directory.CreateDirectory(planted);
+        File.WriteAllText(
+            Path.Combine(planted, "newman-env-export.json"),
+            """
+            {
+              "run": { "stats": {} },
+              "environment": {
+                "name": "wrapped-env",
+                "values": [
+                  { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default" }
+                ]
+              }
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var environments);
+        Assert.DoesNotContain(environments, f => f.EndsWith($"{Path.DirectorySeparatorChar}newman-env-export.json", StringComparison.Ordinal));
+        var locationFailures = CollectForbiddenLocationFailures(temp.Root.FullName);
+        Assert.Contains(locationFailures, f => f.Contains(ForbiddenLocationMsg, StringComparison.Ordinal)
+            && f.Contains("newman-env-export.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R84_TestResultsIsGitignoredAndUntracked()
+    {
+        var root = RepoRoot();
+        var gitignore = File.ReadAllText(Path.Combine(root, ".gitignore"));
+        Assert.Contains("\ntest-results/\n", gitignore, StringComparison.Ordinal);
+
+        var start = new ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = "ls-files -- test-results test-results/**",
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var process = Process.Start(start);
+        Assert.NotNull(process);
+        var output = process!.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(5_000));
+        Assert.Equal(0, process.ExitCode);
+        Assert.True(string.IsNullOrWhiteSpace(output), $"test-results must not be git-tracked, got '{output}'");
+    }
+
+    [Fact]
     public void HygieneScan_R54_DiscoversUppercaseJsonByShape()
     {
         using var temp = new TempPostmanDir();
@@ -4670,6 +4776,58 @@ public class PostmanCollectionHygieneTests
     [Theory]
     [InlineData("\u00A0")]
     [InlineData("\u2028")]
+    public void HygieneScan_R83_DiscoversTrailingUnicodeSpace(string suffix)
+    {
+        using var temp = new TempPostmanDir();
+        var docs = Path.Combine(temp.Root.FullName, "docs");
+        Directory.CreateDirectory(docs);
+        File.WriteAllText(
+            Path.Combine(docs, "nbsp-trail.json"),
+            """
+            {"info":{"name":"nbsp","_postman_id":"nbsp","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"variable":[{"key":"baseUrl","value":"http://localhost:5287","type":"string"}],"item":[{"name":"x","request":{"method":"GET","url":{"raw":"https://api.core.dealoware.com/health","host":["api.core.dealoware.com"]}}}]}
+            """ + suffix);
+        DiscoverPostmanFiles(temp.Root.FullName, out var files, out _);
+        Assert.Contains(files, f => f.EndsWith($"{Path.DirectorySeparatorChar}nbsp-trail.json", StringComparison.Ordinal));
+        var failures = CollectCollectionFailures(files, scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("request URL", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("planted.orig")]
+    [InlineData("planted.md")]
+    [InlineData("planted.old")]
+    [InlineData("planted.log")]
+    [InlineData("planted.json~")]
+    public void HygieneScan_R83_DiscoversMoreAlternateExtensions(string fileName)
+    {
+        using var temp = new TempPostmanDir();
+        WriteLiveHostCollection(temp.PostmanDir, fileName);
+        DiscoverPostmanFiles(temp.Root.FullName, out var files, out _);
+        Assert.Contains(files, f => f.EndsWith($"{Path.DirectorySeparatorChar}{fileName}", StringComparison.Ordinal));
+        var failures = CollectCollectionFailures(files, scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("request URL", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R83_DiscoversEnvValuesObject()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "values-object.json"),
+            """
+            {
+              "values": { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default" }
+            }
+            """);
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        Assert.Contains(files, f => f.EndsWith($"{Path.DirectorySeparatorChar}values-object.json", StringComparison.Ordinal));
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ListMustBeArrayMsg, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("\u00A0")]
+    [InlineData("\u2028")]
     public void HygieneScan_R73_DiscoversLeadingUnicodeSpace(string prefix)
     {
         using var temp = new TempPostmanDir();
@@ -4846,7 +5004,7 @@ public class PostmanCollectionHygieneTests
             """);
         var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
         Assert.DoesNotContain(failures, f => f.Contains(KeyNotAllowedMsg, StringComparison.Ordinal) && f.Contains("'protocol'", StringComparison.Ordinal));
-        Assert.Contains(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -4859,7 +5017,90 @@ public class PostmanCollectionHygieneTests
             """);
         var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
         Assert.DoesNotContain(failures, f => f.Contains(KeyNotAllowedMsg, StringComparison.Ordinal) && f.Contains("'port'", StringComparison.Ordinal));
-        Assert.Contains(failures, f => f.Contains("request URL", StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R81_FailsHttpProtocolOnBaseUrlHost()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "r81-http.postman_collection.json", """
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "protocol": "http" }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R81_FailsHttpsProtocolOnBaseUrlHost()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "r81-https.postman_collection.json", """
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "protocol": "https" }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R81_FailsPortOnBaseUrlHost()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "r81-port.postman_collection.json", """
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "port": "80" }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R81_FailsHttpProtocolAndPortOnBaseUrlHost()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "r81-http-port.postman_collection.json", """
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "protocol": "http", "port": "80" }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R81_FailsHttpsProtocolAndPortOnBaseUrlHost()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "r81-https-port.postman_collection.json", """
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "protocol": "https", "port": "443" }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_B1_FailsHttpProtocolOnEveryBaseUrlHostInPoCCopy()
+    {
+        using var temp = new TempPostmanDir();
+        var mutated = WritePoCCopyWithUrlFieldOnEveryBaseUrlHost(temp, "protocol", "http");
+        Assert.True(mutated > 0, "PoC copy must contain at least one {{baseUrl}} host");
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N9_FailsPort80OnEveryBaseUrlHostInPoCCopy()
+    {
+        using var temp = new TempPostmanDir();
+        var mutated = WritePoCCopyWithUrlFieldOnEveryBaseUrlHost(temp, "port", "80");
+        Assert.True(mutated > 0, "PoC copy must contain at least one {{baseUrl}} host");
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ProtocolPortOnBaseUrlMsg, StringComparison.Ordinal));
     }
 
     [Theory]
@@ -5109,6 +5350,59 @@ public class PostmanCollectionHygieneTests
     }
 
     [Fact]
+    public void HygieneScan_R86_FailsNestedHeaderArray()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "nested-header.postman_collection.json", """
+            "method": "GET",
+            "header": [ [ { "key": "Host", "value": "hdr-injected.invalid" } ] ],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ListEntryMustBeObjectMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R86_FailsMixedHeaderArray()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "mixed-header.postman_collection.json", """
+            "method": "GET",
+            "header": [ "Host: hdr-injected.invalid", { "key": "Accept", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ListEntryMustBeObjectMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R86_FailsNonStringHeaderKey()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "nonstring-header-key.postman_collection.json", """
+            "method": "GET",
+            "header": [ { "key": 1, "value": "x" } ],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(ListKeyValueMustBeStringMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_R86_FailsDisabledHeader()
+    {
+        using var temp = new TempPostmanDir();
+        WriteShapeCollection(temp, "disabled-header.postman_collection.json", """
+            "method": "GET",
+            "header": [ { "key": "Host", "value": "hdr-injected.invalid", "disabled": true } ],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains(KeyNotAllowedMsg, StringComparison.Ordinal) && f.Contains("'disabled'", StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains(HostHeaderMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void HygieneScan_Shape_ChecksPathAsStringDisallowedToken()
     {
         using var temp = new TempPostmanDir();
@@ -5290,7 +5584,30 @@ public class PostmanCollectionHygieneTests
     }
 
     [Fact]
-    public void HygieneScan_K9c_DiscoversTxtCollection()
+    public void HygieneScan_N12_FailsTypeArrayVariableHoldingEscapedJsonHost()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "type-array-json-host.postman_collection.json"),
+            """
+            {
+              "info": {
+                "name": "type-array-json-host",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+              },
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" },
+                { "key": "wrapped", "value": "[\"api.core.dealoware.com\"]", "type": "array" }
+              ],
+              "item": []
+            }
+            """);
+        var failures = CollectCollectionFailures(DiscoverCollections(temp), scanRoot: temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("non-local host", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N8_DiscoversTxtCollection()
     {
         using var temp = new TempPostmanDir();
         WriteLiveHostCollection(temp.PostmanDir, "planted.txt");
@@ -5677,6 +5994,59 @@ public class PostmanCollectionHygieneTests
         return node.ToJsonString();
     }
 
+    private static int WritePoCCopyWithUrlFieldOnEveryBaseUrlHost(
+        TempPostmanDir temp,
+        string field,
+        string value)
+    {
+        var src = Path.Combine(RepoRoot(), "postman", "Dealoware-PoC-Negotiations.postman_collection.json");
+        var node = JsonNode.Parse(File.ReadAllText(src))!;
+        var mutated = AddUrlFieldOnEveryBaseUrlHost(node, field, value);
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "Dealoware-PoC-Negotiations.postman_collection.json"),
+            node.ToJsonString());
+        return mutated;
+    }
+
+    private static int AddUrlFieldOnEveryBaseUrlHost(JsonNode? node, string field, string value)
+    {
+        var count = 0;
+        Walk(node);
+        return count;
+
+        void Walk(JsonNode? current)
+        {
+            if (current is JsonObject obj)
+            {
+                if (obj.TryGetPropertyValue("request", out var requestNode)
+                    && requestNode is JsonObject request
+                    && request["url"] is JsonObject url
+                    && UrlHostIsBaseUrlTemplate(url))
+                {
+                    url[field] = value;
+                    count++;
+                }
+
+                foreach (var prop in obj)
+                    Walk(prop.Value);
+                return;
+            }
+
+            if (current is JsonArray arr)
+            {
+                foreach (var child in arr)
+                    Walk(child);
+            }
+        }
+    }
+
+    private static bool UrlHostIsBaseUrlTemplate(JsonObject url)
+    {
+        if (url["host"] is not JsonArray host || host.Count != 1)
+            return false;
+        return host[0]?.GetValue<string>() == "{{baseUrl}}";
+    }
+
     private static void WriteShapeCollection(TempPostmanDir temp, string name, string requestFields)
     {
         File.WriteAllText(
@@ -5787,7 +6157,7 @@ public class PostmanCollectionHygieneTests
         var seenMessages = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in files)
         {
-            var json = StripLeadingIgnorable(File.ReadAllText(file));
+            var json = StripIgnorable(File.ReadAllText(file));
             var label = Path.GetFileName(file);
             if (file.EndsWith(".json5", StringComparison.OrdinalIgnoreCase))
             {
@@ -5840,7 +6210,7 @@ public class PostmanCollectionHygieneTests
         var seenMessages = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in files)
         {
-            var json = StripLeadingIgnorable(File.ReadAllText(file));
+            var json = StripIgnorable(File.ReadAllText(file));
             var label = file;
             CollectDuplicateJsonPropertyFailures(label, json, failures, seenMessages);
             using var doc = JsonDocument.Parse(json);
@@ -6157,7 +6527,8 @@ public class PostmanCollectionHygieneTests
         if (url.TryGetProperty("auth", out _))
             AddFailure(failures, seenMessages, $"{label} {UrlAuthMsg}");
 
-        if (url.TryGetProperty("protocol", out var protocolEl))
+        var hasProtocol = url.TryGetProperty("protocol", out var protocolEl);
+        if (hasProtocol)
         {
             var protocol = ElementAsString(protocolEl) ?? "";
             if (HasAnyTemplateToken(protocol))
@@ -6166,7 +6537,8 @@ public class PostmanCollectionHygieneTests
                 AddFailure(failures, seenMessages, $"{label} {UrlAllowMsg}");
         }
 
-        if (url.TryGetProperty("port", out var portEl))
+        var hasPort = url.TryGetProperty("port", out var portEl);
+        if (hasPort)
         {
             var port = ElementAsString(portEl) ?? "";
             if (HasAnyTemplateToken(port))
@@ -6179,6 +6551,7 @@ public class PostmanCollectionHygieneTests
         if (url.TryGetProperty("raw", out var raw) && raw.ValueKind == JsonValueKind.String)
             rawText = raw.GetString();
 
+        string[]? hostParts = null;
         if (url.TryGetProperty("host", out var host))
         {
             if (host.ValueKind != JsonValueKind.Array)
@@ -6187,11 +6560,14 @@ public class PostmanCollectionHygieneTests
             }
             else
             {
-                var parts = host.EnumerateArray().Select(e => ElementAsString(e) ?? "").ToArray();
-                if (!IsAllowedHostArray(parts, rawText))
+                hostParts = host.EnumerateArray().Select(e => ElementAsString(e) ?? "").ToArray();
+                if (!IsAllowedHostArray(hostParts, rawText))
                     AddFailure(failures, seenMessages, $"{label} {HostAllowMsg}");
             }
         }
+
+        if (HostIsBaseUrlTemplate(hostParts) && (hasProtocol || hasPort))
+            AddFailure(failures, seenMessages, $"{label} {ProtocolPortOnBaseUrlMsg}");
 
         if (url.TryGetProperty("path", out var pathEl))
             CollectPathOrQueryTokenFailures(label, pathEl, failures, seenMessages);
@@ -6355,17 +6731,23 @@ public class PostmanCollectionHygieneTests
         var host = HostJoined();
         var path = PathJoined();
         var query = QueryJoined();
-        if (host == "{{baseUrl}}")
+        var hasProtocol = url.TryGetProperty("protocol", out var protocolEl);
+        var hasPort = url.TryGetProperty("port", out var portEl);
+        // Newman concatenates protocol://host:port/path. Only skip the prefix when
+        // host is {{baseUrl}} and neither protocol nor port is present, matching
+        // the committed collection shape (the variable already carries the origin).
+        if (host == "{{baseUrl}}" && !hasProtocol && !hasPort)
             return "{{baseUrl}}" + path + query;
 
-        var protocol = "http";
-        if (url.TryGetProperty("protocol", out var protocolEl))
-            protocol = ElementAsString(protocolEl) ?? "http";
+        var protocol = hasProtocol ? (ElementAsString(protocolEl) ?? "") : "http";
         var rebuilt = protocol + "://" + host;
-        if (url.TryGetProperty("port", out var portEl))
+        if (hasPort)
             rebuilt += ":" + (ElementAsString(portEl) ?? "");
         return rebuilt + path + query;
     }
+
+    private static bool HostIsBaseUrlTemplate(string[]? parts) =>
+        parts is { Length: 1 } && parts[0] == "{{baseUrl}}";
 
     private static bool IsAllowedRequestUrl(string? raw)
     {
@@ -7400,7 +7782,7 @@ public class PostmanCollectionHygieneTests
 
         void Consider(string file)
         {
-            if (string.Equals(Path.GetFileName(file), "newman-results.json", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(Path.GetFileName(file), NewmanResultsFileName, StringComparison.Ordinal))
             {
                 var parent = Path.GetDirectoryName(Path.GetFullPath(file));
                 var grand = parent is null ? null : Path.GetDirectoryName(parent);
@@ -7486,11 +7868,7 @@ public class PostmanCollectionHygieneTests
         }
 
         var extension = Path.GetExtension(file);
-        if (extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jsonc", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".bak", StringComparison.OrdinalIgnoreCase)
-            || extension.Length == 0)
+        if (extension.Length == 0 || JsonLikeExtensions.Contains(extension))
         {
             return TryClassifyPostmanJson(file, out _, out _);
         }

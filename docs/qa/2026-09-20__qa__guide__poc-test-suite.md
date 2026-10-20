@@ -72,6 +72,8 @@ dotnet run --project src/Dealoware.Api
 npm run test:newman
 ```
 
+Newman `-d` / `-g` (iteration data / globals) inputs are not covered by collection hygiene.
+
 ## Scenario Coverage Matrix
 
 | Scenario | Description | xUnit Test | Postman Folder |
