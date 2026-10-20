@@ -1,13 +1,17 @@
+import { createRequire } from 'node:module';
 import { defineConfig, devices } from '@playwright/test';
+
+const require = createRequire(import.meta.url);
+const { requireResetConfirmProxy } = require('./require-proxy.cjs') as {
+  requireResetConfirmProxy: (raw: string | undefined) => { server: string };
+};
 
 const baseURL = process.env.RESET_CONFIRM_BASE_URL;
 if (!baseURL) {
   throw new Error('RESET_CONFIRM_BASE_URL is required');
 }
 
-const proxy = process.env.RESET_CONFIRM_PROXY
-  ? { server: process.env.RESET_CONFIRM_PROXY }
-  : undefined;
+const proxy = requireResetConfirmProxy(process.env.RESET_CONFIRM_PROXY);
 
 export default defineConfig({
   testDir: '.',

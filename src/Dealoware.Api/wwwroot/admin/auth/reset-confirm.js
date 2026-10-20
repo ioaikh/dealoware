@@ -16,9 +16,6 @@
     return "retry";
   }
 
-  global.dwClassifyCheckResponse = dwClassifyCheckResponse;
-  if (global.__dwResetConfirmSkipBoot) return;
-
   var CHECK = "/admin/api/auth/reset/confirm/check";
   var CONFIRM = "/admin/api/auth/reset/confirm";
   var EXPIRED = "/admin/link-expired?for=reset";

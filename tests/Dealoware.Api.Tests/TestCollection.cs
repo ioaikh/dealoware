@@ -16,9 +16,10 @@ using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Npgsql;
 
-// HostFactoryResolver.HostingListener (DiagnosticListener) deadlocks when
-// WebApplicationFactory<Program> CreateHost/Dispose overlap. The password-reset
-// collection was a third parallel TestServer; keep one in-process host at a time.
+// Inferred cause (no hang dump): HostFactoryResolver.HostingListener
+// (DiagnosticListener) deadlocks when WebApplicationFactory<Program>
+// CreateHost/Dispose overlap. The password-reset collection was a third
+// parallel TestServer. Restore collection parallelism once a dump confirms it.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Dealoware.Api.Tests;

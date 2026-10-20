@@ -29,10 +29,17 @@ const pathname = "/admin/reset/confirm";
 const retryCopy = "We couldn't check your link. Wait a moment and try again.";
 
 function classifyContext() {
-  const ctx = { __dwResetConfirmSkipBoot: true, globalThis: null };
+  const start = scriptSource.indexOf("function dwClassifyCheckResponse");
+  const end = scriptSource.indexOf("\n  var CHECK =", start);
+  if (start < 0 || end < 0) {
+    throw new Error("dwClassifyCheckResponse is missing from served JS");
+  }
+  const src = scriptSource.slice(start, end)
+    + "; this.dwClassifyCheckResponse = dwClassifyCheckResponse;";
+  const ctx = { globalThis: null };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  vm.runInContext(scriptSource, ctx);
+  vm.runInContext(src, ctx);
   return ctx.dwClassifyCheckResponse;
 }
 

@@ -291,6 +291,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Contains("r.redirected", scriptBody, StringComparison.Ordinal);
         Assert.Contains("redirect: \"manual\"", scriptBody, StringComparison.Ordinal);
         Assert.Contains("function dwClassifyCheckResponse", scriptBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("__dwResetConfirmSkipBoot", scriptBody, StringComparison.Ordinal);
         Assert.Contains("/admin/link-expired?for=reset", scriptBody, StringComparison.Ordinal);
         Assert.Contains("meta[name=\"dw-csrf\"]", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("status===303", scriptBody.Replace(" ", ""), StringComparison.Ordinal);
@@ -366,12 +367,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-            using var proc = System.Diagnostics.Process.Start(start);
-            Assert.NotNull(proc);
-            var stdout = await proc.StandardOutput.ReadToEndAsync();
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            Assert.True(proc.ExitCode == 0, stdout + Environment.NewLine + stderr);
+            var stdout = await RunNodeProcessAsync(start);
             Assert.Contains("PASS state 4 first failure focuses Try again", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS rule B retry busy then rule A focus first field", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS rule C repeat failure focuses non-live message", stdout, StringComparison.Ordinal);
@@ -491,6 +487,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.DoesNotContain("statusEl.setAttribute(\"aria-live\"", showRetry.Value, StringComparison.Ordinal);
 
         Assert.DoesNotContain("__dwResetTimeoutMs", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("__dwResetConfirmSkipBoot", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("dwClassifyCheckResponse = dwClassifyCheckResponse", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
         Assert.Contains("function submitConfirm()", script, StringComparison.Ordinal);
         Assert.Contains("retryAction();", script, StringComparison.Ordinal);
@@ -1389,29 +1387,47 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         await SeedCredentialAsync();
         Mail().Clear();
         const string typed = "nobody@example.test";
-        using var response = await PostRequestAsync(typed);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var unknown = await PostRequestAsync(typed);
+        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+        using var owner = await PostRequestAsync(CoreOwnerEmail);
+        Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var auditHasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
+        var ipHasher = scope.ServiceProvider.GetRequiredService<IIpHasher>();
+        var actor = auditHasher.HashEmail(typed);
+        var accountSubject = AdminAuthService.AccountSubjectKey(
+            AdminAuthService.NormalizeEmail(typed), isOwner: false, ipHasher);
+        Assert.DoesNotContain(typed, actor, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(accountSubject, actor);
+        Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == actor);
+        Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.Email.Contains(typed, StringComparison.OrdinalIgnoreCase));
+        AssertG1UnknownEmailAudit(db.AdminAuditLog.ToList(), typed, actor);
+        Assert.Contains(
+            db.AdminAuditLog,
+            e => e.Action == "reset_request" && e.ActorEmail == CoreOwnerEmail);
+        Assert.All(db.AdminResetIpCounters, counter => Assert.NotEqual(actor, counter.IpHmac));
+    }
+
+    [Fact]
+    public async Task TD_ADM_030_G1_Mutation_RawInputAuditRow_FailsTheScan()
+    {
+        await SeedCredentialAsync();
+        Mail().Clear();
+        const string typed = "nobody@example.test";
+        using var unknown = await PostRequestAsync(typed);
+        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+        using var owner = await PostRequestAsync(CoreOwnerEmail);
+        Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var auditHasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
         var actor = auditHasher.HashEmail(typed);
-        Assert.DoesNotContain(typed, actor, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(db.AdminPasswordResetTokens, t => t.Email == actor);
-        Assert.DoesNotContain(db.AdminPasswordResetTokens, t => t.Email.Contains(typed, StringComparison.OrdinalIgnoreCase));
-        var requestRows = db.AdminAuditLog
-            .Where(e => e.Action == "reset_request" && e.ActorEmail == actor)
-            .ToList();
-        Assert.NotEmpty(requestRows);
-        Assert.All(requestRows, row =>
-        {
-            Assert.DoesNotContain(typed, row.ActorEmail, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(typed, row.IpHmac, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(typed, row.ReasonClass ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-            Assert.NotEqual(row.ActorEmail, row.IpHmac);
-            Assert.NotEqual(CoreOwnerEmail, row.ActorEmail);
-        });
-        Assert.All(db.AdminResetIpCounters, counter => Assert.NotEqual(actor, counter.IpHmac));
+        var rows = db.AdminAuditLog.ToList();
+        rows.Add(AdminAuditEntry.CreateAuthEvent("reset_request", typed, "testhmac-not-an-ip"));
+        Assert.ThrowsAny<Exception>(() => AssertG1UnknownEmailAudit(rows, typed, actor));
     }
 
     [Fact]
@@ -1430,11 +1446,30 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Contains("PROXY_PORT=18080", code, StringComparison.Ordinal);
         Assert.Contains("https://127.0.0.1:${API_PORT}", code, StringComparison.Ordinal);
         Assert.Contains("RESET_CONFIRM_PROXY=", code, StringComparison.Ordinal);
+        Assert.Contains("require-proxy.cjs", File.ReadAllText(
+            Path.Combine(RepoRoot(), "e2e", "reset-confirm", "playwright.config.ts")));
         foreach (Match match in Regex.Matches(code, @"(?<=\d):(\d{2,5})(?!\d)(?!\.)"))
         {
             var port = int.Parse(match.Groups[1].Value);
             Assert.True(port >= 1024, "run.sh must not bind a port below 1024: " + match.Value);
         }
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_PlaywrightConfig_ThrowsUnlessLoopbackProxyPortAtLeast1024()
+    {
+        var check = Path.Combine(RepoRoot(), "e2e", "reset-confirm", "require-proxy.check.cjs");
+        var start = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "node",
+            ArgumentList = { check },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(check)
+        };
+        var stdout = await RunNodeProcessAsync(start);
+        Assert.Contains("PASS require-proxy checks", stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2888,18 +2923,77 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             if (!string.IsNullOrEmpty(only))
                 start.ArgumentList.Add("--only=" + only);
 
-            using var proc = System.Diagnostics.Process.Start(start);
-            Assert.NotNull(proc);
-            var stdout = await proc.StandardOutput.ReadToEndAsync();
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            Assert.True(proc.ExitCode == 0, stdout + Environment.NewLine + stderr);
-            return stdout;
+            return await RunNodeProcessAsync(start);
         }
         finally
         {
             work.Delete(recursive: true);
         }
+    }
+
+    private static void AssertG1UnknownEmailAudit(
+        IReadOnlyCollection<AdminAuditEntry> rows,
+        string typed,
+        string actor)
+    {
+        foreach (var row in rows)
+        {
+            foreach (var cell in AuditCellText(row))
+            {
+                Assert.DoesNotContain(typed, cell, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        var hashedRequest = rows
+            .Where(e => e.Action == "reset_request" && e.ActorEmail == actor)
+            .ToList();
+        Assert.NotEmpty(hashedRequest);
+        Assert.All(hashedRequest, row =>
+        {
+            Assert.NotEqual(CoreOwnerEmail, row.ActorEmail);
+            Assert.NotEqual(row.ActorEmail, row.IpHmac);
+        });
+    }
+
+    private static IEnumerable<string> AuditCellText(AdminAuditEntry row)
+    {
+        foreach (var prop in typeof(AdminAuditEntry).GetProperties())
+        {
+            var value = prop.GetValue(row);
+            if (value is null)
+                continue;
+            yield return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+    }
+
+    private static async Task<string> RunNodeProcessAsync(System.Diagnostics.ProcessStartInfo start)
+    {
+        using var proc = System.Diagnostics.Process.Start(start);
+        Assert.NotNull(proc);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await proc.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                proc.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            Assert.Fail("node harness timed out and was killed");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        Assert.True(proc.ExitCode == 0, stdout + Environment.NewLine + stderr);
+        return stdout;
     }
 
     private static string RepoRoot()

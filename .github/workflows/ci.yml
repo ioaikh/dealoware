@@ -36,6 +36,7 @@ jobs:
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=test-results.trx"
           --filter "FullyQualifiedName!~AdminAuditPostgres"
+          --blame-hang --blame-hang-timeout 5m
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -88,6 +89,7 @@ jobs:
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
           --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm|FullyQualifiedName~C2_PostgresParallelWrongCodes|FullyQualifiedName~B2_PostgresFactorLock|FullyQualifiedName~G1_PostgresUnknownEmail"
+          --blame-hang --blame-hang-timeout 5m
 
       - name: Upload PostgreSQL test results
         uses: actions/upload-artifact@v4
