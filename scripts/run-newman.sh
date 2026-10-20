@@ -40,6 +40,10 @@ for arg in "$@"; do
         --verbose)
             VERBOSE_FLAG="-v"
             ;;
+        *)
+            echo "ERROR: unknown argument '$arg' (run-newman.sh accepts --bail and --verbose only)." >&2
+            exit 1
+            ;;
     esac
 done
 

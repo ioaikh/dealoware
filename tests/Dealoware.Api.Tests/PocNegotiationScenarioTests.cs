@@ -370,7 +370,7 @@ public class PocNegotiationScenarioTests
     /// Scenario_S1_to_S6_HappyPathDeal: Complete happy path flow as single end-to-end test.
     /// S1: Register Seller + Buyer → S2: Create sell artifact → S3: Create negotiation (sell↔buy)
     /// → S4: Seller places offer → S5: Buyer counters → S6: Seller accepts counter.
-    /// Mirrors Postman collection 02-Happy-Path-Deal folder.
+    /// Mirrors Postman collection folders 01-Auth through 06-Accept-or-Decline.
     /// </summary>
     [Fact]
     public async Task Scenario_S1_to_S6_HappyPathDeal()
