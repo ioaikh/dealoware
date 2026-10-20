@@ -55,7 +55,7 @@ public class PostmanCollectionHygieneTests
         new(@"^http://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$)", RegexOptions.Compiled);
 
     private static readonly Regex HttpOrProtocolRelativeUrl = new(
-        @"(?:https?:)?//(?<host>[A-Za-z0-9.-]+)",
+        @"(?:https?:)?//(?<authority>[^/?#\s""'\\]+)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex NoSchemeHost = new(
@@ -130,8 +130,8 @@ public class PostmanCollectionHygieneTests
         new("Dealoware-PoC-Negotiations.postman_collection.json", "11-Optional-Rotate-and-Revoke / Revoke API Key (optional)", "test", "d9fec2deb61dd827fbdf259d4c486d16f809bc5542910ac8271d591d2328abcd"),
     ];
 
-    private static readonly HashSet<string> AllowedScriptHashes =
-        new(ScriptAllowlist.Select(e => e.Sha256), StringComparer.Ordinal);
+    private static readonly Dictionary<(string File, string Item, string Listen), string> ScriptAllowlistByIdentity =
+        ScriptAllowlist.ToDictionary(e => (e.File, e.Item, e.Listen), e => e.Sha256);
 
     private static string RepoRoot()
     {
@@ -729,7 +729,7 @@ public class PostmanCollectionHygieneTests
             """
             {
               "values": [
-                { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default" },
+                { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default", "enabled": true },
                 { "key": "sellerApiKey", "value": "", "type": "secret" }
               ]
             }
@@ -790,7 +790,7 @@ public class PostmanCollectionHygieneTests
                   "name": "x",
                   "request": {
                     "method": "GET",
-                    "url": { "raw": "{{baseUrl}}/health", "host": "evil.test" }
+                    "url": { "raw": "{{baseUrl}}/health", "host": "evil.example.test" }
                   }
                 }
               ]
@@ -975,7 +975,7 @@ public class PostmanCollectionHygieneTests
                   "request": {
                     "method": "GET",
                     "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] },
-                    "proxy": { "host": "evil.test", "port": 443 }
+                    "proxy": { "host": "evil.example.test", "port": 443 }
                   }
                 }
               ]
@@ -1057,7 +1057,7 @@ public class PostmanCollectionHygieneTests
             temp,
             "live-host-array.postman_collection.json",
             raw: "{{baseUrl}}/health",
-            host: """["evil.test"]""");
+            host: """["evil.example.test"]""");
 
         var failures = CollectCollectionFailures(DiscoverCollections(temp));
         Assert.Contains(failures, f => f.Contains(HostAllowMsg, StringComparison.Ordinal));
@@ -1078,7 +1078,7 @@ public class PostmanCollectionHygieneTests
                 {
                   "listen": "prerequest",
                   "script": {
-                    "exec": [ "console.log('https://evil.test/health');" ]
+                    "exec": [ "console.log('https://evil.example.test/health');" ]
                   }
                 }
               ]
@@ -1541,7 +1541,7 @@ public class PostmanCollectionHygieneTests
                 {
                   "name": "x",
                   "variable": [
-                    { "key": "otherVar", "value": "https://evil.test", "type": "string" }
+                    { "key": "otherVar", "value": "https://evil.example.test", "type": "string" }
                   ],
                   "request": {
                     "method": "GET",
@@ -1572,7 +1572,7 @@ public class PostmanCollectionHygieneTests
                   "name": "x",
                   "request": {
                     "method": "GET",
-                    "header": [ { "key": "Host", "value": "evil.test" } ],
+                    "header": [ { "key": "Host", "value": "evil.example.test" } ],
                     "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
                   }
                 }
@@ -1602,7 +1602,7 @@ public class PostmanCollectionHygieneTests
                     {
                       "listen": "prerequest",
                       "script": {
-                        "exec": [ "pm.sendRequest('https://evil.test/health', function(){});" ]
+                        "exec": [ "pm.sendRequest('https://evil.example.test/health', function(){});" ]
                       }
                     }
                   ]
@@ -1626,7 +1626,7 @@ public class PostmanCollectionHygieneTests
             urlParts: """
             "raw": "{{baseUrl}}/health",
             "host": ["{{baseUrl}}"],
-            "path": ["health@evil.test"]
+            "path": ["health@evil.example.test"]
             """);
 
         var failures = CollectCollectionFailures(DiscoverCollections(temp));
@@ -1688,7 +1688,7 @@ public class PostmanCollectionHygieneTests
                     {
                       "listen": "prerequest",
                       "script": {
-                        "exec": [ "pm.collectionVariables.set('p','5287@evil.test');" ]
+                        "exec": [ "pm.collectionVariables.set('p','5287@evil.example.test');" ]
                       }
                     }
                   ],
@@ -1748,7 +1748,7 @@ public class PostmanCollectionHygieneTests
               "event": [
                 {
                   "listen": "prerequest",
-                  "script": { "exec": [ "x=pm; x['send'+'Request']('https://evil.test', function(){});" ] }
+                  "script": { "exec": [ "x=pm; x['send'+'Request']('https://evil.example.test', function(){});" ] }
                 }
               ]
             }
@@ -1772,7 +1772,7 @@ public class PostmanCollectionHygieneTests
               "event": [
                 {
                   "listen": "prerequest",
-                  "script": { "exec": [ "pm ['sendRequest']('https://evil.test', function(){});" ] }
+                  "script": { "exec": [ "pm ['sendRequest']('https://evil.example.test', function(){});" ] }
                 }
               ]
             }
@@ -1799,7 +1799,7 @@ public class PostmanCollectionHygieneTests
                   "script": {
                     "exec": [
                       "pm.request",
-                      ".url = 'https://evil.test/health';"
+                      ".url = 'https://evil.example.test/health';"
                     ]
                   }
                 }
@@ -1825,7 +1825,7 @@ public class PostmanCollectionHygieneTests
               "event": [
                 {
                   "listen": "prerequest",
-                  "script": { "exec": [ "pm.collectionVariables. set('h', 'evil.test');" ] }
+                  "script": { "exec": [ "pm.collectionVariables. set('h', 'evil.example.test');" ] }
                 }
               ]
             }
@@ -1846,7 +1846,7 @@ public class PostmanCollectionHygieneTests
               "variable": [
                 { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
               ],
-              "proxy": { "host": "evil.test", "port": 8080 },
+              "proxy": { "host": "evil.example.test", "port": 8080 },
               "item": [
                 {
                   "name": "x",
@@ -1873,7 +1873,7 @@ public class PostmanCollectionHygieneTests
             {
               "variable": [
                 { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" },
-                { "key": "note", "value": "https://evil.test", "type": "string" }
+                { "key": "note", "value": "https://evil.example.test", "type": "string" }
               ]
             }
             """);
@@ -1893,7 +1893,7 @@ public class PostmanCollectionHygieneTests
               "info": {
                 "_postman_id": "p10",
                 "name": "p10",
-                "description": "see https://evil.test"
+                "description": "see https://evil.example.test"
               },
               "variable": [
                 { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
@@ -1903,7 +1903,7 @@ public class PostmanCollectionHygieneTests
                   "name": "x",
                   "request": {
                     "method": "GET",
-                    "header": [ { "key": "X-Link", "value": "https://evil.test" } ],
+                    "header": [ { "key": "X-Link", "value": "https://evil.example.test" } ],
                     "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
                   }
                 }
@@ -1929,7 +1929,7 @@ public class PostmanCollectionHygieneTests
               "event": [
                 {
                   "listen": "prerequest",
-                  "script": { "exec": [ "var e = pm.collectionVariables; e['set']('h', 'evil.test');" ] }
+                  "script": { "exec": [ "var e = pm.collectionVariables; e['set']('h', 'evil.example.test');" ] }
                 }
               ]
             }
@@ -1949,8 +1949,8 @@ public class PostmanCollectionHygieneTests
             {
               "variable": [
                 { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" },
-                { "key": "atHost", "value": "@evil.test", "type": "string" },
-                { "key": "slashHost", "value": "//evil.test", "type": "string" }
+                { "key": "atHost", "value": "@evil.example.test", "type": "string" },
+                { "key": "slashHost", "value": "//evil.example.test", "type": "string" }
               ]
             }
             """);
@@ -1984,11 +1984,344 @@ public class PostmanCollectionHygieneTests
         Assert.Contains(failures, f => f.Contains("setTimeout", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void HygieneScan_T1_FailsUnlistedScriptOnHashRuleAlone()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "t1-hash-only.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": { "exec": [ "void 0;" ] }
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        var hashFailures = failures.Where(f => f.Contains(ScriptHashMsg, StringComparison.Ordinal)).ToList();
+        Assert.Single(hashFailures);
+        Assert.Equal("t1-hash-only.postman_collection.json " + ScriptHashMsg, hashFailures[0]);
+        Assert.DoesNotContain("eval(", hashFailures[0]);
+        Assert.DoesNotContain("sendRequest", hashFailures[0]);
+        Assert.DoesNotContain(".set", hashFailures[0]);
+        Assert.DoesNotContain("Function(", hashFailures[0]);
+        Assert.DoesNotContain("aliases pm", hashFailures[0]);
+    }
+
+    [Fact]
+    public void HygieneScan_T2_FailsNumericPortAtHostAllowlist()
+    {
+        using var temp = new TempPostmanDir();
+        WriteUrlPartsCollection(
+            temp,
+            "t2-port.postman_collection.json",
+            extraVars: "",
+            urlParts: """
+            "raw": "{{baseUrl}}/health",
+            "host": ["{{baseUrl}}"],
+            "port": "@evil.example.test",
+            "path": ["health"]
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains(UrlAllowMsg, StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains(HostAllowMsg, StringComparison.Ordinal));
+        Assert.DoesNotContain(failures, f => f.Contains(UrlTokenMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N01_FailsAllowlistedHashOnWrongItem()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "n01-wrong-item.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "item": [
+                {
+                  "name": "copied",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          "pm.test(\"Status code is 200\", function () {",
+                          "    pm.response.to.have.status(200);",
+                          "});",
+                          "",
+                          "if (pm.response.code !== 200) { return; }",
+                          "",
+                          "pm.test(\"Response has status ok\", function () {",
+                          "    var jsonData = pm.response.json();",
+                          "    pm.expect(jsonData.status).to.eql(\"ok\");",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+                  }
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains(ScriptHashMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsUserinfoAuthorityInDescription()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "userinfo-desc.postman_collection.json"),
+            """
+            {
+              "info": {
+                "_postman_id": "userinfo-desc",
+                "name": "userinfo-desc",
+                "description": "see http://localhost@evil.example.test"
+              },
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("http(s) or // to a non-local host", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsUserinfoAuthorityWithPortInVariable()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "userinfo-var.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" },
+                { "key": "note", "value": "http://localhost:5287@evil.example.test", "type": "string" }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("note", StringComparison.Ordinal) && f.Contains("non-local host", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsUserinfoAuthority_InNonSanctionedEnv()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "userinfo.postman_environment.json"),
+            """
+            {
+              "name": "userinfo-env",
+              "values": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "default" },
+                { "key": "note", "value": "http://localhost@evil.example.test", "type": "default" }
+              ]
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("http(s) or // to a non-local host", StringComparison.Ordinal)
+                                       || (f.Contains("note", StringComparison.Ordinal) && f.Contains("non-local host", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsDuplicateBaseUrl_InCollectionRoot()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "dup-root.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" },
+                { "key": "baseUrl", "value": "http://127.0.0.1:5287", "type": "string" }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("duplicate baseUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsDuplicateVariable_InFolder()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "dup-folder.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "item": [
+                {
+                  "name": "folder",
+                  "variable": [
+                    { "key": "n", "value": "1", "type": "string" },
+                    { "key": "n", "value": "2", "type": "string" }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("duplicate variable 'n'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsDuplicateKey_InEnvironmentValues()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "dup-env.postman_environment.json"),
+            """
+            {
+              "name": "dup-env",
+              "values": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "default" },
+                { "key": "baseUrl", "value": "http://127.0.0.1:5287", "type": "default" }
+              ]
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("duplicate baseUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_FailsLiveEnv_WhenBaseUrlNotExactlyOneEnabledPinned()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "Dealoware-api-core.postman_environment.json"),
+            """
+            {
+              "values": [
+                { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default", "enabled": true },
+                { "key": "baseUrl", "value": "https://api.core.dealoware.com", "type": "default", "enabled": true }
+              ]
+            }
+            """);
+
+        DiscoverPostmanFiles(temp.Root.FullName, out _, out var files);
+        var failures = CollectEnvironmentFailures(files, temp.Root.FullName);
+        Assert.Contains(failures, f => f.Contains("exactly one baseUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N21_FailsNonStringExecElement()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "n21-exec.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": { "exec": [ "void 0;", 1 ] }
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("exec element is not a string", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N15_FailsHostHeaderWithTrailingSpace()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "n15-host-space.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "item": [
+                {
+                  "name": "x",
+                  "request": {
+                    "method": "GET",
+                    "header": [ { "key": "Host ", "value": "evil.example.test" } ],
+                    "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] }
+                  }
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains(HostHeaderMsg, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HygieneScan_N14_FailsFormdataAndFileSrc()
+    {
+        using var temp = new TempPostmanDir();
+        File.WriteAllText(
+            Path.Combine(temp.PostmanDir, "n14-formdata.postman_collection.json"),
+            """
+            {
+              "variable": [
+                { "key": "baseUrl", "value": "http://localhost:5287", "type": "string" }
+              ],
+              "item": [
+                {
+                  "name": "x",
+                  "request": {
+                    "method": "POST",
+                    "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"] },
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [ { "key": "f", "type": "file", "src": "/tmp/x" } ]
+                    }
+                  }
+                }
+              ]
+            }
+            """);
+
+        var failures = CollectCollectionFailures(DiscoverCollections(temp));
+        Assert.Contains(failures, f => f.Contains("formdata is not allowed", StringComparison.Ordinal));
+        Assert.Contains(failures, f => f.Contains("file src is not allowed", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("https://api.core.dealoware.com")]
     [InlineData("http://localhost:5287@api.core.dealoware.com")]
-    [InlineData("http://localhost.evil.test")]
-    [InlineData("http://127.0.0.1.evil.test")]
+    [InlineData("http://localhost.evil.example.test")]
+    [InlineData("http://127.0.0.1.evil.example.test")]
     [InlineData("HTTP://localhost:5287")]
     [InlineData("http://LOCALHOST:5287")]
     [InlineData("http://localhost:5287#@api.core.dealoware.com")]
@@ -2143,6 +2476,7 @@ public class PostmanCollectionHygieneTests
             }
             else
             {
+                CollectDuplicateKeyFailures(label, variables, failures, seenMessages);
                 var seen = ReadSlots(variables);
                 if (!seen.TryGetValue("baseUrl", out var baseUrl) || baseUrl.Value != LocalBaseUrl)
                     AddFailure(failures, seenMessages, $"{label} baseUrl must be {LocalBaseUrl}");
@@ -2155,6 +2489,8 @@ public class PostmanCollectionHygieneTests
             CollectRequestShapeFailures(label, doc.RootElement, failures, seenMessages);
             CollectAuthAndHeaderFailures(label, doc.RootElement, failures, seenMessages);
             CollectProxyFailures(label, doc.RootElement, failures, seenMessages);
+            CollectFormDataAndFileSrcFailures(label, doc.RootElement, failures, seenMessages);
+            CollectEventScriptFailures(label, label, doc.RootElement, failures, seenMessages);
             WalkEveryString(label, doc.RootElement, failures, seenMessages, sanctionedLiveBaseUrl: false);
         }
 
@@ -2174,6 +2510,12 @@ public class PostmanCollectionHygieneTests
                 || values.ValueKind != JsonValueKind.Array)
             {
                 AddFailure(failures, seenMessages, $"{label} must have a values array");
+            }
+            else
+            {
+                CollectDuplicateKeyFailures(label, values, failures, seenMessages);
+                if (sanctioned)
+                    CollectLiveEnvBaseUrlConstraints(label, values, failures, seenMessages);
             }
 
             var seen = ReadEnvironmentSlots(doc.RootElement);
@@ -2195,6 +2537,8 @@ public class PostmanCollectionHygieneTests
             CollectRequestShapeFailures(label, doc.RootElement, failures, seenMessages);
             CollectAuthAndHeaderFailures(label, doc.RootElement, failures, seenMessages);
             CollectProxyFailures(label, doc.RootElement, failures, seenMessages);
+            CollectFormDataAndFileSrcFailures(label, doc.RootElement, failures, seenMessages);
+            CollectEventScriptFailures(Path.GetFileName(file), label, doc.RootElement, failures, seenMessages);
             WalkEveryString(label, doc.RootElement, failures, seenMessages, sanctionedLiveBaseUrl: sanctioned);
         }
 
@@ -2301,14 +2645,29 @@ public class PostmanCollectionHygieneTests
     {
         foreach (Match match in HttpOrProtocolRelativeUrl.Matches(text))
         {
-            var host = match.Groups["host"].Value;
+            var authority = match.Groups["authority"].Value.TrimEnd('.', ',', ')', ']', '`', ';', '\'', '"');
+            var at = authority.LastIndexOf('@');
+            if (at >= 0)
+                return true;
+            var host = HostFromAuthority(authority);
             if (IsLocalHttpHost(host))
                 continue;
-
             return true;
         }
 
         return false;
+    }
+
+    private static string HostFromAuthority(string authority)
+    {
+        var hostPort = authority;
+        var at = authority.LastIndexOf('@');
+        if (at >= 0)
+            hostPort = authority[(at + 1)..];
+        var colon = hostPort.LastIndexOf(':');
+        if (colon >= 0 && int.TryParse(hostPort[(colon + 1)..], out _))
+            return hostPort[..colon];
+        return hostPort;
     }
 
     private static bool IsLocalHttpHost(string host)
@@ -2344,6 +2703,7 @@ public class PostmanCollectionHygieneTests
                 var skip = skipRootVariable && path.Length == 0 && prop.Name == "variable";
                 if (!skip)
                 {
+                    CollectDuplicateKeyFailures(label, prop.Value, failures, seenMessages);
                     var slots = ReadSlots(prop.Value);
                     CollectSecretFailures(label, slots, failures, seenMessages);
                     CollectNonLocalHostSlotFailures(label, slots, failures, seenMessages, sanctionedLiveBaseUrl);
@@ -2667,28 +3027,7 @@ public class PostmanCollectionHygieneTests
             if (skipLiveSlot && prop.Name is "value" or "currentValue")
                 continue;
             var childPath = path.Length == 0 ? prop.Name : path + "." + prop.Name;
-            if (prop.Name is "exec" or "script")
-                CheckScriptNode(label, prop.Value, failures, seenMessages);
             WalkEveryString(label, prop.Value, failures, seenMessages, sanctionedLiveBaseUrl, childPath);
-        }
-    }
-
-    private static void CheckScriptNode(
-        string label,
-        JsonElement el,
-        List<string> failures,
-        HashSet<string> seenMessages)
-    {
-        if (el.ValueKind == JsonValueKind.String)
-        {
-            CheckScript(label, el.GetString() ?? "", failures, seenMessages);
-            return;
-        }
-
-        if (el.ValueKind == JsonValueKind.Array)
-        {
-            var joined = string.Join("\n", el.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : ""));
-            CheckScript(label, joined, failures, seenMessages);
         }
     }
 
@@ -2705,48 +3044,61 @@ public class PostmanCollectionHygieneTests
 
     private static void CheckScript(
         string label,
+        string fileName,
+        string item,
+        string listen,
         string text,
         List<string> failures,
         HashSet<string> seenMessages)
     {
-        if (string.IsNullOrEmpty(text))
-            return;
-
         var hash = HashScript(text);
-        var allowlisted = AllowedScriptHashes.Contains(hash);
-        if (!allowlisted)
-            AddFailure(failures, seenMessages, $"{label} {ScriptHashMsg}");
-        else
+        if (ScriptAllowlistByIdentity.TryGetValue((fileName, item, listen), out var expected)
+            && expected == hash)
+        {
             return;
+        }
 
-        var normalized = NormalizeScriptForTokens(text);
+        var details = SecondLayerDetails(NormalizeScriptForTokens(text));
+        var msg = $"{label} {ScriptHashMsg}";
+        if (details.Count > 0)
+            msg += " (" + string.Join("; ", details) + ")";
+        AddFailure(failures, seenMessages, msg);
+    }
+
+    private static List<string> SecondLayerDetails(string normalized)
+    {
+        var details = new List<string>();
+        if (string.IsNullOrEmpty(normalized))
+            return details;
         if (PmAlias.IsMatch(normalized))
-            AddFailure(failures, seenMessages, $"{label} {ScriptAliasMsg}");
+            details.Add(ScriptAliasMsg);
         if (normalized.Contains("eval(", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains eval(");
+            details.Add("collection script contains eval(");
         if (normalized.Contains("Function(", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains Function(");
+            details.Add("collection script contains Function(");
         if (normalized.Contains("atob(", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains atob(");
+            details.Add("collection script contains atob(");
         if (normalized.Contains("require(", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains require(");
+            details.Add("collection script contains require(");
         if (normalized.Contains("setTimeout", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains setTimeout");
+            details.Add("collection script contains setTimeout");
         if (PmBracketAccess.IsMatch(normalized))
-            AddFailure(failures, seenMessages, $"{label} collection script contains pm[ or pm.*[");
+            details.Add("collection script contains pm[ or pm.*[");
         if (normalized.Contains("sendRequest", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains sendRequest");
+            details.Add("collection script contains sendRequest");
         if (normalized.Contains("request.url", StringComparison.Ordinal)
             || normalized.Contains("request['url']", StringComparison.Ordinal)
             || normalized.Contains("request[\"url\"]", StringComparison.Ordinal))
-            AddFailure(failures, seenMessages, $"{label} collection script contains pm.request.url");
+            details.Add("collection script contains pm.request.url");
         if (normalized.Contains(".set(", StringComparison.Ordinal)
             || normalized.Contains("['set']", StringComparison.Ordinal)
             || normalized.Contains("[\"set\"]", StringComparison.Ordinal))
         {
-            AddFailure(failures, seenMessages, $"{label} collection script contains .set");
-            AddFailure(failures, seenMessages, $"{label} collection script sets baseUrl");
+            details.Add("collection script contains .set");
+            details.Add("collection script sets baseUrl");
         }
+
+        return details;
     }
 
     private static string HashScript(string text)
@@ -2853,10 +3205,11 @@ public class PostmanCollectionHygieneTests
                         continue;
                     var key = header.TryGetProperty("key", out var keyEl) ? ElementAsString(keyEl) : null;
                     var value = header.TryGetProperty("value", out var valueEl) ? ElementAsString(valueEl) : null;
-                    if (string.Equals(key, "Host", StringComparison.OrdinalIgnoreCase))
+                    var headerName = key?.Trim();
+                    if (string.Equals(headerName, "Host", StringComparison.OrdinalIgnoreCase))
                         AddFailure(failures, seenMessages, $"{label} {HostHeaderMsg}");
-                    if (IsCredentialHeader(key) && !IsTemplateOrEmpty(value))
-                        AddFailure(failures, seenMessages, $"{label} literal secret in header '{key}'");
+                    if (IsCredentialHeader(headerName) && !IsTemplateOrEmpty(value))
+                        AddFailure(failures, seenMessages, $"{label} literal secret in header '{headerName}'");
                 }
             }
             else if (prop.Name == "auth")
@@ -3085,22 +3438,35 @@ public class PostmanCollectionHygieneTests
         foreach (var file in files)
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(file));
-            CollectScriptEntries(Path.GetFileName(file), doc.RootElement, [], found);
+            CollectScriptEntries(Path.GetFileName(file), doc.RootElement, [], found, label: null, failures: null, seenMessages: null);
         }
 
         return found;
+    }
+
+    private static void CollectEventScriptFailures(
+        string fileName,
+        string label,
+        JsonElement root,
+        List<string> failures,
+        HashSet<string> seenMessages)
+    {
+        CollectScriptEntries(fileName, root, [], [], label, failures, seenMessages);
     }
 
     private static void CollectScriptEntries(
         string fileName,
         JsonElement el,
         List<string> path,
-        List<ScriptAllowlistEntry> found)
+        List<ScriptAllowlistEntry> found,
+        string? label,
+        List<string>? failures,
+        HashSet<string>? seenMessages)
     {
         if (el.ValueKind == JsonValueKind.Array)
         {
             foreach (var child in el.EnumerateArray())
-                CollectScriptEntries(fileName, child, path, found);
+                CollectScriptEntries(fileName, child, path, found, label, failures, seenMessages);
             return;
         }
 
@@ -3126,33 +3492,179 @@ public class PostmanCollectionHygieneTests
                     : "?";
                 if (!ev.TryGetProperty("script", out var script))
                     continue;
-                var joined = ScriptExecText(script);
-                if (joined is null)
-                    continue;
                 var item = localPath.Count == 0 ? "(collection)" : string.Join(" / ", localPath);
+                if (!TryGetScriptExec(script, out var joined, out var nonStringExec))
+                    continue;
+                if (nonStringExec)
+                {
+                    if (failures is not null && seenMessages is not null && label is not null)
+                        AddFailure(failures, seenMessages, $"{label} collection script exec element is not a string");
+                    continue;
+                }
+
                 found.Add(new ScriptAllowlistEntry(fileName, item, listen, HashScript(joined)));
+                if (failures is not null && seenMessages is not null && label is not null)
+                    CheckScript(label, fileName, item, listen, joined, failures, seenMessages);
             }
         }
 
         if (el.TryGetProperty("item", out var items))
-            CollectScriptEntries(fileName, items, localPath, found);
+            CollectScriptEntries(fileName, items, localPath, found, label, failures, seenMessages);
     }
 
-    private static string? ScriptExecText(JsonElement script)
+    private static bool TryGetScriptExec(JsonElement script, out string text, out bool nonStringExec)
     {
+        text = "";
+        nonStringExec = false;
+        JsonElement exec = default;
+        var hasExec = false;
         if (script.ValueKind == JsonValueKind.String)
-            return script.GetString() ?? "";
+        {
+            text = script.GetString() ?? "";
+            return true;
+        }
+
         if (script.ValueKind == JsonValueKind.Array)
-            return string.Join("\n", script.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : ""));
-        if (script.ValueKind != JsonValueKind.Object)
-            return null;
-        if (!script.TryGetProperty("exec", out var exec))
-            return null;
+        {
+            exec = script;
+            hasExec = true;
+        }
+        else if (script.ValueKind == JsonValueKind.Object
+                 && script.TryGetProperty("exec", out exec))
+        {
+            hasExec = true;
+        }
+
+        if (!hasExec)
+            return false;
         if (exec.ValueKind == JsonValueKind.String)
-            return exec.GetString() ?? "";
-        if (exec.ValueKind == JsonValueKind.Array)
-            return string.Join("\n", exec.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : ""));
-        return null;
+        {
+            text = exec.GetString() ?? "";
+            return true;
+        }
+
+        if (exec.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var lines = new List<string>();
+        foreach (var e in exec.EnumerateArray())
+        {
+            if (e.ValueKind != JsonValueKind.String)
+            {
+                nonStringExec = true;
+                continue;
+            }
+
+            lines.Add(e.GetString() ?? "");
+        }
+
+        text = string.Join("\n", lines);
+        return true;
+    }
+
+    private static void CollectDuplicateKeyFailures(
+        string label,
+        JsonElement variables,
+        List<string> failures,
+        HashSet<string> seenMessages)
+    {
+        if (variables.ValueKind != JsonValueKind.Array)
+            return;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var variable in variables.EnumerateArray())
+        {
+            if (variable.ValueKind != JsonValueKind.Object)
+                continue;
+            if (!variable.TryGetProperty("key", out var keyEl) || keyEl.ValueKind != JsonValueKind.String)
+                continue;
+            var key = keyEl.GetString();
+            if (string.IsNullOrEmpty(key))
+                continue;
+            if (seen.Add(key))
+                continue;
+            if (key == "baseUrl")
+                AddFailure(failures, seenMessages, $"{label} duplicate baseUrl");
+            else
+                AddFailure(failures, seenMessages, $"{label} duplicate variable '{key}'");
+        }
+    }
+
+    private static void CollectLiveEnvBaseUrlConstraints(
+        string label,
+        JsonElement values,
+        List<string> failures,
+        HashSet<string> seenMessages)
+    {
+        var count = 0;
+        JsonElement? entry = null;
+        foreach (var variable in values.EnumerateArray())
+        {
+            if (variable.ValueKind != JsonValueKind.Object)
+                continue;
+            if (!variable.TryGetProperty("key", out var keyEl) || keyEl.ValueKind != JsonValueKind.String)
+                continue;
+            if (keyEl.GetString() != "baseUrl")
+                continue;
+            count++;
+            entry = variable;
+        }
+
+        if (count != 1)
+        {
+            AddFailure(failures, seenMessages, $"{label} must have exactly one baseUrl");
+            return;
+        }
+
+        var slot = entry!.Value;
+        if (!slot.TryGetProperty("enabled", out var enabledEl) || enabledEl.ValueKind != JsonValueKind.True)
+            AddFailure(failures, seenMessages, $"{label} baseUrl must be enabled");
+        var value = slot.TryGetProperty("value", out var valueEl) ? ElementAsString(valueEl) : null;
+        if (value != LiveCoreBaseUrl)
+            AddFailure(failures, seenMessages, $"{label} baseUrl value must be {LiveCoreBaseUrl}");
+    }
+
+    private static void CollectFormDataAndFileSrcFailures(
+        string label,
+        JsonElement el,
+        List<string> failures,
+        HashSet<string> seenMessages,
+        string path = "")
+    {
+        if (el.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in el.EnumerateArray())
+                CollectFormDataAndFileSrcFailures(label, child, failures, seenMessages, path);
+            return;
+        }
+
+        if (el.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var prop in el.EnumerateObject())
+        {
+            var childPath = path.Length == 0 ? prop.Name : path + "." + prop.Name;
+            if (prop.Name == "formdata")
+                AddFailure(failures, seenMessages, $"{label} formdata is not allowed");
+            if (prop.Name == "mode" && prop.Value.ValueKind == JsonValueKind.String)
+            {
+                var mode = prop.Value.GetString();
+                if (string.Equals(mode, "formdata", StringComparison.OrdinalIgnoreCase))
+                    AddFailure(failures, seenMessages, $"{label} formdata is not allowed");
+                if (string.Equals(mode, "file", StringComparison.OrdinalIgnoreCase))
+                    AddFailure(failures, seenMessages, $"{label} file src is not allowed");
+            }
+
+            if (prop.Name == "src"
+                && (path.Contains(".file", StringComparison.Ordinal)
+                    || path.Contains(".formdata", StringComparison.Ordinal)
+                    || path.EndsWith("file", StringComparison.Ordinal)
+                    || path.EndsWith("formdata", StringComparison.Ordinal)))
+            {
+                AddFailure(failures, seenMessages, $"{label} file src is not allowed");
+            }
+
+            CollectFormDataAndFileSrcFailures(label, prop.Value, failures, seenMessages, childPath);
+        }
     }
 
     private readonly record struct ScriptAllowlistEntry(string File, string Item, string Listen, string Sha256);
