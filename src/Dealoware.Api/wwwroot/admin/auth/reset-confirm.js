@@ -206,7 +206,7 @@
     }
 
     function endCheckFailure() {
-      // TODO T-A-02 v1.9: when a retry check fails or times out again, leave
+      // TODO T-A-02 v1.10: when a retry check fails or times out again, leave
       // the existing showRetry() path unchanged until that spec lands.
       showRetry();
     }

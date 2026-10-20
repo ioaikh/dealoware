@@ -333,7 +333,7 @@ public class AdminPasswordResetTests
         Assert.Contains("retryAction();", script, StringComparison.Ordinal);
         Assert.Contains("aria-disabled", script, StringComparison.Ordinal);
         Assert.Contains("Checking…", script, StringComparison.Ordinal);
-        Assert.Contains("TODO T-A-02 v1.9", script, StringComparison.Ordinal);
+        Assert.Contains("TODO T-A-02 v1.10", script, StringComparison.Ordinal);
         Assert.DoesNotContain("retryBtn.disabled", script, StringComparison.Ordinal);
         Assert.DoesNotContain("retryBtn.disabled =", script, StringComparison.Ordinal);
         Assert.Contains("totp-error", script, StringComparison.Ordinal);
