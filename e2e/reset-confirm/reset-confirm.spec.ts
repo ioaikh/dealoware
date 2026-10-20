@@ -1,4 +1,4 @@
-import { test, expect, chromium, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import crypto from 'crypto';
 
 const CHECK_PATH = '/admin/api/auth/reset/confirm/check';
@@ -478,20 +478,10 @@ test('wrong then right authenticator code completes the reset', async ({ page })
   await expectNoSa5(page);
 });
 
-test('with JavaScript off, only the noscript text shows', async () => {
-  const browser = await chromium.launch({
-    args: [
-      '--disable-javascript',
-      '--host-resolver-rules=MAP admin.core.dealoware.com 127.0.0.1',
-    ],
-  });
-  try {
-    const context = await browser.newContext({
-      ignoreHTTPSErrors: true,
-      baseURL: test.info().project.use.baseURL,
-      javaScriptEnabled: false,
-    });
-    const page = await context.newPage();
+test.describe('JavaScript off', () => {
+  test.use({ javaScriptEnabled: false });
+
+  test('with JavaScript off, only the noscript text shows', async ({ page }) => {
     await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
     const html = await page.content();
     expect(html).toContain(`<noscript>${NOSCRIPT}</noscript>`);
@@ -508,7 +498,5 @@ test('with JavaScript off, only the noscript text shows', async () => {
     expect(visible).toContain(NOSCRIPT);
     expect(visible).not.toContain('Checking your link');
     await shot(page, 'reset_confirm_js_off');
-  } finally {
-    await browser.close();
-  }
+  });
 });

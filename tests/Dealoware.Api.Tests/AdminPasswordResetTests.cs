@@ -14,6 +14,7 @@ using Dealoware.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit.Sdk;
 
 namespace Dealoware.Api.Tests;
 
@@ -292,6 +293,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Contains("redirect: \"manual\"", scriptBody, StringComparison.Ordinal);
         Assert.Contains("function dwClassifyCheckResponse", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("__dwResetConfirmSkipBoot", scriptBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("(function (global)", scriptBody, StringComparison.Ordinal);
         Assert.Contains("/admin/link-expired?for=reset", scriptBody, StringComparison.Ordinal);
         Assert.Contains("meta[name=\"dw-csrf\"]", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("status===303", scriptBody.Replace(" ", ""), StringComparison.Ordinal);
@@ -488,6 +490,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
 
         Assert.DoesNotContain("__dwResetTimeoutMs", script, StringComparison.Ordinal);
         Assert.DoesNotContain("__dwResetConfirmSkipBoot", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("(function (global)", script, StringComparison.Ordinal);
+        Assert.Contains("(function () {", script, StringComparison.Ordinal);
         Assert.DoesNotContain("dwClassifyCheckResponse = dwClassifyCheckResponse", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
         Assert.Contains("function submitConfirm()", script, StringComparison.Ordinal);
@@ -1426,8 +1430,9 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var auditHasher = scope.ServiceProvider.GetRequiredService<IAuditActorHasher>();
         var actor = auditHasher.HashEmail(typed);
         var rows = db.AdminAuditLog.ToList();
+        AssertG1UnknownEmailAudit(rows, typed, actor);
         rows.Add(AdminAuditEntry.CreateAuthEvent("reset_request", typed, "testhmac-not-an-ip"));
-        Assert.ThrowsAny<Exception>(() => AssertG1UnknownEmailAudit(rows, typed, actor));
+        Assert.Throws<DoesNotContainException>(() => AssertG1UnknownEmailAudit(rows, typed, actor));
     }
 
     [Fact]
@@ -1446,8 +1451,12 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Contains("PROXY_PORT=18080", code, StringComparison.Ordinal);
         Assert.Contains("https://127.0.0.1:${API_PORT}", code, StringComparison.Ordinal);
         Assert.Contains("RESET_CONFIRM_PROXY=", code, StringComparison.Ordinal);
-        Assert.Contains("require-proxy.cjs", File.ReadAllText(
-            Path.Combine(RepoRoot(), "e2e", "reset-confirm", "playwright.config.ts")));
+        Assert.Contains("playwright.config.cjs", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("host-resolver-rules", code, StringComparison.Ordinal);
+        var spec = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "reset-confirm", "reset-confirm.spec.ts"));
+        Assert.DoesNotContain("host-resolver-rules", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("chromium.launch", spec, StringComparison.Ordinal);
+        Assert.Contains("test.use({ javaScriptEnabled: false })", spec, StringComparison.Ordinal);
         foreach (Match match in Regex.Matches(code, @"(?<=\d):(\d{2,5})(?!\d)(?!\.)"))
         {
             var port = int.Parse(match.Groups[1].Value);
@@ -1458,18 +1467,25 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     [Fact]
     public async Task TD_ADM_031_PlaywrightConfig_ThrowsUnlessLoopbackProxyPortAtLeast1024()
     {
-        var check = Path.Combine(RepoRoot(), "e2e", "reset-confirm", "require-proxy.check.cjs");
+        var dir = Path.Combine(RepoRoot(), "e2e", "reset-confirm");
+        var proxyCheck = await RunNodeFileAsync(Path.Combine(dir, "require-proxy.check.cjs"));
+        Assert.Contains("PASS require-proxy checks", proxyCheck, StringComparison.Ordinal);
+        var configCheck = await RunNodeFileAsync(Path.Combine(dir, "playwright.config.check.cjs"));
+        Assert.Contains("PASS playwright.config load checks", configCheck, StringComparison.Ordinal);
+    }
+
+    private static Task<string> RunNodeFileAsync(string script)
+    {
         var start = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "node",
-            ArgumentList = { check },
+            ArgumentList = { script },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            WorkingDirectory = Path.GetDirectoryName(check)
+            WorkingDirectory = Path.GetDirectoryName(script)
         };
-        var stdout = await RunNodeProcessAsync(start);
-        Assert.Contains("PASS require-proxy checks", stdout, StringComparison.Ordinal);
+        return RunNodeProcessAsync(start);
     }
 
     [Fact]

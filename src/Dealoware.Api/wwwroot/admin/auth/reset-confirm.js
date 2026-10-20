@@ -1,4 +1,4 @@
-(function (global) {
+(function () {
   function dwClassifyCheckResponse(status, redirected, bodyText) {
     if (redirected) return "retry";
     if (status !== 200) return "retry";
@@ -388,4 +388,4 @@
   }
 
   check();
-})(typeof globalThis !== "undefined" ? globalThis : this);
+})();

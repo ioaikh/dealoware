@@ -252,4 +252,4 @@ export RESET_CONFIRM_SUCCESS_TOKEN="$SUCCESS_TOKEN"
 export RESET_CONFIRM_TOTP_SECRET_HEX="$TOTP_SECRET_HEX"
 export RESET_CONFIRM_ARTIFACTS="$E2E/reset-confirm/test-results"
 mkdir -p "$RESET_CONFIRM_ARTIFACTS"
-npx playwright test -c reset-confirm/playwright.config.ts
+npx playwright test -c reset-confirm/playwright.config.cjs

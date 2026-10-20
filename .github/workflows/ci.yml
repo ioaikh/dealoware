@@ -43,7 +43,10 @@ jobs:
         if: always()
         with:
           name: test-results
-          path: '**/TestResults/*.trx'
+          path: |
+            **/TestResults/*.trx
+            **/*.dmp
+            **/Sequence_*.xml
           retention-days: 30
 
   postgres-sec:
@@ -96,5 +99,8 @@ jobs:
         if: always()
         with:
           name: postgres-sec-test-results
-          path: '**/TestResults/*.trx'
+          path: |
+            **/TestResults/*.trx
+            **/*.dmp
+            **/Sequence_*.xml
           retention-days: 30
