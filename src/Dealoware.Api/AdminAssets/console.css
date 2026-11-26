@@ -747,6 +747,10 @@ time.ts:focus::after {
   min-width: 0;
 }
 
+.audit-filters .checks input {
+  flex: none;
+}
+
 .audit-filters .checks label {
   min-width: 0;
   overflow-wrap: anywhere;
