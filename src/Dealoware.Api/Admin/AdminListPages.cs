@@ -303,8 +303,10 @@ public sealed record AdminListState
 /// toggle on (<c>includeDeleted=true</c>, carried from the list); otherwise,
 /// like an unknown id, it is S-D3 "We can't find that page." with a 404.
 /// </para>
-/// Lists are read-only. A detail page has an edit mode on its own address
-/// (Step 9, <see cref="AdminEditPage"/>); no delete control (Step 10).
+/// A detail page has an edit mode on its own address (Step 9,
+/// <see cref="AdminEditPage"/>). A detail page and each list row of a record
+/// that is not soft-deleted have a Delete that opens the delete dialog (Step
+/// 10, <see cref="AdminDeletePage"/>).
 /// </summary>
 public static class AdminListPages
 {
@@ -476,7 +478,8 @@ public static class AdminListPages
             Heading = list.Screen,
             Section = list.Section,
             BodyHtml = ListBody(list, state, result, chips),
-            Scripts = [ScriptPath],
+            // The delete script first: it reads what a delete just did before the list script tidies the address.
+            Scripts = [AdminSignedOutPage.DomScriptPath, AdminDeletePage.ScriptPath, ScriptPath],
             StatusCode = result is null ? StatusCodes.Status500InternalServerError : StatusCodes.Status200OK
         });
     }
@@ -672,6 +675,8 @@ public static class AdminListPages
         if (result is not null && total > 0)
             html.Append(Pager(list, state, total));
 
+        // After a delete the list loads itself anew and says what was deleted.
+        html.Append(AdminDeletePage.Dialog(list.Kind, canonical));
         return html.ToString();
     }
 
@@ -827,6 +832,8 @@ public static class AdminListPages
                     break;
                 case "updated":
                     html.Append(UpdatedTime(row));
+                    // The row's Delete, in its last cell: the columns stay the test design's.
+                    html.Append(AdminDeletePage.RowButton(list.Kind, row));
                     break;
                 case "owner":
                     html.Append(ParticipantText(row, "ownerName", "ownerParticipantId"));
@@ -1024,13 +1031,21 @@ public static class AdminListPages
 
         var record = detail.Dto;
         var edit = AdminEditPage.For(list.Kind, record, detail.EditToken, policy, principal, DateTimeOffset.UtcNow);
+        var deletable = AdminDeletePage.Deletable(record);
+        var scripts = new List<string>();
+        if (edit is not null || deletable)
+            scripts.Add(AdminSignedOutPage.DomScriptPath);
+        if (edit is not null)
+            scripts.Add(AdminEditPage.ScriptPath);
+        if (deletable)
+            scripts.Add(AdminDeletePage.ScriptPath);
         return AdminSignedInPage.Render(http, antiforgery, new AdminSignedInPageContent
         {
             Title = AdminConsoleCopy.Title(list.DetailScreen),
             Heading = list.DetailScreen,
             Section = list.Section,
-            BodyHtml = DetailBody(list, state, record, edit),
-            Scripts = edit is null ? [] : [AdminSignedOutPage.DomScriptPath, AdminEditPage.ScriptPath]
+            BodyHtml = DetailBody(list, state, record, edit, deletable),
+            Scripts = scripts
         });
     }
 
@@ -1039,13 +1054,16 @@ public static class AdminListPages
     /// the Edit button and the actions come first, the list sits in the edit
     /// form, and each editable row carries its hidden control beside its text.
     /// </summary>
-    private static string DetailBody(AdminListDefinition list, AdminListState state, Dictionary<string, object?> record, AdminEditPage.Plan? edit)
+    private static string DetailBody(
+        AdminListDefinition list, AdminListState state, Dictionary<string, object?> record, AdminEditPage.Plan? edit, bool deletable)
     {
         var toggle = state.IncludeDeleted ? "?includeDeleted=true" : string.Empty;
         var html = new StringBuilder(4096);
         html.Append($"<p class=\"back\"><a id=\"back-to-list\" href=\"{E(state.Url(list))}\">{E(AdminConsoleCopy.BackToList)}</a></p>");
         if (edit is not null)
-            html.Append(AdminEditPage.Start(list.Kind, record, edit));
+            html.Append(AdminEditPage.Start(list.Kind, record, edit, deletable ? AdminDeletePage.Button(list.Kind, record) : null));
+        else if (deletable)
+            html.Append(AdminDeletePage.ActionsBar(list.Kind, record));
         html.Append("<dl id=\"details\" class=\"details\">");
 
         void Item(string label, string valueHtml, string? editHtml = null)
@@ -1110,6 +1128,9 @@ public static class AdminListPages
         html.Append("</dl>");
         if (edit is not null)
             html.Append(AdminEditPage.End(edit));
+        // After a delete the page goes to the list, with its state.
+        if (deletable)
+            html.Append(AdminDeletePage.Dialog(list.Kind, state.Url(list)));
         return html.ToString();
     }
 

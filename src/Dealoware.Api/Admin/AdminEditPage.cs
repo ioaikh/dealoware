@@ -145,7 +145,8 @@ public static class AdminEditPage
     /// actions, and, when a field can change, the start of the edit form with
     /// its error summary. Everything the script shows starts hidden.
     /// </summary>
-    internal static string Start(AdminListKind kind, Dictionary<string, object?> record, Plan plan)
+    /// <param name="deleteButton">The record's Delete (T06b, <see cref="AdminDeletePage"/>), last in the actions bar; null for none.</param>
+    internal static string Start(AdminListKind kind, Dictionary<string, object?> record, Plan plan, string? deleteButton = null)
     {
         var id = IdOf(record);
         var html = new StringBuilder(2048);
@@ -169,7 +170,7 @@ public static class AdminEditPage
             html.Append($" data-note-cancelled=\"{E(AdminConsoleCopy.OfferCancelled(shortId))}\"");
         html.Append('>');
 
-        if (!plan.Any)
+        if (!plan.Any && deleteButton is null)
             return html.ToString();
 
         html.Append("<div id=\"record-actions\" class=\"record-actions\" hidden>");
@@ -196,6 +197,7 @@ public static class AdminEditPage
                 AdminConsoleCopy.CancelOffer, AdminConsoleCopy.KeepOffer, AdminConsoleCopy.Cancelling, "cancelled"));
         }
 
+        html.Append(deleteButton);
         html.Append("</div>");
 
         if (plan.Fields)
