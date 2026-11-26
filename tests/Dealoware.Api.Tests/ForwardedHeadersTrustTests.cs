@@ -247,9 +247,7 @@ public class ForwardedHeadersTrustTests
         afRequest.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
         using var afResponse = await client.SendAsync(afRequest);
         afResponse.EnsureSuccessStatusCode();
-        var token = afResponse.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
-            ? values.First()
-            : string.Empty;
+        var token = await AdminPageAntiForgery.ReadTokenAsync(afResponse);
         var cookie = ReadCookie(afResponse, AdminAntiForgery.CookieName) ?? string.Empty;
 
         var request = new HttpRequestMessage(HttpMethod.Post, AdminAuthEndpoints.SignInPath);

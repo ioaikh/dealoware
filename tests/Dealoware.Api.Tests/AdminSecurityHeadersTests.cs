@@ -40,7 +40,17 @@ public class AdminSecurityHeadersTests
     public async Task AdminPagePath_SignIn_HasHardeningHeaders()
     {
         using var response = await SendAdminAsync("/admin/sign-in", https: true);
-        AssertAdminHardeningHeaders(response, expectHsts: true);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AssertAdminHardeningHeadersOtherThanCsp(response, expectHsts: true);
+
+        // The sign-in page sends its own, tighter policy (a nonce per response);
+        // the site-wide middleware must leave it in place.
+        var html = await response.Content.ReadAsStringAsync();
+        var nonce = System.Text.RegularExpressions.Regex.Match(html, "nonce=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEqual(string.Empty, nonce);
+        var csp = GetHeader(response, "Content-Security-Policy");
+        Assert.Equal(AdminSignedOutPage.ContentSecurityPolicy(nonce), csp);
+        Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
     }
 
     [Fact]
@@ -189,6 +199,22 @@ public class AdminSecurityHeadersTests
 
     internal static void AssertAdminHardeningHeaders(HttpResponseMessage response, bool expectHsts)
     {
+        AssertAdminHardeningHeadersOtherThanCsp(response, expectHsts);
+
+        var csp = GetHeader(response, "Content-Security-Policy");
+        Assert.Equal(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
+        Assert.Contains("default-src 'self'", csp);
+        Assert.Contains("frame-ancestors 'none'", csp);
+        Assert.Contains("base-uri 'none'", csp);
+        Assert.Contains("form-action 'self'", csp);
+        Assert.Contains("object-src 'none'", csp);
+        Assert.Contains("script-src 'self' https://challenges.cloudflare.com", csp);
+        Assert.Contains("frame-src https://challenges.cloudflare.com", csp);
+    }
+
+    /// <summary>For a page that sends its own Content-Security-Policy: everything else must still be there.</summary>
+    internal static void AssertAdminHardeningHeadersOtherThanCsp(HttpResponseMessage response, bool expectHsts)
+    {
         if (expectHsts)
         {
             Assert.Equal(
@@ -200,16 +226,6 @@ public class AdminSecurityHeadersTests
         {
             Assert.False(response.Headers.Contains("Strict-Transport-Security"));
         }
-
-        var csp = GetHeader(response, "Content-Security-Policy");
-        Assert.Equal(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
-        Assert.Contains("default-src 'self'", csp);
-        Assert.Contains("frame-ancestors 'none'", csp);
-        Assert.Contains("base-uri 'none'", csp);
-        Assert.Contains("form-action 'self'", csp);
-        Assert.Contains("object-src 'none'", csp);
-        Assert.Contains("script-src 'self' https://challenges.cloudflare.com", csp);
-        Assert.Contains("frame-src https://challenges.cloudflare.com", csp);
 
         Assert.Equal(AdminSecurityHeadersMiddleware.Nosniff, GetHeader(response, "X-Content-Type-Options"));
         Assert.Equal(AdminSecurityHeadersMiddleware.ReferrerPolicy, GetHeader(response, "Referrer-Policy"));

@@ -2519,10 +2519,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         request.Headers.Host = AdminHost;
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var token = payload.GetProperty("csrfToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
-        return token!;
+        return await AdminPageAntiForgery.ReadTokenAsync(response);
     }
 
     private static HttpRequestMessage SignInJson(string path, object body, string csrf)

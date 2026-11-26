@@ -502,9 +502,7 @@ public class TdAdm040AuthLockoutSessionTests
         request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
         using var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        var token = response.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
-            ? values.First()
-            : string.Empty;
+        var token = await AdminPageAntiForgery.ReadTokenAsync(response);
         var cookie = ReadCookie(response, AdminAntiForgery.CookieName) ?? string.Empty;
         return (cookie, token);
     }

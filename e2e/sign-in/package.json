@@ -1,0 +1,16 @@
+{
+  "name": "dealoware-admin-e2e-sign-in",
+  "version": "1.0.0",
+  "description": "Browser tests for the Core admin sign-in pages (S-A1, S-A2, S-A3). Start them with ./run.sh.",
+  "private": true,
+  "scripts": {
+    "test": "./run.sh"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.48.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

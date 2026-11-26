@@ -147,9 +147,7 @@ public sealed class TdAdmSc6CounterIntegrityTests : IDisposable
             afRequest.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1");
             using var afResponse = await client.SendAsync(afRequest);
             afResponse.EnsureSuccessStatusCode();
-            var token = afResponse.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
-                ? values.First()
-                : string.Empty;
+            var token = await AdminPageAntiForgery.ReadTokenAsync(afResponse);
             var cookie = ReadCookie(afResponse, AdminAntiForgery.CookieName) ?? string.Empty;
             request.Headers.TryAddWithoutValidation(AdminAntiForgery.HeaderName, token);
             request.Headers.TryAddWithoutValidation("Cookie", $"{AdminAntiForgery.CookieName}={cookie}");
