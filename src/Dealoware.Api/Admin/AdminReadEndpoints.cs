@@ -19,6 +19,11 @@ namespace Dealoware.Api.Admin;
 /// for a record that is not there, 404. The JSON routes refuse a value they
 /// do not take with the generic 400; the pages drop it before asking.
 /// </para>
+/// <para>
+/// A detail's JSON reply carries the row's edit token as <c>ETag</c>
+/// (<see cref="AdminEditToken"/>): what a write to that row sends back as
+/// <c>If-Match</c> (<see cref="AdminEditEndpoints"/>).
+/// </para>
 /// </summary>
 public static class AdminReadEndpoints
 {
@@ -63,6 +68,22 @@ public static class AdminReadEndpoints
 
     /// <summary>One page of a list: the filtered total and this page's rows, already projected.</summary>
     internal sealed record ListResult(int Total, IReadOnlyList<Dictionary<string, object?>> Items);
+
+    /// <summary>
+    /// One record, projected, with its edit token; the token is null where the
+    /// policy does not let the reader see the row's version.
+    /// </summary>
+    internal sealed record Detail(Dictionary<string, object?> Dto, string? EditToken);
+
+    /// <summary>A detail as JSON, its edit token as <c>ETag</c>; 404 when there is none.</summary>
+    internal static IResult DetailResult(HttpContext context, Detail? detail)
+    {
+        if (detail is null)
+            return AdminDeny.NotFoundResult();
+        if (detail.EditToken is not null)
+            context.Response.Headers.ETag = AdminEditToken.ToHeader(detail.EditToken);
+        return Results.Json(detail.Dto);
+    }
 
     private static IResult Page(AdminListQuery query, ListResult result)
         => Results.Json(AdminReadProjection.ListPage(query.Offset, query.Limit, result.Total, result.Items));
@@ -164,9 +185,8 @@ public static class AdminReadEndpoints
         if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
             return error!;
 
-        var dto = await GetParticipantAsync(
-            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
-        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+        return DetailResult(context, await ReadParticipantAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken));
     }
 
     /// <summary>
@@ -180,12 +200,25 @@ public static class AdminReadEndpoints
         Guid id,
         bool includeDeleted,
         CancellationToken cancellationToken)
+        => (await ReadParticipantAsync(db, fieldPolicy, principal, id, includeDeleted, cancellationToken))?.Dto;
+
+    /// <summary><see cref="GetParticipantAsync"/>, with the row's edit token.</summary>
+    internal static async Task<Detail?> ReadParticipantAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
     {
         var participant = await db.Participants.AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == id && (includeDeleted || p.DeletedAt == null), cancellationToken);
-        return participant is null
-            ? null
-            : AdminReadProjection.Participant(participant, fieldPolicy, principal, detail: true);
+        if (participant is null)
+            return null;
+
+        return new Detail(
+            AdminReadProjection.Participant(participant, fieldPolicy, principal, detail: true),
+            AdminReadProjection.CanReadEditToken(fieldPolicy, principal) ? AdminEditToken.For(participant) : null);
     }
 
     private static async Task<IResult> ListArtifacts(
@@ -257,13 +290,22 @@ public static class AdminReadEndpoints
         if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
             return error!;
 
-        var dto = await GetArtifactAsync(
-            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
-        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+        return DetailResult(context, await ReadArtifactAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken));
     }
 
     /// <summary>One artifact; null when there is none, or it is soft-deleted and the toggle is off.</summary>
     internal static async Task<Dictionary<string, object?>?> GetArtifactAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+        => (await ReadArtifactAsync(db, fieldPolicy, principal, id, includeDeleted, cancellationToken))?.Dto;
+
+    /// <summary><see cref="GetArtifactAsync"/>, with the row's edit token.</summary>
+    internal static async Task<Detail?> ReadArtifactAsync(
         DealowareDbContext db,
         IFieldPolicy fieldPolicy,
         FieldPrincipal principal,
@@ -278,7 +320,9 @@ public static class AdminReadEndpoints
             return null;
 
         var related = await RelatedRowsAsync(db, [artifact.OwnerParticipantId], [], [], includeDeleted, cancellationToken);
-        return AdminReadProjection.Artifact(artifact, fieldPolicy, principal, detail: true, related);
+        return new Detail(
+            AdminReadProjection.Artifact(artifact, fieldPolicy, principal, detail: true, related),
+            AdminReadProjection.CanReadEditToken(fieldPolicy, principal) ? AdminEditToken.For(artifact) : null);
     }
 
     private static async Task<IResult> ListNegotiations(
@@ -388,13 +432,28 @@ public static class AdminReadEndpoints
         if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
             return error!;
 
-        var dto = await GetNegotiationAsync(
-            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
-        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+        return DetailResult(context, await ReadNegotiationAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken));
     }
 
     /// <summary>One negotiation; null when there is none, or it is soft-deleted and the toggle is off.</summary>
     internal static async Task<Dictionary<string, object?>?> GetNegotiationAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+        => (await ReadNegotiationAsync(db, fieldPolicy, principal, id, includeDeleted, cancellationToken))?.Dto;
+
+    /// <summary>
+    /// <see cref="GetNegotiationAsync"/>, with the row's edit token. The
+    /// detail says how many open offers the negotiation has, and the token
+    /// covers them (one read of their ids, versions and times; a party has at
+    /// most one open offer in a negotiation). Soft-deleted offers are left out
+    /// of both, as closing or expiring leaves them out.
+    /// </summary>
+    internal static async Task<Detail?> ReadNegotiationAsync(
         DealowareDbContext db,
         IFieldPolicy fieldPolicy,
         FieldPrincipal principal,
@@ -414,7 +473,17 @@ public static class AdminReadEndpoints
             [],
             includeDeleted,
             cancellationToken);
-        return AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related);
+        var openOffers = (await db.Offers.AsNoTracking()
+                .Where(o => o.NegotiationId == id && o.DeletedAt == null && o.Status == OfferStatus.Open)
+                .Select(o => new { o.Id, o.Status, o.Version, o.UpdatedAt })
+                .ToListAsync(cancellationToken))
+            .Select(o => new AdminEditToken.OpenOffer(o.Id, o.Status, o.Version, o.UpdatedAt))
+            .ToList();
+        return new Detail(
+            AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related, openOffers.Count),
+            AdminReadProjection.CanReadEditToken(fieldPolicy, principal)
+                ? AdminEditToken.For(negotiation, openOffers)
+                : null);
     }
 
     private static async Task<IResult> ListOffers(
@@ -527,13 +596,22 @@ public static class AdminReadEndpoints
         if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
             return error!;
 
-        var dto = await GetOfferAsync(
-            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
-        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+        return DetailResult(context, await ReadOfferAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken));
     }
 
     /// <summary>One offer; null when there is none, or it is soft-deleted and the toggle is off.</summary>
     internal static async Task<Dictionary<string, object?>?> GetOfferAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+        => (await ReadOfferAsync(db, fieldPolicy, principal, id, includeDeleted, cancellationToken))?.Dto;
+
+    /// <summary><see cref="GetOfferAsync"/>, with the row's edit token.</summary>
+    internal static async Task<Detail?> ReadOfferAsync(
         DealowareDbContext db,
         IFieldPolicy fieldPolicy,
         FieldPrincipal principal,
@@ -554,7 +632,9 @@ public static class AdminReadEndpoints
             negotiations.Values,
             includeDeleted,
             cancellationToken);
-        return AdminReadProjection.Offer(offer, fieldPolicy, principal, detail: true, related);
+        return new Detail(
+            AdminReadProjection.Offer(offer, fieldPolicy, principal, detail: true, related),
+            AdminReadProjection.CanReadEditToken(fieldPolicy, principal) ? AdminEditToken.For(offer) : null);
     }
 
     private static async Task<Dictionary<Guid, Negotiation>> NegotiationsByIdAsync(

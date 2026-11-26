@@ -94,4 +94,41 @@ public sealed class Artifact
 
         return artifact;
     }
+
+    /// <summary>
+    /// Admin edit path E5: hands the artifact to another participant, by Sub.
+    /// The caller checks that the participant exists and is not soft-deleted.
+    /// </summary>
+    public void ReassignOwner(string ownerParticipantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerParticipantId);
+        OwnerParticipantId = ownerParticipantId;
+    }
+
+    /// <summary>
+    /// Records an admin edit: the next <see cref="Version"/> and the time of the edit (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
+
+    /// <summary>
+    /// Admin soft delete (Spec §11.1): sets <see cref="DeletedAt"/>, the next
+    /// <see cref="Version"/> and the time of the change, and nothing else. Its
+    /// subject entities, values and properties are kept as they are. False,
+    /// with nothing changed, when the artifact is already soft-deleted.
+    /// </summary>
+    public bool SoftDelete(DateTimeOffset now)
+    {
+        if (DeletedAt is not null)
+            return false;
+
+        var at = now.ToUniversalTime();
+        DeletedAt = at;
+        Version++;
+        UpdatedAt = at;
+        return true;
+    }
 }

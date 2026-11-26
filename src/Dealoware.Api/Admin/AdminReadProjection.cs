@@ -56,6 +56,13 @@ public sealed record AdminRelatedRows(
 /// the "Show deleted" toggle on: a deleted record's name shows only where the
 /// deleted record itself would.
 /// </para>
+/// <para>
+/// T05 (the edit page needs them; detail only): a negotiation's
+/// <c>startsAt</c>, under the same field class as <c>endsAt</c> (the policy
+/// has one class for the negotiation's time window), and its
+/// <c>openOfferCount</c>, under the offer status class; the <c>id</c> of each
+/// of an artifact's subject entities, so a write can say which one it renames.
+/// </para>
 /// </summary>
 public static class AdminReadProjection
 {
@@ -139,7 +146,7 @@ public static class AdminReadProjection
             {
                 dto["entities"] = artifact.Entities.Select(e =>
                 {
-                    var entity = new Dictionary<string, object?> { ["name"] = e.Name };
+                    var entity = new Dictionary<string, object?> { ["id"] = e.Id, ["name"] = e.Name };
                     if (Can(policy, principal, FieldClass.ArtifactDescription, FieldAction.Read, ctx))
                         entity["description"] = e.Description;
                     return entity;
@@ -150,6 +157,7 @@ public static class AdminReadProjection
         {
             dto["entities"] = artifact.Entities.Select(e => new Dictionary<string, object?>
             {
+                ["id"] = e.Id,
                 ["description"] = e.Description
             }).ToList();
         }
@@ -163,12 +171,17 @@ public static class AdminReadProjection
         return dto;
     }
 
+    /// <param name="openOfferCount">
+    /// Detail only: how many of the negotiation's offers are open and not
+    /// soft-deleted.
+    /// </param>
     public static Dictionary<string, object?> Negotiation(
         Negotiation negotiation,
         IFieldPolicy policy,
         FieldPrincipal principal,
         bool detail,
-        AdminRelatedRows? related = null)
+        AdminRelatedRows? related = null,
+        int? openOfferCount = null)
     {
         related ??= AdminRelatedRows.None;
         var ctx = FieldResourceContext.ForNegotiation(
@@ -201,12 +214,19 @@ public static class AdminReadProjection
         if (Can(policy, principal, FieldClass.NegotiationStatus, action, ctx))
             dto["status"] = negotiation.Status.ToString();
         if (Can(policy, principal, FieldClass.NegotiationEndsAt, action, ctx))
+        {
             dto["endsAt"] = negotiation.EndsAt;
+            if (detail)
+                dto["startsAt"] = negotiation.StartsAt;
+        }
+
         AddTimes(dto, negotiation.CreatedAt, negotiation.UpdatedAt, policy, principal, action, ctx);
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = negotiation.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
             dto["version"] = negotiation.Version;
+        if (detail && openOfferCount.HasValue && Can(policy, principal, FieldClass.OfferStatus, FieldAction.Read, ctx))
+            dto["openOfferCount"] = openOfferCount.Value;
 
         return dto;
     }
@@ -271,6 +291,14 @@ public static class AdminReadProjection
 
     public static object ListPage(int offset, int limit, int total, IEnumerable<object> items)
         => new { offset, limit, total, items };
+
+    /// <summary>
+    /// Whether a detail read may carry the row's edit token
+    /// (<see cref="AdminEditToken"/>, sent as <c>ETag</c>): only where the
+    /// policy lets the reader see the row's version, which the token includes.
+    /// </summary>
+    public static bool CanReadEditToken(IFieldPolicy policy, FieldPrincipal principal)
+        => Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, FieldResourceContext.ForSelfProfile(string.Empty));
 
     private static void AddTimes(
         Dictionary<string, object?> dto,

@@ -39,4 +39,27 @@ public static class DatabaseErrors
 
         return false;
     }
+
+    /// <summary>
+    /// True only when PostgreSQL stopped a transaction because it collided
+    /// with another one: SQLSTATE 40P01 (deadlock detected) or 40001
+    /// (serialization failure). The transaction is rolled back; nothing of it
+    /// is stored, and the same request can be made again.
+    /// </summary>
+    public static bool IsTransactionCollision(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException
+                {
+                    SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure
+                })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
