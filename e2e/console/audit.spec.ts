@@ -304,14 +304,19 @@ test('filters ask the server: a range of days, several actions, an entity type; 
   expect(await column(page, 'Entity type')).toEqual(['—', 'Offer', 'Participant', 'Participant', '—', '—', '—']);
 
   // An action asks at once; a second one is added to it.
-  await page.getByLabel('login_failure', { exact: true }).check();
+  // A box that moves the page as it changes is clicked, not check()ed: check() reads the box
+  // again after the click, and by then the page it reads is the one being left or the new one.
+  // The new page's own box, written by the server from the address, is what is checked.
+  await page.getByLabel('login_failure', { exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=login_failure&${MARCH}`);
+  await expect(page.getByLabel('login_failure', { exact: true })).toBeChecked();
   await expect(page.getByLabel('login_failure', { exact: true })).toBeFocused();
   await expect(rows(page)).toHaveCount(2);
   // The actor of a failed sign-in is the address that was typed, shown as text.
   expect(await column(page, 'Actor')).toEqual([audit.typed, audit.typed]);
-  await page.getByLabel('entity_edit', { exact: true }).check();
+  await page.getByLabel('entity_edit', { exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=login_failure%2Centity_edit&${MARCH}`);
+  await expect(page.getByLabel('entity_edit', { exact: true })).toBeChecked();
   await expect(page.getByLabel('entity_edit', { exact: true })).toBeFocused();
   await expect(rows(page)).toHaveCount(4);
   await expect(page.locator('#console-status')).toHaveText('4 results');
@@ -399,8 +404,10 @@ test('paging: 50, 100 or 200 a page with the range, Previous, Next and Page N; a
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?${BULK_DAY}&offset=100&limit=100`);
   await expect(page.locator('#list-range')).toHaveText('Showing 101–130 of 130');
   await expect(page.getByRole('link', { name: 'Next', exact: true })).toHaveCount(0);
-  await page.getByLabel('sign_out', { exact: true }).check();
+  // Clicked, not check()ed: the box moves the page (see the filters test).
+  await page.getByLabel('sign_out', { exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=sign_out&${BULK_DAY}&limit=100`);
+  await expect(page.getByLabel('sign_out', { exact: true })).toBeChecked();
   await expect(page.locator('#list-range')).toHaveText('Showing 1–65 of 65');
 
   // A page past the last shows the last; a size over 200 shows 200, and never asks for more.
