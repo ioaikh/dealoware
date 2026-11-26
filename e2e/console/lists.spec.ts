@@ -272,7 +272,8 @@ test('Participants filter by status; the Artifacts owner picker asks for one pag
   const apiCalls: string[] = [];
   page.on('request', (r) => {
     const url = new URL(r.url());
-    if (url.pathname.startsWith('/admin/api/')) apiCalls.push(url.pathname + url.search);
+    // The shell's own session status read (session-timer.js) is not the list's.
+    if (url.pathname.startsWith('/admin/api/') && url.pathname !== '/admin/api/session') apiCalls.push(url.pathname + url.search);
   });
   await open(page, '/admin/artifacts');
   expect(apiCalls).toEqual([]);
@@ -466,6 +467,7 @@ test('Show deleted: off on every list, kept on reload; a deleted row shows Delet
 
   await row.locator('a.id').first().click();
   await expect(page.locator('h1')).toHaveText('Offer details');
+  await expectStyled(page);
   await expect(page.locator('.details .badge')).toHaveText(['Open', 'Deleted']);
   // Read-only: no edit or delete control.
   await expect(page.locator('main').getByRole('button')).toHaveCount(0);
@@ -549,6 +551,7 @@ test('detail pages: each record as text, free text kept as written, Back to list
   await open(page, `/admin/participants?q=${encodeURIComponent('Alex Rivera')}`);
   await rows(page).first().locator('a.id').click();
   await expect(page.locator('h1')).toHaveText('Participant details');
+  await expectStyled(page);
   await expect(page.locator('.details')).toContainText('alex.rivera@example.test');
   await expect(page.locator('.details')).toContainText('alex.rivera.contact@example.test');
   await expectNoSeriousAxeFindings(page, 'detail_participant');
@@ -582,6 +585,8 @@ test('detail pages: each record as text, free text kept as written, Back to list
 });
 
 test('a list at 320 px: nothing scrolls the page sideways, the table scrolls in its own region; axe; a screenshot', async ({ page }) => {
+  // Every control on the page is measured: more than the default 30 s in the slower engines.
+  test.setTimeout(90_000);
   await signIn(page);
   await page.setViewportSize({ width: 320, height: 900 });
   await open(page, '/admin/offers?status=Open,Accepted&amountMin=10');
