@@ -170,7 +170,8 @@ async function expectShell(page: Page, title: string, heading: string, current: 
     await expect(marked).toHaveAttribute('href', current);
   }
   await expect(page.getByRole('link', { name: SKIP, exact: true })).toHaveAttribute('href', '#main');
-  await expect(page.locator('[aria-live]')).toHaveCount(1);
+  // One live region of the shell's own; a page's forms keep theirs inside their sections (S-A12).
+  await expect(page.locator('main > [aria-live]')).toHaveCount(1);
   await expect(page.locator('#console-status')).toHaveAttribute('aria-live', 'polite');
   await expectStyled(page);
 }
@@ -278,7 +279,10 @@ test('every nav entry opens its page in one step, with its title, one h1 and ari
     await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true }).click();
     await expect(page).toHaveURL(ORIGIN + entry.path);
     await expectShell(page, entry.title, entry.heading, entry.path);
-    if (entry.path !== HOME) await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
+    // S-A12 is built: e2e/console/security-settings.spec.ts.
+    if (entry.path !== HOME && entry.path !== '/admin/settings/security') {
+      await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
+    }
     await expectNoSeriousAxeFindings(page, `page_${entry.label.toLowerCase().replace(/ /g, '-')}`);
   }
 
