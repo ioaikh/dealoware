@@ -1,0 +1,16 @@
+{
+  "name": "dealoware-admin-e2e-reset",
+  "version": "1.0.0",
+  "description": "Browser tests for the Core admin password-reset pages (S-A8, S-A9, with S-A5, S-A10 and S-A11). Start them with ./run.sh.",
+  "private": true,
+  "scripts": {
+    "test": "./run.sh"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.48.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

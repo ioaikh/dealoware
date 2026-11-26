@@ -70,6 +70,9 @@ e2e/sign-in/test-results/
 # Authenticator set-up pages Playwright, the same way (see e2e/enrol/run.sh)
 !e2e/enrol/package-lock.json
 e2e/enrol/test-results/
+# Password-reset pages Playwright, the same way (see e2e/reset/run.sh)
+!e2e/reset/package-lock.json
+e2e/reset/test-results/
 
 # Confirm-page Playwright (local run; certs are mktemp, never committed)
 e2e/reset-confirm/test-results/
