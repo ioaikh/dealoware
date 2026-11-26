@@ -12,6 +12,9 @@ namespace Dealoware.Api.Admin;
 /// Password-reset API under /admin/api/auth/reset*. Confirm GET is token-free
 /// (b6194918 item 6). The token travels in the mail fragment and the POST body.
 /// CSRF uses #33's keyed token (X-CSRF-TOKEN), never a cookie echo.
+/// All four reset pages are built on the shared signed-out shell
+/// (<see cref="AdminSignedOutPage"/>): S-A10 and S-A5 here, S-A8 and S-A9 in
+/// <see cref="AdminPasswordResetPages"/>.
 /// </summary>
 public static class AdminPasswordResetEndpoints
 {
@@ -25,6 +28,9 @@ public static class AdminPasswordResetEndpoints
     public const string LinkExpiredSetupLocation = LinkExpiredPath + "?for=setup";
     public const string ConfirmScriptPath = AdminPasswordResetCopy.ConfirmScriptPath;
     public const int TokenEntropyBytes = 32;
+
+    /// <summary>Audit action for a reset request refused before the email was looked at.</summary>
+    public const string RequestFailedEvent = "reset_request_failed";
 
     public static void MapAdminPasswordReset(this WebApplication app)
     {
@@ -53,6 +59,7 @@ public static class AdminPasswordResetEndpoints
             .WithTags("Admin")
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status429TooManyRequests);
 
         app.MapPost(RequestPagePath, RequestReset)
@@ -60,6 +67,7 @@ public static class AdminPasswordResetEndpoints
             .WithTags("Admin")
             .AllowAnonymous()
             .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status429TooManyRequests);
 
         app.MapPost(ConfirmApiPath, CompleteReset)
@@ -88,81 +96,85 @@ public static class AdminPasswordResetEndpoints
             .Produces(StatusCodes.Status429TooManyRequests);
     }
 
+    /// <summary>The policy of a signed-out page without the security check: the shared shell's.</summary>
     public static string ConfirmPageContentSecurityPolicy(string nonce)
-        => "default-src 'none'; "
-           + $"script-src 'nonce-{nonce}'; "
-           + $"style-src 'nonce-{nonce}'; "
-           + "connect-src 'self'; "
-           + "frame-ancestors 'none'; "
-           + "base-uri 'none'; "
-           + "form-action 'self'; "
-           + "object-src 'none'";
+        => AdminSignedOutPage.ContentSecurityPolicy(nonce);
 
+    /// <summary>
+    /// S-A10. It takes no token and changes nothing: the link token stays in
+    /// the URL fragment and the page script posts it in the body. Everything
+    /// but the heading is hidden until that script has asked the server
+    /// whether the link is usable. The ids, the field names and the order of
+    /// status, message and "Try again" are what reset-confirm.js works with.
+    /// No security check on this page: the link and the second factor are
+    /// what it asks for.
+    /// </summary>
     private static IResult ConfirmPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
     {
-        ApplyNoStoreNoReferrer(http);
-        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
-        var csrf = antiforgery.Issue(http);
-        var html =
-            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            $"<meta name=\"dw-csrf\" content=\"{csrf}\">" +
-            $"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>" +
-            $"<style nonce=\"{nonce}\">#reset-alert:focus,#reset-retry:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
-            "</head>" +
-            "<body><main id=\"reset-main\" aria-busy=\"true\">" +
-            $"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.ConfirmHeading}</h1>" +
-            $"<noscript>{AdminPasswordResetCopy.ConfirmNoscript}</noscript>" +
-            $"<p id=\"reset-status\" role=\"status\" hidden>{AdminPasswordResetCopy.CheckingLink}</p>" +
-            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>" +
-            $"<button type=\"button\" id=\"reset-retry\" hidden>{AdminPasswordResetCopy.TryAgain}</button>" +
+        static string E(string value) => AdminSignedOutPage.Encode(value);
+
+        var body =
+            "<div id=\"reset-main\" aria-busy=\"true\">" +
+            $"<p id=\"reset-status\" role=\"status\" hidden>{E(AdminPasswordResetCopy.CheckingLink)}</p>" +
+            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" class=\"alert\" data-retry=\"{E(AdminPasswordResetCopy.CheckRetry)}\"></p>" +
+            $"<button type=\"button\" id=\"reset-retry\" class=\"secondary\" hidden>{E(AdminPasswordResetCopy.TryAgain)}</button>" +
             $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\" hidden>" +
+            $"<p class=\"lede\">{E(AdminPasswordResetCopy.ConfirmLede)}</p>" +
             "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
-            "<label>New password <input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></label>" +
-            "<label>Authenticator code <input name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></label>" +
-            "<label>Recovery code <input name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></label>" +
+            "<div class=\"field\"><label for=\"newPassword\">New password</label>" +
+            "<input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></div>" +
+            "<div class=\"field\"><label for=\"totp\">Authenticator code</label>" +
+            "<input type=\"text\" name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></div>" +
+            "<div class=\"field\"><label for=\"recoveryCode\">Recovery code</label>" +
+            "<input type=\"text\" name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></div>" +
             "<button type=\"submit\">Change password</button></form>" +
-            $"<script src=\"{ConfirmScriptPath}\" nonce=\"{nonce}\"></script>" +
-            "</main></body></html>";
-        return Results.Content(html, "text/html; charset=utf-8");
+            "</div>";
+
+        return AdminSignedOutPage.Render(http, antiforgery, new AdminSignedOutPageContent
+        {
+            Title = AdminPasswordResetCopy.ConfirmPageTitle,
+            Heading = AdminPasswordResetCopy.ConfirmHeading,
+            Noscript = AdminPasswordResetCopy.ConfirmNoscript,
+            BodyHtml = body,
+            Scripts = [ConfirmScriptPath],
+            IssueAntiForgery = true
+        });
     }
 
-    private static IResult ResetRequestPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
-    {
-        ApplyNoStoreNoReferrer(http);
-        return antiforgery.IssuePage(http, "reset");
-    }
+    private static IResult ResetRequestPageGet(
+        HttpContext http,
+        AdminAntiForgeryService antiforgery,
+        IOptions<TurnstileOptions> turnstile)
+        => AdminPasswordResetPages.Request(http, antiforgery, turnstile.Value);
 
     private static IResult ResetSentPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
-    {
-        ApplyNoStoreNoReferrer(http);
-        return antiforgery.IssuePage(http, "reset-sent");
-    }
+        => AdminPasswordResetPages.Sent(http, antiforgery);
 
-    private static IResult LinkExpiredGet(HttpContext http)
+    /// <summary>
+    /// S-A5: one page for every kind of dead link. Only <c>?for=setup</c>,
+    /// exactly, picks the setup wording; anything else is the reset wording
+    /// with its way to ask for a new link. No form and no cookie.
+    /// </summary>
+    private static IResult LinkExpiredGet(HttpContext http, AdminAntiForgeryService antiforgery)
     {
-        ApplyNoStoreNoReferrer(http);
-        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-        http.Response.Headers.ContentSecurityPolicy = ConfirmPageContentSecurityPolicy(nonce);
+        static string E(string value) => AdminSignedOutPage.Encode(value);
+
         var setup = IsExactSetupForQuery(http);
         var body = setup
             ? AdminPasswordResetCopy.LinkExpiredSetupBody
             : AdminPasswordResetCopy.LinkExpiredResetBody;
         var action = setup
             ? string.Empty
-            : $"<p><a href=\"{RequestPagePath}\" id=\"request-new-link\">{AdminPasswordResetCopy.LinkExpiredResetAction}</a></p>";
-        var html =
-            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-            $"<title>{AdminPasswordResetCopy.LinkExpiredPageTitle}</title>" +
-            $"<style nonce=\"{nonce}\">#link-expired-heading:focus{{outline:2px solid currentColor;outline-offset:2px}}</style>" +
-            "</head>" +
-            "<body>" +
-            $"<h1 id=\"link-expired-heading\" tabindex=\"-1\" autofocus>{AdminPasswordResetCopy.LinkExpiredHeading}</h1>" +
-            $"<p id=\"link-expired-body\">{body}</p>" +
-            action +
-            $"<script nonce=\"{nonce}\">document.getElementById(\"link-expired-heading\").focus();</script>" +
-            "</body></html>";
-        return Results.Content(html, "text/html; charset=utf-8");
+            : $"<div class=\"links\"><a href=\"{RequestPagePath}\" id=\"request-new-link\">{E(AdminPasswordResetCopy.LinkExpiredResetAction)}</a></div>";
+
+        return AdminSignedOutPage.Render(http, antiforgery, new AdminSignedOutPageContent
+        {
+            Title = AdminPasswordResetCopy.LinkExpiredPageTitle,
+            Heading = AdminPasswordResetCopy.LinkExpiredHeading,
+            BodyHtml = $"<p id=\"link-expired-body\">{E(body)}</p>" + action,
+            // The heading takes the keyboard focus, as it did before this page moved onto the shell.
+            Scripts = [AdminPasswordResetPages.HeadingScriptPath]
+        });
     }
 
     private static bool IsExactSetupForQuery(HttpContext http)
@@ -180,6 +192,7 @@ public static class AdminPasswordResetEndpoints
         IAdminPasswordResetTokenRepository tokens,
         AdminMailSendQueue mail,
         IAdminResetIpThrottle throttle,
+        ITurnstileVerifier turnstile,
         IAdminAuditRepository audit,
         IIpHasher ipHasher,
         IAuditActorHasher auditActorHasher,
@@ -193,6 +206,36 @@ public static class AdminPasswordResetEndpoints
         var ipHmac = HashClientIp(ipHasher, http);
         var ct = http.RequestAborted;
 
+        // A locked IP is refused first, with the same reply as before. This read counts nothing.
+        if (await throttle.IsLockedAsync(ipHmac, now, ct))
+        {
+            return RequestThrottledResult();
+        }
+
+        // Turnstile (Spec §8.5) before the email is looked at, with the
+        // sign-in route's own answer. The reply is the same for every email,
+        // nothing is stored for it and no mail is queued. A reject counts
+        // toward no counter (TD-ADM-040).
+        if (!await turnstile.VerifyAsync(
+                body?.TurnstileToken ?? string.Empty,
+                http.Connection.RemoteIpAddress?.ToString(),
+                ct))
+        {
+            await audit.AddAsync(
+                AdminAuditEntry.CreateAuthEvent(
+                    RequestFailedEvent,
+                    "anonymous",
+                    ipHmac,
+                    AdminAuthReason.CaptchaFailed,
+                    now),
+                ct);
+            await audit.SaveChangesAsync(ct);
+            return Results.Json(
+                new { error = AdminAuthCopy.VerificationFailed },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        // Every request past Turnstile takes one slot of the IP budget, as every request did before.
         if (!await throttle.TryReserveAsync(ipHmac, now, ct))
         {
             return RequestThrottledResult();
@@ -516,6 +559,9 @@ public static class AdminPasswordResetEndpoints
     {
         [JsonPropertyName("email")]
         public string? Email { get; set; }
+
+        [JsonPropertyName("turnstileToken")]
+        public string? TurnstileToken { get; set; }
     }
 
     public sealed class ResetCompleteBody

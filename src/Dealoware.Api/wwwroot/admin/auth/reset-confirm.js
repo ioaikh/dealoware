@@ -19,7 +19,8 @@
   var CHECK = "/admin/api/auth/reset/confirm/check";
   var CONFIRM = "/admin/api/auth/reset/confirm";
   var EXPIRED = "/admin/link-expired?for=reset";
-  var SIGN_IN = "/admin/sign-in";
+  // The sign-in page, with the fixed flag that makes it say the password was changed.
+  var SIGN_IN = "/admin/sign-in#changed";
   var TIMEOUT_MS = 15000;
   var SIGN_IN_GENERIC =
     "We couldn't sign you in. Check your details and try again later. You can also reset your password.";
@@ -112,6 +113,7 @@
     if (!field) return;
     var error = document.createElement("p");
     error.id = id;
+    error.className = "field-error";
     error.textContent = message || "";
     field.setAttribute("aria-invalid", "true");
     field.setAttribute("aria-describedby", id);

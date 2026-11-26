@@ -118,9 +118,6 @@ public sealed class AdminAntiForgeryService
         return ComputeRequestToken(cookieToken);
     }
 
-    public IResult IssuePage(HttpContext context, string screen)
-        => Results.Json(new { screen, csrfToken = Issue(context) });
-
     public bool TryValidate(HttpContext context)
     {
         if (!context.Request.Cookies.TryGetValue(CookieName, out var cookie)

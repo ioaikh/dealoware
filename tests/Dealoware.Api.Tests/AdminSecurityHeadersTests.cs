@@ -79,7 +79,7 @@ public class AdminSecurityHeadersTests
         Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
         Assert.Contains("script-src 'nonce-", csp, StringComparison.Ordinal);
         Assert.Contains("style-src 'nonce-", csp, StringComparison.Ordinal);
-        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
+        Assert.Contains($"<link rel=\"stylesheet\" href=\"{AdminSignedOutPage.StylesheetPath}\" nonce=\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
         Assert.Contains("object-src 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("/admin/auth/reset-confirm.js", html, StringComparison.Ordinal);
@@ -96,7 +96,7 @@ public class AdminSecurityHeadersTests
         var csp = GetHeader(response, "Content-Security-Policy");
         Assert.NotEqual(AdminSecurityHeadersMiddleware.ContentSecurityPolicy, csp);
         Assert.Contains("script-src 'nonce-", csp, StringComparison.Ordinal);
-        Assert.Contains("<h1 id=\"link-expired-heading\"", html, StringComparison.Ordinal);
+        Assert.Contains($"<h1 id=\"page-heading\">{AdminPasswordResetCopy.LinkExpiredHeading}</h1>", html, StringComparison.Ordinal);
         Assert.Contains(AdminPasswordResetCopy.LinkExpiredResetBody, html, StringComparison.Ordinal);
         Assert.DoesNotContain("<form", html, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(AdminSecurityHeadersMiddleware.Nosniff, GetHeader(response, "X-Content-Type-Options"));

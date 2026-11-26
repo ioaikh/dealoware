@@ -19,7 +19,31 @@ public static class AdminPasswordResetCopy
     public const string CompleteSucceeded =
         "Your password has been changed. Sign in with your new password and authenticator code.";
 
+    // ---- S-A8: ask for a reset link ----
+
+    public const string RequestPageTitle = "Reset password · Dealoware admin";
+
+    public const string RequestHeading = "Reset password";
+
+    public const string RequestLede = "Request an email link to set a new password.";
+
+    public const string RequestSubmit = "Send reset link";
+
+    // ---- S-A9: the link is on its way, if there is an account ----
+
+    public const string SentPageTitle = "Check your email · Dealoware admin";
+
+    public const string SentHeading = "Check your email";
+
+    /// <summary>States the reset link lifetime (Spec §8.4: one hour).</summary>
+    public const string SentExpiry = "The link expires in 1 hour.";
+
+    // ---- S-A10: set the new password ----
+
     public const string ConfirmPageTitle = "Set a new password · Dealoware admin";
+
+    public const string ConfirmLede =
+        "Choose a new password and confirm with an authenticator or recovery code.";
 
     public const string ConfirmHeading = "Set a new password";
 

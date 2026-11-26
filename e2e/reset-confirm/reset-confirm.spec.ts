@@ -484,15 +484,15 @@ test.describe('JavaScript off', () => {
   test('with JavaScript off, only the noscript text shows', async ({ page }) => {
     await page.goto(`/admin/reset/confirm#token=${encodeURIComponent(LIVE_TOKEN)}`);
     const html = await page.content();
-    expect(html).toContain(`<noscript>${NOSCRIPT}</noscript>`);
+    expect(html).toContain(`<noscript><p>${NOSCRIPT}</p></noscript>`);
     expect(html).toContain('id="reset-status" role="status" hidden');
     expect(html).not.toContain('data-timeout-ms');
     await expect(page.locator('#reset-status')).toBeHidden();
     await expect(page.locator('#reset-form')).toBeHidden();
     await expect(page.locator('#reset-alert')).toBeHidden();
     await expect(page.locator('#reset-retry')).toBeHidden();
-    await expect(page.locator('#reset-heading')).toBeVisible();
-    await expect(page.locator('#reset-heading')).toHaveText('Set a new password');
+    await expect(page.locator('#page-heading')).toBeVisible();
+    await expect(page.locator('#page-heading')).toHaveText('Set a new password');
     const visible = (await page.locator('body').innerText()).trim();
     expect(visible).toContain('Set a new password');
     expect(visible).toContain(NOSCRIPT);
