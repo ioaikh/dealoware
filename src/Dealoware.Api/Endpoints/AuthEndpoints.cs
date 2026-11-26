@@ -290,7 +290,7 @@ public static class AuthEndpoints
         if (credential is null || !credential.VerifyKey(apiKey)) return null;
 
         var participant = await participantRepository.GetByIdAsync(credential.ParticipantId, cancellationToken);
-        if (participant is null || !participant.IsActive) return null;
+        if (participant is null || !participant.IsActive || participant.DeletedAt is not null) return null;
 
         return participant;
     }

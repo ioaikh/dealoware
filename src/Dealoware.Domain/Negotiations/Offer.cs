@@ -199,6 +199,24 @@ public sealed class Offer
     }
 
     /// <summary>
+    /// Admin soft delete (Spec §11.1): sets <see cref="DeletedAt"/>, the next
+    /// <see cref="Version"/> and the time of the change, and nothing else.
+    /// Status, amount, currency and terms stay exactly as they were. False,
+    /// with nothing changed, when the offer is already soft-deleted.
+    /// </summary>
+    public bool SoftDelete(DateTimeOffset now)
+    {
+        if (DeletedAt is not null)
+            return false;
+
+        var at = now.ToUniversalTime();
+        DeletedAt = at;
+        Version++;
+        UpdatedAt = at;
+        return true;
+    }
+
+    /// <summary>
     /// Withdraws this open offer. Maker-only (FromParticipantId). This is the only
     /// way to set <see cref="OfferStatus.Withdrawn"/>; admin edits cannot set it.
     /// </summary>

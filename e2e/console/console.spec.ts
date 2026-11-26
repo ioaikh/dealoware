@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
 import { expectNoSeriousAxeFindings } from './axe';
+import { collectPageErrors } from './page-errors';
 import { authenticatorCode, seedOwner, type Owner } from '../sign-in/owner';
 import { answerCloudflare, type WidgetSetup } from '../signed-out/cloudflare';
 
@@ -61,7 +62,7 @@ const ARTIFACTS = process.env.CONSOLE_E2E_ARTIFACTS;
 
 let owner: Owner;
 let cspMessages: string[] = [];
-let pageErrors: string[] = [];
+let pageErrors: () => string[] = () => [];
 
 function engine(): string {
   return test.info().project.name;
@@ -197,7 +198,6 @@ const ringOf = (locator: Locator) => locator.evaluate((el) => {
 test.beforeEach(async ({ page }) => {
   owner = seedOwner({ enrolled: true });
   cspMessages = [];
-  pageErrors = [];
   page.on('console', (message) => {
     const text = message.text();
     if (!/content[- ]security[- ]policy/i.test(text)) return;
@@ -208,14 +208,14 @@ test.beforeEach(async ({ page }) => {
     if (path === SIGN_OUT || path.startsWith('/admin/api/') || path.startsWith('/admin/assets/')) return;
     cspMessages.push(text);
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  pageErrors = collectPageErrors(page);
   await standInForCloudflare(page);
 });
 
 test.afterEach(() => {
   // Nothing the pages load may be refused by their own policy, and no script may throw.
   expect(cspMessages).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(pageErrors()).toEqual([]);
 });
 
 test('signing in with no page asked for lands on Stats: five totals, the nav, the skip link, one live region', async ({ page }) => {

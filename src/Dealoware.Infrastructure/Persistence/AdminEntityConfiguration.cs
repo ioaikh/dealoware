@@ -382,3 +382,49 @@ public class AdminSessionRecoveryNoticeEntityConfiguration : IEntityTypeConfigur
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+/// <summary>
+/// T06a, A7 Step 10: the confirm tokens of admin deletes. The token is stored
+/// as its SHA-256 only (unique). Each row belongs to one signed-in session and
+/// is deleted with it (database cascade).
+/// </summary>
+public class AdminDeleteConfirmTokenEntityConfiguration : IEntityTypeConfiguration<AdminDeleteConfirmToken>
+{
+    public void Configure(EntityTypeBuilder<AdminDeleteConfirmToken> builder)
+    {
+        builder.ToTable("AdminDeleteConfirmTokens");
+
+        builder.HasKey(t => t.Id);
+
+        builder.Property(t => t.Id)
+            .ValueGeneratedNever();
+
+        builder.Property(t => t.TokenHash)
+            .IsRequired()
+            .HasMaxLength(64);
+
+        builder.Property(t => t.EntityType)
+            .IsRequired()
+            .HasMaxLength(32);
+
+        builder.Property(t => t.CascadeHash)
+            .IsRequired()
+            .HasMaxLength(64);
+
+        builder.Property(t => t.CreatedAt)
+            .IsRequired();
+
+        builder.Property(t => t.ExpiresAt)
+            .IsRequired();
+
+        builder.HasIndex(t => t.TokenHash)
+            .IsUnique();
+
+        builder.HasIndex(t => t.SessionId);
+
+        builder.HasOne<AdminSession>()
+            .WithMany()
+            .HasForeignKey(t => t.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
