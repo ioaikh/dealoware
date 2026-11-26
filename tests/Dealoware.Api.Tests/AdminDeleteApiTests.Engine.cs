@@ -176,6 +176,30 @@ public partial class AdminDeleteApiTests
         Assert.Equal(1u, deleted.Version);
     }
 
+    // A party closes a live negotiation that holds a deleted open offer: the close goes through
+    // as always, and the deleted offer is not written (status, version and time unchanged).
+    [Fact]
+    public async Task Engine_CloseLiveNegotiationWithADeletedOpenOffer_Closes_TheDeletedOfferIsNotWritten()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        await DeleteThroughIntentAsync("offers", deal.OfferId, session);
+        var asDeleted = await OfferAsync(deal.OfferId);
+        Assert.Equal(OfferStatus.Open, asDeleted.Status);
+
+        using var close = await deal.Maker.PostAsync($"/negotiations/{deal.NegotiationId}/close", null);
+
+        Assert.Equal(HttpStatusCode.OK, close.StatusCode);
+        var negotiation = await NegotiationAsync(deal.NegotiationId);
+        Assert.Equal(NegotiationStatus.Closed, negotiation.Status);
+        Assert.Null(negotiation.DeletedAt);
+        var after = await OfferAsync(deal.OfferId);
+        Assert.Equal(asDeleted.Status, after.Status);
+        Assert.Equal(asDeleted.Version, after.Version);
+        Assert.Equal(asDeleted.UpdatedAt, after.UpdatedAt);
+        Assert.Equal(asDeleted.DeletedAt, after.DeletedAt);
+    }
+
     // ---- A deleted artifact ----------------------------------------------------------
 
     // No new negotiation on it (the unknown-artifact answer); its owner cannot read it; it is
