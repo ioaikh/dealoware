@@ -2,8 +2,9 @@
 
 /*
  * Stylesheet of the signed-in console shell (AdminSignedInPage): the skip
- * link, the header and nav, the main column, and the Stats totals. Linked
- * with the page nonce, so the policy stays style-src 'nonce-...'.
+ * link, the header and nav, the main column, the Stats totals, and the
+ * lists and detail pages (AdminListPages). Linked with the page nonce, so
+ * the policy stays style-src 'nonce-...'.
  * The colours are the signed-out pages' own and meet WCAG 2.2 AA: text at
  * least 4.5:1, borders and the focus ring at least 3:1. Every target is at
  * least 24 by 24 CSS px (2.5.8).
@@ -51,7 +52,9 @@ a {
 
 a:focus,
 button:focus,
-[tabindex="-1"]:focus {
+input:focus,
+select:focus,
+[tabindex]:focus {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -140,7 +143,7 @@ button:disabled {
 }
 
 .console-main {
-  max-width: 60rem;
+  max-width: 80rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 3rem;
   overflow-wrap: break-word;
@@ -207,6 +210,460 @@ p, .lede {
   font-size: 0.95rem;
 }
 
+.stat dt a {
+  color: inherit;
+}
+
+.stat dd.stat-error {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* A link that looks like a button: Refresh, Retry, Clear, Clear filters. */
+.button-link {
+  display: inline-block;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button-link.secondary {
+  background: var(--card);
+  color: var(--accent);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- S-B2 to S-B5: the lists ---- */
+
+.list-form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0 0 1rem;
+}
+
+label,
+legend {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+input[type="search"],
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select {
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #767676;
+  border-radius: 0.3rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  max-width: 100%;
+}
+
+input[type="checkbox"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.search label {
+  display: block;
+  margin: 0 0 0.25rem;
+}
+
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-row input {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  margin: 0;
+}
+
+fieldset.field {
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.6rem 0.6rem;
+}
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
+.checks li,
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+}
+
+.checks label,
+.check label {
+  font-weight: 400;
+}
+
+.list-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0 0;
+}
+
+.field.page-size {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* A picker: its options drop below the box. */
+.picker {
+  position: relative;
+}
+
+.options {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid #767676;
+  border-radius: 0.3rem;
+}
+
+.options li {
+  padding: 0.45rem 0.6rem;
+  min-height: 2rem;
+  cursor: pointer;
+}
+
+.options li.active,
+.options li:hover {
+  background: var(--banner);
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.options li[aria-disabled="true"] {
+  cursor: default;
+  color: var(--muted);
+}
+
+/* Active filters as removable chips. */
+.chips-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 1rem;
+  background: var(--banner);
+  padding: 0.15rem 0.3rem 0.15rem 0.75rem;
+  max-width: 100%;
+}
+
+.chip span {
+  overflow-wrap: anywhere;
+}
+
+.chip a {
+  display: inline-block;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* The table scrolls sideways inside its region, never the page (relative: so do the visually hidden words in it). */
+.table-wrap {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+.table-wrap[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+table.list {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.list caption {
+  text-align: left;
+  font-weight: 700;
+  padding: 0.6rem 0.75rem;
+}
+
+table.list th,
+table.list td {
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.list th {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.sort-form {
+  margin: 0;
+}
+
+button.sort-button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 0.25rem 0;
+  min-height: 2rem;
+  min-width: 0;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 0.1em;
+}
+
+th[aria-sort] button.sort-button {
+  color: var(--ink);
+  text-decoration-thickness: 0.2em;
+}
+
+.sort-mark {
+  margin-left: 0.3rem;
+  font-size: 0.8em;
+}
+
+a.id,
+span.id {
+  font-family: Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+td.state {
+  padding: 1.5rem 0.75rem;
+}
+
+td.state p {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Statuses are words, never colour alone: dark text on light grounds. */
+.badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid var(--ink);
+  border-radius: 0.3rem;
+  padding: 0 0.4rem;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-deleted {
+  border-style: dashed;
+  background: #f3e6e4;
+}
+
+/* A time in ET; its UTC value as a tooltip on keyboard focus (the title shows on hover). */
+time.ts {
+  position: relative;
+  white-space: nowrap;
+}
+
+time.ts:focus::after {
+  content: attr(data-utc);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 6;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.3rem;
+  background: var(--ink);
+  color: var(--card);
+  font-size: 0.85rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.pager .range {
+  margin: 0;
+}
+
+.pages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pages a,
+.pages span {
+  display: inline-block;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.6rem;
+  text-align: center;
+  border-radius: 0.3rem;
+}
+
+.pages a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+}
+
+.pages .page-off {
+  color: var(--muted);
+}
+
+/* ---- S-B6: a record ---- */
+
+.back {
+  margin: 0 0 1rem;
+}
+
+.details {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  margin: 0;
+  padding: 0.25rem 1rem;
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr;
+  gap: 0.25rem 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.detail:first-child {
+  border-top: 0;
+}
+
+.detail dt {
+  font-weight: 600;
+}
+
+.detail dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  color: var(--muted);
+}
+
+.entities {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+}
+
+.entity-name {
+  display: block;
+  font-weight: 600;
+}
+
+/* Free text as it was written: line breaks kept, never markup. */
+.free-text {
+  display: block;
+  white-space: pre-wrap;
+}
+
 /* Narrow screens and 200% zoom. */
 @media (max-width: 30rem) {
   .console-header {
@@ -215,6 +672,14 @@ p, .lede {
 
   .console-main {
     padding: 1rem 0.75rem 2rem;
+  }
+
+  .list-form {
+    padding: 0.75rem;
+  }
+
+  .detail {
+    grid-template-columns: 1fr;
   }
 }
 

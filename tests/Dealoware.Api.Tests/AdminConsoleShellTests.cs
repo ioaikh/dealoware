@@ -14,7 +14,8 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// T04 piece 1, the signed-in console shell (<see cref="AdminSignedInPage"/>)
-/// and the pages on it: S-B1 Stats, the routed pages later pieces fill, S-D3;
+/// and the pages on it: S-B1 Stats, the four lists (their own cases are in
+/// AdminListPageTests), the routed page a later piece fills, S-D3;
 /// the session gate's answer to a browser without a session; the page kept
 /// across sign-in (TD-ADM-177); the signed-in files behind the gate; sign-out
 /// (TD-ADM-175). What the pages do in a browser is covered by e2e/console.
@@ -96,7 +97,10 @@ public partial class AdminConsoleShellTests
         Assert.Equal(NavOrder, links.Select(l => l.Href).ToArray());
         Assert.Equal(NavLabels, links.Select(l => WebUtility.HtmlDecode(l.Label)).ToArray());
         Assert.Equal(current is null ? [] : new[] { current }, links.Where(l => l.Current).Select(l => l.Href).ToArray());
-        Assert.Equal(current is null ? 0 : 1, Regex.Matches(html, "aria-current=").Count);
+        // A list page marks its current page of rows too (TD-ADM-UI-na-B06), outside the nav.
+        var isList = AdminListPages.All.Any(l => l.Path == path);
+        if (!isList)
+            Assert.Equal(current is null ? 0 : 1, Regex.Matches(html, "aria-current=").Count);
         Assert.DoesNotContain("Audit log", text, StringComparison.Ordinal);
         Assert.Contains(
             "<form id=\"sign-out-form\" method=\"post\" action=\"/admin/sign-out\""
@@ -105,7 +109,9 @@ public partial class AdminConsoleShellTests
             + "<button type=\"submit\" id=\"sign-out\" class=\"secondary\">Sign out</button></form>",
             text,
             StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(html, "<input "));
+        // The list pages have their filters; every other page only the sign-out field.
+        if (!isList)
+            Assert.Single(Regex.Matches(html, "<input "));
         Assert.True(
             html.IndexOf("id=\"sign-out-form\"", StringComparison.Ordinal)
             > html.IndexOf("href=\"/admin/settings/security\"", StringComparison.Ordinal));
@@ -118,7 +124,9 @@ public partial class AdminConsoleShellTests
         // Static scripts only, each with the nonce, the shell's first.
         var scripts = Regex.Matches(html, "<script src=\"([^\"]+)\" nonce=\"([^\"]+)\"></script>");
         Assert.Equal(
-            new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js" },
+            isList
+                ? new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js", "/admin/assets/console-list.js" }
+                : new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js" },
             scripts.Select(m => m.Groups[1].Value).ToArray());
         Assert.All(scripts, m => Assert.Equal(nonce, m.Groups[2].Value));
         Assert.Equal(scripts.Count, Regex.Matches(html, "<script").Count);
@@ -134,11 +142,11 @@ public partial class AdminConsoleShellTests
     }
 
     [Fact]
-    public async Task ThePlaceholders_SayOneShortSentence_AndS_D3_LinksToStats()
+    public async Task ThePlaceholder_SaysOneShortSentence_AndS_D3_LinksToStats()
     {
         var session = await SeedSessionAsync();
         Assert.Equal("This page is not built yet.", AdminConsoleCopy.NotBuiltYet);
-        foreach (var path in new[] { "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", "/admin/settings/security" })
+        foreach (var path in new[] { "/admin/settings/security" })
         {
             using var response = await GetAsync(path, session);
             var html = await response.Content.ReadAsStringAsync();
@@ -210,10 +218,9 @@ public partial class AdminConsoleShellTests
                  })
         {
             var count = totals.GetProperty(key).GetInt32();
-            Assert.Contains(
-                $"<div class=\"stat\"><dt id=\"{id}-label\">{label}</dt><dd id=\"{id}\">{count.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("en-US"))}</dd></div>",
-                html,
-                StringComparison.Ordinal);
+            Assert.Matches(
+                $"<div class=\"stat\"><dt id=\"{id}-label\"><a href=\"[^\"]+\">{label}</a></dt><dd id=\"{id}\">{count.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("en-US"))}</dd></div>",
+                html);
         }
 
         var clock = _factory.Services.GetRequiredService<IAdminClock>();
@@ -396,7 +403,7 @@ public partial class AdminConsoleShellTests
         var client = CookieClient();
 
         // Signed out, the owner opens a filtered list: the gate keeps it and sends the browser on.
-        using var asked = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?status=closed&bogus=1&offset=-3&sort=participant"));
+        using var asked = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?status=closed&bogus=1&offset=-3&sort=status"));
         Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(asked.Headers.GetValues("Location")));
 
         // Step 1 from the sign-in page: nothing about the page is in the address or the body.
@@ -408,7 +415,7 @@ public partial class AdminConsoleShellTests
             turnstileToken = FakeTurnstileVerifier.ValidToken
         }));
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
-        Assert.Equal("/admin/negotiations?sort=participant&status=Closed", await StoredReturnPathAsync());
+        Assert.Equal("/admin/negotiations?sort=status&status=Closed", await StoredReturnPathAsync());
 
         using var step2 = await client.SendAsync(Post(AdminSignedOutExemptions.ApiSignInCode, token, new
         {
@@ -417,13 +424,13 @@ public partial class AdminConsoleShellTests
         Assert.Equal(HttpStatusCode.OK, step2.StatusCode);
         var reply = await step2.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(reply.GetProperty("verified").GetBoolean());
-        Assert.Equal("/admin/negotiations?sort=participant&status=Closed", reply.GetProperty("next").GetString());
+        Assert.Equal("/admin/negotiations?sort=status&status=Closed", reply.GetProperty("next").GetString());
         var forgotten = Assert.Single(SetCookies(step2), c => c.StartsWith(AdminReturnCookie.Name + "=", StringComparison.Ordinal));
         Assert.StartsWith("dw_admin_return=;", forgotten, StringComparison.Ordinal);
         Assert.Contains("path=/admin/api/auth/sign-in", forgotten, StringComparison.OrdinalIgnoreCase);
 
         // And the page is there.
-        using var landed = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?sort=participant&status=Closed"));
+        using var landed = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?sort=status&status=Closed"));
         Assert.Equal(HttpStatusCode.OK, landed.StatusCode);
     }
 
@@ -1195,6 +1202,6 @@ public partial class AdminConsoleShellTests
     [GeneratedRegex("<li><a href=\"(?<href>[^\"]+)\"(?<current> aria-current=\"page\")?>(?<label>[^<]+)</a></li>")]
     private static partial Regex NavLinks();
 
-    [GeneratedRegex("<p id=\"stats-as-of\" class=\"as-of\">As of <time datetime=\"(?<utc>[^\"]+)\">(?<et>[^<]+)</time></p>")]
+    [GeneratedRegex("<p id=\"stats-as-of\" class=\"as-of\">As of <time class=\"ts\" datetime=\"(?<utc>[^\"]+)\" tabindex=\"0\" title=\"[^\"]+ UTC\" data-utc=\"[^\"]+ UTC\">(?<et>[^<]+)</time></p>")]
     private static partial Regex AsOf();
 }

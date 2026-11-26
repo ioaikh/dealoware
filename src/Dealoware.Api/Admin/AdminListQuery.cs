@@ -4,8 +4,10 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Parsed list query. Sort keys come from a fixed allowlist mapped to columns.
+/// The default order is Updated, newest first (UXR-B01); a row never updated
+/// sorts by its Created time.
 /// </summary>
-public sealed class AdminListQuery
+public sealed record AdminListQuery
 {
     public const int DefaultLimit = 50;
     public const int MaxLimit = 200;
@@ -13,12 +15,21 @@ public sealed class AdminListQuery
     public const int MaxFilterLength = 200;
 
     public string? Q { get; init; }
-    public string Sort { get; init; } = "created";
+    public const string DefaultSort = "updated";
+
+    public string Sort { get; init; } = DefaultSort;
     public bool Descending { get; init; } = true;
     public int Offset { get; init; }
     public int Limit { get; init; } = DefaultLimit;
     public bool IncludeDeleted { get; init; }
     public string? Status { get; init; }
+
+    /// <summary>
+    /// The status filter as the list's own names, one or more (a
+    /// comma-separated <c>status</c>), set by the handler after
+    /// <see cref="TrySplitStatuses"/>. Empty: every status.
+    /// </summary>
+    public IReadOnlyList<string> Statuses { get; init; } = [];
     public string? Participant { get; init; }
     public Guid? ArtifactId { get; init; }
     public Guid? NegotiationId { get; init; }
@@ -76,7 +87,7 @@ public sealed class AdminListQuery
             return false;
 
         var sortRaw = query["sort"].FirstOrDefault();
-        var sort = string.IsNullOrWhiteSpace(sortRaw) ? "created" : sortRaw.Trim();
+        var sort = string.IsNullOrWhiteSpace(sortRaw) ? DefaultSort : sortRaw.Trim();
         if (!allowedSortKeys.Contains(sort))
         {
             error = AdminDeny.BadRequestResult();
@@ -203,6 +214,35 @@ public sealed class AdminListQuery
         };
         return true;
     }
+
+    /// <summary>
+    /// The statuses named by a comma-separated <c>status</c> value, each one
+    /// of <paramref name="allowed"/> (any case), written back as the list
+    /// spells it, each once, in the list's order. False when any part is not
+    /// one of them: the caller answers 400. Numbers are not names.
+    /// </summary>
+    public static bool TrySplitStatuses(string? raw, IReadOnlyList<string> allowed, out IReadOnlyList<string> statuses)
+    {
+        statuses = [];
+        if (string.IsNullOrWhiteSpace(raw))
+            return true;
+
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var part in raw.Split(','))
+        {
+            var match = allowed.FirstOrDefault(a => string.Equals(a, part.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+                return false;
+            named.Add(match);
+        }
+
+        statuses = allowed.Where(named.Contains).ToArray();
+        return true;
+    }
+
+    /// <summary>The optional <c>includeDeleted</c> of a detail read: true, false, 1, 0 or absent.</summary>
+    public static bool TryParseIncludeDeleted(IQueryCollection query, out bool includeDeleted, out IResult? error)
+        => TryParseOptionalBool(query, "includeDeleted", out includeDeleted, out error);
 
     private static bool TryParseLimit(IQueryCollection query, out int limit, out IResult? error)
     {
