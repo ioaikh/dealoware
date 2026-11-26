@@ -631,6 +631,75 @@ test('unsaved changes: nothing asked with nothing changed; a link, Back and Sign
   await expectSignInWith(page, SIGNED_OUT);
 });
 
+test('history in edit mode: a reload starts in view mode, loads once and Back leaves; the skip link keeps edit mode; Forward then Edit then Back leaves edit mode', async ({ page }) => {
+  await signIn(page);
+  const alex = seeded.participants['Alex Rivera'];
+  const address = `/admin/participants/${alex.id}`;
+  await open(page, address);
+  const name = page.getByLabel('Display name', { exact: true });
+  // Documents loaded (a history step within the page is not one).
+  let loads = 0;
+  page.on('load', () => { loads += 1; });
+
+  // The skip link while editing: edit mode and the typing stay, the focus is in main, no history entry.
+  await editButton(page).click();
+  await name.fill('Alex R.');
+  const skip = page.getByRole('link', { name: 'Skip to main content', exact: true });
+  await skip.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#main')).toBeFocused();
+  await expect(name).toBeVisible();
+  await expect(name).toHaveValue('Alex R.');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(here(page)).toBe(address);
+  // Back still asks once: the skip link added no entry.
+  await name.focus();
+  await page.evaluate(() => history.back());
+  const discard = page.getByRole('dialog', { name: 'Discard your changes?' });
+  await expect(discard).toBeVisible();
+  // Keep editing gives the focus back to the field typed in.
+  await discard.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue('Alex R.');
+
+  // A reload in edit mode: the page starts in view mode on a plain entry and loads once. Back then
+  // leaves within two steps (the record's own entry is still behind this one) and stays left.
+  loads = 0;
+  await page.reload();
+  await expectStyled(page);
+  await expect(editButton(page)).toBeVisible();
+  await expect(name).toBeHidden();
+  expect(await page.evaluate(() => history.state)).toBeNull();
+  await page.waitForTimeout(500);
+  expect(loads).toBe(1);
+  expect(here(page)).toBe(address);
+  let backs = 0;
+  while (here(page) !== '/admin/' && backs < 3) {
+    await page.goBack();
+    await page.waitForLoadState('load');
+    backs += 1;
+  }
+  expect(here(page)).toBe('/admin/');
+  expect(backs).toBeLessThanOrEqual(2);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(ORIGIN + '/admin/');
+
+  // Edit, Back, Forward (view mode on the old entry), Edit, Back: edit mode closes.
+  await open(page, address);
+  await editButton(page).click();
+  await page.evaluate(() => history.back());
+  await expect(name).toBeHidden();
+  await page.evaluate(() => history.forward());
+  await expect.poll(() => page.evaluate(() => history.state)).toBeNull();
+  await expect(name).toBeHidden();
+  await editButton(page).click();
+  await expect(name).toBeVisible();
+  await page.evaluate(() => history.back());
+  await expect(name).toBeHidden();
+  await expect(editButton(page)).toBeFocused();
+  expect(here(page)).toBe(address);
+});
+
 test('the session and the token: a 401 goes to sign-in with "session ended"; a refused token loads the page anew once, which says to try again; no answer says to try again', async ({ page }) => {
   await signIn(page);
   const eli = seeded.participants['Eli Moreau'];
