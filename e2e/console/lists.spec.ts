@@ -392,10 +392,13 @@ test('paging: 50, 100 or 200 a page; the range and Previous, Next and Page N; an
   await page.getByLabel('Accepted', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?limit=100&status=Accepted');
   await expect(page.getByLabel('Accepted', { exact: true })).toBeChecked();
+  // Page 2 moves the page: the next step waits for the new address, or it acts on the page being left.
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
+  await expect(page).toHaveURL(ORIGIN + '/admin/offers?offset=100&limit=100&status=Accepted');
   await page.locator('#sort-created').click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&limit=100&status=Accepted');
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
+  await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&offset=100&limit=100&status=Accepted');
   await page.locator('#q').fill('bicycle');
   await page.locator('#q').press('Enter');
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&q=bicycle&limit=100&status=Accepted');
