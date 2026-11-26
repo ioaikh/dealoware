@@ -7,8 +7,43 @@ using Dealoware.Domain.Participants;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
+/// The rows a page of negotiations, offers or artifacts refers to, read once
+/// for the page (never more than the page's own rows name), so that a row can
+/// carry names, not bare ids. Each name still passes the field policy in the
+/// projection that uses it.
+/// </summary>
+public sealed record AdminRelatedRows(
+    IReadOnlyDictionary<string, Participant> ParticipantsBySub,
+    IReadOnlyDictionary<Guid, Artifact> ArtifactsById,
+    IReadOnlyDictionary<Guid, Negotiation> NegotiationsById)
+{
+    public static readonly AdminRelatedRows None = new(
+        new Dictionary<string, Participant>(StringComparer.Ordinal),
+        new Dictionary<Guid, Artifact>(),
+        new Dictionary<Guid, Negotiation>());
+
+    public Participant? Participant(string sub)
+        => ParticipantsBySub.TryGetValue(sub, out var p) ? p : null;
+
+    public Artifact? Artifact(Guid id)
+        => ArtifactsById.TryGetValue(id, out var a) ? a : null;
+
+    public Negotiation? Negotiation(Guid id)
+        => NegotiationsById.TryGetValue(id, out var n) ? n : null;
+}
+
+/// <summary>
 /// FieldPolicy-only projections for CoreOwner admin reads.
 /// Denied fields are omitted (not nulled-with-name).
+/// <para>
+/// T04: rows carry <c>updatedAt</c> (under the same field class as
+/// <c>createdAt</c>: the policy has one class for an entity's timestamps),
+/// and the names of what they refer to: an artifact's owner, a negotiation's
+/// artifact and two parties, an offer's artifact (and its id) and two
+/// participants. A name is added only when the policy allows both the
+/// reference and the name. A participant row in a list carries neither email
+/// address; the detail does (as the policy allows).
+/// </para>
 /// </summary>
 public static class AdminReadProjection
 {
@@ -28,6 +63,9 @@ public static class AdminReadProjection
         FieldResourceContext ctx)
         => policy.Evaluate(principal, fieldClass, action, ctx);
 
+    /// <summary>An artifact's name: the name of its first subject entity.</summary>
+    public static string? ArtifactNameOf(Artifact artifact) => artifact.Entities.FirstOrDefault()?.Name;
+
     public static Dictionary<string, object?> Participant(
         Participant participant,
         IFieldPolicy policy,
@@ -44,14 +82,14 @@ public static class AdminReadProjection
 
         if (Can(policy, principal, FieldClass.DisplayName, action, ctx))
             dto["displayName"] = participant.DisplayName;
-        if (Can(policy, principal, FieldClass.LoginEmail, action, ctx))
+        // The two email addresses are on the detail only, never in a list row.
+        if (detail && Can(policy, principal, FieldClass.LoginEmail, action, ctx))
             dto["loginEmail"] = participant.LoginEmail;
-        if (Can(policy, principal, FieldClass.ContactEmail, action, ctx))
+        if (detail && Can(policy, principal, FieldClass.ContactEmail, action, ctx))
             dto["contactEmail"] = participant.ContactEmail;
         if (Can(policy, principal, FieldClass.ParticipantActive, action, ctx))
             dto["isActive"] = participant.IsActive;
-        if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
-            dto["createdAt"] = participant.CreatedAt;
+        AddTimes(dto, participant.CreatedAt, participant.UpdatedAt, policy, principal, action, ctx);
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = participant.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -64,8 +102,10 @@ public static class AdminReadProjection
         Artifact artifact,
         IFieldPolicy policy,
         FieldPrincipal principal,
-        bool detail)
+        bool detail,
+        AdminRelatedRows? related = null)
     {
+        related ??= AdminRelatedRows.None;
         var ctx = FieldResourceContext.ForSelfProfile(artifact.OwnerParticipantId);
         var action = detail ? FieldAction.Read : FieldAction.List;
         var dto = new Dictionary<string, object?>
@@ -74,10 +114,14 @@ public static class AdminReadProjection
         };
 
         if (Can(policy, principal, FieldClass.ArtifactOwnerParticipantId, action, ctx))
+        {
             dto["ownerParticipantId"] = artifact.OwnerParticipantId;
+            AddParticipantName(dto, "ownerName", artifact.OwnerParticipantId, related, policy, principal, action);
+        }
+
         if (Can(policy, principal, FieldClass.ArtifactName, action, ctx))
         {
-            dto["name"] = artifact.Entities.FirstOrDefault()?.Name;
+            dto["name"] = ArtifactNameOf(artifact);
             dto["intent"] = artifact.Intent;
             if (detail)
             {
@@ -98,8 +142,7 @@ public static class AdminReadProjection
             }).ToList();
         }
 
-        if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
-            dto["createdAt"] = artifact.CreatedAt;
+        AddTimes(dto, artifact.CreatedAt, artifact.UpdatedAt, policy, principal, action, ctx);
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = artifact.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -112,8 +155,10 @@ public static class AdminReadProjection
         Negotiation negotiation,
         IFieldPolicy policy,
         FieldPrincipal principal,
-        bool detail)
+        bool detail,
+        AdminRelatedRows? related = null)
     {
+        related ??= AdminRelatedRows.None;
         var ctx = FieldResourceContext.ForNegotiation(
             negotiation.PartyAParticipantId,
             negotiation.PartyBParticipantId);
@@ -124,17 +169,28 @@ public static class AdminReadProjection
         };
 
         if (Can(policy, principal, FieldClass.NegotiationArtifactId, action, ctx))
+        {
             dto["artifactId"] = negotiation.ArtifactId;
+            AddArtifactName(dto, negotiation.ArtifactId, related, policy, principal, action);
+        }
+
         if (Can(policy, principal, FieldClass.NegotiationPartyA, action, ctx))
+        {
             dto["partyAParticipantId"] = negotiation.PartyAParticipantId;
+            AddParticipantName(dto, "partyAName", negotiation.PartyAParticipantId, related, policy, principal, action);
+        }
+
         if (Can(policy, principal, FieldClass.NegotiationPartyB, action, ctx))
+        {
             dto["partyBParticipantId"] = negotiation.PartyBParticipantId;
+            AddParticipantName(dto, "partyBName", negotiation.PartyBParticipantId, related, policy, principal, action);
+        }
+
         if (Can(policy, principal, FieldClass.NegotiationStatus, action, ctx))
             dto["status"] = negotiation.Status.ToString();
         if (Can(policy, principal, FieldClass.NegotiationEndsAt, action, ctx))
             dto["endsAt"] = negotiation.EndsAt;
-        if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
-            dto["createdAt"] = negotiation.CreatedAt;
+        AddTimes(dto, negotiation.CreatedAt, negotiation.UpdatedAt, policy, principal, action, ctx);
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = negotiation.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -147,8 +203,10 @@ public static class AdminReadProjection
         Offer offer,
         IFieldPolicy policy,
         FieldPrincipal principal,
-        bool detail)
+        bool detail,
+        AdminRelatedRows? related = null)
     {
+        related ??= AdminRelatedRows.None;
         var ctx = FieldResourceContext.ForNegotiation(offer.FromParticipantId, offer.ToParticipantId);
         var action = detail ? FieldAction.Read : FieldAction.List;
         var dto = new Dictionary<string, object?>
@@ -158,8 +216,22 @@ public static class AdminReadProjection
             ["toParticipantId"] = offer.ToParticipantId
         };
 
+        AddParticipantName(dto, "fromParticipantName", offer.FromParticipantId, related, policy, principal, action);
+        AddParticipantName(dto, "toParticipantName", offer.ToParticipantId, related, policy, principal, action);
+
         if (Can(policy, principal, FieldClass.OfferNegotiationId, action, ctx))
+        {
             dto["negotiationId"] = offer.NegotiationId;
+            // The artifact is the negotiation's: both references must be allowed.
+            if (related.Negotiation(offer.NegotiationId) is { } negotiation
+                && Can(policy, principal, FieldClass.NegotiationArtifactId, action,
+                    FieldResourceContext.ForNegotiation(negotiation.PartyAParticipantId, negotiation.PartyBParticipantId)))
+            {
+                dto["artifactId"] = negotiation.ArtifactId;
+                AddArtifactName(dto, negotiation.ArtifactId, related, policy, principal, action);
+            }
+        }
+
         if (Can(policy, principal, FieldClass.OfferStatus, action, ctx))
             dto["status"] = offer.Status.ToString();
         if (Can(policy, principal, FieldClass.OfferAmount, action, ctx))
@@ -168,8 +240,7 @@ public static class AdminReadProjection
             dto["currency"] = offer.Currency;
         if (Can(policy, principal, FieldClass.OfferTerms, action, ctx))
             dto["terms"] = offer.Terms;
-        if (Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
-            dto["createdAt"] = offer.CreatedAt;
+        AddTimes(dto, offer.CreatedAt, offer.UpdatedAt, policy, principal, action, ctx);
         if (Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
             dto["deletedAt"] = offer.DeletedAt;
         if (detail && Can(policy, principal, FieldClass.EntityVersion, FieldAction.Read, ctx))
@@ -180,4 +251,48 @@ public static class AdminReadProjection
 
     public static object ListPage(int offset, int limit, int total, IEnumerable<object> items)
         => new { offset, limit, total, items };
+
+    private static void AddTimes(
+        Dictionary<string, object?> dto,
+        DateTimeOffset createdAt,
+        DateTimeOffset? updatedAt,
+        IFieldPolicy policy,
+        FieldPrincipal principal,
+        FieldAction action,
+        FieldResourceContext ctx)
+    {
+        if (!Can(policy, principal, FieldClass.EntityCreatedAt, action, ctx))
+            return;
+        dto["createdAt"] = createdAt;
+        dto["updatedAt"] = updatedAt;
+    }
+
+    /// <summary>A participant's display name under <paramref name="key"/>, if the policy allows it; null when the row has none.</summary>
+    private static void AddParticipantName(
+        Dictionary<string, object?> dto,
+        string key,
+        string sub,
+        AdminRelatedRows related,
+        IFieldPolicy policy,
+        FieldPrincipal principal,
+        FieldAction action)
+    {
+        if (Can(policy, principal, FieldClass.DisplayName, action, FieldResourceContext.ForSelfProfile(sub)))
+            dto[key] = related.Participant(sub)?.DisplayName;
+    }
+
+    /// <summary>The artifact's name as <c>artifactName</c>, if the policy allows it; null when the row is not there.</summary>
+    private static void AddArtifactName(
+        Dictionary<string, object?> dto,
+        Guid artifactId,
+        AdminRelatedRows related,
+        IFieldPolicy policy,
+        FieldPrincipal principal,
+        FieldAction action)
+    {
+        var artifact = related.Artifact(artifactId);
+        var ctx = FieldResourceContext.ForSelfProfile(artifact?.OwnerParticipantId ?? string.Empty);
+        if (Can(policy, principal, FieldClass.ArtifactName, action, ctx))
+            dto["artifactName"] = artifact is null ? null : ArtifactNameOf(artifact);
+    }
 }

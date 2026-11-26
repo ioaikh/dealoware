@@ -9,6 +9,16 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// CoreOwner-only admin read API: lists, detail, name search, paging, stats.
 /// No writes. Include-deleted is a read and writes no audit row.
+/// <para>
+/// Each list and each detail is one query function
+/// (<see cref="ListParticipantsAsync"/> and the rest), used by the JSON
+/// route here and by the console pages (<see cref="AdminListPages"/>), so a
+/// page shows exactly what the API answers. A status list is
+/// comma-separated. A detail of a soft-deleted record is answered only with
+/// <c>includeDeleted=true</c> (the "Show deleted" toggle); without it, as
+/// for a record that is not there, 404. The JSON routes refuse a value they
+/// do not take with the generic 400; the pages drop it before asking.
+/// </para>
 /// </summary>
 public static class AdminReadEndpoints
 {
@@ -44,6 +54,38 @@ public static class AdminReadEndpoints
         return true;
     }
 
+    /// <summary>Participant statuses, as the list filters them (from <c>IsActive</c>).</summary>
+    public static readonly IReadOnlyList<string> ParticipantStatuses = ["Active", "Suspended"];
+
+    public static readonly IReadOnlyList<string> NegotiationStatuses = Enum.GetNames<NegotiationStatus>();
+
+    public static readonly IReadOnlyList<string> OfferStatuses = Enum.GetNames<OfferStatus>();
+
+    /// <summary>One page of a list: the filtered total and this page's rows, already projected.</summary>
+    internal sealed record ListResult(int Total, IReadOnlyList<Dictionary<string, object?>> Items);
+
+    private static IResult Page(AdminListQuery query, ListResult result)
+        => Results.Json(AdminReadProjection.ListPage(query.Offset, query.Limit, result.Total, result.Items));
+
+    /// <summary>The status filter of a list that has one: names only, comma-separated; anything else is the generic 400.</summary>
+    private static bool TryWithStatuses(
+        AdminListQuery query,
+        IReadOnlyList<string> allowed,
+        out AdminListQuery withStatuses,
+        out IResult? error)
+    {
+        withStatuses = query;
+        error = null;
+        if (!AdminListQuery.TrySplitStatuses(query.Status, allowed, out var statuses))
+        {
+            error = AdminDeny.BadRequestResult();
+            return false;
+        }
+
+        withStatuses = query with { Statuses = statuses };
+        return true;
+    }
+
     private static async Task<IResult> ListParticipants(
         HttpContext context,
         DealowareDbContext db,
@@ -54,14 +96,34 @@ public static class AdminReadEndpoints
             return deny!;
         if (!AdminListQuery.TryParse(context.Request.Query, AdminListQuery.ParticipantSortKeys, allowAmount: false, out var query, out var error))
             return error!;
+        if (!TryWithStatuses(query, ParticipantStatuses, out query, out error))
+            return error!;
 
         var principal = AdminReadProjection.CoreOwnerFrom(context);
+        return Page(query, await ListParticipantsAsync(db, fieldPolicy, principal, query, cancellationToken));
+    }
+
+    internal static async Task<ListResult> ListParticipantsAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        AdminListQuery query,
+        CancellationToken cancellationToken)
+    {
         var ctx = FieldResourceContext.ForSelfProfile(string.Empty);
         var canSearchName = fieldPolicy.Evaluate(principal, FieldClass.DisplayName, FieldAction.Read, ctx);
 
         var rows = db.Participants.AsNoTracking().AsQueryable();
         if (!query.IncludeDeleted)
             rows = rows.Where(p => p.DeletedAt == null);
+
+        // Active, Suspended, or both (which is no constraint).
+        var active = query.Statuses.Contains("Active");
+        var suspended = query.Statuses.Contains("Suspended");
+        if (active && !suspended)
+            rows = rows.Where(p => p.IsActive);
+        else if (suspended && !active)
+            rows = rows.Where(p => !p.IsActive);
 
         if (!string.IsNullOrEmpty(query.Participant))
         {
@@ -85,11 +147,9 @@ public static class AdminReadEndpoints
         var (total, items) = await PageQueryAsync(
             rows, ApplyParticipantSort(rows, query), query, cancellationToken);
 
-        return Results.Json(AdminReadProjection.ListPage(
-            query.Offset,
-            query.Limit,
+        return new ListResult(
             total,
-            items.Select(p => AdminReadProjection.Participant(p, fieldPolicy, principal, detail: false))));
+            items.Select(p => AdminReadProjection.Participant(p, fieldPolicy, principal, detail: false)).ToList());
     }
 
     private static async Task<IResult> GetParticipant(
@@ -101,14 +161,31 @@ public static class AdminReadEndpoints
     {
         if (!TryCoreOwner(context, out var deny))
             return deny!;
+        if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
+            return error!;
 
+        var dto = await GetParticipantAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
+        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+    }
+
+    /// <summary>
+    /// One participant, or null when there is none, or when it is soft-deleted
+    /// and <paramref name="includeDeleted"/> (the "Show deleted" toggle) is off.
+    /// </summary>
+    internal static async Task<Dictionary<string, object?>?> GetParticipantAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
         var participant = await db.Participants.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
-        if (participant is null)
-            return AdminDeny.NotFoundResult();
-
-        var principal = AdminReadProjection.CoreOwnerFrom(context);
-        return Results.Json(AdminReadProjection.Participant(participant, fieldPolicy, principal, detail: true));
+            .FirstOrDefaultAsync(p => p.Id == id && (includeDeleted || p.DeletedAt == null), cancellationToken);
+        return participant is null
+            ? null
+            : AdminReadProjection.Participant(participant, fieldPolicy, principal, detail: true);
     }
 
     private static async Task<IResult> ListArtifacts(
@@ -123,6 +200,16 @@ public static class AdminReadEndpoints
             return error!;
 
         var principal = AdminReadProjection.CoreOwnerFrom(context);
+        return Page(query, await ListArtifactsAsync(db, fieldPolicy, principal, query, cancellationToken));
+    }
+
+    internal static async Task<ListResult> ListArtifactsAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        AdminListQuery query,
+        CancellationToken cancellationToken)
+    {
         var ctx = FieldResourceContext.ForSelfProfile(string.Empty);
         var canSearchName = fieldPolicy.Evaluate(principal, FieldClass.ArtifactName, FieldAction.Read, ctx);
 
@@ -151,12 +238,11 @@ public static class AdminReadEndpoints
 
         var ordered = ApplyArtifactSort(rows, query).Include(a => a.Entities);
         var (total, items) = await PageQueryAsync(rows, ordered, query, cancellationToken);
+        var related = await RelatedRowsAsync(db, items.Select(a => a.OwnerParticipantId), [], [], cancellationToken);
 
-        return Results.Json(AdminReadProjection.ListPage(
-            query.Offset,
-            query.Limit,
+        return new ListResult(
             total,
-            items.Select(a => AdminReadProjection.Artifact(a, fieldPolicy, principal, detail: false))));
+            items.Select(a => AdminReadProjection.Artifact(a, fieldPolicy, principal, detail: false, related)).ToList());
     }
 
     private static async Task<IResult> GetArtifact(
@@ -168,15 +254,31 @@ public static class AdminReadEndpoints
     {
         if (!TryCoreOwner(context, out var deny))
             return deny!;
+        if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
+            return error!;
 
+        var dto = await GetArtifactAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
+        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+    }
+
+    /// <summary>One artifact; null when there is none, or it is soft-deleted and the toggle is off.</summary>
+    internal static async Task<Dictionary<string, object?>?> GetArtifactAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
         var artifact = await db.Artifacts.AsNoTracking()
             .Include(a => a.Entities)
-            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == id && (includeDeleted || a.DeletedAt == null), cancellationToken);
         if (artifact is null)
-            return AdminDeny.NotFoundResult();
+            return null;
 
-        var principal = AdminReadProjection.CoreOwnerFrom(context);
-        return Results.Json(AdminReadProjection.Artifact(artifact, fieldPolicy, principal, detail: true));
+        var related = await RelatedRowsAsync(db, [artifact.OwnerParticipantId], [], [], cancellationToken);
+        return AdminReadProjection.Artifact(artifact, fieldPolicy, principal, detail: true, related);
     }
 
     private static async Task<IResult> ListNegotiations(
@@ -189,12 +291,20 @@ public static class AdminReadEndpoints
             return deny!;
         if (!AdminListQuery.TryParse(context.Request.Query, AdminListQuery.NegotiationSortKeys, allowAmount: false, out var query, out var error))
             return error!;
-
-        if (!string.IsNullOrEmpty(query.Status)
-            && !Enum.TryParse<NegotiationStatus>(query.Status, ignoreCase: true, out _))
-            return AdminDeny.BadRequestResult();
+        if (!TryWithStatuses(query, NegotiationStatuses, out query, out error))
+            return error!;
 
         var principal = AdminReadProjection.CoreOwnerFrom(context);
+        return Page(query, await ListNegotiationsAsync(db, fieldPolicy, principal, query, cancellationToken));
+    }
+
+    internal static async Task<ListResult> ListNegotiationsAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        AdminListQuery query,
+        CancellationToken cancellationToken)
+    {
         var ctx = FieldResourceContext.ForSelfProfile(string.Empty);
         var canSearchArtifactName = fieldPolicy.Evaluate(principal, FieldClass.ArtifactName, FieldAction.Read, ctx);
         var canSearchDisplayName = fieldPolicy.Evaluate(principal, FieldClass.DisplayName, FieldAction.Read, ctx);
@@ -203,9 +313,11 @@ public static class AdminReadEndpoints
         if (!query.IncludeDeleted)
             rows = rows.Where(n => n.DeletedAt == null);
 
-        if (!string.IsNullOrEmpty(query.Status)
-            && Enum.TryParse<NegotiationStatus>(query.Status, ignoreCase: true, out var status))
-            rows = rows.Where(n => n.Status == status);
+        if (query.Statuses.Count > 0)
+        {
+            var statuses = query.Statuses.Select(Enum.Parse<NegotiationStatus>).ToList();
+            rows = rows.Where(n => statuses.Contains(n.Status));
+        }
 
         if (!string.IsNullOrEmpty(query.Participant))
         {
@@ -251,12 +363,16 @@ public static class AdminReadEndpoints
 
         var (total, items) = await PageQueryAsync(
             rows, ApplyNegotiationSort(rows, query), query, cancellationToken);
+        var related = await RelatedRowsAsync(
+            db,
+            items.SelectMany(n => new[] { n.PartyAParticipantId, n.PartyBParticipantId }),
+            items.Select(n => n.ArtifactId),
+            [],
+            cancellationToken);
 
-        return Results.Json(AdminReadProjection.ListPage(
-            query.Offset,
-            query.Limit,
+        return new ListResult(
             total,
-            items.Select(n => AdminReadProjection.Negotiation(n, fieldPolicy, principal, detail: false))));
+            items.Select(n => AdminReadProjection.Negotiation(n, fieldPolicy, principal, detail: false, related)).ToList());
     }
 
     private static async Task<IResult> GetNegotiation(
@@ -268,14 +384,35 @@ public static class AdminReadEndpoints
     {
         if (!TryCoreOwner(context, out var deny))
             return deny!;
+        if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
+            return error!;
 
+        var dto = await GetNegotiationAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
+        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+    }
+
+    /// <summary>One negotiation; null when there is none, or it is soft-deleted and the toggle is off.</summary>
+    internal static async Task<Dictionary<string, object?>?> GetNegotiationAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
         var negotiation = await db.Negotiations.AsNoTracking()
-            .FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(n => n.Id == id && (includeDeleted || n.DeletedAt == null), cancellationToken);
         if (negotiation is null)
-            return AdminDeny.NotFoundResult();
+            return null;
 
-        var principal = AdminReadProjection.CoreOwnerFrom(context);
-        return Results.Json(AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true));
+        var related = await RelatedRowsAsync(
+            db,
+            [negotiation.PartyAParticipantId, negotiation.PartyBParticipantId],
+            [negotiation.ArtifactId],
+            [],
+            cancellationToken);
+        return AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related);
     }
 
     private static async Task<IResult> ListOffers(
@@ -288,12 +425,20 @@ public static class AdminReadEndpoints
             return deny!;
         if (!AdminListQuery.TryParse(context.Request.Query, AdminListQuery.OfferSortKeys, allowAmount: true, out var query, out var error))
             return error!;
-
-        if (!string.IsNullOrEmpty(query.Status)
-            && !Enum.TryParse<OfferStatus>(query.Status, ignoreCase: true, out _))
-            return AdminDeny.BadRequestResult();
+        if (!TryWithStatuses(query, OfferStatuses, out query, out error))
+            return error!;
 
         var principal = AdminReadProjection.CoreOwnerFrom(context);
+        return Page(query, await ListOffersAsync(db, fieldPolicy, principal, query, cancellationToken));
+    }
+
+    internal static async Task<ListResult> ListOffersAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        AdminListQuery query,
+        CancellationToken cancellationToken)
+    {
         var ctx = FieldResourceContext.ForSelfProfile(string.Empty);
         var canSearchArtifactName = fieldPolicy.Evaluate(principal, FieldClass.ArtifactName, FieldAction.Read, ctx);
         var canSearchDisplayName = fieldPolicy.Evaluate(principal, FieldClass.DisplayName, FieldAction.Read, ctx);
@@ -303,9 +448,11 @@ public static class AdminReadEndpoints
         if (!query.IncludeDeleted)
             rows = rows.Where(o => o.DeletedAt == null);
 
-        if (!string.IsNullOrEmpty(query.Status)
-            && Enum.TryParse<OfferStatus>(query.Status, ignoreCase: true, out var status))
-            rows = rows.Where(o => o.Status == status);
+        if (query.Statuses.Count > 0)
+        {
+            var statuses = query.Statuses.Select(Enum.Parse<OfferStatus>).ToList();
+            rows = rows.Where(o => statuses.Contains(o.Status));
+        }
 
         if (!string.IsNullOrEmpty(query.Participant))
         {
@@ -352,12 +499,17 @@ public static class AdminReadEndpoints
 
         var (total, items) = await PageQueryAsync(
             rows, ApplyOfferSort(rows, query, db), query, cancellationToken);
+        var negotiations = await NegotiationsByIdAsync(db, items.Select(o => o.NegotiationId), cancellationToken);
+        var related = await RelatedRowsAsync(
+            db,
+            items.SelectMany(o => new[] { o.FromParticipantId, o.ToParticipantId }),
+            negotiations.Values.Select(n => n.ArtifactId),
+            negotiations.Values,
+            cancellationToken);
 
-        return Results.Json(AdminReadProjection.ListPage(
-            query.Offset,
-            query.Limit,
+        return new ListResult(
             total,
-            items.Select(o => AdminReadProjection.Offer(o, fieldPolicy, principal, detail: false))));
+            items.Select(o => AdminReadProjection.Offer(o, fieldPolicy, principal, detail: false, related)).ToList());
     }
 
     private static async Task<IResult> GetOffer(
@@ -369,14 +521,77 @@ public static class AdminReadEndpoints
     {
         if (!TryCoreOwner(context, out var deny))
             return deny!;
+        if (!AdminListQuery.TryParseIncludeDeleted(context.Request.Query, out var includeDeleted, out var error))
+            return error!;
 
+        var dto = await GetOfferAsync(
+            db, fieldPolicy, AdminReadProjection.CoreOwnerFrom(context), id, includeDeleted, cancellationToken);
+        return dto is null ? AdminDeny.NotFoundResult() : Results.Json(dto);
+    }
+
+    /// <summary>One offer; null when there is none, or it is soft-deleted and the toggle is off.</summary>
+    internal static async Task<Dictionary<string, object?>?> GetOfferAsync(
+        DealowareDbContext db,
+        IFieldPolicy fieldPolicy,
+        FieldPrincipal principal,
+        Guid id,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
         var offer = await db.Offers.AsNoTracking()
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(o => o.Id == id && (includeDeleted || o.DeletedAt == null), cancellationToken);
         if (offer is null)
-            return AdminDeny.NotFoundResult();
+            return null;
 
-        var principal = AdminReadProjection.CoreOwnerFrom(context);
-        return Results.Json(AdminReadProjection.Offer(offer, fieldPolicy, principal, detail: true));
+        var negotiations = await NegotiationsByIdAsync(db, [offer.NegotiationId], cancellationToken);
+        var related = await RelatedRowsAsync(
+            db,
+            [offer.FromParticipantId, offer.ToParticipantId],
+            negotiations.Values.Select(n => n.ArtifactId),
+            negotiations.Values,
+            cancellationToken);
+        return AdminReadProjection.Offer(offer, fieldPolicy, principal, detail: true, related);
+    }
+
+    private static async Task<Dictionary<Guid, Negotiation>> NegotiationsByIdAsync(
+        DealowareDbContext db,
+        IEnumerable<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count == 0)
+            return [];
+        return await db.Negotiations.AsNoTracking()
+            .Where(n => wanted.Contains(n.Id))
+            .ToDictionaryAsync(n => n.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The participants and artifacts a page's rows name, read by key: never
+    /// more rows than the page refers to. Soft-deleted ones too: a row keeps
+    /// the name of what it refers to.
+    /// </summary>
+    private static async Task<AdminRelatedRows> RelatedRowsAsync(
+        DealowareDbContext db,
+        IEnumerable<string> participantSubs,
+        IEnumerable<Guid> artifactIds,
+        IEnumerable<Negotiation> negotiations,
+        CancellationToken cancellationToken)
+    {
+        var subs = participantSubs.Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.Ordinal).ToList();
+        var artifacts = artifactIds.Distinct().ToList();
+
+        var participantsBySub = subs.Count == 0
+            ? new Dictionary<string, Domain.Participants.Participant>(StringComparer.Ordinal)
+            : (await db.Participants.AsNoTracking().Where(p => subs.Contains(p.Sub)).ToListAsync(cancellationToken))
+                .ToDictionary(p => p.Sub, StringComparer.Ordinal);
+        var artifactsById = artifacts.Count == 0
+            ? new Dictionary<Guid, Domain.Artifacts.Artifact>()
+            : await db.Artifacts.AsNoTracking().Include(a => a.Entities)
+                .Where(a => artifacts.Contains(a.Id))
+                .ToDictionaryAsync(a => a.Id, cancellationToken);
+
+        return new AdminRelatedRows(participantsBySub, artifactsById, negotiations.ToDictionary(n => n.Id));
     }
 
     private static async Task<IResult> GetStats(
@@ -401,18 +616,26 @@ public static class AdminReadEndpoints
     /// <summary>The five Spec §6 counts. All leave soft-deleted rows out.</summary>
     internal sealed record Totals(int Participants, int OpenNegotiations, int Offers, int Accepts, int Declines);
 
-    /// <summary>The one count of the Spec §6 totals, for the stats API and the Stats page alike.</summary>
+    /// <summary>
+    /// The five Spec §6 counts, in the order the Stats page shows them; each
+    /// leaves soft-deleted rows out. Offers counts every offer of any status.
+    /// </summary>
+    internal static readonly IReadOnlyList<Func<DealowareDbContext, CancellationToken, Task<int>>> TotalCounts =
+    [
+        (db, ct) => db.Participants.CountAsync(p => p.DeletedAt == null, ct),
+        (db, ct) => db.Negotiations.CountAsync(n => n.DeletedAt == null && n.Status == NegotiationStatus.Open, ct),
+        (db, ct) => db.Offers.CountAsync(o => o.DeletedAt == null, ct),
+        (db, ct) => db.Offers.CountAsync(o => o.DeletedAt == null && o.Status == OfferStatus.Accepted, ct),
+        (db, ct) => db.Offers.CountAsync(o => o.DeletedAt == null && o.Status == OfferStatus.Declined, ct)
+    ];
+
+    /// <summary>The one count of the Spec §6 totals, for the stats API.</summary>
     internal static async Task<Totals> CountTotalsAsync(DealowareDbContext db, CancellationToken cancellationToken)
     {
-        var participants = await db.Participants.CountAsync(p => p.DeletedAt == null, cancellationToken);
-        var openNegotiations = await db.Negotiations.CountAsync(
-            n => n.DeletedAt == null && n.Status == NegotiationStatus.Open, cancellationToken);
-        var offers = await db.Offers.CountAsync(o => o.DeletedAt == null, cancellationToken);
-        var accepts = await db.Offers.CountAsync(
-            o => o.DeletedAt == null && o.Status == OfferStatus.Accepted, cancellationToken);
-        var declines = await db.Offers.CountAsync(
-            o => o.DeletedAt == null && o.Status == OfferStatus.Declined, cancellationToken);
-        return new Totals(participants, openNegotiations, offers, accepts, declines);
+        var counts = new int[TotalCounts.Count];
+        for (var i = 0; i < counts.Length; i++)
+            counts[i] = await TotalCounts[i](db, cancellationToken);
+        return new Totals(counts[0], counts[1], counts[2], counts[3], counts[4]);
     }
 
     private static IQueryable<T> ApplyCreatedUpdated<T>(
