@@ -36,8 +36,7 @@ public static class AdminConsolePages
             => NotBuiltYet(http, af, AdminConsoleCopy.NavNegotiations, AdminConsoleSection.Negotiations)));
         Page(app.MapGet(AdminSignedInPage.Offers, (HttpContext http, AdminAntiForgeryService af)
             => NotBuiltYet(http, af, AdminConsoleCopy.NavOffers, AdminConsoleSection.Offers)));
-        Page(app.MapGet(AdminSignedInPage.SecuritySettings, (HttpContext http, AdminAntiForgeryService af)
-            => NotBuiltYet(http, af, AdminConsoleCopy.NavSecuritySettings, AdminConsoleSection.SecuritySettings)));
+        Page(app.MapGet(AdminSignedInPage.SecuritySettings, AdminSecuritySettingsPage.Render));
     }
 
     /// <summary>

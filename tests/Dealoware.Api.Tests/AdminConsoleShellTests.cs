@@ -40,7 +40,7 @@ public partial class AdminConsoleShellTests
         { "/admin/artifacts", "Artifacts · Dealoware admin", "Artifacts", "/admin/artifacts" },
         { "/admin/negotiations", "Negotiations · Dealoware admin", "Negotiations", "/admin/negotiations" },
         { "/admin/offers", "Offers · Dealoware admin", "Offers", "/admin/offers" },
-        { "/admin/settings/security", "Security settings · Dealoware admin", "Security settings", "/admin/settings/security" },
+        // S-A12 Security settings has forms of its own: AdminSecuritySettingsPageTests holds it to this shell.
         { "/admin/no-such-page", "Page not found · Dealoware admin", "We can't find that page.", null }
     };
 
@@ -138,7 +138,7 @@ public partial class AdminConsoleShellTests
     {
         var session = await SeedSessionAsync();
         Assert.Equal("This page is not built yet.", AdminConsoleCopy.NotBuiltYet);
-        foreach (var path in new[] { "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", "/admin/settings/security" })
+        foreach (var path in new[] { "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers" })
         {
             using var response = await GetAsync(path, session);
             var html = await response.Content.ReadAsStringAsync();

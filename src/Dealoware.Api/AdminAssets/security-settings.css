@@ -1,0 +1,318 @@
+/* Signed-in admin console asset. Served only with a valid session. No secrets. */
+
+/*
+ * S-A12 Security settings (AdminSecuritySettingsPage), after console.css.
+ * The form parts are the signed-out pages' own (signed-out.css): the same
+ * fields, show toggles, helper and error lines, the key in groups of four,
+ * the code list, the QR code black on white. Colours meet WCAG 2.2 AA: text
+ * at least 4.5:1, field borders and the focus ring at least 3:1. Every target
+ * is at least 24 by 24 CSS px (2.5.8).
+ */
+
+:root {
+  --danger: #8a1515;
+  --danger-bg: #fdecec;
+  --field-line: #6b6557;
+}
+
+.settings-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem 1.25rem;
+  margin: 0 0 1.25rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  line-height: 1.3;
+  margin: 0 0 0.75rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.field {
+  margin: 0 0 1rem;
+  max-width: 32rem;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+input[type="password"],
+input[type="text"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--field-line);
+  border-radius: 0.3rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--danger);
+  border-width: 2px;
+}
+
+input:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A pressed toggle keeps its label and fills in, so "on" is not told by words alone. */
+button.secondary[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.toggle {
+  flex: 0 0 auto;
+}
+
+.helper,
+.field-error {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.helper,
+.field-error:not(:empty) {
+  margin-top: 0.35rem;
+}
+
+.helper {
+  color: var(--muted);
+}
+
+.field-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* A form's live region: in the page while empty, so it is announced when it fills. */
+.form-alert {
+  margin: 0;
+}
+
+.form-alert:not(:empty) {
+  border: 2px solid var(--danger);
+  background: var(--danger-bg);
+  color: var(--ink);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+  border-radius: 0.3rem;
+}
+
+/* An outcome that is not a refusal (the authenticator changed). */
+.form-alert.done:not(:empty) {
+  border: 1px solid var(--accent);
+  background: var(--banner);
+}
+
+.switch {
+  margin: -0.25rem 0 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.codes-left {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.new-codes,
+.new-key {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.new-codes .lede,
+.new-key .lede {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.copy-status {
+  margin: 0 0 1rem;
+  min-height: 1.25rem;
+}
+
+/*
+ * The authenticator QR code: an inline SVG, black on white whatever the page
+ * colours are, because a camera has to read it. The quiet zone is part of
+ * the drawing. As wide as the column allows up to 15rem.
+ */
+.qr {
+  display: block;
+  width: 15rem;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin: 0 0 0.5rem;
+  background: #ffffff;
+}
+
+.details {
+  margin: 0 0 1rem;
+}
+
+.details dt {
+  font-weight: 600;
+}
+
+.details dd {
+  margin: 0 0 0.75rem;
+}
+
+.details dd:last-child {
+  margin-bottom: 0;
+}
+
+/* The key in groups of four. The gaps are margins, not spaces, so the text copied by hand is the key itself. */
+.key,
+.code-list {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.key {
+  font-size: 1.05rem;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.key span {
+  margin-right: 0.5em;
+  white-space: nowrap;
+}
+
+/* The recovery codes: a list without markers, two across where there is room. */
+.code-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.35rem 1rem;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0 0 1rem;
+}
+
+/* 24 by 24 CSS px: the target size WCAG 2.2 asks for (2.5.8). */
+.check input {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+}
+
+.check label {
+  margin: 0;
+}
+
+/* The 24-hour lock notice: one line, an icon with a text label, never colour alone. */
+.lock-notice {
+  border: 2px solid var(--danger);
+  background: var(--danger-bg);
+  color: var(--ink);
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.3rem;
+}
+
+.lock-icon {
+  display: inline-block;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #ffffff;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4rem;
+}
+
+/* A narrow screen scrolls the table, not the page. */
+.table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-wrap:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 26rem;
+}
+
+caption {
+  text-align: left;
+  color: var(--muted);
+  padding: 0 0 0.5rem;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+td.network {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* The step-up dialog. Modal: the page behind is inert and dimmed. */
+.step-up {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.step-up::backdrop {
+  background: rgba(26, 26, 26, 0.55);
+}
+
+@media (max-width: 30rem) {
+  .settings-section {
+    padding: 0.75rem 0.75rem 1rem;
+  }
+
+  .step-up {
+    padding: 1rem 0.75rem;
+  }
+}
