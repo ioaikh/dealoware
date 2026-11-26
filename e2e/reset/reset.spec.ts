@@ -53,7 +53,7 @@ const EXPIRED_HEADING = 'This link no longer works';
 const EXPIRED_RESET = 'Reset links work once and expire after 1 hour.';
 const EXPIRED_SETUP =
   'Setup links work once and expire after 24 hours. Ask for a new setup link through the same channel you got this one.';
-const NOSCRIPT = 'Turn on JavaScript to set your password.';
+const NOSCRIPT = 'Turn on JavaScript to request a reset link.';
 const EMAIL_REQUIRED = 'Enter an email address.';
 const EMAIL_INVALID = 'Enter a well-formed email address.';
 const RETRY = 'That didn\'t go through. Wait a moment and try again.';
@@ -1196,11 +1196,13 @@ test('S-A11: sign-in opened after a session ended says so once, and the flag car
 test.describe('JavaScript off', () => {
   test.use({ javaScriptEnabled: false });
 
-  test('with JavaScript off, S-A8 shows its heading and one sentence, and S-A9 and S-A5 read the same and keep their links', async ({ page }) => {
+  test('with JavaScript off, S-A8 shows its heading, one sentence and the way back, and S-A9 and S-A5 read the same and keep their links', async ({ page }) => {
     await page.goto(RESET);
     await expect(page.locator('#reset-request-form')).toBeHidden();
     const shown = (await page.locator('main').innerText()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    expect(shown).toEqual([RESET_HEADING, NOSCRIPT]);
+    expect(shown).toEqual([RESET_HEADING, NOSCRIPT, 'Back to sign in']);
+    await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
+    await expect(page).toHaveURL(ORIGIN + SIGN_IN);
 
     // The two pages that are only a message need no script: the text and the links are in the page.
     await page.goto(SENT);

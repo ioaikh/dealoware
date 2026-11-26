@@ -37,7 +37,7 @@ public static class AdminPasswordResetPages
         {
             Title = AdminPasswordResetCopy.RequestPageTitle,
             Heading = AdminPasswordResetCopy.RequestHeading,
-            Noscript = AdminPasswordResetCopy.ConfirmNoscript,
+            Noscript = AdminPasswordResetCopy.RequestNoscript,
             BodyHtml = RequestBody(turnstile),
             Scripts =
             [
@@ -110,7 +110,8 @@ public static class AdminPasswordResetPages
             AdminSignedOutPage.TurnstileBlock(turnstile) +
             "<button type=\"submit\" id=\"reset-submit\" disabled aria-describedby=\"security-check-status\">" +
             $"{E(AdminPasswordResetCopy.RequestSubmit)}</button>" +
-            BackToSignIn() +
-            "</form></div>";
+            "</form></div>" +
+            // Outside the hidden panel, so it is there with JavaScript off too.
+            BackToSignIn();
     }
 }

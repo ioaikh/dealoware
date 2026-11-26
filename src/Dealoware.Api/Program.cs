@@ -277,6 +277,16 @@ if (TurnstileOptionsValidator.SiteKeyWarning(
     app.Logger.LogWarning("{Warning}", siteKeyWarning);
 }
 
+// Said once at start-up: without the private verification key every security check is refused.
+// Read the way the verifier reads it; only its emptiness is tested.
+if (TurnstileOptionsValidator.VerifierKeyWarning(
+        app.Configuration[TurnstileOptions.SecretEnvironmentVariable]
+            ?? Environment.GetEnvironmentVariable(TurnstileOptions.SecretEnvironmentVariable),
+        app.Environment.EnvironmentName) is { } verifierKeyWarning)
+{
+    app.Logger.LogWarning("{Warning}", verifierKeyWarning);
+}
+
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 
