@@ -41,7 +41,7 @@ public partial class AdminConsoleShellTests
         { "/admin/artifacts", "Artifacts · Dealoware admin", "Artifacts", "/admin/artifacts" },
         { "/admin/negotiations", "Negotiations · Dealoware admin", "Negotiations", "/admin/negotiations" },
         { "/admin/offers", "Offers · Dealoware admin", "Offers", "/admin/offers" },
-        { "/admin/settings/security", "Security settings · Dealoware admin", "Security settings", "/admin/settings/security" },
+        // S-A12 Security settings has forms of its own: AdminSecuritySettingsPageTests holds it to this shell.
         { "/admin/no-such-page", "Page not found · Dealoware admin", "We can't find that page.", null }
     };
 
@@ -142,15 +142,16 @@ public partial class AdminConsoleShellTests
     }
 
     [Fact]
-    public async Task ThePlaceholder_SaysOneShortSentence_AndS_D3_LinksToStats()
+    public async Task EveryNavPageIsBuilt_AndS_D3_LinksToStats()
     {
         var session = await SeedSessionAsync();
-        Assert.Equal("This page is not built yet.", AdminConsoleCopy.NotBuiltYet);
-        foreach (var path in new[] { "/admin/settings/security" })
+
+        // Every page in the nav is built: none is a placeholder any more.
+        foreach (var path in NavOrder)
         {
             using var response = await GetAsync(path, session);
-            var html = await response.Content.ReadAsStringAsync();
-            Assert.Contains("<p class=\"lede\">This page is not built yet.</p>", html, StringComparison.Ordinal);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.DoesNotContain("not built yet", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         }
 
         // S-D3 for an unknown page and a path under a list or a section.

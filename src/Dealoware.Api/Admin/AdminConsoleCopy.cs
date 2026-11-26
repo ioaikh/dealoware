@@ -178,11 +178,6 @@ public static class AdminConsoleCopy
 
     private static string Count(int n) => n.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
 
-    // ---- Pages later pieces fill ----
-
-    /// <summary>What a page that is routed but not built yet says. New copy.</summary>
-    public const string NotBuiltYet = "This page is not built yet.";
-
     // ---- S-D3 ----
 
     /// <summary>S-D3's title. New copy.</summary>

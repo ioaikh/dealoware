@@ -357,3 +357,28 @@ public class AdminSessionStepUpEntityConfiguration : IEntityTypeConfiguration<Ad
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+/// <summary>
+/// T04 UXR-A40: the recovery-code banner of a session, one row per session,
+/// deleted with it (database cascade), so it never shows in a later session.
+/// </summary>
+public class AdminSessionRecoveryNoticeEntityConfiguration : IEntityTypeConfiguration<AdminSessionRecoveryNotice>
+{
+    public void Configure(EntityTypeBuilder<AdminSessionRecoveryNotice> builder)
+    {
+        builder.ToTable("AdminSessionRecoveryNotices");
+
+        builder.HasKey(n => n.SessionId);
+
+        builder.Property(n => n.SessionId)
+            .ValueGeneratedNever();
+
+        builder.Property(n => n.CreatedAt)
+            .IsRequired();
+
+        builder.HasOne<AdminSession>()
+            .WithOne()
+            .HasForeignKey<AdminSessionRecoveryNotice>(n => n.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

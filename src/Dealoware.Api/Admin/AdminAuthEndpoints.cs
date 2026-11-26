@@ -709,6 +709,13 @@ public static class AdminAuthEndpoints
         var session = AdminSession.Create(account.Email, ipHmac, now);
         session.MarkTotpVerified();
         await sessions.AddAsync(session, context.RequestAborted);
+        if (usedRecovery)
+        {
+            // The UXR-A40 banner of this session, saved with it (AdminRecoveryNotice). Needs
+            // migration 20261126000500 applied first: deploy the migration before this code.
+            AdminRecoveryNotice.Add(context, session.Id, now);
+        }
+
         await sessions.SaveChangesAsync(context.RequestAborted);
 
         if (usedRecovery)

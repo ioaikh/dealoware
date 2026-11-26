@@ -337,6 +337,9 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthorization();
 app.UseAntiforgery();
 
+// UXR-A40: whether this session's recovery-code banner is still to be shown on its pages.
+app.UseAdminRecoveryNotice();
+
 // S-D3 for a signed-in GET of a page path that no route answers.
 app.UseAdminPageNotFound();
 
@@ -397,6 +400,7 @@ app.MapAdminCsrfProbeEndpoint();
 app.MapAdminPasswordReset();
 app.MapAdminBootstrap();
 app.MapAdminSecuritySettings();
+app.MapAdminRecoveryNotice();
 app.MapAdminConsolePages();
 
 app.Run();

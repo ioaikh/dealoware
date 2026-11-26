@@ -170,7 +170,10 @@ async function expectShell(page: Page, title: string, heading: string, current: 
     await expect(marked).toHaveAttribute('href', current);
   }
   await expect(page.getByRole('link', { name: SKIP, exact: true })).toHaveAttribute('href', '#main');
-  await expect(page.locator('[aria-live]')).toHaveCount(1);
+  // One live region in the whole page. S-A12 has forms with their own, and its own test holds it to
+  // its exact set (security-settings.spec.ts); the shell's is still the only one directly in main.
+  if (current === '/admin/settings/security') await expect(page.locator('main > [aria-live]')).toHaveCount(1);
+  else await expect(page.locator('[aria-live]')).toHaveCount(1);
   await expect(page.locator('#console-status')).toHaveAttribute('aria-live', 'polite');
   await expectStyled(page);
 }
@@ -278,8 +281,8 @@ test('every nav entry opens its page in one step, with its title, one h1 and ari
     await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true }).click();
     await expect(page).toHaveURL(ORIGIN + entry.path);
     await expectShell(page, entry.title, entry.heading, entry.path);
-    // The lists are built (lists.spec.ts); Security settings is the page a later piece fills.
-    if (entry.path === '/admin/settings/security') await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
+    // Every page in the nav is built now: none says it is not.
+    await expect(page.getByText(NOT_BUILT, { exact: true })).toHaveCount(0);
     await expectNoSeriousAxeFindings(page, `page_${entry.label.toLowerCase().replace(/ /g, '-')}`);
   }
 

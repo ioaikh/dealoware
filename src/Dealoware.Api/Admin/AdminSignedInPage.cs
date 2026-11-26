@@ -40,6 +40,9 @@ public sealed record AdminSignedInPageContent
     /// </summary>
     public IReadOnlyList<string> Scripts { get; init; } = [];
 
+    /// <summary>The page's own stylesheets, after the shell's. Same-origin paths under <see cref="AdminSignedInPage.AssetPrefix"/>.</summary>
+    public IReadOnlyList<string> Stylesheets { get; init; } = [];
+
     /// <summary>HTTP status of the page. 200 except for S-D3.</summary>
     public int StatusCode { get; init; } = StatusCodes.Status200OK;
 }
@@ -128,6 +131,11 @@ public static class AdminSignedInPage
         html.Append($"<meta name=\"{AdminSignedOutPage.CsrfMetaName}\" content=\"{E(token)}\">");
         html.Append($"<title>{E(page.Title)}</title>");
         html.Append($"<link rel=\"stylesheet\" href=\"{StylesheetPath}\" nonce=\"{nonce}\">");
+        foreach (var stylesheet in page.Stylesheets)
+        {
+            html.Append($"<link rel=\"stylesheet\" href=\"{E(stylesheet)}\" nonce=\"{nonce}\">");
+        }
+
         html.Append("</head><body>");
         html.Append($"<a class=\"skip-link\" href=\"#main\">{E(AdminConsoleCopy.SkipLink)}</a>");
         html.Append("<header class=\"console-header\">");
@@ -150,9 +158,11 @@ public static class AdminSignedInPage
         html.Append("<main id=\"main\" class=\"console-main\" tabindex=\"-1\">");
         html.Append($"<h1 id=\"page-heading\">{E(page.Heading)}</h1>");
         html.Append($"<p id=\"{LiveRegionId}\" class=\"live\" role=\"status\" aria-live=\"polite\"></p>");
+        // UXR-A40: the recovery-code banner, while this session's is still to be shown.
+        html.Append(AdminRecoveryNotice.Markup(http));
         html.Append(page.BodyHtml);
         html.Append("</main>");
-        foreach (var script in ShellScripts.Concat(page.Scripts))
+        foreach (var script in ShellScripts.Concat(AdminRecoveryNotice.Scripts(http)).Concat(page.Scripts))
         {
             html.Append($"<script src=\"{E(script)}\" nonce=\"{nonce}\"></script>");
         }

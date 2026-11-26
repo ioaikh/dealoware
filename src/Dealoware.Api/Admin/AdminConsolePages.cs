@@ -14,8 +14,7 @@ namespace Dealoware.Api.Admin;
 /// (TD-ADM-UI-na-B09), Refresh counts again, and a total that cannot be
 /// counted says so with Retry while the others stay;</item>
 /// <item>the four lists and their detail pages (<see cref="AdminListPages"/>);</item>
-/// <item>S-A12 Security settings, routed and in the nav, saying it is not
-/// built yet (a later piece of T04 fills it);</item>
+/// <item>S-A12 Security settings (<see cref="AdminSecuritySettingsPage"/>);</item>
 /// <item>S-D3 for any other page path under /admin/ that no route answers:
 /// "We can't find that page." with a 404 (<see cref="UseAdminPageNotFound"/>).</item>
 /// </list>
@@ -31,8 +30,7 @@ public static class AdminConsolePages
     {
         // "/admin/" also matches "/admin": the handler sends that one to "/admin/".
         Page(app.MapGet(AdminSignedInPage.Stats, GetStats));
-        Page(app.MapGet(AdminSignedInPage.SecuritySettings, (HttpContext http, AdminAntiForgeryService af)
-            => NotBuiltYet(http, af, AdminConsoleCopy.NavSecuritySettings, AdminConsoleSection.SecuritySettings)));
+        Page(app.MapGet(AdminSignedInPage.SecuritySettings, AdminSecuritySettingsPage.Render));
         app.MapAdminListPages();
     }
 
@@ -134,19 +132,6 @@ public static class AdminConsolePages
         html.Append($"<p><a id=\"stats-refresh\" class=\"button-link secondary\" href=\"{AdminSignedInPage.Stats}\">{E(AdminConsoleCopy.Refresh)}</a></p>");
         return html.ToString();
     }
-
-    private static IResult NotBuiltYet(
-        HttpContext http,
-        AdminAntiForgeryService antiforgery,
-        string screen,
-        AdminConsoleSection section)
-        => AdminSignedInPage.Render(http, antiforgery, new AdminSignedInPageContent
-        {
-            Title = AdminConsoleCopy.Title(screen),
-            Heading = screen,
-            Section = section,
-            BodyHtml = $"<p class=\"lede\">{AdminSignedOutPage.Encode(AdminConsoleCopy.NotBuiltYet)}</p>"
-        });
 
     internal static IResult NotFound(HttpContext http, AdminAntiForgeryService antiforgery)
         => AdminSignedInPage.Render(http, antiforgery, new AdminSignedInPageContent
