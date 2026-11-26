@@ -106,7 +106,7 @@ public partial class AdminSecuritySettingsPageTests
 
     /// <summary>
     /// The shell checks AdminConsoleShellTests makes of every placeholder page, which S-A12 left
-    /// when it got forms of its own: charset, nav order and labels, no Audit log, the exact
+    /// when it got forms of its own: charset, nav order and labels, the exact
     /// sign-out form, no referrer meta, main then h1, and its own exact set of live regions.
     /// </summary>
     [Fact]
@@ -121,12 +121,11 @@ public partial class AdminSecuritySettingsPageTests
         Assert.DoesNotContain("name=\"referrer\"", html, StringComparison.Ordinal);
         var links = Regex.Matches(html, "<li><a href=\"([^\"]+)\"(?: aria-current=\"page\")?>([^<]+)</a></li>");
         Assert.Equal(
-            new[] { "/admin/", "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", PagePath },
+            new[] { "/admin/", "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", "/admin/audit", PagePath },
             links.Select(m => m.Groups[1].Value).ToArray());
         Assert.Equal(
-            new[] { "Stats", "Participants", "Artifacts", "Negotiations", "Offers", "Security settings" },
+            new[] { "Stats", "Participants", "Artifacts", "Negotiations", "Offers", "Audit log", "Security settings" },
             links.Select(m => WebUtility.HtmlDecode(m.Groups[2].Value)).ToArray());
-        Assert.DoesNotContain("Audit log", text, StringComparison.Ordinal);
         Assert.Contains(
             "<form id=\"sign-out-form\" method=\"post\" action=\"/admin/sign-out\""
             + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\">"

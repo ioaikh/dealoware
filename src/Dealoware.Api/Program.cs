@@ -402,6 +402,7 @@ app.MapAdminBootstrap();
 app.MapAdminSecuritySettings();
 app.MapAdminRecoveryNotice();
 app.MapAdminConsolePages();
+app.MapAdminAuditPages();
 
 app.Run();
 

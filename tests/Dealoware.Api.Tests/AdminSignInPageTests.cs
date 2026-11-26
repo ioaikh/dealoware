@@ -1101,6 +1101,8 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
     [InlineData("/admin/participants?q=a%20b%26c%3Dd&createdFrom=2026-10-05T19:55:00-04:00")]
     [InlineData("/admin/participants?q=%2F%2Fevil.example%2F%3Fx%3D1%23y")]
     [InlineData("/admin/participants?q=%E2%80%94%20%C3%A9")]
+    // The audit list: action names carry underscores and dots, several are joined with an encoded comma.
+    [InlineData("/admin/audit?action=login_failure,signin.second_factor_failed,account.recovery_codes_regenerated&entityType=Offer&from=2026-11-01&to=2026-11-20&offset=50&limit=100")]
     public void BrowserQueryRule_AcceptsEveryQueryTheServerCanSend(string asked)
     {
         // TD-ADM-177: a list page comes back with its checked query; the browser follows it.
