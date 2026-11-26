@@ -323,6 +323,9 @@ app.UseWhen(
 
 app.UseRateLimiter();
 
+// An engine request whose row another write changed first: 409, not 500.
+app.UseMiddleware<EngineWriteConflictMiddleware>();
+
 app.UseMiddleware<AdminSessionMiddleware>();
 
 // The signed-in pages' own files: after the gate, so only a valid session
@@ -393,6 +396,7 @@ app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminSessionEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminEditEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();

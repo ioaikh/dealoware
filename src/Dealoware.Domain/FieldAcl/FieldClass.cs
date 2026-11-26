@@ -68,13 +68,13 @@ public sealed class FieldClass
     /// <summary>Negotiation artifact id. CoreOwner Read.</summary>
     public static readonly FieldClass NegotiationArtifactId = new("NegotiationArtifactId");
 
-    /// <summary>Offer amount. CoreOwner R/W.</summary>
+    /// <summary>Offer amount, as the party sent it. CoreOwner Read (never rewritten).</summary>
     public static readonly FieldClass OfferAmount = new("OfferAmount");
 
-    /// <summary>Offer currency. CoreOwner R/W.</summary>
+    /// <summary>Offer currency, as the party sent it. CoreOwner Read (never rewritten).</summary>
     public static readonly FieldClass OfferCurrency = new("OfferCurrency");
 
-    /// <summary>Offer terms. CoreOwner R/W.</summary>
+    /// <summary>Offer terms, as the party sent them. CoreOwner Read (never rewritten).</summary>
     public static readonly FieldClass OfferTerms = new("OfferTerms");
 
     /// <summary>Offer status. CoreOwner R/W.</summary>

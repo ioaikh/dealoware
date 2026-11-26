@@ -214,6 +214,63 @@ public sealed class Negotiation
     }
 
     /// <summary>
+    /// Admin edit path E8: expires an open negotiation now, whatever its
+    /// <see cref="EndsAt"/>. Cancels the loaded open offers. Closed and
+    /// Expired are final: there is no way back to Open.
+    /// </summary>
+    /// <returns>True if expired by this call, false if it was not open</returns>
+    public bool Expire()
+    {
+        if (Status != NegotiationStatus.Open)
+            return false;
+
+        Status = NegotiationStatus.Expired;
+        CancelAllOpenOffers();
+        return true;
+    }
+
+    /// <summary>
+    /// True when the stored status is still Open but <see cref="EndsAt"/> has
+    /// passed: the negotiation has expired, and the status says so the next
+    /// time something applies it (<see cref="CheckAndApplyExpiration"/>).
+    /// </summary>
+    public bool HasLapsed(DateTimeOffset now)
+        => Status == NegotiationStatus.Open && EndsAt.HasValue && now >= EndsAt.Value;
+
+    /// <summary>
+    /// Admin edit path E6: sets or clears <see cref="EndsAt"/> while the
+    /// negotiation is open. When both are set, it must be later than <see cref="StartsAt"/>.
+    /// A negotiation whose end time has already passed is expired, whatever
+    /// its stored status, and Expired is final: it is not given a new end time.
+    /// </summary>
+    /// <returns>False, with nothing changed, when not open, lapsed, or not after the start</returns>
+    public bool UpdateEndsAt(DateTimeOffset? endsAt, DateTimeOffset? now = null)
+    {
+        if (Status != NegotiationStatus.Open)
+            return false;
+
+        if (HasLapsed(now ?? DateTimeOffset.UtcNow))
+            return false;
+
+        // Persist as UTC: PostgreSQL timestamptz (Npgsql) only accepts offset zero.
+        var normalized = endsAt?.ToUniversalTime();
+        if (StartsAt.HasValue && normalized.HasValue && normalized.Value <= StartsAt.Value)
+            return false;
+
+        EndsAt = normalized;
+        return true;
+    }
+
+    /// <summary>
+    /// Records an admin edit: the next <see cref="Version"/> and the time of the edit (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Adds an offer to this negotiation (for EF navigation).
     /// </summary>
     internal void AddOffer(Offer offer)

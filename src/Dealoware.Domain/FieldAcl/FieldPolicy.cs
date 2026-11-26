@@ -104,10 +104,15 @@ public sealed class FieldPolicy : IFieldPolicy
             || fieldClass == FieldClass.NegotiationArtifactId)
             return action is FieldAction.Read or FieldAction.List;
 
+        // What a party sent stays as sent: the owner reads an offer's amount,
+        // currency and terms and never writes them. The owner's one offer
+        // change is the status (Open to Cancelled, enforced by the edit API).
         if (fieldClass == FieldClass.OfferAmount
             || fieldClass == FieldClass.OfferCurrency
-            || fieldClass == FieldClass.OfferTerms
-            || fieldClass == FieldClass.OfferStatus)
+            || fieldClass == FieldClass.OfferTerms)
+            return action is FieldAction.Read or FieldAction.List;
+
+        if (fieldClass == FieldClass.OfferStatus)
             return action is FieldAction.Read or FieldAction.Write or FieldAction.List;
 
         if (fieldClass == FieldClass.OfferNegotiationId)

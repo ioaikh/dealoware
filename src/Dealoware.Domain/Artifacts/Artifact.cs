@@ -94,4 +94,23 @@ public sealed class Artifact
 
         return artifact;
     }
+
+    /// <summary>
+    /// Admin edit path E5: hands the artifact to another participant, by Sub.
+    /// The caller checks that the participant exists and is not soft-deleted.
+    /// </summary>
+    public void ReassignOwner(string ownerParticipantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerParticipantId);
+        OwnerParticipantId = ownerParticipantId;
+    }
+
+    /// <summary>
+    /// Records an admin edit: the next <see cref="Version"/> and the time of the edit (UTC).
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
 }

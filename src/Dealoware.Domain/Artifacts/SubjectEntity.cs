@@ -46,4 +46,39 @@ public sealed class SubjectEntity
 
         return entity;
     }
+
+    /// <summary>Longest name and longest description, in characters (the column widths).</summary>
+    public const int MaxTextLength = 4096;
+
+    /// <summary>
+    /// Admin edit path E3: a required name of at most <see cref="MaxTextLength"/> characters.
+    /// </summary>
+    /// <returns>False, with nothing changed, when the name is empty or too long</returns>
+    public bool UpdateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        var trimmed = name.Trim();
+        if (trimmed.Length > MaxTextLength)
+            return false;
+
+        Name = trimmed;
+        return true;
+    }
+
+    /// <summary>
+    /// Admin edit path E4: an optional description, which may be empty, of at
+    /// most <see cref="MaxTextLength"/> characters.
+    /// </summary>
+    /// <returns>False, with nothing changed, when the description is too long</returns>
+    public bool UpdateDescription(string? description)
+    {
+        description ??= string.Empty;
+        if (description.Length > MaxTextLength)
+            return false;
+
+        Description = description;
+        return true;
+    }
 }
