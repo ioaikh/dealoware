@@ -403,7 +403,7 @@ public partial class AdminConsoleShellTests
         var client = CookieClient();
 
         // Signed out, the owner opens a filtered list: the gate keeps it and sends the browser on.
-        using var asked = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?status=closed&bogus=1&offset=-3&sort=participant"));
+        using var asked = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?status=closed&bogus=1&offset=-3&sort=status"));
         Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(asked.Headers.GetValues("Location")));
 
         // Step 1 from the sign-in page: nothing about the page is in the address or the body.
@@ -415,7 +415,7 @@ public partial class AdminConsoleShellTests
             turnstileToken = FakeTurnstileVerifier.ValidToken
         }));
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
-        Assert.Equal("/admin/negotiations?sort=participant&status=Closed", await StoredReturnPathAsync());
+        Assert.Equal("/admin/negotiations?sort=status&status=Closed", await StoredReturnPathAsync());
 
         using var step2 = await client.SendAsync(Post(AdminSignedOutExemptions.ApiSignInCode, token, new
         {
@@ -424,13 +424,13 @@ public partial class AdminConsoleShellTests
         Assert.Equal(HttpStatusCode.OK, step2.StatusCode);
         var reply = await step2.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(reply.GetProperty("verified").GetBoolean());
-        Assert.Equal("/admin/negotiations?sort=participant&status=Closed", reply.GetProperty("next").GetString());
+        Assert.Equal("/admin/negotiations?sort=status&status=Closed", reply.GetProperty("next").GetString());
         var forgotten = Assert.Single(SetCookies(step2), c => c.StartsWith(AdminReturnCookie.Name + "=", StringComparison.Ordinal));
         Assert.StartsWith("dw_admin_return=;", forgotten, StringComparison.Ordinal);
         Assert.Contains("path=/admin/api/auth/sign-in", forgotten, StringComparison.OrdinalIgnoreCase);
 
         // And the page is there.
-        using var landed = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?sort=participant&status=Closed"));
+        using var landed = await client.SendAsync(Request(HttpMethod.Get, "/admin/negotiations?sort=status&status=Closed"));
         Assert.Equal(HttpStatusCode.OK, landed.StatusCode);
     }
 

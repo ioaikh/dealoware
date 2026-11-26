@@ -16,13 +16,16 @@
  *     that control (or on the page's main area when it is gone), says the
  *     number of results in the page's one live region, and takes the mark
  *     off the address. Until the new page arrives the table is marked busy
- *     and keeps its rows (TD-ADM-UI-na-X04).
+ *     and keeps its rows (TD-ADM-UI-na-X04). A page shown again (pageshow,
+ *     the back/forward cache included) is not busy and takes a move again.
  *   - The address is set to the page's own reading of it (data-canonical),
  *     so a value the page dropped does not stay in the address bar.
  *   - The two pickers (Participant or Owner participant, and Artifact) are
  *     comboboxes: after a 300 ms pause they ask the read API for one page of
  *     matches for the typed text (at most ten, never the whole table), and
  *     list them; arrows move, Enter or a click chooses, Escape closes.
+ *     Typing clears the choice: Enter on typed text that was not chosen
+ *     sends no value for that filter.
  *     A 401 from the session gate goes to sign-in, as any page would.
  *
  * Nothing is stored. Text goes into the page through textContent only. The
@@ -72,6 +75,13 @@
 
   var leaving = false;
 
+  // A page the browser brings back whole (back/forward cache), or a move that never
+  // arrived, must not stay busy: the controls work again.
+  window.addEventListener("pageshow", function () {
+    leaving = false;
+    if (region) region.removeAttribute("aria-busy");
+  });
+
   function go(query, focusId) {
     var next = path + query;
     if (next === location.pathname + location.search) {
@@ -96,11 +106,6 @@
       var field = fields[i];
       if ((field.type === "checkbox" || field.type === "radio") && !field.checked) continue;
       var value = field.value.trim();
-      if (field.type === "hidden" && field.closest(".picker")) {
-        // A picker whose box was emptied drops its filter.
-        var box = field.closest(".picker").querySelector("input[role=combobox]");
-        if (box && box.value.trim() === "") value = "";
-      }
       // Page 1, and the default page size, are what an address without them means.
       if (value === "" || field.name === "offset" || (field.name === "limit" && value === "50")) continue;
       if (field.name === "status") statuses.push(value);
@@ -266,6 +271,9 @@
     }
 
     box.addEventListener("input", function () {
+      // Typed text is not a choice: until an option is chosen, the form sends no value
+      // for this filter, never the earlier choice under new words.
+      hidden.value = "";
       clearTimeout(timer);
       timer = setTimeout(ask, PAUSE_MS);
     });

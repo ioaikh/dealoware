@@ -296,6 +296,91 @@ public class AdminReadApiNamesTests
         Assert.Equal(HttpStatusCode.OK, (await GetAsync($"/admin/api/offers/{g.OpenOffer.Id:D}?includeDeleted=true", session)).Status);
     }
 
+    [Fact]
+    public async Task ADeletedRecordsName_ShowsOnlyWithTheToggle_ItsDeletedMarkAlways()
+    {
+        var prefix = $"n7-{Guid.NewGuid():N}";
+        var alpha = Participant.Create($"{prefix}-Alpha");
+        var gone = Participant.Create($"{prefix}-GonePerson");
+        var goneThing = Artifact.Create(gone.Sub, [SubjectEntity.Create($"{prefix}-GoneThing", "d")], "sell");
+        var (live, _) = Negotiation.Create(goneThing.Id, alpha.Sub, gone.Sub, "sell", "buy");
+        var (goneNegotiation, _) = Negotiation.Create(goneThing.Id, alpha.Sub, gone.Sub, "sell", "buy");
+        var (liveOffer, _) = Offer.Create(live!.Id, gone.Sub, alpha.Sub, 5m, "USD", "t");
+        var (orphanOffer, _) = Offer.Create(goneNegotiation!.Id, alpha.Sub, gone.Sub, 6m, "USD", "t");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            db.Participants.AddRange(alpha, gone);
+            db.Artifacts.Add(goneThing);
+            db.Negotiations.AddRange(live, goneNegotiation);
+            db.Offers.AddRange(liveOffer!, orphanOffer!);
+            await db.SaveChangesAsync();
+            var at = DateTimeOffset.UtcNow;
+            await db.Participants.Where(p => p.Id == gone.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.DeletedAt, at));
+            await db.Artifacts.Where(a => a.Id == goneThing.Id).ExecuteUpdateAsync(u => u.SetProperty(a => a.DeletedAt, at));
+            await db.Negotiations.Where(n => n.Id == goneNegotiation.Id).ExecuteUpdateAsync(u => u.SetProperty(n => n.DeletedAt, at));
+        }
+
+        var session = await SessionAsync();
+        foreach (var toggle in new[] { false, true })
+        {
+            var on = toggle ? "&includeDeleted=true" : string.Empty;
+            var n = Row((await GetAsync($"/admin/api/negotiations?negotiationId={live.Id:D}{on}", session)).Json, live.Id);
+            Assert.True(n.GetProperty("artifactDeleted").GetBoolean());
+            Assert.True(n.GetProperty("partyBDeleted").GetBoolean());
+            Assert.False(n.TryGetProperty("partyADeleted", out _));
+            Assert.Equal($"{prefix}-Alpha", n.GetProperty("partyAName").GetString());
+            Assert.Equal(toggle, n.TryGetProperty("artifactName", out _));
+            Assert.Equal(toggle, n.TryGetProperty("partyBName", out _));
+
+            var offers = await GetAsync($"/admin/api/offers?participant={Uri.EscapeDataString(alpha.Sub)}{on}", session);
+            var o = Row(offers.Json, liveOffer!.Id);
+            Assert.True(o.GetProperty("fromParticipantDeleted").GetBoolean());
+            Assert.Equal(toggle, o.TryGetProperty("fromParticipantName", out _));
+            Assert.True(o.GetProperty("artifactDeleted").GetBoolean());
+            Assert.False(o.TryGetProperty("negotiationDeleted", out _));
+            var orphan = Row(offers.Json, orphanOffer!.Id);
+            Assert.True(orphan.GetProperty("negotiationDeleted").GetBoolean());
+
+            var detail = await GetAsync($"/admin/api/negotiations/{live.Id:D}{(toggle ? "?includeDeleted=true" : string.Empty)}", session);
+            Assert.Equal(toggle, detail.Json.TryGetProperty("artifactName", out _));
+            Assert.Equal(toggle, detail.Json.TryGetProperty("partyBName", out _));
+            foreach (var body in new[] { offers.Body, detail.Body })
+            {
+                Assert.Equal(toggle, body.Contains($"{prefix}-GonePerson", StringComparison.Ordinal));
+                Assert.Equal(toggle, body.Contains($"{prefix}-GoneThing", StringComparison.Ordinal));
+            }
+        }
+    }
+
+    [Fact]
+    public void ADeletedReference_InTheProjection_GivesItsMark_AndItsNameOnlyWithTheToggle()
+    {
+        var (a, b, artifact, negotiation, offer, related) = Rows();
+        var owner = FieldPrincipal.CoreOwner(CoreOwnerEmail);
+        typeof(Participant).GetProperty(nameof(Participant.DeletedAt))!.SetValue(b, DateTimeOffset.UtcNow);
+        typeof(Artifact).GetProperty(nameof(Artifact.DeletedAt))!.SetValue(artifact, DateTimeOffset.UtcNow);
+
+        var off = AdminReadProjection.Negotiation(negotiation, new FieldPolicy(), owner, detail: false, related);
+        Assert.Equal(true, off["partyBDeleted"]);
+        Assert.False(off.ContainsKey("partyBName"));
+        Assert.Equal(true, off["artifactDeleted"]);
+        Assert.False(off.ContainsKey("artifactName"));
+        Assert.Equal("Name-A", off["partyAName"]);
+
+        var on = AdminReadProjection.Negotiation(negotiation, new FieldPolicy(), owner, detail: false, related with { IncludeDeleted = true });
+        Assert.Equal("Name-B", on["partyBName"]);
+        Assert.Equal("Name-Artifact", on["artifactName"]);
+        Assert.Equal(true, on["partyBDeleted"]);
+
+        // The mark is the soft-delete marker: denied, no mark (and still no name).
+        var unmarked = AdminReadProjection.Offer(offer, new DenyingPolicy(FieldClass.SoftDeletedAt), owner, detail: false, related);
+        Assert.False(unmarked.ContainsKey("toParticipantDeleted"));
+        Assert.False(unmarked.ContainsKey("toParticipantName"));
+        Assert.Equal("Name-A", unmarked["fromParticipantName"]);
+        _ = a;
+    }
+
     // ---- the field policy over the joined names ----
 
     /// <summary>The real policy, with the named field classes denied.</summary>

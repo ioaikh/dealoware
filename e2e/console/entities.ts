@@ -32,11 +32,17 @@ type Table = 'Participants' | 'Artifacts' | 'Negotiations' | 'Offers';
 
 export function seedEntities(options: { empty?: Table[] } = {}): Seeded {
   if (!DB || !PYTHON) throw new Error('SIGN_IN_E2E_DB and SIGN_IN_E2E_PYTHON are not set: start the suite with e2e/console/run.sh');
+  const run = runEntitySeedScript({ db: DB, empty: options.empty ?? [] });
+  if (run.status !== 0) throw new Error(`seeding the entities failed: ${run.stderr}`);
+  return JSON.parse(run.stdout) as Seeded;
+}
+
+/** Runs seed_entities.py with the given request. The script decides whether it will touch the database named in it. */
+export function runEntitySeedScript(request: Record<string, unknown>): { status: number | null; stdout: string; stderr: string } {
   const run = spawnSync(PYTHON, [path.join(__dirname, 'seed_entities.py')], {
-    input: JSON.stringify({ db: DB, empty: options.empty ?? [] }),
+    input: JSON.stringify(request),
     encoding: 'utf8',
     timeout: 60_000,
   });
-  if (run.status !== 0) throw new Error(`seeding the entities failed: ${run.stderr}`);
-  return JSON.parse(run.stdout) as Seeded;
+  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }

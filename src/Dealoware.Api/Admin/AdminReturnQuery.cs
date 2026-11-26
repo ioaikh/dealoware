@@ -16,13 +16,19 @@ namespace Dealoware.Api.Admin;
 /// These are exactly the keys each list page reads (<see cref="AdminListPages"/>
 /// passes its own address through <see cref="Filter"/> first, so a page and
 /// its way back after sign-in keep the same values). A status is one or more
-/// of the list's own names, comma-separated. A date filter is either an ET
-/// calendar date (yyyy-MM-dd, what the pages write) or an instant.
+/// of the list's own names, comma-separated; a sort is one the list's headers
+/// offer. A date filter is either an ET calendar date (yyyy-MM-dd, what the
+/// pages write) or an instant, in the years <see cref="MinYear"/> to
+/// <see cref="MaxYear"/>.
 /// </para>
 /// </summary>
 public static class AdminReturnQuery
 {
     private delegate bool Check(string raw, out string kept);
+
+    /// <summary>The years a date filter may name. Outside them it is dropped, never an error.</summary>
+    public const int MinYear = 1900;
+    public const int MaxYear = 2999;
 
     private static readonly (string Key, Check Check)[] Common =
     [
@@ -45,21 +51,21 @@ public static class AdminReturnQuery
     {
         ["/admin/participants"] =
         [
-            ("sort", SortKey(AdminListQuery.ParticipantSortKeys)),
+            ("sort", SortKey(AdminListPages.Participants.SortKeys)),
             .. Common,
             ("status", Statuses(AdminReadEndpoints.ParticipantStatuses)),
             .. Dates
         ],
         ["/admin/artifacts"] =
         [
-            ("sort", SortKey(AdminListQuery.ArtifactSortKeys)),
+            ("sort", SortKey(AdminListPages.Artifacts.SortKeys)),
             .. Common,
             ("participant", Text(AdminListQuery.MaxFilterLength)),
             .. Dates
         ],
         ["/admin/negotiations"] =
         [
-            ("sort", SortKey(AdminListQuery.NegotiationSortKeys)),
+            ("sort", SortKey(AdminListPages.Negotiations.SortKeys)),
             .. Common,
             ("participant", Text(AdminListQuery.MaxFilterLength)),
             .. Dates,
@@ -69,7 +75,7 @@ public static class AdminReturnQuery
         ],
         ["/admin/offers"] =
         [
-            ("sort", SortKey(AdminListQuery.OfferSortKeys)),
+            ("sort", SortKey(AdminListPages.Offers.SortKeys)),
             .. Common,
             ("participant", Text(AdminListQuery.MaxFilterLength)),
             .. Dates,
@@ -157,7 +163,7 @@ public static class AdminReturnQuery
         return kept.Length > 0;
     };
 
-    private static Check SortKey(HashSet<string> allowed) => (string raw, out string kept) =>
+    private static Check SortKey(IReadOnlyList<string> allowed) => (string raw, out string kept) =>
     {
         kept = allowed.FirstOrDefault(a => string.Equals(a, raw, StringComparison.Ordinal)) ?? string.Empty;
         return kept.Length > 0;
@@ -196,12 +202,15 @@ public static class AdminReturnQuery
         if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
             kept = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            return true;
+            return date.Year is >= MinYear and <= MaxYear;
         }
 
         kept = string.Empty;
-        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
+            || at.UtcDateTime.Year is < MinYear or > MaxYear)
+        {
             return false;
+        }
         kept = at.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
         return true;
     }

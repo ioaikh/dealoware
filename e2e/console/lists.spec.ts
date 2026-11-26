@@ -1,6 +1,9 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { expectNoSeriousAxeFindings } from './axe';
-import { seedEntities, type Seeded } from './entities';
+import { runEntitySeedScript, seedEntities, type Seeded } from './entities';
 import { authenticatorCode, seedOwner, type Owner } from '../sign-in/owner';
 import { answerCloudflare } from '../signed-out/cloudflare';
 
@@ -298,6 +301,15 @@ test('Participants filter by status; the Artifacts owner picker asks for one pag
   await expect(page.getByRole('combobox', { name: 'Owner participant' })).toBeFocused();
   await expect(page.locator('#chips')).toContainText('Owner participant: Blair Chen');
   for (const call of apiCalls) expect(new URL(call, ORIGIN).searchParams.get('limit')).toBe('10');
+
+  // Typed text that was not chosen is not a choice: Enter sends no owner at all,
+  // never Blair Chen under the new words.
+  await box.press('End');
+  await box.pressSequentially(' Jr', { delay: 20 });
+  await box.press('Enter');
+  await expect(page).toHaveURL(ORIGIN + '/admin/artifacts');
+  await expect(page.locator('#chips')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Owner participant' })).toHaveValue('');
 
   // A name that matches nothing says so.
   await box.fill('zzzz-nobody');
@@ -625,6 +637,58 @@ test('while the next list is on its way the table is marked busy and keeps its r
   // 29 negotiations are not deleted: one page, still there.
   await expect(rows(page)).toHaveCount(29);
   expect(here(page)).toBe('/admin/negotiations');
+
+  // Shown again (as from the back/forward cache, which a test cannot force): not busy,
+  // and a heading moves the list again.
+  await page.unrouteAll();
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false })));
+  await expect(page.locator('#list-region')).not.toHaveAttribute('aria-busy', 'true');
+  await page.locator('#sort-status').click();
+  await expect(page).toHaveURL(ORIGIN + '/admin/negotiations?sort=status');
+});
+
+test('the entity seeding script empties tables only in this run\'s own database', async () => {
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'dw-not-a-run-'));
+  try {
+    // A database file with the right name, in a folder the runner did not mark.
+    const unmarked = path.join(elsewhere, 'e2e.db');
+    fs.writeFileSync(unmarked, 'not a database, and it must stay as it is');
+    // A marked folder, but another file in it.
+    const markedDir = path.join(elsewhere, 'marked');
+    fs.mkdirSync(markedDir);
+    fs.writeFileSync(path.join(markedDir, '.dealoware-e2e-run'), 'dealoware e2e run\n');
+    const otherName = path.join(markedDir, 'dealoware.db');
+    fs.writeFileSync(otherName, 'not a database either');
+    // A marker with other words in it.
+    const wrongMarkerDir = path.join(elsewhere, 'wrong-marker');
+    fs.mkdirSync(wrongMarkerDir);
+    fs.writeFileSync(path.join(wrongMarkerDir, '.dealoware-e2e-run'), 'something else\n');
+    const wrongMarker = path.join(wrongMarkerDir, 'e2e.db');
+    fs.writeFileSync(wrongMarker, 'nor this');
+
+    const refusedPaths: unknown[] = [
+      unmarked, otherName, wrongMarker, path.join(markedDir, 'e2e.db'), path.join(elsewhere, 'missing', 'e2e.db'),
+      '', null, 42,
+    ];
+    for (const db of refusedPaths) {
+      const run = runEntitySeedScript({ db, empty: [] });
+      expect(run.status, `db = ${JSON.stringify(db)}`).toBe(1);
+      expect(run.stderr).toContain('only works on the database of a browser-test run');
+    }
+    expect(fs.readFileSync(unmarked, 'utf8')).toBe('not a database, and it must stay as it is');
+    expect(fs.readFileSync(otherName, 'utf8')).toBe('not a database either');
+    expect(fs.readFileSync(wrongMarker, 'utf8')).toBe('nor this');
+    // A refused path is not created either.
+    expect(fs.existsSync(path.join(markedDir, 'e2e.db'))).toBe(false);
+    expect(fs.existsSync(path.join(elsewhere, 'missing'))).toBe(false);
+  } finally {
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+
+  // Asked to empty a table it does not seed, it refuses too.
+  const odd = runEntitySeedScript({ db: process.env.SIGN_IN_E2E_DB, empty: ['AdminSessions'] });
+  expect(odd.status).toBe(1);
+  expect(odd.stderr).toContain('empty may name Participants, Artifacts, Negotiations and Offers only');
 });
 
 test('keyboard only: skip link, nav, search, a heading, a filter and its chip, a page, a row, and back', async ({ page }) => {

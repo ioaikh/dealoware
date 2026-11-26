@@ -238,7 +238,7 @@ public static class AdminReadEndpoints
 
         var ordered = ApplyArtifactSort(rows, query).Include(a => a.Entities);
         var (total, items) = await PageQueryAsync(rows, ordered, query, cancellationToken);
-        var related = await RelatedRowsAsync(db, items.Select(a => a.OwnerParticipantId), [], [], cancellationToken);
+        var related = await RelatedRowsAsync(db, items.Select(a => a.OwnerParticipantId), [], [], query.IncludeDeleted, cancellationToken);
 
         return new ListResult(
             total,
@@ -277,7 +277,7 @@ public static class AdminReadEndpoints
         if (artifact is null)
             return null;
 
-        var related = await RelatedRowsAsync(db, [artifact.OwnerParticipantId], [], [], cancellationToken);
+        var related = await RelatedRowsAsync(db, [artifact.OwnerParticipantId], [], [], includeDeleted, cancellationToken);
         return AdminReadProjection.Artifact(artifact, fieldPolicy, principal, detail: true, related);
     }
 
@@ -368,6 +368,7 @@ public static class AdminReadEndpoints
             items.SelectMany(n => new[] { n.PartyAParticipantId, n.PartyBParticipantId }),
             items.Select(n => n.ArtifactId),
             [],
+            query.IncludeDeleted,
             cancellationToken);
 
         return new ListResult(
@@ -411,6 +412,7 @@ public static class AdminReadEndpoints
             [negotiation.PartyAParticipantId, negotiation.PartyBParticipantId],
             [negotiation.ArtifactId],
             [],
+            includeDeleted,
             cancellationToken);
         return AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related);
     }
@@ -505,6 +507,7 @@ public static class AdminReadEndpoints
             items.SelectMany(o => new[] { o.FromParticipantId, o.ToParticipantId }),
             negotiations.Values.Select(n => n.ArtifactId),
             negotiations.Values,
+            query.IncludeDeleted,
             cancellationToken);
 
         return new ListResult(
@@ -549,6 +552,7 @@ public static class AdminReadEndpoints
             [offer.FromParticipantId, offer.ToParticipantId],
             negotiations.Values.Select(n => n.ArtifactId),
             negotiations.Values,
+            includeDeleted,
             cancellationToken);
         return AdminReadProjection.Offer(offer, fieldPolicy, principal, detail: true, related);
     }
@@ -568,14 +572,16 @@ public static class AdminReadEndpoints
 
     /// <summary>
     /// The participants and artifacts a page's rows name, read by key: never
-    /// more rows than the page refers to. Soft-deleted ones too: a row keeps
-    /// the name of what it refers to.
+    /// more rows than the page refers to. Soft-deleted ones too, so that a row
+    /// can say what it refers to is deleted; their names go out only with the
+    /// read's "Show deleted" toggle (<paramref name="includeDeleted"/>).
     /// </summary>
     private static async Task<AdminRelatedRows> RelatedRowsAsync(
         DealowareDbContext db,
         IEnumerable<string> participantSubs,
         IEnumerable<Guid> artifactIds,
         IEnumerable<Negotiation> negotiations,
+        bool includeDeleted,
         CancellationToken cancellationToken)
     {
         var subs = participantSubs.Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.Ordinal).ToList();
@@ -591,7 +597,7 @@ public static class AdminReadEndpoints
                 .Where(a => artifacts.Contains(a.Id))
                 .ToDictionaryAsync(a => a.Id, cancellationToken);
 
-        return new AdminRelatedRows(participantsBySub, artifactsById, negotiations.ToDictionary(n => n.Id));
+        return new AdminRelatedRows(participantsBySub, artifactsById, negotiations.ToDictionary(n => n.Id), includeDeleted);
     }
 
     private static async Task<IResult> GetStats(

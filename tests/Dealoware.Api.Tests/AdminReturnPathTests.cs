@@ -63,7 +63,11 @@ public class AdminReturnPathTests
     // A known key with a bad value is dropped; the rest stays.
     [InlineData("/admin/offers?limit=999&status=Open", "/admin/offers?status=Open")]
     [InlineData("/admin/offers?limit=0&offset=-1&offset2=3", "/admin/offers")]
-    [InlineData("/admin/negotiations?status=Withdrawn&sort=participant", "/admin/negotiations?sort=participant")]
+    // A sort the API takes but no heading of the page offers is dropped: the way back keeps what the page reads.
+    [InlineData("/admin/negotiations?status=Withdrawn&sort=participant", "/admin/negotiations")]
+    [InlineData("/admin/negotiations?sort=status&dir=asc", "/admin/negotiations?sort=status&dir=asc")]
+    [InlineData("/admin/offers?sort=createdAt", "/admin/offers")]
+    [InlineData("/admin/participants?sort=displayName", "/admin/participants")]
     [InlineData("/admin/participants?sort=amount", "/admin/participants")]
     [InlineData("/admin/participants?includeDeleted=yes", "/admin/participants")]
     [InlineData("/admin/artifacts?artifact=not-a-guid&includeDeleted=TRUE", "/admin/artifacts?includeDeleted=true")]
@@ -76,6 +80,9 @@ public class AdminReturnPathTests
     [InlineData("/admin/artifacts?status=Open&participant=sub-1", "/admin/artifacts?participant=sub-1")]
     // A date filter as the pages write it (an ET calendar date) stays a date.
     [InlineData("/admin/negotiations?createdFrom=2026-10-05&updatedTo=2026-13-40", "/admin/negotiations?createdFrom=2026-10-05")]
+    // A date outside the years 1900 to 2999 is dropped (an end of day past the last date cannot be worked out).
+    [InlineData("/admin/offers?createdTo=9999-12-31&createdFrom=0001-01-01&updatedFrom=1899-12-31&updatedTo=2999-12-31", "/admin/offers?updatedTo=2999-12-31")]
+    [InlineData("/admin/participants?createdFrom=1900-01-01&createdTo=9999-12-31T23:59:59Z", "/admin/participants?createdFrom=1900-01-01")]
     // A key given twice, or spelled another way, is not a known key.
     [InlineData("/admin/participants?q=a&q=b", "/admin/participants")]
     [InlineData("/admin/participants?Q=a", "/admin/participants")]
@@ -129,6 +136,23 @@ public class AdminReturnPathTests
         Assert.DoesNotContain("participant", AdminReturnQuery.KeysFor("/admin/participants"));
         Assert.DoesNotContain("artifact", AdminReturnQuery.KeysFor("/admin/artifacts"));
         Assert.DoesNotContain("status", AdminReturnQuery.KeysFor("/admin/artifacts"));
+    }
+
+    [Fact]
+    public void EachListKeepsOnlyTheSortsItsHeadingsOffer()
+    {
+        foreach (var list in AdminListPages.All)
+        {
+            foreach (var sort in AdminListQuery.ParticipantSortKeys
+                         .Concat(AdminListQuery.ArtifactSortKeys)
+                         .Concat(AdminListQuery.NegotiationSortKeys)
+                         .Concat(AdminListQuery.OfferSortKeys)
+                         .Distinct(StringComparer.Ordinal))
+            {
+                var kept = AdminReturnQuery.Filter(list.Path, "sort=" + sort);
+                Assert.Equal(list.SortKeys.Contains(sort, StringComparer.Ordinal) ? "?sort=" + sort : string.Empty, kept);
+            }
+        }
         Assert.Empty(AdminReturnQuery.KeysFor("/admin/audit"));
         Assert.Empty(AdminReturnQuery.KeysFor("/admin/"));
     }

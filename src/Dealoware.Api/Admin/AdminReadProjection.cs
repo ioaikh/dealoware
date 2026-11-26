@@ -10,12 +10,15 @@ namespace Dealoware.Api.Admin;
 /// The rows a page of negotiations, offers or artifacts refers to, read once
 /// for the page (never more than the page's own rows name), so that a row can
 /// carry names, not bare ids. Each name still passes the field policy in the
-/// projection that uses it.
+/// projection that uses it. <see cref="IncludeDeleted"/> is the read's "Show
+/// deleted" toggle: without it, a soft-deleted participant or artifact lends
+/// no name, only the mark that it is deleted.
 /// </summary>
 public sealed record AdminRelatedRows(
     IReadOnlyDictionary<string, Participant> ParticipantsBySub,
     IReadOnlyDictionary<Guid, Artifact> ArtifactsById,
-    IReadOnlyDictionary<Guid, Negotiation> NegotiationsById)
+    IReadOnlyDictionary<Guid, Negotiation> NegotiationsById,
+    bool IncludeDeleted = false)
 {
     public static readonly AdminRelatedRows None = new(
         new Dictionary<string, Participant>(StringComparer.Ordinal),
@@ -43,6 +46,15 @@ public sealed record AdminRelatedRows(
 /// participants. A name is added only when the policy allows both the
 /// reference and the name. A participant row in a list carries neither email
 /// address; the detail does (as the policy allows).
+/// </para>
+/// <para>
+/// A referenced participant, artifact or negotiation that is soft-deleted is
+/// marked (<c>ownerDeleted</c>, <c>partyADeleted</c>, <c>partyBDeleted</c>,
+/// <c>fromParticipantDeleted</c>, <c>toParticipantDeleted</c>,
+/// <c>artifactDeleted</c>, <c>negotiationDeleted</c>: true, as the policy
+/// allows the soft-delete marker). Its name is left out unless the read has
+/// the "Show deleted" toggle on: a deleted record's name shows only where the
+/// deleted record itself would.
 /// </para>
 /// </summary>
 public static class AdminReadProjection
@@ -222,13 +234,21 @@ public static class AdminReadProjection
         if (Can(policy, principal, FieldClass.OfferNegotiationId, action, ctx))
         {
             dto["negotiationId"] = offer.NegotiationId;
-            // The artifact is the negotiation's: both references must be allowed.
-            if (related.Negotiation(offer.NegotiationId) is { } negotiation
-                && Can(policy, principal, FieldClass.NegotiationArtifactId, action,
-                    FieldResourceContext.ForNegotiation(negotiation.PartyAParticipantId, negotiation.PartyBParticipantId)))
+            if (related.Negotiation(offer.NegotiationId) is { } negotiation)
             {
-                dto["artifactId"] = negotiation.ArtifactId;
-                AddArtifactName(dto, negotiation.ArtifactId, related, policy, principal, action);
+                var negotiationCtx = FieldResourceContext.ForNegotiation(negotiation.PartyAParticipantId, negotiation.PartyBParticipantId);
+                if (negotiation.DeletedAt is not null
+                    && Can(policy, principal, FieldClass.SoftDeletedAt, action, negotiationCtx))
+                {
+                    dto["negotiationDeleted"] = true;
+                }
+
+                // The artifact is the negotiation's: both references must be allowed.
+                if (Can(policy, principal, FieldClass.NegotiationArtifactId, action, negotiationCtx))
+                {
+                    dto["artifactId"] = negotiation.ArtifactId;
+                    AddArtifactName(dto, negotiation.ArtifactId, related, policy, principal, action);
+                }
             }
         }
 
@@ -267,7 +287,11 @@ public static class AdminReadProjection
         dto["updatedAt"] = updatedAt;
     }
 
-    /// <summary>A participant's display name under <paramref name="key"/>, if the policy allows it; null when the row has none.</summary>
+    /// <summary>
+    /// A participant's display name under <paramref name="key"/> ("…Name"), if
+    /// the policy allows it; null when the row has none. A soft-deleted one is
+    /// marked under "…Deleted", and gives its name only with the toggle on.
+    /// </summary>
     private static void AddParticipantName(
         Dictionary<string, object?> dto,
         string key,
@@ -277,9 +301,19 @@ public static class AdminReadProjection
         FieldPrincipal principal,
         FieldAction action)
     {
-        if (Can(policy, principal, FieldClass.DisplayName, action, FieldResourceContext.ForSelfProfile(sub)))
-            dto[key] = related.Participant(sub)?.DisplayName;
+        var ctx = FieldResourceContext.ForSelfProfile(sub);
+        var participant = related.Participant(sub);
+        var deleted = participant?.DeletedAt is not null;
+        if (deleted && Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
+            dto[DeletedKey(key)] = true;
+        if (deleted && !related.IncludeDeleted)
+            return;
+        if (Can(policy, principal, FieldClass.DisplayName, action, ctx))
+            dto[key] = participant?.DisplayName;
     }
+
+    /// <summary>"ownerName" → "ownerDeleted", "artifactName" → "artifactDeleted", and so on.</summary>
+    public static string DeletedKey(string nameKey) => nameKey[..^"Name".Length] + "Deleted";
 
     /// <summary>The artifact's name as <c>artifactName</c>, if the policy allows it; null when the row is not there.</summary>
     private static void AddArtifactName(
@@ -292,6 +326,11 @@ public static class AdminReadProjection
     {
         var artifact = related.Artifact(artifactId);
         var ctx = FieldResourceContext.ForSelfProfile(artifact?.OwnerParticipantId ?? string.Empty);
+        var deleted = artifact?.DeletedAt is not null;
+        if (deleted && Can(policy, principal, FieldClass.SoftDeletedAt, action, ctx))
+            dto["artifactDeleted"] = true;
+        if (deleted && !related.IncludeDeleted)
+            return;
         if (Can(policy, principal, FieldClass.ArtifactName, action, ctx))
             dto["artifactName"] = artifact is null ? null : ArtifactNameOf(artifact);
     }

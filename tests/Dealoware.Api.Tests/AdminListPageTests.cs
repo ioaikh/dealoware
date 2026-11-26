@@ -610,6 +610,125 @@ public partial class AdminListPageTests
         Assert.Contains($"href=\"/admin/negotiations/{g.Open.Id:D}?includeDeleted=true\"", page, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ADeletedRecordsName_StaysHiddenWithTheToggleOff_InRowsChipsLinksAndDetails()
+    {
+        var prefix = $"lp11-{Guid.NewGuid():N}";
+        var alpha = Participant.Create($"{prefix}-Alpha");
+        var gone = Participant.Create($"{prefix}-GonePerson");
+        var goneThing = Artifact.Create(gone.Sub, [SubjectEntity.Create($"{prefix}-GoneThing", "d")], "sell");
+        var (live, _) = Negotiation.Create(goneThing.Id, alpha.Sub, gone.Sub, "sell", "buy");
+        var (goneNegotiation, _) = Negotiation.Create(goneThing.Id, alpha.Sub, gone.Sub, "sell", "buy");
+        var (orphanOffer, _) = Offer.Create(goneNegotiation!.Id, alpha.Sub, gone.Sub, 6m, "USD", "t");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            db.Participants.AddRange(alpha, gone);
+            db.Artifacts.Add(goneThing);
+            db.Negotiations.AddRange(live!, goneNegotiation);
+            db.Offers.Add(orphanOffer!);
+            await db.SaveChangesAsync();
+            var at = DateTimeOffset.UtcNow;
+            await db.Participants.Where(p => p.Id == gone.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.DeletedAt, at));
+            await db.Artifacts.Where(a => a.Id == goneThing.Id).ExecuteUpdateAsync(u => u.SetProperty(a => a.DeletedAt, at));
+            await db.Negotiations.Where(n => n.Id == goneNegotiation.Id).ExecuteUpdateAsync(u => u.SetProperty(n => n.DeletedAt, at));
+        }
+
+        var session = await SessionAsync();
+        const string deleted = "<span class=\"badge badge-deleted\">Deleted</span>";
+
+        // Toggle off: identifiers and "Deleted", no name, no link to a page that would be S-D3.
+        var pages = new[]
+        {
+            $"/admin/negotiations?negotiationId={live!.Id:D}",
+            $"/admin/offers?participant={Uri.EscapeDataString(alpha.Sub)}",
+            $"/admin/artifacts?participant={Uri.EscapeDataString(gone.Sub)}",
+            $"/admin/offers?artifact={goneThing.Id:D}",
+            $"/admin/negotiations/{live.Id:D}",
+            $"/admin/offers/{orphanOffer!.Id:D}"
+        };
+        foreach (var path in pages)
+        {
+            var (response, html) = await PageAsync(path, session);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.DoesNotContain($"{prefix}-GonePerson", html, StringComparison.Ordinal);
+            Assert.DoesNotContain($"{prefix}-GoneThing", html, StringComparison.Ordinal);
+            Assert.DoesNotContain($"href=\"/admin/artifacts/{goneThing.Id:D}", html, StringComparison.Ordinal);
+            Assert.DoesNotContain($"href=\"/admin/negotiations/{goneNegotiation.Id:D}", html, StringComparison.Ordinal);
+        }
+
+        var (_, row) = await PageAsync(pages[0], session);
+        Assert.Contains($"<span class=\"id\">{goneThing.Id:D}</span> {deleted}", row, StringComparison.Ordinal);
+        Assert.Contains($"{gone.Sub} {deleted}", row, StringComparison.Ordinal);
+        Assert.Contains($"{prefix}-Alpha", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[1], session);
+        Assert.Contains($"<span class=\"id\">{goneNegotiation.Id:D}</span> {deleted}", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[2], session);
+        Assert.Contains($"<li class=\"chip\"><span>Owner participant: {gone.Sub}</span>{deleted}", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[3], session);
+        Assert.Contains($"<li class=\"chip\"><span>Artifact: {goneThing.Id:D}</span>{deleted}", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[4], session);
+        Assert.Contains($"Participant B</dt><dd>{gone.Sub} {deleted}", row, StringComparison.Ordinal);
+
+        // Toggle on: the names, and links that carry the toggle.
+        (_, row) = await PageAsync(pages[0] + "&includeDeleted=true", session);
+        Assert.Contains($"<a href=\"/admin/artifacts/{goneThing.Id:D}?includeDeleted=true\">{prefix}-GoneThing</a>", row, StringComparison.Ordinal);
+        Assert.Contains($"{prefix}-GonePerson", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[1] + "&includeDeleted=true", session);
+        Assert.Contains($"<a class=\"id\" href=\"/admin/negotiations/{goneNegotiation.Id:D}?includeDeleted=true\">", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[2] + "&includeDeleted=true", session);
+        Assert.Contains($"<li class=\"chip\"><span>Owner participant: {prefix}-GonePerson</span><a ", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[3] + "&includeDeleted=true", session);
+        Assert.Contains($"<li class=\"chip\"><span>Artifact: {prefix}-GoneThing</span><a ", row, StringComparison.Ordinal);
+        (_, row) = await PageAsync(pages[4] + "?includeDeleted=true", session);
+        Assert.Contains($"{prefix}-GonePerson", row, StringComparison.Ordinal);
+        Assert.Contains($"<a href=\"/admin/artifacts/{goneThing.Id:D}?includeDeleted=true\">{prefix}-GoneThing</a>", row, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("createdTo=9999-12-31")]
+    [InlineData("updatedTo=9999-12-31")]
+    [InlineData("createdFrom=0001-01-01")]
+    [InlineData("updatedFrom=0001-01-01&createdTo=9999-12-31T23:59:59Z")]
+    public async Task ADateOutsideTheYearsTheListTakes_IsDropped_NeverAnError(string query)
+    {
+        var session = await SessionAsync();
+        foreach (var list in AdminListPages.All)
+        {
+            var (response, html) = await PageAsync($"{list.Path}?{query}", session);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(list.Path, Canonical(html));
+        }
+
+        // The first and last years it takes, both ends of a day.
+        var (edge, page) = await PageAsync("/admin/offers?createdFrom=1900-01-01&createdTo=2999-12-31", session);
+        Assert.Equal(HttpStatusCode.OK, edge.StatusCode);
+        Assert.Equal("/admin/offers?createdFrom=1900-01-01&createdTo=2999-12-31", Canonical(page));
+    }
+
+    [Fact]
+    public async Task NoGetForm_CarriesTheAntiForgeryToken_OnlyTheSignOutPostDoes()
+    {
+        var session = await SessionAsync();
+        foreach (var list in AdminListPages.All)
+        {
+            var (_, html) = await PageAsync($"{list.Path}?q=x&status=Open&sort=created", session);
+            var token = AdminPageAntiForgery.ReadToken(html);
+            var forms = Regex.Matches(html, "<form[^>]*>.*?</form>", RegexOptions.Singleline).Select(m => m.Value).ToList();
+            Assert.True(forms.Count > 2);
+            foreach (var form in forms.Where(f => f.Contains("method=\"get\"", StringComparison.Ordinal)))
+            {
+                Assert.DoesNotContain(token, form, StringComparison.Ordinal);
+                Assert.DoesNotContain(AdminAntiForgeryService.SignOutFormField, form, StringComparison.Ordinal);
+            }
+
+            var withToken = forms.Where(f => f.Contains(token, StringComparison.Ordinal)).ToList();
+            Assert.Equal("sign-out-form", Regex.Match(Assert.Single(withToken), "<form id=\"([^\"]+)\" method=\"post\"").Groups[1].Value);
+            // The token is in the meta and the sign-out form, nowhere else.
+            Assert.Equal(2, Regex.Matches(html, token).Count);
+        }
+    }
+
     // ---- Stats links (B09) ----
 
     [Fact]

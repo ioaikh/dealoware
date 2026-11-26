@@ -266,6 +266,9 @@ public sealed record AdminListState
             return null;
         if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
+            // AdminReturnQuery keeps only these years; outside them a bound would be no bound.
+            if (date.Year is < AdminReturnQuery.MinYear or > AdminReturnQuery.MaxYear)
+                return null;
             return endOfDay
                 ? EasternTime.StartOfDayUtc(date.AddDays(1)).AddTicks(-1)
                 : EasternTime.StartOfDayUtc(date);
@@ -477,8 +480,12 @@ public static class AdminListPages
         });
     }
 
-    /// <summary>The names the participant and artifact filters show, read through the field policy.</summary>
-    private sealed record ChipNames(string? Participant, string? Artifact);
+    /// <summary>
+    /// The names the participant and artifact filters show, read through the
+    /// field policy. A soft-deleted one gives no name while "Show deleted" is
+    /// off: its chip shows its identifier and "Deleted".
+    /// </summary>
+    private sealed record ChipNames(string? Participant, string? Artifact, bool ParticipantDeleted = false, bool ArtifactDeleted = false);
 
     private static async Task<ChipNames> ChipNamesAsync(
         AdminListDefinition list,
@@ -490,27 +497,39 @@ public static class AdminListPages
     {
         string? participant = null;
         string? artifact = null;
-        if (list.ParticipantFilter is not null && state.Participant is { } sub
-            && policy.Evaluate(principal, FieldClass.DisplayName, FieldAction.Read, FieldResourceContext.ForSelfProfile(sub)))
+        var participantDeleted = false;
+        var artifactDeleted = false;
+        if (list.ParticipantFilter is not null && state.Participant is { } sub)
         {
-            participant = await db.Participants.AsNoTracking()
+            var ctx = FieldResourceContext.ForSelfProfile(sub);
+            var row = await db.Participants.AsNoTracking()
                 .Where(p => p.Sub == sub)
-                .Select(p => p.DisplayName)
+                .Select(p => new { p.DisplayName, p.DeletedAt })
                 .FirstOrDefaultAsync(ct);
+            participantDeleted = row?.DeletedAt is not null
+                                 && policy.Evaluate(principal, FieldClass.SoftDeletedAt, FieldAction.Read, ctx);
+            if (row is not null && (row.DeletedAt is null || state.IncludeDeleted)
+                && policy.Evaluate(principal, FieldClass.DisplayName, FieldAction.Read, ctx))
+            {
+                participant = row.DisplayName;
+            }
         }
 
         if (list.ArtifactFilter && state.Artifact is { } artifactId)
         {
             var row = await db.Artifacts.AsNoTracking().Include(a => a.Entities)
                 .FirstOrDefaultAsync(a => a.Id == artifactId, ct);
-            if (row is not null && policy.Evaluate(principal, FieldClass.ArtifactName, FieldAction.Read,
-                    FieldResourceContext.ForSelfProfile(row.OwnerParticipantId)))
+            var ctx = FieldResourceContext.ForSelfProfile(row?.OwnerParticipantId ?? string.Empty);
+            artifactDeleted = row?.DeletedAt is not null
+                              && policy.Evaluate(principal, FieldClass.SoftDeletedAt, FieldAction.Read, ctx);
+            if (row is not null && (row.DeletedAt is null || state.IncludeDeleted)
+                && policy.Evaluate(principal, FieldClass.ArtifactName, FieldAction.Read, ctx))
             {
                 artifact = AdminReadProjection.ArtifactNameOf(row);
             }
         }
 
-        return new ChipNames(participant, artifact);
+        return new ChipNames(participant, artifact, participantDeleted && participant is null, artifactDeleted && artifact is null);
     }
 
     private static string ListBody(
@@ -694,38 +713,40 @@ public static class AdminListPages
     /// <summary>One removable chip per active filter (TD-ADM-UI-na-B05), then "Clear all filters".</summary>
     private static string Chips(AdminListDefinition list, AdminListState state, ChipNames names)
     {
-        var chips = new List<(string Label, string Value, AdminListState Without)>();
+        var chips = new List<(string Label, string Value, AdminListState Without, bool Deleted)>();
         var page1 = state with { Offset = 0 };
         if (!string.IsNullOrEmpty(state.Q))
-            chips.Add((AdminConsoleCopy.ChipSearch, state.Q, page1 with { Q = null }));
+            chips.Add((AdminConsoleCopy.ChipSearch, state.Q, page1 with { Q = null }, false));
         if (state.Statuses.Count > 0)
-            chips.Add((AdminConsoleCopy.FilterStatus, string.Join(", ", state.Statuses.Select(StatusLabel)), page1 with { Statuses = [] }));
+            chips.Add((AdminConsoleCopy.FilterStatus, string.Join(", ", state.Statuses.Select(StatusLabel)), page1 with { Statuses = [] }, false));
         if (state.Participant is not null && list.ParticipantFilter is not null)
-            chips.Add((list.ParticipantFilter, names.Participant ?? state.Participant, page1 with { Participant = null }));
+            chips.Add((list.ParticipantFilter, names.Participant ?? state.Participant, page1 with { Participant = null }, names.ParticipantDeleted));
         if (state.Artifact is { } artifact)
-            chips.Add((AdminConsoleCopy.FilterArtifact, names.Artifact ?? artifact.ToString("D"), page1 with { Artifact = null }));
+            chips.Add((AdminConsoleCopy.FilterArtifact, names.Artifact ?? artifact.ToString("D"), page1 with { Artifact = null }, names.ArtifactDeleted));
         if (state.NegotiationId is { } negotiation)
-            chips.Add((AdminConsoleCopy.FilterNegotiationId, negotiation.ToString("D"), page1 with { NegotiationId = null }));
+            chips.Add((AdminConsoleCopy.FilterNegotiationId, negotiation.ToString("D"), page1 with { NegotiationId = null }, false));
         if (state.AmountMin is { } amountMin)
-            chips.Add((AdminConsoleCopy.FilterAmountMin, amountMin.ToString(CultureInfo.InvariantCulture), page1 with { AmountMin = null }));
+            chips.Add((AdminConsoleCopy.FilterAmountMin, amountMin.ToString(CultureInfo.InvariantCulture), page1 with { AmountMin = null }, false));
         if (state.AmountMax is { } amountMax)
-            chips.Add((AdminConsoleCopy.FilterAmountMax, amountMax.ToString(CultureInfo.InvariantCulture), page1 with { AmountMax = null }));
+            chips.Add((AdminConsoleCopy.FilterAmountMax, amountMax.ToString(CultureInfo.InvariantCulture), page1 with { AmountMax = null }, false));
         if (state.CreatedFrom is { } createdFrom)
-            chips.Add((AdminConsoleCopy.FilterCreatedFrom, DateChip(createdFrom), page1 with { CreatedFrom = null }));
+            chips.Add((AdminConsoleCopy.FilterCreatedFrom, DateChip(createdFrom), page1 with { CreatedFrom = null }, false));
         if (state.CreatedTo is { } createdTo)
-            chips.Add((AdminConsoleCopy.FilterCreatedTo, DateChip(createdTo), page1 with { CreatedTo = null }));
+            chips.Add((AdminConsoleCopy.FilterCreatedTo, DateChip(createdTo), page1 with { CreatedTo = null }, false));
         if (state.UpdatedFrom is { } updatedFrom)
-            chips.Add((AdminConsoleCopy.FilterUpdatedFrom, DateChip(updatedFrom), page1 with { UpdatedFrom = null }));
+            chips.Add((AdminConsoleCopy.FilterUpdatedFrom, DateChip(updatedFrom), page1 with { UpdatedFrom = null }, false));
         if (state.UpdatedTo is { } updatedTo)
-            chips.Add((AdminConsoleCopy.FilterUpdatedTo, DateChip(updatedTo), page1 with { UpdatedTo = null }));
+            chips.Add((AdminConsoleCopy.FilterUpdatedTo, DateChip(updatedTo), page1 with { UpdatedTo = null }, false));
 
         if (chips.Count == 0)
             return string.Empty;
 
         var html = new StringBuilder("<div id=\"chips\" class=\"chips-bar\"><ul class=\"chips\">");
-        foreach (var (label, value, without) in chips)
+        foreach (var (label, value, without, deleted) in chips)
         {
             html.Append($"<li class=\"chip\"><span>{E(label)}: {E(value)}</span>");
+            if (deleted)
+                html.Append(Badge(AdminConsoleCopy.Deleted, "deleted"));
             html.Append($"<a href=\"{E(without.Url(list))}\" aria-label=\"{E(AdminConsoleCopy.RemoveChipName(label))}\" data-focus=\"q\">{E(AdminConsoleCopy.RemoveChip)}</a></li>");
         }
 
@@ -778,6 +799,7 @@ public static class AdminListPages
 
     private static string Row(AdminListDefinition list, Dictionary<string, object?> row, string listQuery, bool includeDeleted)
     {
+
         var id = IdOf(row, "id");
         var detail = $"{list.Path}/{id:D}{listQuery}";
         var toggle = includeDeleted ? "?includeDeleted=true" : string.Empty;
@@ -809,7 +831,7 @@ public static class AdminListPages
                     html.Append(ParticipantText(row, "ownerName", "ownerParticipantId"));
                     break;
                 case "artifact":
-                    html.Append(ArtifactLink(row, toggle));
+                    html.Append(ArtifactLink(row, toggle, includeDeleted));
                     break;
                 case "participants":
                     html.Append(ParticipantText(row, "partyAName", "partyAParticipantId"));
@@ -817,9 +839,7 @@ public static class AdminListPages
                     html.Append(ParticipantText(row, "partyBName", "partyBParticipantId"));
                     break;
                 case "negotiationId":
-                    html.Append(row.TryGetValue("negotiationId", out var n) && n is Guid negotiation
-                        ? $"<a class=\"id\" href=\"{AdminSignedInPage.Negotiations}/{negotiation:D}{toggle}\">{negotiation:D}</a>"
-                        : E(AdminConsoleCopy.NoValue));
+                    html.Append(NegotiationLink(row, toggle, includeDeleted));
                     break;
                 case "offering":
                     html.Append(ParticipantText(row, "fromParticipantName", "fromParticipantId"));
@@ -842,20 +862,44 @@ public static class AdminListPages
     private static string Text(Dictionary<string, object?> row, string key)
         => row.TryGetValue(key, out var v) && v is string s && s.Length > 0 ? E(s) : E(AdminConsoleCopy.NoValue);
 
-    /// <summary>A participant by name; by its Core identifier when it has none to show.</summary>
+    private static bool Flag(Dictionary<string, object?> row, string key)
+        => row.TryGetValue(key, out var v) && v is true;
+
+    /// <summary>
+    /// A participant by name; by its Core identifier when it has none to show.
+    /// A soft-deleted one, with "Show deleted" off, shows its identifier and
+    /// "Deleted" (the read gives no name).
+    /// </summary>
     private static string ParticipantText(Dictionary<string, object?> row, string nameKey, string subKey)
     {
         if (row.TryGetValue(nameKey, out var name) && name is string n && n.Length > 0)
             return E(n);
-        return row.TryGetValue(subKey, out var sub) && sub is string s && s.Length > 0 ? E(s) : E(AdminConsoleCopy.NoValue);
+        var text = row.TryGetValue(subKey, out var sub) && sub is string s && s.Length > 0 ? E(s) : E(AdminConsoleCopy.NoValue);
+        return Flag(row, AdminReadProjection.DeletedKey(nameKey)) ? text + " " + Badge(AdminConsoleCopy.Deleted, "deleted") : text;
     }
 
-    private static string ArtifactLink(Dictionary<string, object?> row, string toggle)
+    /// <summary>
+    /// The artifact by name, linked. A soft-deleted one, with "Show deleted"
+    /// off, is its id and "Deleted", not a link (its page would be S-D3).
+    /// </summary>
+    private static string ArtifactLink(Dictionary<string, object?> row, string toggle, bool includeDeleted)
     {
         if (!row.TryGetValue("artifactId", out var a) || a is not Guid artifactId)
             return E(AdminConsoleCopy.NoValue);
+        if (Flag(row, "artifactDeleted") && !includeDeleted)
+            return $"<span class=\"id\">{artifactId:D}</span> {Badge(AdminConsoleCopy.Deleted, "deleted")}";
         var name = row.TryGetValue("artifactName", out var n) && n is string s && s.Length > 0 ? s : artifactId.ToString("D");
         return $"<a href=\"{AdminSignedInPage.Artifacts}/{artifactId:D}{toggle}\">{E(name)}</a>";
+    }
+
+    /// <summary>An offer's negotiation, linked; a soft-deleted one, with "Show deleted" off, its id and "Deleted".</summary>
+    private static string NegotiationLink(Dictionary<string, object?> row, string toggle, bool includeDeleted)
+    {
+        if (!row.TryGetValue("negotiationId", out var n) || n is not Guid negotiation)
+            return E(AdminConsoleCopy.NoValue);
+        if (Flag(row, "negotiationDeleted") && !includeDeleted)
+            return $"<span class=\"id\">{negotiation:D}</span> {Badge(AdminConsoleCopy.Deleted, "deleted")}";
+        return $"<a class=\"id\" href=\"{AdminSignedInPage.Negotiations}/{negotiation:D}{toggle}\">{negotiation:D}</a>";
     }
 
     /// <summary>"1,234.50 USD": the amount with its currency, or a dash.</summary>
@@ -1000,7 +1044,11 @@ public static class AdminListPages
             var sub = record.TryGetValue(subKey, out var s) && s is string text && text.Length > 0 ? text : null;
             var name = record.TryGetValue(nameKey, out var n) && n is string nameText && nameText.Length > 0 ? nameText : null;
             if (name is null)
-                return sub is null ? E(AdminConsoleCopy.NoValue) : E(sub);
+            {
+                var shown = sub is null ? E(AdminConsoleCopy.NoValue) : E(sub);
+                return Flag(record, AdminReadProjection.DeletedKey(nameKey)) ? shown + " " + Badge(AdminConsoleCopy.Deleted, "deleted") : shown;
+            }
+
             return sub is null ? E(name) : $"{E(name)} <span class=\"sub\">({E(sub)})</span>";
         }
 
@@ -1022,17 +1070,15 @@ public static class AdminListPages
                 break;
             case AdminListKind.Negotiations:
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
-                Item(AdminConsoleCopy.ColumnArtifact, ArtifactLink(record, toggle));
+                Item(AdminConsoleCopy.ColumnArtifact, ArtifactLink(record, toggle, state.IncludeDeleted));
                 Item(AdminConsoleCopy.PartyA, Participant("partyAName", "partyAParticipantId"));
                 Item(AdminConsoleCopy.PartyB, Participant("partyBName", "partyBParticipantId"));
                 Item(AdminConsoleCopy.EndsAt, Time(record, "endsAt"));
                 break;
             default:
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
-                Item(AdminConsoleCopy.ColumnNegotiationId, record.TryGetValue("negotiationId", out var n) && n is Guid negotiation
-                    ? $"<a class=\"id\" href=\"{AdminSignedInPage.Negotiations}/{negotiation:D}{toggle}\">{negotiation:D}</a>"
-                    : E(AdminConsoleCopy.NoValue));
-                Item(AdminConsoleCopy.ColumnArtifact, ArtifactLink(record, toggle));
+                Item(AdminConsoleCopy.ColumnNegotiationId, NegotiationLink(record, toggle, state.IncludeDeleted));
+                Item(AdminConsoleCopy.ColumnArtifact, ArtifactLink(record, toggle, state.IncludeDeleted));
                 Item(AdminConsoleCopy.ColumnOffering, Participant("fromParticipantName", "fromParticipantId"));
                 Item(AdminConsoleCopy.Receiving, Participant("toParticipantName", "toParticipantId"));
                 Item(AdminConsoleCopy.ColumnAmount, AmountText(record));
