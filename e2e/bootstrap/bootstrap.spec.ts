@@ -1,16 +1,20 @@
 import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
 import crypto from 'crypto';
 import { expectNoSeriousAxeFindings } from './axe';
+import {
+  WIDGET_HOST, WIDGET_SCRIPT, answerCloudflare, widgetSays, widgetState, type WidgetSetup,
+} from '../signed-out/cloudflare';
 
 /**
  * First-time setup page (S-A4, /admin/bootstrap) against the real app.
  * Start it with e2e/bootstrap/run.sh.
  *
  * The browser never reaches Cloudflare: every request to
- * challenges.cloudflare.com is answered here with a stand-in widget, loaded
- * under the page's real Content-Security-Policy. The server checks the
- * widget's token with the stand-in verifier run.sh starts, which accepts
- * exactly one run-time token.
+ * challenges.cloudflare.com is answered with a stand-in widget
+ * (e2e/signed-out/cloudflare.ts), loaded under the page's real
+ * Content-Security-Policy. The server checks the widget's token with the
+ * stand-in verifier the runner starts, which accepts exactly one run-time
+ * token.
  *
  * The tests run in file order on one worker. Order matters twice over.
  * The owner can be set up once, so everything that needs a live link comes
@@ -24,8 +28,6 @@ const PAGE = '/admin/bootstrap';
 const API_PATH = '/admin/api/auth/bootstrap';
 const SIGN_IN_PATH = '/admin/sign-in';
 const LINK_EXPIRED_URL = /\/admin\/link-expired\?for=setup$/;
-const WIDGET_HOST = 'challenges.cloudflare.com';
-const WIDGET_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 const SITE_KEY = 'e2e-site-key';
 
 const TITLE = 'Set password · Dealoware admin';
@@ -70,60 +72,6 @@ function neverIssuedToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/**
- * The stand-in for Cloudflare's api.js. Like the real script it draws a frame
- * from Cloudflare's origin, and like the real script may, it does not install
- * itself over something that already stands at window.turnstile. An element
- * with id="turnstile" would be exactly that, and the form could then never be
- * submitted; with this guard such a page fails these tests.
- */
-const WIDGET_STAND_IN = `
-(function () {
-  if (window.turnstile) {
-    window.__e2eWidgetRefused = true;
-    return;
-  }
-  var cfg = window.__e2eWidget || {};
-  var state = window.__e2eWidgetState = { renders: 0, resets: 0, options: null };
-  function solve() {
-    if (cfg.auto && state.options) setTimeout(function () { state.options.callback(cfg.token); }, 0);
-  }
-  window.turnstile = {
-    render: function (host, options) {
-      state.renders += 1;
-      state.options = options;
-      state.sitekey = options.sitekey;
-      state.size = options.size;
-      var frame = document.createElement('iframe');
-      frame.src = 'https://${WIDGET_HOST}/e2e-widget';
-      frame.title = 'Security check';
-      frame.width = options.size === 'compact' ? '150' : '300';
-      frame.height = options.size === 'compact' ? '140' : '65';
-      host.appendChild(frame);
-      solve();
-      return 'e2e-widget';
-    },
-    reset: function () { state.resets += 1; solve(); },
-    remove: function () {}
-  };
-})();
-`;
-
-const WIDGET_FRAME =
-  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Security check</title></head>'
-  + '<body><main><p>Security check stand-in</p></main></body></html>';
-
-/** 'ok': the stand-in at once. 'abort': the request fails. A promise: the stand-in once it resolves. */
-type ScriptReply = 'ok' | 'abort' | Promise<void>;
-
-type WidgetSetup = {
-  /** Solve at once with this token (default: the token the verifier accepts). */
-  auto?: boolean;
-  token?: string;
-  /** What the n-th request for Cloudflare's script gets (default: the stand-in). */
-  script?: (n: number) => ScriptReply;
-};
-
 /** How a test answers one POST to the setup endpoint. */
 type Answer =
   | 'real' // let the server answer
@@ -147,32 +95,13 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${ARTIFACTS}/${name}.png`, fullPage: true });
 }
 
-/** Answers everything addressed to Cloudflare. Returns the script request count. */
-async function standInForCloudflare(page: Page, setup: WidgetSetup = {}): Promise<{ scripts: number }> {
-  const counts = { scripts: 0 };
-  await page.addInitScript((cfg) => {
-    (window as any).__e2eWidget = cfg;
-  }, { auto: setup.auto ?? true, token: setup.token ?? PASS_TOKEN });
-  await page.route((url) => url.hostname === WIDGET_HOST, async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/turnstile/v0/api.js') {
-      counts.scripts += 1;
-      const reply = setup.script ? setup.script(counts.scripts) : 'ok';
-      if (reply === 'abort') {
-        await route.abort('failed');
-        return;
-      }
-      if (reply !== 'ok') await reply;
-      await route.fulfill({ status: 200, contentType: 'text/javascript', body: WIDGET_STAND_IN });
-      return;
-    }
-    if (url.pathname === '/e2e-widget') {
-      await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: WIDGET_FRAME });
-      return;
-    }
-    await route.fulfill({ status: 404, body: '' });
-  });
-  return counts;
+/**
+ * Answers everything addressed to Cloudflare. Unless the test says otherwise
+ * the widget solves at once with the token the verifier accepts.
+ * Returns the script request count.
+ */
+function standInForCloudflare(page: Page, setup: WidgetSetup = {}): Promise<{ scripts: number }> {
+  return answerCloudflare(page, { token: PASS_TOKEN, ...setup });
 }
 
 /**
@@ -225,20 +154,6 @@ async function watchForTheForm(page: Page): Promise<{ shown: boolean }> {
     document.addEventListener('DOMContentLoaded', report);
   });
   return form;
-}
-
-/** Calls one of the callbacks the page gave the widget, as Cloudflare would. */
-async function widgetSays(page: Page, callback: string, value?: string): Promise<void> {
-  await page.evaluate(([name, arg]) => {
-    (window as any).__e2eWidgetState.options[name as string](arg);
-  }, [callback, value]);
-}
-
-async function widgetState(page: Page): Promise<{ renders: number; resets: number; sitekey: string; size: string }> {
-  return await page.evaluate(() => {
-    const s = (window as any).__e2eWidgetState;
-    return { renders: s.renders, resets: s.resets, sitekey: s.sitekey, size: s.size };
-  });
 }
 
 function isSetupPost(request: Request): boolean {
