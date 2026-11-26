@@ -118,7 +118,7 @@ public partial class AdminConsoleShellTests
         // Static scripts only, each with the nonce, the shell's first.
         var scripts = Regex.Matches(html, "<script src=\"([^\"]+)\" nonce=\"([^\"]+)\"></script>");
         Assert.Equal(
-            new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js" },
+            new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js" },
             scripts.Select(m => m.Groups[1].Value).ToArray());
         Assert.All(scripts, m => Assert.Equal(nonce, m.Groups[2].Value));
         Assert.Equal(scripts.Count, Regex.Matches(html, "<script").Count);

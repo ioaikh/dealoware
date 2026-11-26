@@ -247,7 +247,7 @@ test('signing in with no page asked for lands on Stats: five totals, the nav, th
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
   // The page's own files came only from this site, the signed-in ones from behind the gate.
   const scripts = await page.locator('script').evaluateAll((els) => els.map((e) => e.getAttribute('src')));
-  expect(scripts).toEqual(['/admin/auth/admin-request.js', '/admin/assets/console.js']);
+  expect(scripts).toEqual(['/admin/auth/admin-request.js', '/admin/assets/console.js', '/admin/assets/session-timer.js']);
 
   await expectNoSeriousAxeFindings(page, 'stats');
   await shot(page, 'stats_desktop');

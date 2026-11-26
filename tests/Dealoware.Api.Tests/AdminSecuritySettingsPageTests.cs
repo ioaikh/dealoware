@@ -81,7 +81,7 @@ public partial class AdminSecuritySettingsPageTests
         Assert.Equal(
             new[]
             {
-                "/admin/auth/admin-request.js", "/admin/assets/console.js",
+                "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js",
                 "/admin/auth/admin-dom.js", "/admin/auth/admin-password.js", "/admin/auth/admin-clipboard.js",
                 "/admin/assets/security-settings.js"
             },

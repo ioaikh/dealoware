@@ -311,7 +311,7 @@ test('S-A12 opens from the nav: four sections, the server\'s count, the activity
   // The page's own files came from this site only; nothing is stored.
   const scripts = await page.locator('script').evaluateAll((els) => els.map((e) => e.getAttribute('src')));
   expect(scripts).toEqual([
-    '/admin/auth/admin-request.js', '/admin/assets/console.js',
+    '/admin/auth/admin-request.js', '/admin/assets/console.js', '/admin/assets/session-timer.js',
     '/admin/auth/admin-dom.js', '/admin/auth/admin-password.js', '/admin/auth/admin-clipboard.js',
     '/admin/assets/security-settings.js',
   ]);

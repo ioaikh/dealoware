@@ -391,6 +391,7 @@ app.MapAssistantEndpoints();
 app.MapBudgetEndpoints();
 app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
+app.MapAdminSessionEndpoints();
 app.MapAdminReadEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
