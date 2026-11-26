@@ -53,6 +53,8 @@ public static class SqliteDateTimeOffsetRewrite
         ("AdminRecoveryCodes", "UsedAt"),
         ("AdminResetIpCounters", "LockedUntil"),
         ("AdminResetIpCounters", "WindowStartedAt"),
+        ("AdminSessionStepUps", "CodesIssuedAt"),
+        ("AdminSessionStepUps", "SteppedUpAt"),
         ("AdminSessions", "AbsoluteExpiresAt"),
         ("AdminSessions", "CreatedAt"),
         ("AdminSessions", "LastActivityAt"),
