@@ -495,9 +495,10 @@ test('an entry: its fields, before and after with "Changed" in words on what dif
   await expect(page.locator('h1')).toHaveText('Audit entry');
 
   // Back to the list as it was.
+  // The link moves the page: wait for the list's address before reading the page.
   await page.getByRole('link', { name: 'Back to audit log', exact: true }).click();
+  await expect.poll(() => here(page)).toBe(list);
   await expectStyled(page);
-  expect(here(page)).toBe(list);
   await expect(rows(page)).toHaveCount(2);
   await expect(page.getByLabel('entity_edit', { exact: true })).toBeChecked();
 });
