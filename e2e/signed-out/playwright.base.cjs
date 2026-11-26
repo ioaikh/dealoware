@@ -15,10 +15,20 @@ function guard(check, envName) {
   }
 }
 
+// The three engines every suite runs on, and the device each one stands for.
+// The runner starts them one after the other (see harness.sh); a single one
+// can be picked there or with --project.
+const ENGINES = {
+  chromium: "Desktop Chrome",
+  firefox: "Desktop Firefox",
+  webkit: "Desktop Safari",
+};
+
 /**
  * The Playwright configuration every signed-out admin page suite runs with
- * (e2e/bootstrap, e2e/sign-in): one worker, Chromium, the real admin origin
- * reached through the loopback proxy that e2e/signed-out/harness.sh starts.
+ * (e2e/bootstrap, e2e/sign-in): one worker, three engines, the real admin
+ * origin reached through the loopback proxy that e2e/signed-out/harness.sh
+ * starts.
  *
  * `playwright` is the calling suite's own @playwright/test, so this file
  * needs no package of its own. `envPrefix` is the suite's variable prefix,
@@ -46,17 +56,18 @@ function signedOutConfig(playwright, envPrefix) {
       screenshot: "off",
       video: "off",
     },
-    projects: [
-      {
-        name: "chromium",
-        use: {
-          ...devices["Desktop Chrome"],
-          ignoreHTTPSErrors: true,
-          proxy,
-        },
+    projects: Object.keys(ENGINES).map((engine) => ({
+      name: engine,
+      use: {
+        ...devices[ENGINES[engine]],
+        ignoreHTTPSErrors: true,
+        proxy,
       },
-    ],
-    outputDir: "./test-results/",
+    })),
+    // Playwright empties its output folder at the start of every run, and the
+    // runner starts one run per engine. So Playwright gets a folder of its own
+    // inside test-results, and what the specs save beside it survives.
+    outputDir: "./test-results/.playwright/",
   });
 }
 

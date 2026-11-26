@@ -90,9 +90,22 @@ type SetupPosts = {
 
 let cspMessages: string[] = [];
 
+/**
+ * A screenshot of the page as it is.
+ *
+ * To take one in WebKit, Playwright adds a style sheet of its own to the page
+ * for a moment. The page's policy refuses any style sheet without the page's
+ * nonce, rightly, and WebKit says so in the console. That line is about the
+ * picture, not the page, so it is set aside here.
+ */
 async function shot(page: Page, name: string): Promise<void> {
   if (!ARTIFACTS) return;
+  const before = cspMessages.length;
   await page.screenshot({ path: `${ARTIFACTS}/${name}.png`, fullPage: true });
+  if (test.info().project.name === 'webkit') {
+    await page.waitForTimeout(150);
+    cspMessages = cspMessages.filter((text, index) => index < before || !/apply a stylesheet/i.test(text));
+  }
 }
 
 /**
@@ -267,7 +280,13 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => {
   cspMessages = [];
   page.on('console', (message) => {
-    if (/content security policy/i.test(message.text())) cspMessages.push(message.text());
+    const text = message.text();
+    // Chromium and WebKit write "Content Security Policy", Firefox "Content-Security-Policy".
+    if (!/content[- ]security[- ]policy/i.test(text)) return;
+    // Firefox asks for /favicon.ico by itself, and the page's default-src 'none' refuses it.
+    // That is the browser's own request being refused, not anything the page tried to load.
+    if (text.includes('/favicon.ico')) return;
+    cspMessages.push(text);
   });
 });
 

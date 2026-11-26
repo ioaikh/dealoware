@@ -14,8 +14,22 @@
 # and then calls, in this order:
 #
 #   start_app_behind_proxy   certificate, keys, verifier stand-in, the app, the proxy
-#   (its own seeding)        rows the suite needs, written to "$DB" with "$PY"
-#   run_playwright "$@"      installs the suite's packages if needed and runs its spec
+#   run_playwright "$@"      installs the suite's packages if needed and runs its
+#                            spec, once on each browser engine
+#
+# A suite whose tests use up what they are given (a setup link, a throttle
+# budget) defines a function seed_suite before run_playwright. It is called
+# before each engine, and must put the rows back as a first run needs them,
+# written to "$DB" with "$PY".
+#
+# Engines: Chromium, Firefox and WebKit, one after the other, each a separate
+# Playwright run. To run fewer, name them:
+#
+#   E2E_ENGINES="firefox" ./e2e/<suite>/run.sh
+#   E2E_ENGINES="chromium webkit" ./e2e/<suite>/run.sh
+#
+# Screenshots and axe reports land in the suite's test-results folder: those
+# of Chromium directly in it, those of the other two in a folder each.
 #
 # Needs bash, openssl, curl, Python 3, the .NET SDK and Node. Works on Linux,
 # macOS and Git Bash on Windows.
@@ -71,6 +85,24 @@ SUITE_DIR="$E2E/$SUITE"
 WORKDIR="$(native_path "$(mktemp -d "${TMPDIR:-/tmp}/dw-${SUITE}.XXXXXX")")"
 DB="$WORKDIR/e2e.db"
 OWNER="alex.doe@example.test"
+
+# Marks this folder as a browser-test run's own. A script that empties tables
+# (e2e/sign-in/seed_owner.py) refuses any database that does not sit next to
+# this file with these words in it.
+RUN_MARKER=".dealoware-e2e-run"
+printf 'dealoware e2e run\n' >"$WORKDIR/$RUN_MARKER"
+
+ENGINES="${E2E_ENGINES:-chromium firefox webkit}"
+for engine in $ENGINES; do
+  case "$engine" in
+    chromium|firefox|webkit) ;;
+    *)
+      echo "E2E_ENGINES may name chromium, firefox and webkit, not \"$engine\"" >&2
+      rm -rf "$WORKDIR"
+      exit 2
+      ;;
+  esac
+done
 
 # Stops a background process. On Windows "dotnet run" starts the app as a
 # child process, so the whole tree is ended by Windows process id.
@@ -285,21 +317,55 @@ PY
   wait_for_port "$VERIFY_PORT" "$VERIFY_PID" "verifier stand-in"
 }
 
-# Runs the suite's spec. The suite folder has its own package.json (Playwright
-# at the version e2e/ pins, plus axe), so e2e/package.json and the Admin UI CI
-# it triggers stay untouched. Anything the suite exported under its own prefix
-# before this call reaches the spec as well.
+# Runs the suite's spec on each engine in turn, against the one running app.
+# The suite folder has its own package.json (Playwright at the version e2e/
+# pins, plus axe), so e2e/package.json and the Admin UI CI it triggers stay
+# untouched. Anything the suite exported under its own prefix before this
+# call reaches the spec as well. Fails if any engine's run failed, after all
+# of them have run.
 run_playwright() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == --project* ]]; then
+      echo "Pick engines with E2E_ENGINES (for example E2E_ENGINES=firefox), not with --project" >&2
+      exit 2
+    fi
+  done
+
   cd "$SUITE_DIR"
   if [[ ! -d node_modules/@playwright/test || ! -d node_modules/@axe-core/playwright ]]; then
     npm ci
   fi
-  npx playwright install chromium >/dev/null
+  # shellcheck disable=SC2086
+  npx playwright install $ENGINES >/dev/null
 
   export "${SUITE_ENV}_BASE_URL=https://admin.core.dealoware.com"
   export "${SUITE_ENV}_PROXY=http://127.0.0.1:${PROXY_PORT}"
   export "${SUITE_ENV}_TURNSTILE_TOKEN=${TURNSTILE_PASS_TOKEN}"
-  export "${SUITE_ENV}_ARTIFACTS=${SUITE_DIR}/test-results"
-  mkdir -p "$SUITE_DIR/test-results"
-  npx playwright test -c playwright.config.cjs "$@"
+
+  # What an earlier run saved must not be mistaken for this run's.
+  rm -rf "$SUITE_DIR/test-results"
+
+  local engine artifacts failed=""
+  for engine in $ENGINES; do
+    if declare -F seed_suite >/dev/null; then
+      seed_suite
+    fi
+    artifacts="$SUITE_DIR/test-results"
+    if [[ "$engine" != chromium ]]; then
+      artifacts="$artifacts/$engine"
+    fi
+    mkdir -p "$artifacts"
+    export "${SUITE_ENV}_ARTIFACTS=${artifacts}"
+    echo "== ${SUITE} on ${engine} =="
+    if ! npx playwright test -c playwright.config.cjs --project="$engine" "$@"; then
+      failed="$failed $engine"
+    fi
+  done
+
+  if [[ -n "$failed" ]]; then
+    echo "${SUITE}: failed on${failed}" >&2
+    return 1
+  fi
+  echo "${SUITE}: passed on ${ENGINES}"
 }

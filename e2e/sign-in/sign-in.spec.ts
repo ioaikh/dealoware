@@ -1,6 +1,11 @@
 import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { expectNoSeriousAxeFindings } from './axe';
-import { authenticatorCode, seedOwner, wrongAuthenticatorCode, type Owner } from './owner';
+import {
+  RUN_DATABASE, authenticatorCode, runSeedScript, seedOwner, wrongAuthenticatorCode, type Owner,
+} from './owner';
 import {
   WIDGET_HOST, WIDGET_SCRIPT, answerCloudflare, widgetSays, widgetState, type WidgetSetup,
 } from '../signed-out/cloudflare';
@@ -23,6 +28,12 @@ import {
  * tests do not depend on their order, and a test may fail a sign-in on
  * purpose without locking the next one out. They still run on one worker:
  * there is one owner.
+ *
+ * The runner starts this file once on each engine: Chromium, Firefox and
+ * WebKit. The three differ where it matters here. Firefox and WebKit, unlike
+ * Chromium, send "Origin: null" with a POST whose mode is "same-origin"
+ * under a no-referrer policy, which the server refuses; so a sign-in that
+ * works in one engine proves nothing about the others.
  */
 
 const ORIGIN = 'https://admin.core.dealoware.com';
@@ -37,6 +48,9 @@ const API_CODE = '/admin/api/auth/sign-in/code';
 const API_RECOVERY = '/admin/api/auth/sign-in/recovery';
 // Where step 2 asks "am I signed in?" after a reply it could not read.
 const API_ME = '/admin/api/me';
+// Where "Back to sign in" gives the pending sign-in up.
+const API_SIGN_OUT = '/admin/api/auth/sign-out';
+const THE_THREE_PAGES = [SIGN_IN, CODE, RECOVERY];
 const SITE_KEY = 'e2e-site-key';
 
 const SIGN_IN_TITLE = 'Sign in · Dealoware admin';
@@ -88,9 +102,52 @@ let cspMessages: string[] = [];
 let pageErrors: string[] = [];
 let dialogs: string[] = [];
 
+/** The engine this run is on: chromium, firefox or webkit. */
+function engine(): string {
+  return test.info().project.name;
+}
+
+/**
+ * Where the engines differ in ways that are theirs, not the pages':
+ *
+ * - WebKit, like Safari as it is delivered, stops at form controls when Tab
+ *   is pressed and passes links by; Safari's owner can turn links on in its
+ *   settings. So there the keyboard tests check the order of the controls,
+ *   and that each link can take the focus and shows it.
+ * - WebKit cannot be handed a made-up redirect as a reply, so the stand-in
+ *   replies leave that one out there.
+ * - On Windows, WebKit's cookie store does not report SameSite at all
+ *   (Playwright says so in its documentation). The attribute the server
+ *   sends is pinned by the .NET tests.
+ */
+function tabStopsAtLinks(): boolean {
+  return engine() !== 'webkit';
+}
+
+function canStandInARedirect(): boolean {
+  return engine() !== 'webkit';
+}
+
+function reportsSameSite(): boolean {
+  return !(engine() === 'webkit' && process.platform === 'win32');
+}
+
+/**
+ * A screenshot of the page as it is.
+ *
+ * To take one in WebKit, Playwright adds a style sheet of its own to the page
+ * for a moment. These pages' policy refuses any style sheet without the
+ * page's nonce, rightly, and WebKit says so in the console. That line is
+ * about the picture, not the page, so it is set aside here.
+ */
 async function shot(page: Page, name: string): Promise<void> {
   if (!ARTIFACTS) return;
+  const before = cspMessages.length;
   await page.screenshot({ path: `${ARTIFACTS}/${name}.png`, fullPage: true });
+  if (engine() === 'webkit') {
+    await page.waitForTimeout(150);
+    cspMessages = cspMessages.filter((text, index) => index < before || !/apply a stylesheet/i.test(text));
+  }
 }
 
 /**
@@ -247,7 +304,7 @@ async function expectSignedIn(page: Page, path: string): Promise<void> {
   expect(session, 'the session cookie').toBeDefined();
   expect(session!.httpOnly).toBe(true);
   expect(session!.secure).toBe(true);
-  expect(session!.sameSite).toBe('Strict');
+  if (reportsSameSite()) expect(session!.sameSite).toBe('Strict');
   expect(cookies.find((c) => c.name === 'dw_admin_pending'), 'the pending sign-in is used up').toBeUndefined();
   const me = await page.request.get('/admin/api/me');
   expect(me.status()).toBe(200);
@@ -282,7 +339,17 @@ test.beforeEach(async ({ page }) => {
   pageErrors = [];
   dialogs = [];
   page.on('console', (message) => {
-    if (/content security policy/i.test(message.text())) cspMessages.push(message.text());
+    const text = message.text();
+    // Chromium and WebKit write "Content Security Policy", Firefox "Content-Security-Policy".
+    if (!/content[- ]security[- ]policy/i.test(text)) return;
+    // Firefox asks for /favicon.ico by itself, and the pages' default-src 'none' refuses it.
+    // That is the browser's own request being refused, not anything a page tried to load.
+    if (text.includes('/favicon.ico')) return;
+    // Only the three pages are judged here. Where a sign-in ends, or a link leads, the server
+    // still answers with bare JSON under the site-wide policy, and WebKit's own viewer for
+    // such a document trips over that policy. Those documents are not these pages.
+    if (!THE_THREE_PAGES.includes(new URL(page.url()).pathname)) return;
+    cspMessages.push(text);
   });
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('dialog', async (dialog) => {
@@ -456,8 +523,11 @@ test('full sign-in, keyboard only: Continue goes to the code page, the code sign
   // No mouse from here on. S-A1: Email, Password, its Show toggle, the security check, Continue, the reset link.
   await expect(page.locator('#email')).toBeFocused();
   await page.keyboard.type(owner.email);
+  const firstStops = tabStopsAtLinks()
+    ? ['email', 'password', 'password-toggle', 'sign-in-submit', 'reset-link']
+    : ['email', 'password', 'password-toggle', 'sign-in-submit'];
   const order = ['email'];
-  for (let i = 0; i < 8 && order[order.length - 1] !== 'reset-link'; i += 1) {
+  for (let i = 0; i < 8 && order[order.length - 1] !== firstStops[firstStops.length - 1]; i += 1) {
     await page.keyboard.press('Tab');
     const stop = await focusStop(page);
     order.push(stop);
@@ -471,16 +541,24 @@ test('full sign-in, keyboard only: Continue goes to the code page, the code sign
     }
   }
   // The security check's own frame may take a stop between the fields and the button.
-  expect(order.filter((stop) => stop !== 'iframe')).toEqual([
-    'email', 'password', 'password-toggle', 'sign-in-submit', 'reset-link',
-  ]);
-  await page.keyboard.press('Shift+Tab');
-  await expect(continueButton(page)).toBeFocused();
-  const ring = await continueButton(page).evaluate((el) => {
+  expect(order.filter((stop) => stop !== 'iframe')).toEqual(firstStops);
+  const ringOf = (locator: Locator) => locator.evaluate((el) => {
     const style = getComputedStyle(el);
     return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset, colour: style.outlineColor };
   });
-  expect(ring).toEqual({ style: 'solid', width: '2px', offset: '2px', colour: 'rgb(11, 79, 138)' });
+  const ring = { style: 'solid', width: '2px', offset: '2px', colour: 'rgb(11, 79, 138)' };
+  if (tabStopsAtLinks()) {
+    expect(await ringOf(page.locator('#reset-link'))).toEqual(ring);
+    await page.keyboard.press('Shift+Tab');
+  } else {
+    // The link can take the focus and shows it; then back to the button.
+    await page.locator('#reset-link').focus();
+    await expect(page.locator('#reset-link')).toBeFocused();
+    expect(await ringOf(page.locator('#reset-link'))).toEqual(ring);
+    await continueButton(page).focus();
+  }
+  await expect(continueButton(page)).toBeFocused();
+  expect(await ringOf(continueButton(page))).toEqual(ring);
 
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(ORIGIN + CODE);
@@ -503,14 +581,26 @@ test('full sign-in, keyboard only: Continue goes to the code page, the code sign
   await expectNotSignedIn(page);
   await shot(page, 'sign-in_code');
   await page.keyboard.type(authenticatorCode(owner.secret!));
+  const secondStops = tabStopsAtLinks()
+    ? ['code', 'second-step-submit', 'other-step-link', 'back-link']
+    : ['code', 'second-step-submit'];
   const secondOrder = ['code'];
-  for (let i = 0; i < 3; i += 1) {
+  for (let i = 1; i < secondStops.length; i += 1) {
     await page.keyboard.press('Tab');
     secondOrder.push(await focusStop(page));
   }
-  expect(secondOrder).toEqual(['code', 'second-step-submit', 'other-step-link', 'back-link']);
-  await page.keyboard.press('Shift+Tab');
-  await page.keyboard.press('Shift+Tab');
+  expect(secondOrder).toEqual(secondStops);
+  if (tabStopsAtLinks()) {
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Shift+Tab');
+  } else {
+    for (const link of ['#other-step-link', '#back-link']) {
+      await page.locator(link).focus();
+      await expect(page.locator(link)).toBeFocused();
+      expect(await ringOf(page.locator(link))).toEqual(ring);
+    }
+    await signInButton(page).focus();
+  }
   await expect(signInButton(page)).toBeFocused();
   await page.keyboard.press('Enter');
 
@@ -885,22 +975,26 @@ test('a 200 from step 1 that names no known next step is not followed', async ({
 
 test('S-A1 with no clear answer (network failure, server error, a refusal it does not know, a redirect, time-out): the retry sentence, and the form stays', async ({ page }) => {
   await page.clock.install();
-  const counts = await answerPosts(page, API_SIGN_IN, (n) => {
-    if (n === 1) return 'abort';
-    if (n === 2) return { status: 500, text: 'Internal Server Error' };
-    if (n === 3) return { status: 403, json: { error: 'Forbidden' } };
-    if (n === 4) return { status: 401, text: 'Unauthorized' };
-    if (n === 5) return { status: 401, json: { error: 42 } };
-    if (n === 6) return { status: 302, text: '', headers: { location: '/admin/sign-in/code' } };
-    return 'never';
-  });
+  // A 403 is not in this list: it has an answer of its own (the page loads itself anew), tested further down.
+  const replies: Answer[] = [
+    'abort',
+    { status: 500, text: 'Internal Server Error' },
+    { status: 400, json: { error: 'BadRequest' } },
+    { status: 404, text: '' },
+    { status: 401, text: 'Unauthorized' },
+    { status: 401, json: { error: 42 } },
+    ...(canStandInARedirect() ? [{ status: 302, text: '', headers: { location: '/admin/sign-in/code' } }] : []),
+    'never',
+  ];
+  const counts = await answerPosts(page, API_SIGN_IN, (n) => replies[n - 1]);
   await openSignIn(page);
   await fillSignIn(page, owner.email, owner.password);
 
-  for (const attempt of [1, 2, 3, 4, 5, 6, 7]) {
+  for (const [index, reply] of replies.entries()) {
+    const attempt = index + 1;
     await expect(continueButton(page)).toBeEnabled();
     await continueButton(page).click();
-    if (attempt === 7) {
+    if (reply === 'never') {
       await expect(page.locator('#sign-in-form')).toHaveAttribute('aria-busy', 'true');
       await page.clock.fastForward(15000);
     }
@@ -985,7 +1079,7 @@ test('S-A2: one numeric one-time-code field, no security check, and a tighter po
   expect(pending, 'the pending sign-in cookie').toBeDefined();
   expect(pending!.httpOnly).toBe(true);
   expect(pending!.secure).toBe(true);
-  expect(pending!.sameSite).toBe('Strict');
+  if (reportsSameSite()) expect(pending!.sameSite).toBe('Strict');
   expect(pending!.path).toBe('/admin');
   expect(page.url()).toBe(ORIGIN + CODE);
   expect(await page.content()).not.toContain(pending!.value);
@@ -1124,22 +1218,70 @@ test('recovery-code sign-in: from the code page and back, a code typed in lower 
   await expectSignedIn(page, HOME);
 });
 
-test('a direct visit to the code page or the recovery page without a pending sign-in: the server serves no page at all', async ({ page }) => {
-  for (const path of [CODE, RECOVERY]) {
-    const response = await page.goto(path);
-    // The session gate answers before the page handler runs. No form, no script, nothing to use.
-    expect(response!.status(), path).toBe(401);
-    expect(response!.headers()['content-type']).toContain('application/json');
-    expect(await response!.text()).toBe(`{"error":"${GATE_DENIED}"}`);
-    await expect(page.locator('form')).toHaveCount(0);
-    await expect(page.locator('input')).toHaveCount(0);
-    await expect(page.locator('h1')).toHaveCount(0);
-    expect(response!.headers()['location']).toBeUndefined();
+test('a direct visit to the code page or the recovery page without a pending sign-in lands on step 1, which says so in the server sentence', async ({ page }) => {
+  await standInForCloudflare(page);
+  for (const visited of [CODE, RECOVERY, `${CODE}?next=${encodeURIComponent('//evil.example/')}`]) {
+    const response = await page.goto(visited);
+
+    // The session gate answered the visit itself: a redirect to a constant address, and no cookie.
+    const first = response!.request().redirectedFrom();
+    expect(first, visited).not.toBeNull();
+    expect(first!.url()).toBe(ORIGIN + visited);
+    expect(first!.redirectedFrom()).toBeNull();
+    const redirect = await first!.response();
+    expect(redirect!.status()).toBe(302);
+    expect(redirect!.headers()['location']).toBe(`${SIGN_IN}#again`);
+    expect(redirect!.headers()['set-cookie']).toBeUndefined();
+
+    // Step 1 is what the browser shows. The flag is gone from the address bar,
+    // and the page opens with the sentence the server uses for a failed sign-in.
+    expect(response!.status()).toBe(200);
+    await expect(page.locator('#sign-in-form')).toBeVisible();
+    expect(page.url()).toBe(ORIGIN + SIGN_IN);
+    await expect(page.locator('h1')).toHaveText(SIGN_IN_HEADING);
+    await expectAlert(page, SIGN_IN_GENERIC);
+    await expect(page.locator('#second-step-form')).toHaveCount(0);
+    await expect(page.locator('#email')).toHaveValue('');
+    await expect(continueButton(page)).toBeEnabled();
+    // Nothing was kept anywhere to make that happen.
+    expect(await page.evaluate(() => ({
+      local: localStorage.length, session: sessionStorage.length, cookie: document.cookie,
+    }))).toEqual({ local: 0, session: 0, cookie: '' });
+    expect((await page.context().cookies()).map((c) => c.name)).toEqual(['dw_admin_af']);
+
+    // The sentence belongs to that arrival only: a plain visit to step 1 shows none.
+    await page.goto(SIGN_IN);
+    await expect(page.locator('#sign-in-form')).toBeVisible();
+    await expect(page.locator('#form-alert')).toBeHidden();
+    await expect(page.locator('#email')).toBeFocused();
   }
-  expect(await page.context().cookies()).toEqual([]);
+  await expectNotSignedIn(page);
 });
 
-test('when the pending sign-in is gone by the time the code is sent, the page goes back to step 1', async ({ page }) => {
+test('step 1 opened with the flag by hand shows the sentence once and nothing else: the flag carries nothing', async ({ page }) => {
+  await standInForCloudflare(page);
+  await page.goto(`${SIGN_IN}#again`);
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  expect(page.url()).toBe(ORIGIN + SIGN_IN);
+  await expectAlert(page, SIGN_IN_GENERIC);
+  await shot(page, 'sign-in_sent_back');
+
+  // A reload has no flag any more.
+  await page.reload();
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  await expect(page.locator('#form-alert')).toBeHidden();
+
+  // Any other fragment means nothing and is left alone.
+  await page.goto('about:blank');
+  await page.goto(`${SIGN_IN}#again&email=mallory@example.test`);
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  await expect(page.locator('#form-alert')).toBeHidden();
+  await expect(page.locator('#email')).toHaveValue('');
+  expect(new URL(page.url()).hash).toBe('#again&email=mallory@example.test');
+  expect(await page.locator('main').innerText()).not.toContain('mallory');
+});
+
+test('when the pending sign-in is gone by the time the code is sent, the page goes back to step 1, which says so in the server sentence', async ({ page }) => {
   for (const step of ['code', 'recovery'] as const) {
     owner = seedOwner({ enrolled: true });
     await page.context().clearCookies();
@@ -1153,19 +1295,23 @@ test('when the pending sign-in is gone by the time the code is sent, the page go
       .fill(step === 'code' ? authenticatorCode(owner.secret!) : owner.recoveryCodes[0]);
     const [refusal] = await Promise.all([
       page.waitForResponse(isReplyTo(api)),
-      page.waitForRequest((request) => request.isNavigationRequest() && request.url() === ORIGIN + SIGN_IN),
+      page.waitForRequest((request) => request.isNavigationRequest() && new URL(request.url()).pathname === SIGN_IN),
       signInButton(page).click(),
     ]);
     // The gate's answer, not the sign-in sentence: there is nothing left to try a code against.
     expect(refusal.status(), step).toBe(401);
 
-    await expect(page).toHaveURL(ORIGIN + SIGN_IN);
     await expect(page.locator('#sign-in-form')).toBeVisible();
+    await expect(page).toHaveURL(ORIGIN + SIGN_IN);
     await expect(page.locator('h1')).toHaveText(SIGN_IN_HEADING);
-    // Step 1 starts over, with a new security check.
+    // The same sentence a failed sign-in gets, so the owner knows why step 1 is back.
+    await expectAlert(page, SIGN_IN_GENERIC);
+    // Step 1 starts over, with a new security check. The email is not carried
+    // over: that would take storage or the address, and neither is used.
     await expect(page.locator('#email')).toHaveValue('');
     await expect(page.locator('#password')).toHaveValue('');
     await expect(continueButton(page)).toBeEnabled();
+    expect((await widgetState(page)).renders).toBe(1);
     await expectNotSignedIn(page);
   }
 });
@@ -1181,11 +1327,13 @@ test('the gate\'s word is what sends the page back: a 401 with that word goes to
   await expectAlertAboveField(page, 'Some other refusal.', code);
   await expect(page).toHaveURL(ORIGIN + CODE);
 
-  reply = { status: 403, json: { error: GATE_DENIED } };
+  // The word alone is not enough: it has to come with a 401.
+  reply = { status: 400, json: { error: GATE_DENIED } };
   await code.fill('123456');
   await signInButton(page).click();
   await expectAlertAboveField(page, RETRY, code);
   await expect(page).toHaveURL(ORIGIN + CODE);
+  await expect(code).toHaveValue('123456');
 
   reply = { status: 401, json: { error: GATE_DENIED } };
   await code.fill('123456');
@@ -1228,11 +1376,15 @@ test('a 200 from step 2 that does not say verified is not followed, and no other
     [{ status: 200, text: '' }, 'asks'],
     [{ status: 204, text: '' }, 'asks'],
     [{ status: 500, text: 'Internal Server Error' }, 'asks'],
-    [{ status: 302, text: '', headers: { location: '/admin/' } }, 'asks'],
+    ...(canStandInARedirect()
+      ? [[{ status: 302, text: '', headers: { location: '/admin/' } }, 'asks'] as [Answer, 'asks']]
+      : []),
     ['abort', 'asks'],
     ['never', 'asks'],
     // A refusal the page does not know is still a refusal: nothing was accepted, so there is nothing to ask.
-    [{ status: 403, json: { error: 'Forbidden' } }, 'does not ask'],
+    // (A 403 is not in this list: it has an answer of its own, tested further down.)
+    [{ status: 400, json: { error: 'BadRequest' } }, 'does not ask'],
+    [{ status: 404, text: '' }, 'does not ask'],
     [{ status: 401, text: 'Unauthorized' }, 'does not ask'],
   ];
   const counts = await answerPosts(page, API_CODE, (n) => replies[n - 1][0]);
@@ -1322,18 +1474,281 @@ test('S-A2: a second Sign in while one is in flight sends nothing', async ({ pag
   expect(seen.codes).toHaveLength(1);
 });
 
-test('"Back to sign in" leaves step 2 for step 1, where everything has to be entered again', async ({ page }) => {
+test('"Back to sign in" gives the pending sign-in up: step 1 starts over, and neither the Back button nor the address leads to step 2 again', async ({ page }) => {
+  for (const from of ['code', 'recovery'] as const) {
+    owner = seedOwner({ enrolled: true });
+    await page.context().clearCookies();
+    if (from === 'code') await reachCodePage(page);
+    else await reachRecoveryPage(page);
+    const seen = watch(page);
+    expect((await page.context().cookies()).some((c) => c.name === 'dw_admin_pending')).toBe(true);
+    const link = page.getByRole('link', { name: 'Back to sign in', exact: true });
+    // A real link, so it also works where the script does not run.
+    await expect(link).toHaveAttribute('href', SIGN_IN);
+
+    const [signOut] = await Promise.all([
+      page.waitForResponse(isReplyTo(API_SIGN_OUT)),
+      link.click(),
+    ]);
+    expect(signOut.status(), from).toBe(200);
+    expect(await signOut.request().allHeaders()).toMatchObject({ origin: ORIGIN, 'content-type': 'application/json' });
+    expect((await signOut.request().allHeaders())['x-csrf-token']).toMatch(/^[0-9A-F]{64}$/);
+
+    // Step 1, as a first visit: no sentence, nothing typed, a new security check.
+    await expect(page.locator('#sign-in-form')).toBeVisible();
+    await expect(page).toHaveURL(ORIGIN + SIGN_IN);
+    await expect(page.locator('#form-alert')).toBeHidden();
+    await expect(page.locator('#email')).toHaveValue('');
+    await expect(page.locator('#password')).toHaveValue('');
+    await expect(page.locator('#email')).toBeFocused();
+    await expect(continueButton(page)).toBeEnabled();
+    expect((await widgetState(page)).renders).toBe(1);
+    // The browser no longer holds the pending sign-in.
+    expect((await page.context().cookies()).some((c) => c.name === 'dw_admin_pending')).toBe(false);
+    await expectNotSignedIn(page);
+    expect(seen.codes).toHaveLength(0);
+    expect(seen.recoveries).toHaveLength(0);
+
+    // The Back button: whatever it lands on, it is not a usable step 2.
+    await page.goBack();
+    await expect(page.locator('#second-step-form'), from).toHaveCount(0);
+    await expect(page.locator('#code')).toHaveCount(0);
+    await expect(page.locator('#recovery-code')).toHaveCount(0);
+    expect([CODE, RECOVERY]).not.toContain(new URL(page.url()).pathname);
+
+    // Nor does asking for step 2 by its address: the server sends the browser to step 1.
+    for (const stepTwo of [CODE, RECOVERY]) {
+      await page.goto(stepTwo);
+      await expect(page.locator('#sign-in-form')).toBeVisible();
+      expect(page.url()).toBe(ORIGIN + SIGN_IN);
+      await expect(page.locator('#second-step-form')).toHaveCount(0);
+    }
+  }
+});
+
+test('"Back to sign in" still leaves when the server cannot be asked to give the pending sign-in up', async ({ page }) => {
   await reachCodePage(page);
+  const counts = await answerPosts(page, API_SIGN_OUT, () => 'abort');
   await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
-  await expect(page).toHaveURL(ORIGIN + SIGN_IN);
   await expect(page.locator('#sign-in-form')).toBeVisible();
-  await expect(page.locator('#email')).toHaveValue('');
-  await expect(page.locator('#password')).toHaveValue('');
-  await expect(page.locator('#email')).toBeFocused();
-  // A new security check is asked for.
+  await expect(page).toHaveURL(ORIGIN + SIGN_IN);
+  expect(counts.count).toBe(1);
+});
+
+test('a 403 means a stale anti-forgery pair: the page loads itself anew once, says the request did not go through, and then works', async ({ page }) => {
+  const seen = watch(page);
+  await openSignIn(page);
   await expect(continueButton(page)).toBeEnabled();
-  expect((await widgetState(page)).renders).toBe(1);
-  await expectNotSignedIn(page);
+
+  // Another tab opens the sign-in page: the server gives this browser a new pair, and this page's is stale.
+  const otherTab = await page.request.get(SIGN_IN);
+  expect(otherTab.status()).toBe(200);
+
+  await fillSignIn(page, owner.email, owner.password);
+  let loadedAnew = page.waitForEvent('load');
+  const refusal = await continueAndWait(page);
+  expect(refusal.status()).toBe(403);
+
+  // A new page load, without the flag in the address bar, and the plain retry sentence.
+  await loadedAnew;
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  expect(page.url()).toBe(ORIGIN + SIGN_IN);
+  await expectAlert(page, RETRY);
+  await expect(page.locator('#password')).toHaveValue('');
+  expect(seen.signIns).toHaveLength(1);
+
+  // With the new pair the same details go through.
+  await fillSignIn(page, owner.email, owner.password);
+  await expect(continueButton(page)).toBeEnabled();
+  await continueButton(page).click();
+  await expect(page).toHaveURL(ORIGIN + CODE);
+  expect(seen.signIns).toHaveLength(2);
+
+  // Step 2, the same way.
+  await expect(page.locator('#second-step-form')).toBeVisible();
+  expect((await page.request.get(CODE)).status()).toBe(200);
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  loadedAnew = page.waitForEvent('load');
+  const second = await sendCodeAndWait(page, API_CODE);
+  expect(second.status()).toBe(403);
+  await loadedAnew;
+  await expect(page.locator('#second-step-form')).toBeVisible();
+  expect(page.url()).toBe(ORIGIN + CODE);
+  await expectAlertAboveField(page, RETRY, page.locator('#code'));
+  await expect(page.locator('#code')).toHaveValue('');
+
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  await signInButton(page).click();
+  await expectSignedIn(page, HOME);
+});
+
+test('a 403 that keeps coming does not make the page reload for ever: once, then the retry sentence and the form stays', async ({ page }) => {
+  let reply: Answer = { status: 403, json: { error: 'Forbidden' } };
+  const counts = await answerPosts(page, API_SIGN_IN, () => reply);
+  let loads = 0;
+  page.on('load', () => { loads += 1; });
+  await openSignIn(page);
+  expect(loads).toBe(1);
+
+  await fillSignIn(page, owner.email, owner.password);
+  await expect(continueButton(page)).toBeEnabled();
+  await continueButton(page).click();
+  await expect.poll(() => loads).toBe(2);
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  await expectAlert(page, RETRY);
+
+  // The page came from a reload: a 403 now is answered in place.
+  for (const attempt of [2, 3]) {
+    await fillSignIn(page, owner.email, owner.password);
+    await expect(continueButton(page)).toBeEnabled();
+    await continueButton(page).click();
+    await expectAlert(page, RETRY);
+    await expect(page.locator('#email')).toHaveValue(owner.email);
+    await expect(page.locator('#password')).toHaveValue(owner.password);
+    expect(counts.count).toBe(attempt);
+  }
+  expect(loads).toBe(2);
+  expect(page.url()).toBe(ORIGIN + SIGN_IN);
+
+  // Once the server has accepted a request from this page, a later 403 may reload it again.
+  reply = { status: 401, json: { error: SIGN_IN_GENERIC } };
+  await continueButton(page).click();
+  await expectAlert(page, SIGN_IN_GENERIC);
+  reply = { status: 403, json: { error: 'Forbidden' } };
+  await fillSignIn(page, owner.email, owner.password);
+  await expect(continueButton(page)).toBeEnabled();
+  await continueButton(page).click();
+  await expect.poll(() => loads).toBe(3);
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  await expectAlert(page, RETRY);
+});
+
+test('when a script the page needs does not load, the page says so and shows no form', async ({ page }) => {
+  const seen = watch(page);
+  await standInForCloudflare(page);
+  for (const missing of ['admin-request.js', 'admin-turnstile.js', 'admin-dom.js', 'admin-arrival.js']) {
+    await page.unrouteAll({ behavior: 'wait' });
+    await standInForCloudflare(page);
+    await page.route((url) => url.pathname === `/admin/auth/${missing}`, (route) => route.abort('failed'));
+    await page.goto(SIGN_IN);
+
+    const alert = page.locator('#form-alert');
+    await expect(alert, missing).toBeVisible();
+    await expect(alert).toHaveText(RETRY);
+    await expect(page.locator('h1')).toHaveText(SIGN_IN_HEADING);
+    await expect(page.locator('#sign-in-form')).toBeHidden();
+    await expect(page.locator('#email')).toBeHidden();
+    await expect(continueButton(page)).toHaveCount(0);
+    await expect(page.getByRole('link')).toHaveCount(0);
+  }
+  expect(seen.signIns).toHaveLength(0);
+
+  // Step 2 needs fewer scripts; the same holds for each of them.
+  await page.unrouteAll({ behavior: 'wait' });
+  await reachCodePage(page);
+  for (const missing of ['admin-request.js', 'admin-dom.js', 'admin-arrival.js']) {
+    await page.unrouteAll({ behavior: 'wait' });
+    await page.route((url) => url.pathname === `/admin/auth/${missing}`, (route) => route.abort('failed'));
+    for (const stepTwo of [CODE, RECOVERY]) {
+      await page.goto(stepTwo);
+      const alert = page.locator('#form-alert');
+      await expect(alert, `${missing} on ${stepTwo}`).toBeVisible();
+      await expect(alert).toHaveText(RETRY);
+      await expect(page.locator('#second-step-form')).toBeHidden();
+      await expect(page.locator('input')).toBeHidden();
+      await expect(signInButton(page)).toHaveCount(0);
+      await expect(page.getByRole('link')).toHaveCount(0);
+    }
+  }
+  expect(seen.codes).toHaveLength(0);
+  expect(seen.recoveries).toHaveLength(0);
+  // Nothing threw on the way: the afterEach check on page errors holds for this test too.
+});
+
+test('what was typed does not stay in a page the browser keeps for its Back button', async ({ page }) => {
+  await openSignIn(page);
+  await fillSignIn(page, owner.email, owner.password);
+  // The moment the browser puts the page away.
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+  await expect(page.locator('#password')).toHaveValue('');
+  await expect(page.locator('#email')).toHaveValue(owner.email);
+
+  // The real thing: leave by the link and come back with the Back button.
+  await page.locator('#password').fill(owner.password);
+  await page.getByRole('link', { name: 'Forgot your password?', exact: true }).click();
+  await expect(page).toHaveURL(ORIGIN + RESET);
+  await page.goBack();
+  await expect(page.locator('#sign-in-form')).toBeVisible();
+  await expect(page.locator('#password')).toHaveValue('');
+
+  // Step 2: the code, and the recovery code.
+  await fillSignIn(page, owner.email, owner.password);
+  await expect(continueButton(page)).toBeEnabled();
+  await continueButton(page).click();
+  await expect(page).toHaveURL(ORIGIN + CODE);
+  await page.locator('#code').fill('123456');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+  await expect(page.locator('#code')).toHaveValue('');
+
+  await page.locator('#code').fill('123456');
+  await page.getByRole('link', { name: 'Use a recovery code instead', exact: true }).click();
+  await expect(page).toHaveURL(ORIGIN + RECOVERY);
+  await page.locator('#recovery-code').fill('AAAA-BBBB-CCCC');
+  await page.goBack();
+  await expect(page).toHaveURL(ORIGIN + CODE);
+  await expect(page.locator('#second-step-form')).toBeVisible();
+  await expect(page.locator('#code')).toHaveValue('');
+  await page.goForward();
+  await expect(page).toHaveURL(ORIGIN + RECOVERY);
+  await expect(page.locator('#second-step-form')).toBeVisible();
+  await expect(page.locator('#recovery-code')).toHaveValue('');
+});
+
+test('the seeding script empties tables only in this run\'s own database', async () => {
+  const rows = {
+    email: owner.email, passwordHash: 'not-a-hash', totpCipher: null, recoveryHashes: [],
+  };
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'dw-not-a-run-'));
+  try {
+    // A database file with the right name, in a folder the runner did not mark.
+    const unmarked = path.join(elsewhere, 'e2e.db');
+    fs.writeFileSync(unmarked, 'not a database, and it must stay as it is');
+    // A marked folder, but another file in it.
+    const markedDir = path.join(elsewhere, 'marked');
+    fs.mkdirSync(markedDir);
+    fs.writeFileSync(path.join(markedDir, '.dealoware-e2e-run'), 'dealoware e2e run\n');
+    const otherName = path.join(markedDir, 'dealoware.db');
+    fs.writeFileSync(otherName, 'not a database either');
+    // A marker with other words in it.
+    const wrongMarkerDir = path.join(elsewhere, 'wrong-marker');
+    fs.mkdirSync(wrongMarkerDir);
+    fs.writeFileSync(path.join(wrongMarkerDir, '.dealoware-e2e-run'), 'something else\n');
+    const wrongMarker = path.join(wrongMarkerDir, 'e2e.db');
+    fs.writeFileSync(wrongMarker, 'nor this');
+
+    const refusedPaths: unknown[] = [
+      unmarked, otherName, wrongMarker, path.join(markedDir, 'e2e.db'), path.join(elsewhere, 'missing', 'e2e.db'),
+      '', null, 42,
+    ];
+    for (const db of refusedPaths) {
+      const run = runSeedScript({ ...rows, db });
+      expect(run.status, `db = ${JSON.stringify(db)}`).toBe(1);
+      expect(run.stderr).toContain('only works on the database of a browser-test run');
+    }
+    expect(fs.readFileSync(unmarked, 'utf8')).toBe('not a database, and it must stay as it is');
+    expect(fs.readFileSync(otherName, 'utf8')).toBe('not a database either');
+    expect(fs.readFileSync(wrongMarker, 'utf8')).toBe('nor this');
+    // A refused path is not created either.
+    expect(fs.existsSync(path.join(markedDir, 'e2e.db'))).toBe(false);
+    expect(fs.existsSync(path.join(elsewhere, 'missing'))).toBe(false);
+  } finally {
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+
+  // The run's own database is the one it takes.
+  expect(path.basename(RUN_DATABASE)).toBe('e2e.db');
+  expect(fs.readFileSync(path.join(path.dirname(RUN_DATABASE), '.dealoware-e2e-run'), 'utf8').trim()).toBe('dealoware e2e run');
+  owner = seedOwner({ enrolled: true });
 });
 
 test('nothing in the address of S-A1 reaches the page or the request', async ({ page }) => {

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Sign-in pages Playwright run over HTTPS: S-A1 /admin/sign-in, S-A2
-# /admin/sign-in/code and S-A3 /admin/sign-in/recovery.
-# Not wired into Admin UI CI.
+# /admin/sign-in/code and S-A3 /admin/sign-in/recovery, on Chromium, Firefox
+# and WebKit. Not wired into Admin UI CI.
 #
 #   ./e2e/sign-in/run.sh
+#   E2E_ENGINES="firefox" ./e2e/sign-in/run.sh      one engine only
 #
 # The runner itself is shared with the other signed-out page suites:
 # e2e/signed-out/harness.sh starts the app on 127.0.0.1:18445 behind a local

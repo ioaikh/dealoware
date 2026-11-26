@@ -37,7 +37,22 @@ public class AdminSignedOutBrowserRunTests
         Assert.Contains("target = (\"127.0.0.1\", target_port)", code, StringComparison.Ordinal);
         Assert.Contains("export \"${SUITE_ENV}_PROXY=http://127.0.0.1:${PROXY_PORT}\"", code, StringComparison.Ordinal);
         Assert.Contains("export \"${SUITE_ENV}_BASE_URL=https://admin.core.dealoware.com\"", code, StringComparison.Ordinal);
-        Assert.Contains("npx playwright test -c playwright.config.cjs \"$@\"", code, StringComparison.Ordinal);
+        // Three engines by default, one Playwright run each; fewer only when named, and only these three.
+        Assert.Contains("ENGINES=\"${E2E_ENGINES:-chromium firefox webkit}\"", code, StringComparison.Ordinal);
+        Assert.Contains("chromium|firefox|webkit) ;;", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "if ! npx playwright test -c playwright.config.cjs --project=\"$engine\" \"$@\"; then",
+            code,
+            StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(code, "npx playwright test "));
+        // A suite that uses up what it is given puts it back before each engine.
+        Assert.Contains("if declare -F seed_suite >/dev/null; then", code, StringComparison.Ordinal);
+        // A failure on one engine does not stop the others, and fails the run at the end.
+        Assert.Contains("failed=\"$failed $engine\"", code, StringComparison.Ordinal);
+        Assert.Contains("return 1", code, StringComparison.Ordinal);
+        // The run's folder is marked as its own, for the script that empties tables.
+        Assert.Contains("RUN_MARKER=\".dealoware-e2e-run\"", code, StringComparison.Ordinal);
+        Assert.Contains("printf 'dealoware e2e run\\n' >\"$WORKDIR/$RUN_MARKER\"", code, StringComparison.Ordinal);
         // The ports are the suite's to name; the shared runner holds none of its own.
         Assert.Empty(Regex.Matches(code, @"_PORT=\d"));
         // It refuses to run half-configured.
@@ -120,9 +135,16 @@ public class AdminSignedOutBrowserRunTests
         Assert.Contains("require(\"../reset-confirm/require-proxy.cjs\")", config, StringComparison.Ordinal);
         Assert.Contains("guard(requireResetConfirmProxy, envPrefix + \"_PROXY\")", config, StringComparison.Ordinal);
         Assert.Contains("guard(requireResetConfirmBaseUrl, envPrefix + \"_BASE_URL\")", config, StringComparison.Ordinal);
-        // Declared once, then passed to the shared settings and to the browser project.
+        // Declared once, then passed to the shared settings and to every browser project.
         Assert.Single(Regex.Matches(config, "const proxy = "));
         Assert.Equal(2, Regex.Matches(config, @"(?m)^\s+proxy,\r?$").Count);
+
+        // One project per engine, all built the same way, so none can run without the proxy.
+        Assert.Contains("chromium: \"Desktop Chrome\",", config, StringComparison.Ordinal);
+        Assert.Contains("firefox: \"Desktop Firefox\",", config, StringComparison.Ordinal);
+        Assert.Contains("webkit: \"Desktop Safari\",", config, StringComparison.Ordinal);
+        Assert.Contains("projects: Object.keys(ENGINES).map((engine) => ({", config, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(config, @"\bprojects:"));
         Assert.Contains("workers: 1,", config, StringComparison.Ordinal);
         Assert.Contains("trace: \"off\",", config, StringComparison.Ordinal);
         Assert.Contains("video: \"off\",", config, StringComparison.Ordinal);
@@ -216,6 +238,19 @@ public class AdminSignedOutBrowserRunTests
         Assert.DoesNotContain("print(", seed, StringComparison.Ordinal);
         Assert.DoesNotContain("hashlib", seed, StringComparison.Ordinal);
         Assert.DoesNotContain("import os", seed, StringComparison.Ordinal);
+
+        // It empties tables, so it takes one database only: e2e.db in the folder the runner
+        // marked as a run's own. The check comes before the file is opened.
+        Assert.Contains("RUN_DATABASE = \"e2e.db\"", seed, StringComparison.Ordinal);
+        Assert.Contains("RUN_MARKER = \".dealoware-e2e-run\"", seed, StringComparison.Ordinal);
+        Assert.Contains("RUN_MARKER_TEXT = \"dealoware e2e run\"", seed, StringComparison.Ordinal);
+        Assert.Contains("database = a_runs_own_database(state.get(\"db\"))", seed, StringComparison.Ordinal);
+        Assert.Contains("con = sqlite3.connect(database, timeout=15)", seed, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(seed, @"sqlite3\.connect\("));
+        Assert.True(
+            seed.IndexOf("database = a_runs_own_database(", StringComparison.Ordinal)
+            < seed.IndexOf("sqlite3.connect(", StringComparison.Ordinal));
+        Assert.Contains("DB=\"$WORKDIR/e2e.db\"", ShellCode(Path.Combine(RepoRoot(), "e2e", "signed-out", "harness.sh")), StringComparison.Ordinal);
     }
 
     /// <summary>A shell script without its comment lines. It must have Unix line endings, or bash cannot run it.</summary>

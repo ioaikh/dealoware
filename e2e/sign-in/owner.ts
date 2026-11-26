@@ -102,18 +102,27 @@ export function seedOwner(state: { enrolled: boolean }): Owner {
     recoveryHashes: recoveryCodes.map(hashRecoveryCode),
   };
 
+  const run = runSeedScript(rows);
+  if (run.status !== 0) {
+    // Never the input: it holds the hashes.
+    throw new Error(`seeding the owner failed: ${run.stderr}`);
+  }
+  return { email: OWNER_EMAIL, password: OWNER_PASSWORD, secret, recoveryCodes };
+}
+
+/** Runs seed_owner.py with the given rows. The script decides whether it will touch the database named in them. */
+export function runSeedScript(rows: Record<string, unknown>): { status: number | null; stderr: string } {
   const run = spawnSync(PYTHON, [path.join(__dirname, 'seed_owner.py')], {
     input: JSON.stringify(rows),
     encoding: 'utf8',
     timeout: 30_000,
     windowsHide: true,
   });
-  if (run.error || run.status !== 0) {
-    // Never the input: it holds the hashes.
-    throw new Error(`seeding the owner failed: ${run.error?.message ?? run.stderr}`);
-  }
-  return { email: OWNER_EMAIL, password: OWNER_PASSWORD, secret, recoveryCodes };
+  return { status: run.error ? null : run.status, stderr: run.error?.message ?? run.stderr };
 }
+
+/** The run's database file, as run.sh named it. */
+export const RUN_DATABASE = DB;
 
 /**
  * The authenticator code for a key, as an authenticator app shows it now
