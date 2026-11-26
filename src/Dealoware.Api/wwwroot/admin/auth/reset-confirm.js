@@ -391,8 +391,10 @@
         location.replace(SIGN_IN_PAGE);
         return;
       }
-      // Still usable: nothing changed. Not known: a later "link no longer works" may be this change.
-      unsettled = outcome !== "form";
+      // Even a link still usable now may be spent a moment later by this very request, if the
+      // server commits after the check. So from here on, a "link no longer works" leads to
+      // sign-in, which tells. Only a 400 or 401, read after the link, settles it again.
+      unsettled = true;
       setBusy(false);
       showFormAlert(formRetryCopy());
     });

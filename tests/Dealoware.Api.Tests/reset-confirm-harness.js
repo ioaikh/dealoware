@@ -704,6 +704,24 @@ const retryReplies = {
         assert.strictEqual(session.confirms.length, 2);
       });
 
+      await namedCase("time-out, a link still usable at the check, then the spent link: sign-in, not the link-expired page", async () => {
+        // The server may commit the first request after the check said the link was still usable.
+        const session = await filledForm(
+          (n) => (n === 1
+            ? new Promise(() => {})
+            : jsonResponse(200, "", { redirected: true, url: origin + "/admin/link-expired?for=reset" })));
+        session.form.dispatch("submit");
+        await session.flush();
+        session.fireTimeouts();
+        await session.flush();
+        await session.flush();
+        assert.strictEqual(session.formAlert.textContent, formRetry);
+        assert.deepStrictEqual(session.replaced, []);
+        await submitAndSettle(session);
+        assert.deepStrictEqual(session.replaced, ["/admin/sign-in"]);
+        assert.strictEqual(session.confirms.length, 2);
+      });
+
       await namedCase("a redirect to the link-expired page goes there", async () => {
         const session = await filledForm(() => jsonResponse(200, "", { redirected: true, url: origin + "/admin/link-expired?for=reset" }));
         await submitAndSettle(session);

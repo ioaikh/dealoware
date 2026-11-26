@@ -403,6 +403,10 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
                 "PASS time-out, a link that cannot be checked, then the spent link: sign-in, not the link-expired page",
                 stdout,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "PASS time-out, a link still usable at the check, then the spent link: sign-in, not the link-expired page",
+                stdout,
+                StringComparison.Ordinal);
             Assert.Contains("PASS a redirect to the link-expired page goes there", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS a password rule refusal (400): the named reason under New password", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS the switch sends the recovery code alone", stdout, StringComparison.Ordinal);

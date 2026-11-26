@@ -50,8 +50,10 @@ public static class AdminPasswordResetCopy
     public const string ConfirmSubmit = "Change password";
 
     /// <summary>
-    /// Shown when no usable answer came back and the link is still usable,
-    /// so nothing was changed: the first-time setup page's own sentence.
+    /// Shown when no usable answer came back and the link is still usable or
+    /// could not be checked: the first-time setup page's own sentence. The
+    /// change may still have gone through; the next press then leads to
+    /// sign-in, which tells.
     /// </summary>
     public const string ConfirmRetry = AdminBootstrapCopy.SubmitRetry;
 
