@@ -1,5 +1,4 @@
 using System.Globalization;
-using Dealoware.Domain.Negotiations;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Dealoware.Api.Admin;
@@ -13,10 +12,23 @@ namespace Dealoware.Api.Admin;
 /// the raw text is echoed: every kept value is re-encoded.
 /// Only the four entity lists take a query. The audit list takes none until
 /// its viewer (T07) names its own keys.
+/// <para>
+/// These are exactly the keys each list page reads (<see cref="AdminListPages"/>
+/// passes its own address through <see cref="Filter"/> first, so a page and
+/// its way back after sign-in keep the same values). A status is one or more
+/// of the list's own names, comma-separated; a sort is one the list's headers
+/// offer. A date filter is either an ET calendar date (yyyy-MM-dd, what the
+/// pages write) or an instant, in the years <see cref="MinYear"/> to
+/// <see cref="MaxYear"/>.
+/// </para>
 /// </summary>
 public static class AdminReturnQuery
 {
     private delegate bool Check(string raw, out string kept);
+
+    /// <summary>The years a date filter may name. Outside them it is dropped, never an error.</summary>
+    public const int MinYear = 1900;
+    public const int MaxYear = 2999;
 
     private static readonly (string Key, Check Check)[] Common =
     [
@@ -24,40 +36,50 @@ public static class AdminReturnQuery
         ("dir", OneOf("asc", "desc")),
         ("offset", Whole(0, int.MaxValue)),
         ("limit", Whole(1, AdminListQuery.MaxLimit)),
-        ("includeDeleted", OneOf("true", "false")),
-        ("participant", Text(AdminListQuery.MaxFilterLength)),
-        ("createdFrom", Instant),
-        ("createdTo", Instant),
-        ("updatedFrom", Instant),
-        ("updatedTo", Instant)
+        ("includeDeleted", OneOf("true", "false"))
+    ];
+
+    private static readonly (string Key, Check Check)[] Dates =
+    [
+        ("createdFrom", DateOrInstant),
+        ("createdTo", DateOrInstant),
+        ("updatedFrom", DateOrInstant),
+        ("updatedTo", DateOrInstant)
     ];
 
     private static readonly Dictionary<string, (string Key, Check Check)[]> Lists = new(StringComparer.OrdinalIgnoreCase)
     {
         ["/admin/participants"] =
         [
-            ("sort", SortKey(AdminListQuery.ParticipantSortKeys)),
-            .. Common
+            ("sort", SortKey(AdminListPages.Participants.SortKeys)),
+            .. Common,
+            ("status", Statuses(AdminReadEndpoints.ParticipantStatuses)),
+            .. Dates
         ],
         ["/admin/artifacts"] =
         [
-            ("sort", SortKey(AdminListQuery.ArtifactSortKeys)),
+            ("sort", SortKey(AdminListPages.Artifacts.SortKeys)),
             .. Common,
-            ("artifact", Id)
+            ("participant", Text(AdminListQuery.MaxFilterLength)),
+            .. Dates
         ],
         ["/admin/negotiations"] =
         [
-            ("sort", SortKey(AdminListQuery.NegotiationSortKeys)),
+            ("sort", SortKey(AdminListPages.Negotiations.SortKeys)),
             .. Common,
-            ("status", OneOf(Enum.GetNames<NegotiationStatus>())),
+            ("participant", Text(AdminListQuery.MaxFilterLength)),
+            .. Dates,
+            ("status", Statuses(AdminReadEndpoints.NegotiationStatuses)),
             ("artifact", Id),
             ("negotiationId", Id)
         ],
         ["/admin/offers"] =
         [
-            ("sort", SortKey(AdminListQuery.OfferSortKeys)),
+            ("sort", SortKey(AdminListPages.Offers.SortKeys)),
             .. Common,
-            ("status", OneOf(Enum.GetNames<OfferStatus>())),
+            ("participant", Text(AdminListQuery.MaxFilterLength)),
+            .. Dates,
+            ("status", Statuses(AdminReadEndpoints.OfferStatuses)),
             ("artifact", Id),
             ("negotiationId", Id),
             ("amountMin", Amount),
@@ -130,7 +152,18 @@ public static class AdminReturnQuery
         return kept.Length > 0;
     };
 
-    private static Check SortKey(HashSet<string> allowed) => (string raw, out string kept) =>
+    /// <summary>One or more of the list's statuses, comma-separated: the known ones kept, in the list's order, once each.</summary>
+    private static Check Statuses(IReadOnlyList<string> allowed) => (string raw, out string kept) =>
+    {
+        var named = raw.Split(',')
+            .Select(part => allowed.FirstOrDefault(a => string.Equals(a, part.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .Where(a => a is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        kept = string.Join(',', allowed.Where(named.Contains));
+        return kept.Length > 0;
+    };
+
+    private static Check SortKey(IReadOnlyList<string> allowed) => (string raw, out string kept) =>
     {
         kept = allowed.FirstOrDefault(a => string.Equals(a, raw, StringComparison.Ordinal)) ?? string.Empty;
         return kept.Length > 0;
@@ -163,11 +196,21 @@ public static class AdminReturnQuery
         return true;
     }
 
-    private static bool Instant(string raw, out string kept)
+    /// <summary>A calendar date as the pages write it (yyyy-MM-dd, kept as it is), or an instant, kept in UTC.</summary>
+    private static bool DateOrInstant(string raw, out string kept)
     {
+        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            kept = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return date.Year is >= MinYear and <= MaxYear;
+        }
+
         kept = string.Empty;
-        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
+            || at.UtcDateTime.Year is < MinYear or > MaxYear)
+        {
             return false;
+        }
         kept = at.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
         return true;
     }

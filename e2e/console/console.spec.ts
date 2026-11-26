@@ -281,10 +281,8 @@ test('every nav entry opens its page in one step, with its title, one h1 and ari
     await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true }).click();
     await expect(page).toHaveURL(ORIGIN + entry.path);
     await expectShell(page, entry.title, entry.heading, entry.path);
-    // S-A12 is built: e2e/console/security-settings.spec.ts.
-    if (entry.path !== HOME && entry.path !== '/admin/settings/security') {
-      await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
-    }
+    // Every page in the nav is built now: none says it is not.
+    await expect(page.getByText(NOT_BUILT, { exact: true })).toHaveCount(0);
     await expectNoSeriousAxeFindings(page, `page_${entry.label.toLowerCase().replace(/ /g, '-')}`);
   }
 
