@@ -465,6 +465,26 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminResetIpCounters", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionStepUp", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("CodesIssuedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingTotpSecretCipher")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SteppedUpAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("SessionId");
+
+                    b.ToTable("AdminSessionStepUps", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Artifacts.Artifact", b =>
                 {
                     b.Property<Guid>("Id")
@@ -958,6 +978,15 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Strategies_OwnerParticipantId_IsActive");
 
                     b.ToTable("Strategies", (string)null);
+                });
+
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionStepUp", b =>
+                {
+                    b.HasOne("Dealoware.Domain.Admin.AdminSession", null)
+                        .WithOne()
+                        .HasForeignKey("Dealoware.Domain.Admin.AdminSessionStepUp", "SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dealoware.Domain.Artifacts.ArtifactValue", b =>
