@@ -5,6 +5,12 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Parses GET /admin/api/audit query parameters. Unknown sort keys, non-numeric
 /// paging, and over-long string filters return a generic 400.
+/// <para>
+/// <c>action</c> takes one action or several, comma-separated: an entry with
+/// any one of them. Each must be a name from the fixed list
+/// (<see cref="AdminAuditOutcome.Actions"/>), spelled as it is stored;
+/// anything else (another name, an empty part) is the same generic 400.
+/// </para>
 /// </summary>
 public static class AdminAuditQuery
 {
@@ -42,7 +48,7 @@ public static class AdminAuditQuery
             return false;
         }
 
-        if (!TryOptionalCapped(query, "action", AdminAuditListCriteria.MaxActionLength, out var action, out error)
+        if (!TryOptionalActions(query, out var actions, out error)
             || !TryOptionalCapped(query, "actorEmail", AdminAuditListCriteria.MaxFilterLength, out var actorEmail, out error)
             || !TryOptionalCapped(query, "entityType", AdminAuditListCriteria.MaxActionLength, out var entityType, out error)
             || !TryOptionalCapped(query, "reasonClass", AdminAuditListCriteria.MaxActionLength, out var reasonClass, out error)
@@ -64,7 +70,7 @@ public static class AdminAuditQuery
             Offset = offset,
             Limit = limit,
             Sort = sort,
-            Action = action,
+            Actions = actions,
             ActorEmail = actorEmail,
             EntityType = entityType,
             EntityId = entityId,
@@ -113,6 +119,39 @@ public static class AdminAuditQuery
         }
 
         value = parsed;
+        return true;
+    }
+
+    /// <summary>One or more names from the fixed list, comma-separated, once each, in the list's order.</summary>
+    private static bool TryOptionalActions(
+        IQueryCollection query,
+        out IReadOnlyList<string> actions,
+        out IResult? error)
+    {
+        actions = [];
+        error = null;
+        var raw = query["action"].ToString();
+        if (string.IsNullOrEmpty(raw))
+            return true;
+        if (raw.Length > AdminAuditListCriteria.MaxActionsLength)
+        {
+            error = AdminDeny.BadRequestResult();
+            return false;
+        }
+
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var part in raw.Split(','))
+        {
+            if (!AdminAuditOutcome.IsKnownAction(part))
+            {
+                error = AdminDeny.BadRequestResult();
+                return false;
+            }
+
+            named.Add(part);
+        }
+
+        actions = AdminAuditOutcome.Actions.Where(named.Contains).ToArray();
         return true;
     }
 

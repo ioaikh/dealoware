@@ -61,10 +61,21 @@ public sealed class AdminAuditRepository : IAdminAuditRepository
         IQueryable<AdminAuditEntry> query,
         AdminAuditListCriteria criteria)
     {
+        if (criteria.Id is { } id)
+        {
+            query = query.Where(e => e.Id == id);
+        }
+
         if (!string.IsNullOrEmpty(criteria.Action))
         {
             var action = criteria.Action;
             query = query.Where(e => e.Action == action);
+        }
+
+        if (criteria.Actions.Count > 0)
+        {
+            var actions = criteria.Actions.ToArray();
+            query = query.Where(e => actions.Contains(e.Action));
         }
 
         if (!string.IsNullOrEmpty(criteria.ActorEmail))

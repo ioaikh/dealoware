@@ -12,10 +12,19 @@ public sealed class AdminAuditListCriteria
     public const int MaxFilterLength = 200;
     public const int MaxActionLength = 64;
 
+    /// <summary>The longest <c>action</c> filter: several names, comma-separated.</summary>
+    public const int MaxActionsLength = 1024;
+
     public int Offset { get; init; }
     public int Limit { get; init; } = DefaultLimit;
     public string Sort { get; init; } = "-timestamp";
     public string? Action { get; init; }
+
+    /// <summary>Several actions at once: an entry with any one of them. Empty for no filter.</summary>
+    public IReadOnlyList<string> Actions { get; init; } = [];
+
+    /// <summary>One entry by its id (GET /admin/api/audit/{id}).</summary>
+    public Guid? Id { get; init; }
     public string? ActorEmail { get; init; }
     public string? EntityType { get; init; }
     public Guid? EntityId { get; init; }
