@@ -1057,12 +1057,11 @@
 
   var arrived = history.state && typeof history.state === "object" ? history.state : null;
   if (arrived && arrived.dwEdit) {
-    // Loaded on edit mode's history entry. After a reload in edit mode, step back onto the record's
-    // own entry, so one Back still leaves the page. Any other load (Safari keeps the state when the
-    // same address is opened again) starts in view mode on this entry, made a plain one.
-    var how = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation") : [];
-    if (how.length > 0 && how[0].type === "reload") history.back();
-    else history.replaceState(null, "", location.href);
+    // Loaded on edit mode's history entry (a reload in edit mode, or an engine that keeps the state
+    // when the same address is opened again): the page starts in view mode and the entry becomes a
+    // plain one. Nothing moves in history while the page loads; after a reload in edit mode the
+    // record's own entry is still behind this one, so it takes one more Back to leave.
+    history.replaceState(null, "", location.href);
   } else if (arrived && typeof arrived.dwNote === "string") {
     // Set by this script just before it loaded the page anew over a change it made; used once.
     var note = arrived.dwNote;
