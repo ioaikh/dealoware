@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shared runner for the browser tests of the signed-out admin pages. It is
 # sourced by a suite's run.sh (e2e/bootstrap/run.sh, e2e/sign-in/run.sh,
-# e2e/enrol/run.sh) and does nothing by itself. Not wired into Admin UI CI.
+# e2e/enrol/run.sh) and does nothing by itself. Admin UI CI runs every suite
+# that sources this file, through e2e/run-signed-out.sh.
 #
 # The suite's run.sh sets these, then sources this file:
 #
@@ -30,6 +31,10 @@
 #
 # Screenshots and axe reports land in the suite's test-results folder: those
 # of Chromium directly in it, those of the other two in a folder each.
+#
+# With E2E_REPORT_DIR set to a folder, each engine's run also leaves
+# Playwright's own report there, as <engine>.json. e2e/run-signed-out.sh reads
+# them to tell a run that executed tests from one that skipped them all.
 #
 # Needs bash, openssl, curl, Python 3, the .NET SDK and Node. Works on Linux,
 # macOS and Git Bash on Windows.
@@ -104,8 +109,10 @@ for engine in $ENGINES; do
   esac
 done
 
-# Stops a background process. On Windows "dotnet run" starts the app as a
-# child process, so the whole tree is ended by Windows process id.
+# Stops a background process. "dotnet run" starts the app as a child process,
+# and ending "dotnet run" alone can leave the app running. So on Windows the
+# whole tree is ended by Windows process id, and elsewhere the children are
+# told to stop before the process itself.
 stop_process() {
   local pid="$1"
   if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
@@ -114,6 +121,9 @@ stop_process() {
   if [[ -r "/proc/$pid/winpid" ]] && command -v taskkill >/dev/null 2>&1; then
     taskkill /PID "$(cat "/proc/$pid/winpid")" /T /F >/dev/null 2>&1 || true
   else
+    if command -v pkill >/dev/null 2>&1; then
+      pkill -TERM -P "$pid" 2>/dev/null || true
+    fi
     kill "$pid" 2>/dev/null || true
   fi
   wait "$pid" 2>/dev/null || true
@@ -135,10 +145,9 @@ sha256_upper() {
   printf '%s' "$1" | openssl dgst -sha256 -hex | awk '{print toupper($NF)}'
 }
 
-wait_for_port() {
-  local port="$1" pid="$2" name="$3"
-  for _ in $(seq 1 60); do
-    if "$PY" - "$port" <<'PY'
+# True when something listens on the loopback port.
+port_answers() {
+  "$PY" - "$1" <<'PY'
 import socket, sys
 s = socket.socket()
 try:
@@ -150,7 +159,12 @@ except OSError:
 finally:
     s.close()
 PY
-    then
+}
+
+wait_for_port() {
+  local port="$1" pid="$2" name="$3"
+  for _ in $(seq 1 60); do
+    if port_answers "$port"; then
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -167,6 +181,17 @@ PY
 # proxy, and returns once all three answer. The app has created its schema by
 # then, so the suite can write its rows to "$DB".
 start_app_behind_proxy() {
+  # A port that already answers belongs to another run of this suite, or to
+  # an app one left behind. That app would answer this run's browser, out of
+  # its own database, and the tests would fail for no reason of theirs.
+  local port
+  for port in "$API_PORT" "$PROXY_PORT" "$VERIFY_PORT"; do
+    if port_answers "$port"; then
+      echo "127.0.0.1:${port} is already in use: is another run of ${SUITE} going?" >&2
+      exit 1
+    fi
+  done
+
   umask 077
   local pfx_pass
   pfx_pass="$(openssl rand -hex 24)"
@@ -318,9 +343,9 @@ PY
 }
 
 # Runs the suite's spec on each engine in turn, against the one running app.
-# The suite folder has its own package.json (Playwright at the version e2e/
-# pins, plus axe), so e2e/package.json and the Admin UI CI it triggers stay
-# untouched. Anything the suite exported under its own prefix before this
+# The suite folder has its own package.json (Playwright at the version
+# e2e/package.json pins, plus axe); Admin UI CI installs the browsers from
+# that one pin. Anything the suite exported under its own prefix before this
 # call reaches the spec as well. Fails if any engine's run failed, after all
 # of them have run.
 run_playwright() {
@@ -346,6 +371,13 @@ run_playwright() {
   # What an earlier run saved must not be mistaken for this run's.
   rm -rf "$SUITE_DIR/test-results"
 
+  # Asked for a report of each engine's run: the list on the screen as
+  # always, and Playwright's JSON report in a file.
+  if [[ -n "${E2E_REPORT_DIR:-}" ]]; then
+    mkdir -p "$E2E_REPORT_DIR"
+    set -- --reporter=list,json "$@"
+  fi
+
   local engine artifacts failed=""
   for engine in $ENGINES; do
     if declare -F seed_suite >/dev/null; then
@@ -357,6 +389,9 @@ run_playwright() {
     fi
     mkdir -p "$artifacts"
     export "${SUITE_ENV}_ARTIFACTS=${artifacts}"
+    if [[ -n "${E2E_REPORT_DIR:-}" ]]; then
+      export PLAYWRIGHT_JSON_OUTPUT_FILE="${E2E_REPORT_DIR}/${engine}.json"
+    fi
     echo "== ${SUITE} on ${engine} =="
     if ! npx playwright test -c playwright.config.cjs --project="$engine" "$@"; then
       failed="$failed $engine"

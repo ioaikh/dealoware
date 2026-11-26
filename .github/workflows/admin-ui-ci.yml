@@ -1,43 +1,63 @@
-# Admin UI Headless CI — UX1-X08 / TD-ADM-UI-ci-01
-# Merge-blocking: failing non-SKIP UI case fails the check.
-# Empty suite: must fail closed on pull_request (never green empty).
-# AC-06: SKIP is not PASS — all-skipped or zero-collected runs fail (never green empty).
-# SKIP stubs: reported as SKIP with Active hold reason when specs missing.
-# Decision: Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate.
+# Admin UI CI — UX1-X08 / UXR-D15 / TD-ADM-UI-ci-01
 #
-# Phase 0: No admin UI frontend exists yet. Pipeline wiring only.
-# When specs land, they run against webServer defined in e2e/playwright.config.ts.
-# See e2e/admin/README.md for environment setup and local development.
+# The browser tests of the Core admin pages, on every pull request that
+# touches what those pages are built from. Rule: Story A7 step 14 ("Headless
+# UI cases are required in CI on every PR that touches admin UI files").
+# Decision: docs/qa/2026-10-05__qa__decision__ux1-x08-headless-ui-ci.md.
 #
-# SECURITY (public repo):
-# - Traces/screenshots disabled (playwright.config.ts) — artifacts are world-readable.
-# - No artifact uploads until private artifact policy or private runner exists.
-# - Env placeholders are test-only stubs. Do NOT put real CoreOwner/admin passwords
-#   or TOTP seeds into this public repo's Actions secrets.
+# What runs: e2e/run-signed-out.sh. It finds every suite built on the shared
+# runner (each e2e/<suite>/run.sh that sources e2e/signed-out/harness.sh) and
+# runs them one after the other, against the real application over HTTPS. A
+# new suite folder is picked up without an edit here. One job per browser
+# engine, side by side; one engine failing does not stop the others.
+#
+# Fail closed, never a green empty run:
+# - a failing test fails the job;
+# - no suite found, or a suite that collected no test, fails the job;
+# - SKIP is not PASS (AC-06): a suite whose tests were all skipped fails the
+#   job. The count comes from Playwright's JSON report, read by
+#   e2e/admin/ci/assert-executed.js; the negative control below proves that
+#   script on real reports in every job;
+# - a test.only left in a spec fails the job (--forbid-only);
+# - no continue-on-error, no "|| true", no "if: always()".
+#
+# SECURITY (public repository — logs and artifacts are world-readable):
+# - No secrets. This workflow reads none and needs none: the passwords, keys
+#   and tokens of a run are made up by the runner script when it starts and
+#   are gone when the job ends. Do NOT add real CoreOwner or admin passwords,
+#   TOTP seeds or Turnstile keys to this repository's Actions secrets.
+# - Nothing leaves the runner. The pages are opened under the admin host's
+#   name, but every browser connection goes through a proxy on 127.0.0.1 to
+#   the application started in this job, and the suites answer Cloudflare's
+#   requests themselves. Each suite's Playwright configuration refuses to
+#   load with a proxy that is not http://127.0.0.1:<port> (the guard is
+#   e2e/reset-confirm/require-proxy.cjs; its own checks run below). This
+#   replaces the earlier check on ADMIN_BASE_URL: there is no base URL to set
+#   any more.
+# - No artifact uploads. Playwright traces, screenshots and video are off
+#   (e2e/signed-out/playwright.base.cjs). The screenshots and axe reports the
+#   suites save stay in the job's workspace and go away with it. Do not
+#   upload them until a private artifact policy or a private runner exists.
+# - pull_request only (never pull_request_target), a read-only token, and no
+#   credentials left in the checkout.
 
 name: Admin UI CI
 
 on:
   pull_request:
     paths:
-      # Admin UI e2e test files
-      - 'e2e/admin/**'
-      # Playwright configuration and dependencies
-      - 'e2e/playwright.config.ts'
-      - 'e2e/package.json'
-      - 'e2e/package-lock.json'
-      # This workflow
+      # The suites build and start the whole application, so everything it is
+      # built from counts: the admin pages and their assets
+      # (src/Dealoware.Api/Admin/**, src/Dealoware.Api/wwwroot/admin/**), and
+      # also Program.cs (middleware order, security headers, rate limits),
+      # the sign-in, password and authenticator code in Infrastructure and
+      # Domain, and the migrations whose tables the suites write rows into.
+      - 'src/**'
+      # The suites, the shared runner, their pinned packages.
+      - 'e2e/**'
+      # This workflow.
       - '.github/workflows/admin-ui-ci.yml'
   workflow_dispatch:
-    inputs:
-      allow_skip_empty:
-        description: 'Allow SKIP on empty suite (manual dry-run only, not for pull_request)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
 
 permissions:
   contents: read
@@ -46,11 +66,28 @@ concurrency:
   group: admin-ui-ci-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
 jobs:
   admin-ui-test:
-    name: Admin UI Headless Tests (Chromium)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Admin UI Headless Tests (${{ matrix.engine }})
+    # Not ubuntu-latest: the pinned Playwright (1.48.0) knows the system
+    # packages of Ubuntu up to 24.04. Move this together with that pin.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    env:
+      # The one engine this job runs; e2e/signed-out/harness.sh reads it.
+      E2E_ENGINES: ${{ matrix.engine }}
 
     steps:
       - name: Checkout
@@ -58,192 +95,66 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Deny-live guard — allow-list localhost only
-        id: deny-live
-        shell: bash
-        # Scope ADMIN_BASE_URL here so deny-live checks the same URL Playwright uses.
-        # Only this env var is needed; other secrets stay on test step only.
-        env:
-          ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
+      - name: Set up the .NET 10 SDK
+        # A plain step: no setup-dotnet commit is pinned in this repository.
+        # Uses the SDK on the runner image when it has one, and Microsoft's
+        # install script otherwise.
         run: |
-          # Allow-list guard: only localhost/127.0.0.1/::1 with http(s) scheme.
-          # Uses Node.js URL parser for robust validation.
-          # Never echoes URL or secret values — only pass/fail + reason code.
-
-          node --eval "
-            const raw = process.env.ADMIN_BASE_URL || '';
-
-            // REJECT: empty or missing
-            if (!raw.trim()) {
-              console.log('::error::DENY-LIVE: ADMIN_BASE_URL is empty or missing [E_EMPTY]');
-              process.exit(1);
-            }
-
-            let url;
-            try {
-              url = new URL(raw);
-            } catch {
-              console.log('::error::DENY-LIVE: ADMIN_BASE_URL is not a valid URL [E_PARSE]');
-              process.exit(1);
-            }
-
-            // REJECT: userinfo present (user:pass@host)
-            if (url.username || url.password) {
-              console.log('::error::DENY-LIVE: ADMIN_BASE_URL contains userinfo [E_USERINFO]');
-              process.exit(1);
-            }
-
-            // REJECT: non-http(s) scheme
-            const scheme = url.protocol.toLowerCase();
-            if (scheme !== 'http:' && scheme !== 'https:') {
-              console.log('::error::DENY-LIVE: ADMIN_BASE_URL has disallowed scheme [E_SCHEME]');
-              process.exit(1);
-            }
-
-            // Normalize hostname: lowercase, strip trailing dot
-            let host = url.hostname.toLowerCase();
-            if (host.endsWith('.')) {
-              host = host.slice(0, -1);
-            }
-
-            // ALLOW-LIST: only localhost, 127.0.0.1, ::1
-            const allowed = ['localhost', '127.0.0.1', '::1'];
-            if (!allowed.includes(host)) {
-              console.log('::error::DENY-LIVE: ADMIN_BASE_URL hostname not in allow-list [E_HOST_DENY]');
-              process.exit(1);
-            }
-
-            console.log('✓ Deny-live guard passed: ADMIN_BASE_URL is localhost.');
-          "
+          sdks=""
+          if command -v dotnet >/dev/null 2>&1; then
+            sdks="$(dotnet --list-sdks)"
+          fi
+          if grep -q '^10\.0\.' <<<"$sdks"; then
+            echo "The runner image has a .NET 10 SDK."
+          else
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh
+            bash "$RUNNER_TEMP/dotnet-install.sh" --channel 10.0 --install-dir "$HOME/.dotnet"
+            echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+            echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-          cache-dependency-path: 'e2e/package-lock.json'
+          cache-dependency-path: 'e2e/**/package-lock.json'
 
-      - name: Install dependencies
+      - name: Tool versions
+        run: |
+          dotnet --version
+          node --version
+          python3 --version
+          openssl version
+
+      - name: Loopback guard — the browser may only be sent to this runner
+        # The checks of the guard every suite's Playwright configuration
+        # loads: a proxy anywhere but http://127.0.0.1:<port> is refused.
+        run: node e2e/reset-confirm/require-proxy.check.cjs
+
+      - name: Install the pinned Playwright
+        # e2e/package.json holds the one Playwright version every suite pins.
         working-directory: e2e
         run: npm ci
 
       - name: Negative control — AC-06 fixture reports
         working-directory: e2e
-        # Recapture real Playwright JSON reports, then fail-closed on them.
-        # No continue-on-error, no || true, no if: always().
+        # Recapture real Playwright JSON reports, then prove that the script
+        # the run below relies on turns a run that executed nothing red.
         run: |
           node admin/ci/capture-fixtures.js
           node --test admin/ci/assert-executed.control.js
 
-      - name: Check for Playwright specs
-        id: check-specs
-        shell: bash
-        run: |
-          echo "::group::Spec discovery"
-
-          # Search for Playwright spec files in admin UI test directories
-          SPEC_PATTERNS=(
-            "e2e/admin/*.spec.ts"
-            "e2e/admin/*.spec.js"
-            "e2e/admin/*.e2e.ts"
-            "e2e/admin/*.e2e.js"
-            "e2e/admin/**/*.spec.ts"
-            "e2e/admin/**/*.spec.js"
-            "e2e/admin/**/*.e2e.ts"
-            "e2e/admin/**/*.e2e.js"
-          )
-
-          FOUND_SPECS=0
-          for pattern in "${SPEC_PATTERNS[@]}"; do
-            count=$(find . -path "./$pattern" 2>/dev/null | wc -l)
-            FOUND_SPECS=$((FOUND_SPECS + count))
-          done
-
-          echo "Found $FOUND_SPECS spec file(s)"
-          echo "specs_found=$FOUND_SPECS" >> "$GITHUB_OUTPUT"
-          echo "::endgroup::"
-
-      - name: Fail-closed on empty suite (pull_request)
-        if: github.event_name == 'pull_request' && steps.check-specs.outputs.specs_found == '0'
-        shell: bash
-        run: |
-          echo "::error::FAIL-CLOSED: No Playwright specs found for admin UI."
-          echo ""
-          echo "═══════════════════════════════════════════════════════════════════════════"
-          echo "  TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
-          echo "═══════════════════════════════════════════════════════════════════════════"
-          echo ""
-          echo "  This PR touches admin UI e2e files but no Playwright specs exist yet."
-          echo "  Per UX1-X08 decision: empty suite must fail closed on pull_request."
-          echo ""
-          echo "  Next steps:"
-          echo "    1. Add Playwright specs under e2e/admin/"
-          echo "    2. Or wait for TD-ADM-UI-ci-01 completion"
-          echo ""
-          echo "  References:"
-          echo "    - Epic: UX1-X08"
-          echo "    - Task: TD-ADM-UI-ci-01"
-          echo "    - Decision: Chief QA AGREED"
-          echo ""
-          exit 1
-
-      - name: Skip on empty suite (workflow_dispatch with allow_skip_empty)
-        if: github.event_name == 'workflow_dispatch' && inputs.allow_skip_empty == 'true' && steps.check-specs.outputs.specs_found == '0'
-        shell: bash
-        run: |
-          echo "::warning::SKIP: No specs found; allow_skip_empty=true on workflow_dispatch."
-          echo ""
-          echo "TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
-          echo "Manual dry-run mode: skipping empty suite."
-          echo ""
-          # Exit 0 — allowed only for workflow_dispatch with explicit skip flag
-          exit 0
-
-      - name: Fail on empty suite (workflow_dispatch without allow_skip_empty)
-        if: github.event_name == 'workflow_dispatch' && inputs.allow_skip_empty != 'true' && steps.check-specs.outputs.specs_found == '0'
-        shell: bash
-        run: |
-          echo "::error::FAIL-CLOSED: No Playwright specs found for admin UI."
-          echo ""
-          echo "TD-ADM-UI-ci-01 — Active Hold: Admin UI Playwright specs pending"
-          echo "Use allow_skip_empty=true for manual dry-run if needed."
-          exit 1
-
-      - name: Install Playwright Chromium
-        if: steps.check-specs.outputs.specs_found != '0'
+      - name: Install the browser with its system dependencies
         working-directory: e2e
-        run: npx playwright install chromium --with-deps
+        run: npx playwright install --with-deps "$E2E_ENGINES"
 
-      - name: Run Playwright tests (Chromium)
-        if: steps.check-specs.outputs.specs_found != '0'
-        working-directory: e2e
-        # Secrets scoped to test step only — never exposed to npm install or other steps.
-        # PUBLIC REPO: Use test-only placeholder values. Do NOT put real CoreOwner/admin
-        # passwords or TOTP seeds into this repo's Actions secrets — artifacts and logs
-        # are world-readable.
-        env:
-          ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL || 'http://127.0.0.1:4173' }}
-          ADMIN_USER: ${{ secrets.ADMIN_USER || 'ci-test-admin' }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'ci-test-placeholder-not-real' }}
-          COREOWNER_PASSWORD_ENV: ${{ secrets.COREOWNER_PASSWORD_ENV || 'ci-test-placeholder-not-real' }}
-          TOTP_SEED_ENV: ${{ secrets.TOTP_SEED_ENV || 'JBSWY3DPEHPK3PXP' }}
-          TURNSTILE_TEST_SITE_KEY: ${{ secrets.TURNSTILE_TEST_SITE_KEY || '1x00000000000000000000AA' }}
-          TURNSTILE_TEST_SECRET_KEY: ${{ secrets.TURNSTILE_TEST_SECRET_KEY || '1x0000000000000000000000000000000AA' }}
-          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
-        run: |
-          # AC-06: list reporter plus local JSON. Count comes from the JSON
-          # file, never from scraping stdout. assert-executed.js fails this
-          # step when executed (passed + failed + flaky) is 0.
-          # Playwright 1.48 has no json:path CLI form; file path is set above.
-          # No continue-on-error, no || true, no if: always() — a red run
-          # stays red.
-          npx playwright test \
-            -c playwright.config.ts \
-            --project=chromium \
-            --reporter=list,json
-          node admin/ci/assert-executed.js test-results/results.json
+      - name: Build the application
+        # Once, in the configuration "dotnet run" starts. Each suite's
+        # "dotnet run" then finds it up to date.
+        run: dotnet build src/Dealoware.Api/Dealoware.Api.csproj
 
-      # PUBLIC REPO: Artifact uploads disabled.
-      # Traces, screenshots, and test results may contain credentials, cookies, or
-      # session data. Do not upload until a private artifact policy or private runner
-      # is in place. See playwright.config.ts for trace/screenshot settings.
+      - name: Run the browser suites
+        run: bash e2e/run-signed-out.sh --forbid-only
+
+      # PUBLIC REPO: no artifact uploads (see SECURITY above).

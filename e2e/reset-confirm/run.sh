@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Confirm-page Playwright over HTTPS (Chief UI/UX N5 / P1 / P2 / P5).
-# Not wired into Admin UI CI (deny-live would reject the admin host; that
-# workflow's path filter is e2e/admin/**).
+# Not run by Admin UI CI: that workflow runs the suites built on the shared
+# runner (e2e/signed-out/harness.sh, found by e2e/run-signed-out.sh), and this
+# run has its own, older script. Start it by hand.
 #
 #   ./e2e/reset-confirm/run.sh
 #

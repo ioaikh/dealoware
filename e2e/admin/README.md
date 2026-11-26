@@ -1,137 +1,83 @@
-# Admin UI End-to-End Tests
+# Admin UI CI — what this folder holds
 
-End-to-end tests for the Dealoware Admin UI using Playwright.
+This folder holds the "SKIP is not PASS" check of Admin UI CI and its
+negative control. The browser tests themselves are not here: they live in one
+folder per suite next to this one (such as `e2e/bootstrap`, `e2e/sign-in` and
+`e2e/enrol`), built on the shared runner in `e2e/signed-out`.
 
 ## References
 
 - **Epic:** UX1-X08
 - **Task:** TD-ADM-UI-ci-01
-- **Decision:** Chief QA AGREED — Brief 4 Playwright optional overruled for admin-UI PR gate
+- **Decision:** `docs/qa/2026-10-05__qa__decision__ux1-x08-headless-ui-ci.md`
+- **Workflow:** `.github/workflows/admin-ui-ci.yml`
 
-## Phase 0 Status
+## What CI runs
 
-No admin UI frontend exists yet. This directory contains the pipeline wiring and configuration for when specs are added. The workflow:
-
-- Runs on PRs that touch `e2e/admin/**`, `e2e/playwright.config.ts`, `e2e/package.json`, or the workflow file
-- Fails closed when no specs exist (required for merge-blocking)
-- Is ready to run real tests once Playwright specs are added
-
-## CI Behavior
-
-The `admin-ui-ci.yml` workflow enforces:
-
-1. **Fail-closed on pull_request:** If no Playwright specs exist (no `*.spec.*` or `*.e2e.*` files), the CI job fails.
-
-2. **SKIP is not PASS (AC-06):** After Playwright runs, `e2e/admin/ci/assert-executed.js` reads the JSON reporter file (never stdout) and fails the job unless at least one test was executed (passed + failed + flaky). Red: zero tests collected (empty glob or `--grep` that matches nothing) and every-test-skipped (`test.skip`, `test.fixme`, `test.skip(condition)`). Green: a normal passing run, and a mixed run with some skips if at least one test executed. The negative control recaptures those reports from `e2e/admin/ci/fixture-src/` and re-runs the script. No `continue-on-error`, `|| true`, or `if: always()` can turn a red run green.
-
-3. **Allow-list deny-live guard:** Tests can ONLY run against `localhost`, `127.0.0.1`, or `::1`. Any other hostname — including `*.dealoware.com`, live IPs, or external hosts — is rejected. The guard uses Node.js URL parsing and never echoes URL values.
-
-4. **Secrets scoping:** Credentials are only exposed to the test step, never to `npm install` or other steps.
-
-## Security — Public Repository
-
-**This repository is public.** GitHub Actions artifacts and logs are world-readable.
-
-### Credentials Policy
-
-**Do NOT put real CoreOwner/admin passwords or TOTP seeds into this repo's Actions secrets.**
-
-The workflow uses test-only placeholder values:
-- `ci-test-admin` / `ci-test-placeholder-not-real` for admin credentials
-- Cloudflare's public Turnstile test keys
-- A dummy TOTP seed
-
-These placeholders are intentional. Real credentials would be exposed in logs or artifacts.
-
-### Traces and Screenshots
-
-Playwright traces and screenshots are **disabled** in `playwright.config.ts`:
-- `trace: 'off'`
-- `screenshot: 'off'`
-
-The workflow does **not** upload `playwright-report/`, `test-results/`, or traces. These could contain login screens, session cookies, or other sensitive data.
-
-## Adding Tests
-
-Place Playwright spec files in this directory with one of these naming patterns:
-- `*.spec.ts` / `*.spec.js`
-- `*.e2e.ts` / `*.e2e.js`
-
-Example:
-
-```typescript
-// e2e/admin/login.spec.ts
-import { test, expect } from '@playwright/test';
-
-test('admin login page loads', async ({ page }) => {
-  await page.goto('/admin/login');
-  await expect(page.locator('h1')).toContainText('Admin Login');
-});
-```
-
-## App Start
-
-### When Admin UI Exists
-
-When a buildable admin UI frontend is added:
-
-1. Add a build/serve script to `e2e/package.json` or the admin UI package
-2. Configure `webServer` in `e2e/playwright.config.ts`:
-
-```typescript
-webServer: {
-  command: 'npm run preview',
-  url: 'http://127.0.0.1:4173',
-  reuseExistingServer: !process.env.CI,
-  timeout: 120000,
-},
-```
-
-3. Tests will auto-start the server before running
-
-### Local Development (Phase 0)
-
-Until webServer is configured, start the app manually:
+On every pull request that touches `src/**`, `e2e/**` or the workflow file,
+one job per browser engine (Chromium, Firefox, WebKit) builds the application
+and runs:
 
 ```bash
-# Terminal 1: Start the API
-cd src/Dealoware.Api && dotnet run
-
-# Terminal 2: Run tests
-cd e2e && npm test
+bash e2e/run-signed-out.sh --forbid-only
 ```
 
-## Environment Variables
+That script finds every suite built on the shared runner (each
+`e2e/<suite>/run.sh` that sources `e2e/signed-out/harness.sh`) and runs them
+one after the other. A new suite folder is picked up without a workflow edit.
 
-The CI workflow uses these test-only placeholder values. **Do not override with real credentials in a public repo.**
-
-| Variable | Description | CI Placeholder |
-|----------|-------------|----------------|
-| `ADMIN_BASE_URL` | Base URL for admin UI | `http://127.0.0.1:4173` |
-| `ADMIN_USER` | Admin username | `ci-test-admin` |
-| `ADMIN_PASSWORD` | Admin password | `ci-test-placeholder-not-real` |
-| `COREOWNER_PASSWORD_ENV` | Core owner password | `ci-test-placeholder-not-real` |
-| `TOTP_SEED_ENV` | TOTP seed for 2FA | dummy test seed |
-| `TURNSTILE_TEST_SITE_KEY` | Turnstile test site key | Cloudflare public test key |
-| `TURNSTILE_TEST_SECRET_KEY` | Turnstile test secret | Cloudflare public test secret |
-
-## Local Development
+By hand, from the repository root:
 
 ```bash
-cd e2e
-
-# Install dependencies
-npm ci
-
-# Install Chromium browser
-npx playwright install chromium
-
-# Run tests (start app first, see above)
-npm test
-
-# Run with headed browser
-npm run test:headed
-
-# View report (local only — not generated in CI)
-npm run report
+./e2e/run-signed-out.sh                           # every suite, three engines
+E2E_ENGINES="chromium" ./e2e/run-signed-out.sh    # every suite, one engine
+./e2e/sign-in/run.sh                              # one suite
 ```
+
+`e2e/reset-confirm` is older and has its own run script. It is not built on
+the shared runner, so CI does not run it; start it by hand.
+
+## Fail closed
+
+1. **A failing test fails the job.** So does a suite that collected no test,
+   and a run that found no suite at all.
+2. **SKIP is not PASS (AC-06).** After each suite, `ci/assert-executed.js`
+   reads Playwright's JSON report of each engine's run (never what was
+   printed) and fails the run unless at least one test was executed (passed +
+   failed + flaky). Red: zero tests collected, and every test skipped
+   (`test.skip`, `test.fixme`, `test.skip(condition)`). Green: a normal
+   passing run, and a mixed run with some skips if at least one test executed.
+3. **The check is itself checked.** In every job the negative control
+   recaptures real reports from `ci/fixture-src/` and re-runs the script on
+   them (`ci/capture-fixtures.js`, `ci/assert-executed.control.js`).
+4. No `continue-on-error`, `|| true` or `if: always()` can turn a red run
+   green.
+
+## Security — public repository
+
+**This repository is public.** GitHub Actions logs and artifacts are
+world-readable.
+
+- **No secrets.** The workflow reads none. The passwords, keys and tokens of
+  a run are made up when it starts and are gone when it ends. Do NOT put real
+  CoreOwner or admin passwords, TOTP seeds or Turnstile keys into this
+  repository's Actions secrets.
+- **Nothing leaves the machine.** The pages are opened under the admin host's
+  name, but every browser connection goes through a proxy on `127.0.0.1` to
+  the application the run started, and the suites answer Cloudflare's
+  requests themselves. Each suite's Playwright configuration refuses to load
+  with a proxy that is not `http://127.0.0.1:<port>`
+  (`e2e/reset-confirm/require-proxy.cjs`).
+- **No uploads.** Playwright traces, screenshots and video are off
+  (`e2e/signed-out/playwright.base.cjs`). The screenshots and axe reports the
+  suites save stay in each suite's `test-results/` folder; the workflow
+  uploads nothing.
+
+## Files
+
+| Path | What it is |
+|---|---|
+| `ci/assert-executed.js` | Reads a Playwright JSON report; exits 1 unless a test was executed. Prints counts only. |
+| `ci/assert-executed.control.js` | The negative control (`node --test`), run in CI. |
+| `ci/capture-fixtures.js` | Recaptures the fixture reports with the pinned Playwright. |
+| `ci/fixture-src/`, `ci/fixtures/` | The throwaway specs and the reports captured from them. |
