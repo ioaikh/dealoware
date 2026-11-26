@@ -905,6 +905,101 @@ test('keyboard: the password form and the dialog in order, each control with its
   await expect(page.locator('main')).toBeFocused();
 });
 
+/**
+ * Arranges the owner's next move for the moment the dialog closes: in the same Escape key press,
+ * after the page's own handler has closed it. The browser sends the dialog's "close" event only
+ * later (Chromium with the next frame), so the move is made before the page hears of the close.
+ * `closeHandled` then waits until that event has been through the page, and the timers the page
+ * set at that moment have run.
+ */
+async function onEscape(page: Page, move: 'focus' | 'click', id: string): Promise<void> {
+  await page.evaluate(([what, target]) => {
+    const next = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      document.removeEventListener('keydown', next);
+      const control = document.getElementById(target) as HTMLElement;
+      if (what === 'focus') control.focus();
+      else control.click();
+    };
+    document.addEventListener('keydown', next);
+    (window as any).__e2eCloseHandled = new Promise<void>((resolve) => {
+      window.addEventListener('close', () => setTimeout(resolve, 50), { capture: true, once: true });
+    });
+  }, [move, id] as const);
+}
+
+async function closeHandled(page: Page): Promise<void> {
+  await page.evaluate(() => (window as any).__e2eCloseHandled);
+}
+
+test('the owner goes on as the dialog closes: a focus put elsewhere stays there, and a dialog opened again at once keeps its action', async ({ page }) => {
+  await signIn(page);
+  await openSettings(page);
+  const create = page.locator('#codes-create');
+  const start = page.locator('#authenticator-start');
+  const dialog = page.getByRole('dialog', { name: 'Confirm it\'s you' });
+  const password = page.locator('#step-up-password');
+
+  // Escape, and the focus moved to another button before the "close" event: it is not pulled back.
+  await create.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await password.fill('typed');
+  await onEscape(page, 'focus', 'authenticator-start');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await closeHandled(page);
+  await expect(password).toHaveValue('');
+  await expect(start).toBeFocused();
+
+  // Escape, and the dialog opened again before the "close" event: that event is the first dialog's.
+  // The one now open keeps its action, so Continue sends it and the server's answer is shown.
+  await create.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await onEscape(page, 'click', 'codes-create');
+  await page.keyboard.press('Escape');
+  await closeHandled(page);
+  await expect(dialog).toBeVisible();
+  await expect(password).toBeFocused();
+  await password.fill('not the password at all');
+  await page.locator('#step-up-code').fill('123456');
+  const sent = page.waitForRequest(isPostTo(API_CODES));
+  await page.locator('#step-up-submit').click();
+  await sent;
+  await expect(page.locator('#step-up-alert')).toHaveText(STEP_UP_FAILED);
+
+  // Closed by Escape with nothing else done: the focus is back on its button, as before.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(create).toBeFocused();
+});
+
+test('an Escape typed while text is being composed leaves the dialog open, with what was typed in it', async ({ page }) => {
+  await signIn(page);
+  await openSettings(page);
+  await page.locator('#codes-create').click();
+  const dialog = page.getByRole('dialog', { name: 'Confirm it\'s you' });
+  await expect(dialog).toBeVisible();
+  const field = page.locator('#step-up-code');
+  await field.fill('123');
+  await field.focus();
+
+  // A browser test cannot open an input method's window, so the key event it sends is stood in for:
+  // Escape with isComposing set. The page leaves it alone (it is not cancelled) and the dialog stays.
+  const escape = (composing: boolean) => field.evaluate((input, isComposing) => input.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', isComposing, bubbles: true, cancelable: true })), composing);
+  expect(await escape(true)).toBe(true);
+  expect(await page.locator('#step-up-dialog').evaluate((d) => (d as HTMLDialogElement).open)).toBe(true);
+  await expect(dialog).toBeVisible();
+  await expect(field).toHaveValue('123');
+
+  // The same event outside a composition is the page's to handle: it closes the dialog and empties it.
+  expect(await escape(false)).toBe(false);
+  await expect(dialog).toBeHidden();
+  await expect(field).toHaveValue('');
+});
+
 test.describe('JavaScript off', () => {
   test.use({ javaScriptEnabled: false });
 
