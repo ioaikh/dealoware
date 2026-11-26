@@ -18,11 +18,40 @@
  * Both resolve with { status, body } where body is the reply's JSON object,
  * or null when the reply is not one. They reject when there was no reply at
  * all. Nothing is kept between calls.
+ *
+ * A page on its way to another (beforeunload, heard only while a request is
+ * out) gives its requests up quietly: one the browser cancels as the page
+ * goes neither resolves nor rejects, and no new one is sent. Its caller would
+ * take the cancel for "no reply" and ask the server again from a page that is
+ * going; WebKit refuses that request and reports it as a page error. This is
+ * how the session timer's move to sign-in (a reload) met a sign-out still out:
+ * the sign-out's caller asked /admin/api/me as the page went.
  */
 (function (global) {
   "use strict";
 
   var TIMEOUT_MS = 15000;
+
+  // Requests out now, and whether the page has started to go while one was.
+  var out = 0;
+  var leaving = false;
+
+  function onLeave() {
+    leaving = true;
+  }
+
+  /** A promise that never settles: what a request is worth on a page that is going. */
+  function given() {
+    return new Promise(function () {});
+  }
+
+  function settled() {
+    out -= 1;
+    if (out === 0) {
+      window.removeEventListener("beforeunload", onLeave);
+      leaving = false;
+    }
+  }
 
   function csrfToken() {
     var meta = document.querySelector('meta[name="dw-csrf"]');
@@ -39,6 +68,9 @@
   }
 
   function send(path, options) {
+    if (leaving) return given();
+    if (out === 0) window.addEventListener("beforeunload", onLeave);
+    out += 1;
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, TIMEOUT_MS);
     options.credentials = "same-origin";
@@ -51,9 +83,13 @@
       });
     }).then(function (reply) {
       clearTimeout(timer);
+      settled();
       return reply;
     }, function (err) {
       clearTimeout(timer);
+      var gone = leaving;
+      settled();
+      if (gone) return given();
       throw err;
     });
   }
