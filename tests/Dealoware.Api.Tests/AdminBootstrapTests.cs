@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Dealoware.Api.Admin;
 using Dealoware.Application.Admin;
 using Dealoware.Domain.Admin;
@@ -1524,16 +1525,17 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
     {
         using var response = await SendAsync(HttpMethod.Get, AdminBootstrapEndpoints.PagePath);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("bootstrap", payload.GetProperty("screen").GetString());
-        var token = payload.GetProperty("csrfToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        var html = await response.Content.ReadAsStringAsync();
+        var meta = Regex.Match(html, "<meta name=\"dw-csrf\" content=\"([0-9A-Fa-f]+)\">");
+        Assert.True(meta.Success, "the bootstrap page must carry the anti-forgery token in meta dw-csrf");
+        var token = meta.Groups[1].Value;
         var setCookie = Assert.Single(
             ReadSetCookie(response),
             c => c.StartsWith(AdminCookieNames.AntiForgery + "=", StringComparison.Ordinal));
         var nonce = setCookie.Split(';', 2)[0].Split('=', 2)[1];
         Assert.NotEqual(nonce, token);
-        return (token!, $"{AdminCookieNames.AntiForgery}={nonce}");
+        Assert.DoesNotContain(nonce, html, StringComparison.Ordinal);
+        return (token, $"{AdminCookieNames.AntiForgery}={nonce}");
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path)

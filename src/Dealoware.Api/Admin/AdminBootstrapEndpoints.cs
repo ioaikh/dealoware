@@ -9,10 +9,10 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// First-time setup (bootstrap) password-set request for the S-A4 screen,
-/// at /admin/bootstrap and its JSON twin /admin/api/auth/bootstrap. The GET
-/// takes no token and has no side effects; the token travels in the mail
-/// fragment and the POST body only. No session is created here: the owner
+/// First-time setup (bootstrap): the S-A4 screen at /admin/bootstrap and its
+/// password-set request there and at the JSON twin /admin/api/auth/bootstrap.
+/// The GET takes no token and has no side effects; the token travels in the
+/// mail fragment and the POST body only. No session is created here: the owner
 /// signs in next and the existing gate sends them to TOTP enrolment.
 /// </summary>
 public static class AdminBootstrapEndpoints
@@ -49,14 +49,90 @@ public static class AdminBootstrapEndpoints
     }
 
     /// <summary>
-    /// Until the S-A4 screen lands this answers like the other unbuilt
-    /// signed-out pages: it only issues the anti-forgery token the POST needs.
+    /// The S-A4 screen. It takes no token and changes nothing: the link token
+    /// stays in the URL fragment, which the browser never sends, and the page
+    /// script posts it in the body. The form is hidden until that script runs,
+    /// so with JavaScript off only the heading and one sentence show. The
+    /// submit button is disabled in the markup and only a fresh Turnstile
+    /// token enables it; with no site key configured nothing can.
     /// </summary>
-    private static IResult PageGet(HttpContext http, AdminAntiForgeryService antiforgery)
+    private static IResult PageGet(
+        HttpContext http,
+        AdminAntiForgeryService antiforgery,
+        IOptions<TurnstileOptions> turnstile)
     {
-        AdminPasswordResetEndpoints.ApplyNoStoreNoReferrer(http);
-        return antiforgery.IssuePage(http, "bootstrap");
+        var widget = turnstile.Value;
+        return AdminSignedOutPage.Render(http, antiforgery, new AdminSignedOutPageContent
+        {
+            Title = AdminBootstrapCopy.PageTitle,
+            Heading = AdminBootstrapCopy.Heading,
+            Noscript = AdminBootstrapCopy.Noscript,
+            BodyHtml = PageBody(widget),
+            Scripts =
+            [
+                AdminSignedOutPage.DomScriptPath,
+                AdminSignedOutPage.PasswordScriptPath,
+                AdminSignedOutPage.TurnstileScriptPath,
+                AdminBootstrapCopy.ScriptPath
+            ],
+            IssueAntiForgery = true,
+            AllowTurnstile = widget.ConfiguredSiteKey() is not null
+        });
     }
+
+    /// <summary>
+    /// Password rules and their messages are the server's own
+    /// (<see cref="AdminPasswordRules"/>), passed to the script as data
+    /// attributes. Confirm password has no name: it is compared in the
+    /// browser and never sent.
+    /// </summary>
+    private static string PageBody(TurnstileOptions turnstile)
+    {
+        static string E(string value) => AdminSignedOutPage.Encode(value);
+
+        return
+            "<div id=\"bootstrap-panel\" hidden>" +
+            $"<p class=\"lede\">{E(AdminBootstrapCopy.Lede)}</p>" +
+            "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>" +
+            $"<form id=\"bootstrap-form\" method=\"post\" action=\"{PagePath}\" novalidate" +
+            $" data-retry=\"{E(AdminBootstrapCopy.SubmitRetry)}\">" +
+            "<div class=\"field\">" +
+            $"<label id=\"new-password-label\" for=\"new-password\">{E(AdminBootstrapCopy.NewPasswordLabel)}</label>" +
+            "<div class=\"field-row\">" +
+            "<input id=\"new-password\" name=\"newPassword\" type=\"password\" autocomplete=\"new-password\" required" +
+            " aria-describedby=\"password-helper new-password-error\"" +
+            $" data-min-length=\"{AdminPasswordRules.MinCodePoints}\"" +
+            $" data-max-length=\"{AdminPasswordRules.MaxCodePoints}\"" +
+            $" data-too-short=\"{E(AdminPasswordRules.TooShortMessage)}\"" +
+            $" data-too-long=\"{E(AdminPasswordRules.TooLongMessage)}\">" +
+            ToggleButton("new-password") +
+            "</div>" +
+            $"<span id=\"password-helper\" class=\"helper\">{E(AdminSignedOutCopy.PasswordHelper)}</span>" +
+            "<span id=\"new-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
+            "</div>" +
+            "<div class=\"field\">" +
+            $"<label id=\"confirm-password-label\" for=\"confirm-password\">{E(AdminBootstrapCopy.ConfirmPasswordLabel)}</label>" +
+            "<div class=\"field-row\">" +
+            "<input id=\"confirm-password\" type=\"password\" autocomplete=\"new-password\" required" +
+            " aria-describedby=\"confirm-password-error\"" +
+            $" data-mismatch=\"{E(AdminSignedOutCopy.PasswordMismatch)}\">" +
+            ToggleButton("confirm-password") +
+            "</div>" +
+            "<span id=\"confirm-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
+            "</div>" +
+            AdminSignedOutPage.TurnstileBlock(turnstile) +
+            "<button type=\"submit\" id=\"bootstrap-submit\" disabled aria-describedby=\"turnstile-status\">" +
+            $"{E(AdminBootstrapCopy.Submit)}</button>" +
+            "</form></div>";
+    }
+
+    /// <summary>Show/Hide for one password field, named after that field's label.</summary>
+    private static string ToggleButton(string inputId)
+        => $"<button type=\"button\" id=\"{inputId}-toggle\" class=\"secondary toggle\" aria-pressed=\"false\"" +
+           $" aria-controls=\"{inputId}\" aria-labelledby=\"{inputId}-toggle {inputId}-label\"" +
+           $" data-show=\"{AdminSignedOutPage.Encode(AdminSignedOutCopy.ShowPassword)}\"" +
+           $" data-hide=\"{AdminSignedOutPage.Encode(AdminSignedOutCopy.HidePassword)}\">" +
+           $"{AdminSignedOutPage.Encode(AdminSignedOutCopy.ShowPassword)}</button>";
 
     private static async Task<IResult> SetPassword(
         BootstrapPasswordBody? body,
