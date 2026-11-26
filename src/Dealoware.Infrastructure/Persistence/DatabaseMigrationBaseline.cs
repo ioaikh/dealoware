@@ -65,6 +65,8 @@ public static class DatabaseMigrationBaseline
 
     public const string LockoutStateMigrationId = "20261006000340_AdminLockoutState";
 
+    public const string BootstrapTokensMigrationId = "20261006000390_AdminBootstrapTokens";
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =
