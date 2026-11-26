@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { expectNoSeriousAxeFindings } from './axe';
+import { collectPageErrors } from './page-errors';
 import { authenticatorCode, seedOwner, type Owner } from '../sign-in/owner';
 import { answerCloudflare } from '../signed-out/cloudflare';
 
@@ -51,7 +52,7 @@ const PYTHON = process.env.SIGN_IN_E2E_PYTHON ?? '';
 
 let owner: Owner;
 let cspMessages: string[] = [];
-let pageErrors: string[] = [];
+let pageErrors: () => string[] = () => [];
 
 function engine(): string {
   return test.info().project.name;
@@ -169,7 +170,6 @@ function recordUntilNavigation(page: Page): { sent: string[]; navigated: () => b
 test.beforeEach(async ({ page }) => {
   owner = seedOwner({ enrolled: true });
   cspMessages = [];
-  pageErrors = [];
   page.on('console', (message) => {
     const text = message.text();
     if (!/content[- ]security[- ]policy/i.test(text)) return;
@@ -178,7 +178,7 @@ test.beforeEach(async ({ page }) => {
     if (p.startsWith('/admin/api/') || p.startsWith('/admin/assets/')) return;
     cspMessages.push(text);
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  pageErrors = collectPageErrors(page);
   await answerCloudflare(page, { token: PASS_TOKEN });
   // The page's clock: it runs as usual until a test moves it on.
   await page.clock.install();
@@ -186,7 +186,7 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(() => {
   expect(cspMessages).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(pageErrors()).toEqual([]);
 });
 
 test('UI-auth-14: at 28 minutes idle "Still there?" opens, focus on Stay signed in, announced, Tab stays in it; axe finds nothing serious', async ({ page }) => {
