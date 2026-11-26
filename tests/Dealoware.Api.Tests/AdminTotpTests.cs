@@ -106,9 +106,7 @@ public class AdminTotpTests
         using var request = AdminGet(AdminSignedOutExemptions.SignIn);
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var token = payload.GetProperty("csrfToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        var token = await AdminPageAntiForgery.ReadTokenAsync(response);
         Assert.True(response.Headers.TryGetValues("Set-Cookie", out var cookies));
         var af = cookies.Single(c => c.StartsWith(AdminAntiForgeryCookie.Name + "=", StringComparison.Ordinal));
         Assert.Contains("path=/admin", af, StringComparison.OrdinalIgnoreCase);
@@ -117,7 +115,7 @@ public class AdminTotpTests
         Assert.Contains("samesite=strict", af, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("domain=", af, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("__Host-", af, StringComparison.Ordinal);
-        return token!;
+        return token;
     }
 
     private async Task<HttpRequestMessage> JsonAsync(

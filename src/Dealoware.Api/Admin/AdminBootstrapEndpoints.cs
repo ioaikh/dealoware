@@ -118,7 +118,7 @@ public static class AdminBootstrapEndpoints
             $" data-max-length=\"{AdminPasswordRules.MaxCodePoints}\"" +
             $" data-too-short=\"{E(AdminPasswordRules.TooShortMessage)}\"" +
             $" data-too-long=\"{E(AdminPasswordRules.TooLongMessage)}\">" +
-            ToggleButton("new-password") +
+            AdminSignedOutPage.PasswordToggle("new-password") +
             "</div>" +
             $"<span id=\"password-helper\" class=\"helper\">{E(AdminSignedOutCopy.PasswordHelper)}</span>" +
             "<span id=\"new-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
@@ -129,7 +129,7 @@ public static class AdminBootstrapEndpoints
             "<input id=\"confirm-password\" type=\"password\" autocomplete=\"new-password\" required" +
             " aria-describedby=\"confirm-password-error\"" +
             $" data-mismatch=\"{E(AdminSignedOutCopy.PasswordMismatch)}\">" +
-            ToggleButton("confirm-password") +
+            AdminSignedOutPage.PasswordToggle("confirm-password") +
             "</div>" +
             "<span id=\"confirm-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
             "</div>" +
@@ -138,16 +138,6 @@ public static class AdminBootstrapEndpoints
             $"{E(AdminBootstrapCopy.Submit)}</button>" +
             "</form></div>";
     }
-
-    /// <summary>
-    /// The show toggle for one password field. Its label never changes: it is
-    /// "Show", named after the field ("Show New password"), and
-    /// <c>aria-pressed</c> alone says whether the password is shown.
-    /// </summary>
-    private static string ToggleButton(string inputId)
-        => $"<button type=\"button\" id=\"{inputId}-toggle\" class=\"secondary toggle\" aria-pressed=\"false\"" +
-           $" aria-controls=\"{inputId}\" aria-labelledby=\"{inputId}-toggle {inputId}-label\">" +
-           $"{AdminSignedOutPage.Encode(AdminSignedOutCopy.ShowPassword)}</button>";
 
     private static async Task<IResult> SetPassword(
         BootstrapPasswordBody? body,

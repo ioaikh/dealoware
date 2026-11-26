@@ -10,8 +10,10 @@ using Microsoft.Extensions.Options;
 namespace Dealoware.Api.Admin;
 
 /// <summary>
-/// Two-step CoreOwner sign-in and TOTP enrollment. JSON only on r5 §2.2 paths.
-/// No HTML pages (Step 14). Session stays unverified until TOTP or a recovery code passes.
+/// Two-step CoreOwner sign-in and TOTP enrollment. JSON on the r5 §2.2 paths;
+/// the three sign-in GETs serve the pages in <see cref="AdminSignInPages"/>
+/// (Step 14), the enrollment GETs are still data only.
+/// Session stays unverified until TOTP or a recovery code passes.
 /// Turnstile and lockout (Step 5) share the sign-in routes.
 /// </summary>
 public static class AdminAuthEndpoints
@@ -128,20 +130,20 @@ public static class AdminAuthEndpoints
 
     private sealed record TotpCodeRequest(string? Code, string? RecoveryCode, string? TotpCode);
 
-    private static IResult GetSignInPage(HttpContext context, AdminAntiForgeryService antiforgery)
-    {
-        SetNoStore(context);
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
-        var token = antiforgery.Issue(context);
-        context.Response.Headers[AdminAntiForgeryService.HeaderName] = token;
-        return Results.Json(new { screen = "sign-in", csrfToken = token });
-    }
+    // The three sign-in pages (S-A1, S-A2, S-A3). Each issues the anti-forgery
+    // pair its POST needs, as the dw-csrf meta of the page. The session gate
+    // lets the code and recovery pages through only with a pending sign-in.
+    private static IResult GetSignInPage(
+        HttpContext context,
+        AdminAntiForgeryService antiforgery,
+        IOptions<TurnstileOptions> turnstile)
+        => AdminSignInPages.SignIn(context, antiforgery, turnstile.Value);
 
     private static IResult GetSignInCodePage(HttpContext context, AdminAntiForgeryService antiforgery)
-        => antiforgery.IssuePage(context, "sign-in-code");
+        => AdminSignInPages.Code(context, antiforgery);
 
     private static IResult GetSignInRecoveryPage(HttpContext context, AdminAntiForgeryService antiforgery)
-        => antiforgery.IssuePage(context, "sign-in-recovery");
+        => AdminSignInPages.Recovery(context, antiforgery);
 
     private static async Task<IResult> SignIn(
         [FromBody] SignInRequest? body,

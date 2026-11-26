@@ -80,12 +80,10 @@ public class AdminAuditApiTests
         using var request = AdminRequest(HttpMethod.Get, AdminSignedOutExemptions.SignIn);
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var token = payload.GetProperty("csrfToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        var token = await AdminPageAntiForgery.ReadTokenAsync(response);
         Assert.True(response.Headers.TryGetValues("Set-Cookie", out var setCookies));
         var af = setCookies.Single(c => c.StartsWith(AdminAntiForgeryCookie.Name + "=", StringComparison.Ordinal));
-        return (token!, af.Split(';', 2)[0]);
+        return (token, af.Split(';', 2)[0]);
     }
 
     private static async Task AssertGenericUnauthorized(HttpResponseMessage response)

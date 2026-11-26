@@ -1137,9 +1137,7 @@ public class AdminLockoutReserveTests
         af.Headers.Host = AdminHost;
         using var issued = await client.SendAsync(af);
         issued.EnsureSuccessStatusCode();
-        var token = issued.Headers.TryGetValues(AdminAntiForgery.HeaderName, out var values)
-            ? values.First()
-            : string.Empty;
+        var token = await AdminPageAntiForgery.ReadTokenAsync(issued);
         var cookie = issued.Headers.TryGetValues("Set-Cookie", out var cookies)
             ? cookies.First(c => c.StartsWith(AdminAntiForgery.CookieName + "=", StringComparison.Ordinal))
             : string.Empty;

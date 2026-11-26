@@ -59,6 +59,12 @@ public static class AdminSignedOutPage
     public const string PasswordScriptPath = "/admin/auth/admin-password.js";
     public const string TurnstileScriptPath = "/admin/auth/admin-turnstile.js";
 
+    /// <summary>
+    /// How a page's script talks to the server: a JSON POST carrying the
+    /// page's anti-forgery token, and a plain GET. Same origin only.
+    /// </summary>
+    public const string RequestScriptPath = "/admin/auth/admin-request.js";
+
     /// <summary>The only third-party origin a signed-out page may name, and only for the widget.</summary>
     public const string TurnstileOrigin = "https://challenges.cloudflare.com";
 
@@ -172,4 +178,15 @@ public static class AdminSignedOutPage
         html.Append("</div>");
         return html.ToString();
     }
+
+    /// <summary>
+    /// The show toggle for one password field. Its label never changes: it is
+    /// "Show", named after the field ("Show New password"), and
+    /// <c>aria-pressed</c> alone says whether the password is shown. The
+    /// field's label must carry the id <c>{inputId}-label</c>.
+    /// </summary>
+    public static string PasswordToggle(string inputId)
+        => $"<button type=\"button\" id=\"{inputId}-toggle\" class=\"secondary toggle\" aria-pressed=\"false\"" +
+           $" aria-controls=\"{inputId}\" aria-labelledby=\"{inputId}-toggle {inputId}-label\">" +
+           $"{Encode(AdminSignedOutCopy.ShowPassword)}</button>";
 }
