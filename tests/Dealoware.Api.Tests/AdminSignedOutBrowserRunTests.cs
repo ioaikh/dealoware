@@ -271,17 +271,14 @@ public class AdminSignedOutBrowserRunTests
     }
 
     [Fact]
-    public void AdminUiCi_RunsTheEntryPoint_OncePerEngine_OnPullRequestsThatTouchWhatThePagesAreBuiltFrom()
+    public void AdminUiCi_RunsTheEntryPoint_OncePerEngine_OnEveryPullRequestToMain()
     {
         var workflow = AdminUiWorkflow();
 
-        // Pull requests only, and only those that touch the application, the suites or the workflow.
-        Assert.Contains("\non:\n  pull_request:\n    paths:\n", workflow, StringComparison.Ordinal);
-        var paths = Regex.Match(workflow, @"\n    paths:\n((?:      - '[^'\n]+'\n)+)").Groups[1].Value
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim().TrimStart('-').Trim().Trim('\''))
-            .ToArray();
-        Assert.Equal(new[] { "src/**", "e2e/**", ".github/workflows/admin-ui-ci.yml" }, paths);
+        // Every pull request to main, with no path filter: its jobs are required checks on main,
+        // and a required check that a path filter skips would leave other pull requests waiting.
+        Assert.Contains("\non:\n  pull_request:\n    branches: [main]\n", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n    paths:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("paths-ignore", workflow, StringComparison.Ordinal);
         Assert.True(Directory.Exists(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "Admin")));
         Assert.True(Directory.Exists(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin")));

@@ -1,8 +1,11 @@
 # Admin UI CI — UX1-X08 / UXR-D15 / TD-ADM-UI-ci-01
 #
-# The browser tests of the Core admin pages, on every pull request that
-# touches what those pages are built from. Rule: Story A7 step 14 ("Headless
-# UI cases are required in CI on every PR that touches admin UI files").
+# The browser tests of the Core admin pages, on every pull request to main.
+# Rule: Story A7 step 14 ("Headless UI cases are required in CI on every PR
+# that touches admin UI files"). It runs on every pull request, not only on
+# those that touch the pages, because its jobs are required checks on main: a
+# path-filtered required check would leave any other pull request waiting for
+# it forever.
 # Decision: docs/qa/2026-10-05__qa__decision__ux1-x08-headless-ui-ci.md.
 #
 # What runs: e2e/run-signed-out.sh. It finds every suite built on the shared
@@ -45,18 +48,7 @@ name: Admin UI CI
 
 on:
   pull_request:
-    paths:
-      # The suites build and start the whole application, so everything it is
-      # built from counts: the admin pages and their assets
-      # (src/Dealoware.Api/Admin/**, src/Dealoware.Api/wwwroot/admin/**), and
-      # also Program.cs (middleware order, security headers, rate limits),
-      # the sign-in, password and authenticator code in Infrastructure and
-      # Domain, and the migrations whose tables the suites write rows into.
-      - 'src/**'
-      # The suites, the shared runner, their pinned packages.
-      - 'e2e/**'
-      # This workflow.
-      - '.github/workflows/admin-ui-ci.yml'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
