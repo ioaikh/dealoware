@@ -92,21 +92,23 @@ public static class AdminDeleteCopy
 
     /// <summary>
     /// Spec §11.2 and §11.3, UXR-C06: an open negotiation is named as open,
-    /// with its offers' count, and the dialog warns it leaves the active
-    /// lists. New copy.
+    /// with its offers' count, and the dialog says it leaves the lists. New copy.
     /// </summary>
-    public const string OpenNegotiationNoOffers = "This negotiation is open. It will leave the active lists.";
+    public const string OpenNegotiationNoOffers =
+        "This negotiation is open. It will no longer show in the lists unless “Show deleted” is on.";
 
-    public const string OpenNegotiationOneOffer = "This negotiation is open. It will leave the active lists with its 1 offer.";
+    public const string OpenNegotiationOneOffer =
+        "This negotiation is open and has 1 offer. They will no longer show in the lists unless “Show deleted” is on.";
 
     public static string OpenNegotiationOffers(string count)
-        => "This negotiation is open. It will leave the active lists with its " + count + " offers.";
+        => "This negotiation is open and has " + count + " offers. They will no longer show in the lists unless “Show deleted” is on.";
 
     /// <summary>A participant's delete takes open negotiations with it (Spec §11.3). New copy.</summary>
-    public const string OneOpenNegotiation = "1 of these negotiations is open. It will leave the active lists with its offers.";
+    public const string OneOpenNegotiation =
+        "1 of these negotiations is open. It and its offers will no longer show in the lists unless “Show deleted” is on.";
 
     public static string OpenNegotiations(string count)
-        => count + " of these negotiations are open. They will leave the active lists with their offers.";
+        => count + " of these negotiations are open. They and their offers will no longer show in the lists unless “Show deleted” is on.";
 
     /// <summary>UXR-C06: the typed confirmation's label; the value is the participant's name or the negotiation's ID.</summary>
     public static string TypeToConfirm(string value) => "Type " + value + " to confirm";
@@ -121,8 +123,13 @@ public static class AdminDeleteCopy
 
     public const string Close = "Close";
 
-    /// <summary>UXR-C04: the confirm token ran out (or was used); the dialog asks again, with fresh counts.</summary>
-    public const string Expired = "This confirmation expired. Review the details again.";
+    /// <summary>
+    /// UXR-C04: the confirm token ran out, was used, or another tab asked for
+    /// a newer one; the dialog asks again, with fresh counts. The test design
+    /// says "This confirmation expired."; that is not true when another tab
+    /// replaced the token, so the wording is new copy for the owner to approve.
+    /// </summary>
+    public const string Expired = "This confirmation is no longer valid. Review the details again.";
 
     /// <summary>
     /// What went with the record changed after the dialog opened (the
@@ -130,7 +137,7 @@ public static class AdminDeleteCopy
     /// counts. New copy.
     /// </summary>
     public const string ChangedReview =
-        "This record changed after you opened the delete. Nothing was deleted. Review the details again.";
+        "This record changed after this dialog opened. Nothing was deleted. Review the details again.";
 
     /// <summary>UXR-C07: a delete the server refused or rolled back; the dialog stays open with Retry.</summary>
     public const string NothingDeleted = "Nothing was deleted.";
@@ -140,8 +147,15 @@ public static class AdminDeleteCopy
     /// <summary>The record is not there any more (deleted already, or unknown). New copy.</summary>
     public const string NotFound = "We can't find this record. It may have been deleted already.";
 
-    /// <summary>No clear answer: the console's retry sentence.</summary>
+    /// <summary>No clear answer to the delete-intent, which changes nothing: the console's retry sentence.</summary>
     public const string Unclear = AdminSignInCopy.SubmitRetry;
+
+    /// <summary>
+    /// No clear answer to the DELETE itself (a time-out, a dropped
+    /// connection, an answer the page does not know): it may have gone
+    /// through. New copy.
+    /// </summary>
+    public const string UnclearDelete = "We couldn't confirm the delete. Reload the page to see whether it went through.";
 
     /// <summary>UXR-C07: said on the list after the delete, "Participant Alex Rivera deleted."</summary>
     public static string DeletedNote(string noun, string name)

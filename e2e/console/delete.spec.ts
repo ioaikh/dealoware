@@ -29,8 +29,10 @@ const PYTHON = process.env.SIGN_IN_E2E_PYTHON ?? '';
 
 const UNDO = "This can't be restored from the admin.";
 const NOTHING_ELSE = 'Nothing else is deleted with it.';
-const EXPIRED = 'This confirmation expired. Review the details again.';
-const CHANGED = 'This record changed after you opened the delete. Nothing was deleted. Review the details again.';
+const EXPIRED = 'This confirmation is no longer valid. Review the details again.';
+const CHANGED = 'This record changed after this dialog opened. Nothing was deleted. Review the details again.';
+const UNCLEAR_DELETE = "We couldn't confirm the delete. Reload the page to see whether it went through.";
+const NOT_FOUND = "We can't find this record. It may have been deleted already.";
 const NOTHING_DELETED = 'Nothing was deleted.';
 const SESSION_ENDED = 'Your session has ended. Sign in again to continue.';
 const RETRY = "That didn't go through. Wait a moment and try again.";
@@ -62,7 +64,7 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 /** Changes the run's database behind the page's back (delete_rows.py, which refuses any other database). */
-function changeRows(request: { expireTokens?: boolean; addOfferTo?: string }): void {
+function changeRows(request: { expireTokens?: boolean; addOfferTo?: string; addNegotiationFor?: string }): void {
   const run = spawnSync(PYTHON, [path.join(__dirname, 'delete_rows.py')], {
     input: JSON.stringify({ db: DB, ...request }),
     encoding: 'utf8',
@@ -181,6 +183,18 @@ async function openDelete(page: Page, trigger: Locator): Promise<Record<string, 
   return reply.json();
 }
 
+/** Runs the action and waits for the page to load itself anew (the address may stay the same). */
+async function reloadedBy(page: Page, action: () => Promise<void>): Promise<void> {
+  const loaded = page.waitForEvent('load');
+  await action();
+  await loaded;
+  await expectStyled(page);
+}
+
+async function busyMark(page: Page): Promise<boolean> {
+  return page.locator('#delete-dialog').evaluate((d) => d.hasAttribute('aria-busy'));
+}
+
 const live = (page: Page) => page.locator('#console-status');
 const dialog = (page: Page) => page.locator('#delete-dialog');
 const detailDelete = (page: Page) => page.locator('#delete-button');
@@ -262,7 +276,7 @@ test('TD-ADM-UI-del-01: each type names itself, its ID, what goes with it as the
   await expect(dialog(page).locator('#delete-dialog-content')).toContainText('Also deleted with it:');
   await expect(dialog(page).locator('.delete-list li')).toHaveText([`${deskOffers.toLocaleString('en-US')} offers`]);
   await expect(dialog(page).locator('.delete-warning')).toHaveText(
-    `This negotiation is open. It will leave the active lists with its ${deskOffers.toLocaleString('en-US')} offers.`);
+    `This negotiation is open and has ${deskOffers.toLocaleString('en-US')} offers. They will no longer show in the lists unless “Show deleted” is on.`);
   await expect(dialog(page).locator('.delete-undo')).toHaveText(UNDO);
   expect(await buttonsOf(page)).toEqual(['Delete negotiation', 'Cancel']);
   await expectNoSeriousAxeFindings(page, 'delete_negotiation_dialog');
@@ -279,7 +293,7 @@ test('TD-ADM-UI-del-01: each type names itself, its ID, what goes with it as the
   await expect(dialog(page).locator('.delete-id')).toHaveText(`ID: ${casey.id}`);
   await expect(dialog(page).locator('.delete-list li')).toHaveText(['1 negotiation', `${offers.toLocaleString('en-US')} offers`]);
   await expect(dialog(page).locator('.delete-warning')).toHaveText(
-    '1 of these negotiations is open. It will leave the active lists with its offers.');
+    '1 of these negotiations is open. It and its offers will no longer show in the lists unless “Show deleted” is on.');
   expect(await buttonsOf(page)).toEqual(['Delete participant', 'Cancel']);
   await shot(page, 'delete_participant_dialog_desktop');
   await cancelIn(page).click();
@@ -366,7 +380,9 @@ test('TD-ADM-UI-del-03: a token that ran out while the dialog was open, and a re
   expect(intent.cascade.offers).toBe(first + 1);
   await expect(box.locator('.delete-list li')).toHaveText([`${(first + 1).toLocaleString('en-US')} offers`]);
   await expect(cancelIn(page)).toBeFocused();
-  // What was typed is kept; the button works again.
+  // Busy only while a request was out.
+  expect(await busyMark(page)).toBe(false);
+  // What was typed is kept within this open; the button works again.
   await expect(box.getByLabel(`Type ${desk} to confirm`)).toHaveValue(desk);
   await expect(box.getByRole('button', { name: 'Delete negotiation', exact: true })).toBeEnabled();
   await expectNoSeriousAxeFindings(page, 'delete_expired');
@@ -378,6 +394,7 @@ test('TD-ADM-UI-del-03: a token that ran out while the dialog was open, and a re
   intent = await (await again).json();
   await expect(page.locator('#delete-dialog-alert')).toHaveText(CHANGED);
   await expect(box.locator('.delete-list li')).toHaveText([`${(first + 2).toLocaleString('en-US')} offers`]);
+  expect(await busyMark(page)).toBe(false);
   expect(deletes).toHaveLength(2);
 
   // Nothing was deleted by either.
@@ -391,6 +408,7 @@ test('TD-ADM-UI-del-03: a token that ran out while the dialog was open, and a re
   await expect(busy).toHaveText('Deleting…');
   await expect(busy).toBeDisabled();
   await expect(cancelIn(page)).toBeDisabled();
+  expect(await busyMark(page)).toBe(true);
   // Nothing closes it while the request is out.
   await page.keyboard.press('Escape');
   await page.mouse.click(4, 4);
@@ -477,7 +495,7 @@ test('TD-ADM-UI-del-05: the typed confirmation, for a participant with records t
   await open(page, `/admin/negotiations/${bicycle}`);
   const intent = await openDelete(page, detailDelete(page));
   const n = (intent.cascade.offers as number).toLocaleString('en-US');
-  await expect(box.locator('.delete-warning')).toHaveText(`This negotiation is open. It will leave the active lists with its ${n} offers.`);
+  await expect(box.locator('.delete-warning')).toHaveText(`This negotiation is open and has ${n} offers. They will no longer show in the lists unless “Show deleted” is on.`);
   const confirmNegotiation = box.getByRole('button', { name: 'Delete negotiation', exact: true });
   await expect(confirmNegotiation).toBeDisabled();
   await box.getByLabel(`Type ${bicycle} to confirm`).fill(bicycle.toUpperCase());
@@ -504,15 +522,16 @@ test('TD-ADM-UI-del-06: after a delete the list, with its state, says so; the ro
   await expect(row).toHaveCount(1);
   const rowDelete = row.getByRole('button', { name: `Delete ${name}`, exact: true });
   await openDelete(page, rowDelete);
-  await dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click();
-  await page.waitForURL(ORIGIN + searched);
+  await reloadedBy(page, () => dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click());
+  expect(here(page)).toBe(searched);
   await expect(live(page)).toHaveText(`Participant ${name} deleted.`);
   await expect(page.locator('#main')).toBeFocused();
   await expect(rowsOf(page).filter({ hasText: name })).toHaveCount(0);
-  // The note was used once: a reload says nothing.
+  // The note was used once and is gone from the history entry: nothing of the name is kept there.
+  expect(await page.evaluate(() => history.state)).toBeNull();
   await page.reload();
   await expectStyled(page);
-  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => history.state)).toBeNull();
   await expect(live(page)).toHaveText('');
   await page.getByLabel('Show deleted', { exact: true }).click();
   await page.waitForURL(/includeDeleted=true/);
@@ -617,8 +636,8 @@ test('keyboard only: from a list row, the name typed, Enter deletes; the list sa
   if (tabStopsAtButtons()) await page.keyboard.press('Tab');
   else await confirm.focus();
   await expect(confirm).toBeFocused();
-  await page.keyboard.press('Enter');
-  await page.waitForURL(`${ORIGIN}/admin/participants?q=${encodeURIComponent(name)}`);
+  await reloadedBy(page, () => page.keyboard.press('Enter'));
+  expect(here(page)).toBe(`/admin/participants?q=${encodeURIComponent(name)}`);
   await expect(live(page)).toHaveText(`Participant ${name} deleted.`);
   await expect(rowsOf(page).filter({ hasText: name })).toHaveCount(0);
 });
@@ -678,8 +697,9 @@ test('the session and the token: a 401 goes to sign-in with "session ended"; no 
   });
   await openDelete(page, detailDelete(page));
   await dialog(page).getByRole('button', { name: 'Delete offer', exact: true }).click();
-  await expect(page.locator('#delete-dialog-alert')).toHaveText(RETRY);
+  await expect(page.locator('#delete-dialog-alert')).toHaveText(UNCLEAR_DELETE);
   await expect(dialog(page).getByRole('button', { name: 'Retry', exact: true })).toBeFocused();
+  expect(await busyMark(page)).toBe(false);
   expect(here(page)).toBe(address);
   await cancelIn(page).click();
   await expect(detailDelete(page)).toBeFocused();
@@ -703,4 +723,172 @@ test('the session and the token: a 401 goes to sign-in with "session ended"; no 
   await dialog(page).getByRole('button', { name: 'Delete offer', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + SIGN_IN);
   await expect(page.locator('#form-status')).toHaveText(SESSION_ENDED);
+});
+
+test('every open starts empty: what was typed, before Cancel, is gone on the next open, for this record and for another row of the same name', async ({ page }) => {
+  await signIn(page);
+  const casey = seeded.participants['Casey Novak'];
+  await open(page, `/admin/participants/${casey.id}`);
+  await openDelete(page, detailDelete(page));
+  const box = dialog(page);
+  await box.getByLabel('Type Casey Novak to confirm', { exact: true }).fill('Casey Novak');
+  await expect(box.getByRole('button', { name: 'Delete participant', exact: true })).toBeEnabled();
+  await cancelIn(page).click();
+  await openDelete(page, detailDelete(page));
+  await expect(box.getByLabel('Type Casey Novak to confirm', { exact: true })).toHaveValue('');
+  await expect(box.getByRole('button', { name: 'Delete participant', exact: true })).toBeDisabled();
+  await expect(page.locator('#delete-dialog-alert')).toHaveText('');
+  await page.keyboard.press('Escape');
+
+  // Two rows with one name: typed for the first, nothing carries to the second.
+  const name = 'Seed participant 001';
+  const second = await idByName(page, 'participants', 'Seed participant 002');
+  const renamed = await page.evaluate(async ([id, n]) => {
+    const csrf = document.querySelector('meta[name="dw-csrf"]')!.getAttribute('content')!;
+    const read = await fetch(`/admin/api/participants/${id}`);
+    const reply = await fetch(`/admin/api/participants/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'If-Match': read.headers.get('ETag')! },
+      body: JSON.stringify({ displayName: n }),
+    });
+    return reply.status;
+  }, [second, name] as const);
+  expect(renamed).toBe(200);
+  await open(page, `/admin/participants?q=${encodeURIComponent(name)}`);
+  const deletes = page.getByRole('button', { name: `Delete ${name}`, exact: true });
+  await expect(deletes).toHaveCount(2);
+  await openDelete(page, deletes.nth(0));
+  await box.getByLabel(`Type ${name} to confirm`, { exact: true }).fill(name);
+  await cancelIn(page).click();
+  await expect(deletes.nth(0)).toBeFocused();
+  await openDelete(page, deletes.nth(1));
+  await expect(box.getByLabel(`Type ${name} to confirm`, { exact: true })).toHaveValue('');
+  await expect(box.getByRole('button', { name: 'Delete participant', exact: true })).toBeDisabled();
+});
+
+test('while the server is asked, Delete, Edit and the actions are disabled; a Delete that has gone gives the focus to the main area', async ({ page }) => {
+  await signIn(page);
+  const desk = seeded.negotiations.desk;
+  await open(page, `/admin/negotiations/${desk}`);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname.endsWith('/delete-intent'), async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await detailDelete(page).click();
+  await expect(detailDelete(page)).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Expire negotiation', exact: true })).toBeDisabled();
+  release();
+  await expect(dialog(page)).toBeVisible();
+  await expect(cancelIn(page)).toBeFocused();
+  await cancelIn(page).click();
+  await expect(detailDelete(page)).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled();
+  await expect(detailDelete(page)).toBeFocused();
+  await page.unrouteAll({ behavior: 'wait' });
+
+  // The Delete that opened it is gone when the dialog closes: the focus goes to the main area, never the body.
+  await openDelete(page, detailDelete(page));
+  await page.evaluate(() => { (document.getElementById('delete-button') as HTMLButtonElement).hidden = true; });
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toBeHidden();
+  await expect(page.locator('#main')).toBeFocused();
+});
+
+test('answers to the DELETE: Blocked shows the negotiations, 404 goes to the list which says so, 428 is unclear with Retry, 403 loads the page anew once; none deletes anything', async ({ page }) => {
+  await signIn(page);
+
+  // Blocked: a negotiation on the artifact started after the dialog opened.
+  const lonely = await idByName(page, 'artifacts', 'Seed artifact 150');
+  await open(page, `/admin/artifacts/${lonely}`);
+  await openDelete(page, detailDelete(page));
+  changeRows({ addNegotiationFor: lonely });
+  await dialog(page).getByRole('button', { name: 'Delete artifact', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveAccessibleName("This artifact can't be deleted");
+  await expect(dialog(page).locator('.delete-list a')).toHaveCount(1);
+  expect(await buttonsOf(page)).toEqual(['Close']);
+  await expect(dialog(page).getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+  expect(await busyMark(page)).toBe(false);
+  await page.keyboard.press('Escape');
+
+  // 404: deleted elsewhere (or by a first try whose answer was lost) while the dialog was open.
+  const offer = seeded.offers.terms;
+  await open(page, `/admin/offers/${offer}?sort=created`);
+  await openDelete(page, detailDelete(page));
+  const other = await page.context().newPage();
+  await open(other, `/admin/offers/${offer}`);
+  expect(await deleteThroughApi(other, 'offers', offer)).toBe(200);
+  await other.close();
+  await dialog(page).getByRole('button', { name: 'Delete offer', exact: true }).click();
+  await page.waitForURL(`${ORIGIN}/admin/offers?sort=created`);
+  await expectStyled(page);
+  await expect(live(page)).toHaveText(NOT_FOUND);
+  expect(await page.evaluate(() => history.state)).toBeNull();
+
+  // 428 (no token reached the server): no clear answer, Retry.
+  const accepted = seeded.offers.accepted;
+  await open(page, `/admin/offers/${accepted}`);
+  await answerDeletes(page, 428, { error: 'PreconditionRequired' });
+  await openDelete(page, detailDelete(page));
+  await dialog(page).getByRole('button', { name: 'Delete offer', exact: true }).click();
+  await expect(page.locator('#delete-dialog-alert')).toHaveText(UNCLEAR_DELETE);
+  await expect(dialog(page).getByRole('button', { name: 'Retry', exact: true })).toBeFocused();
+  await page.unrouteAll({ behavior: 'wait' });
+  await cancelIn(page).click();
+
+  // 404 straight from the DELETE, on a list: the list loads itself anew and says so.
+  const listed = '/admin/participants?q=Seed%20participant%20060';
+  await open(page, listed);
+  await answerDeletes(page, 404, { error: 'NotFound' });
+  await openDelete(page, rowsOf(page).first().getByRole('button', { name: 'Delete Seed participant 060', exact: true }));
+  await reloadedBy(page, () => dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click());
+  expect(here(page)).toBe(listed);
+  await expect(live(page)).toHaveText(NOT_FOUND);
+  await page.unrouteAll({ behavior: 'wait' });
+
+  // 403 on a page the owner loaded anew: it does not load itself again; nothing was deleted, with Retry.
+  await page.reload();
+  await expectStyled(page);
+  await answerDeletes(page, 403, { error: 'Forbidden' });
+  await openDelete(page, rowsOf(page).first().getByRole('button', { name: 'Delete Seed participant 060', exact: true }));
+  await dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click();
+  await expect(page.locator('#delete-dialog-alert')).toHaveText(NOTHING_DELETED);
+  await expect(dialog(page).getByRole('button', { name: 'Retry', exact: true })).toBeFocused();
+  await page.unrouteAll({ behavior: 'wait' });
+  await cancelIn(page).click();
+  await expect(rowsOf(page).filter({ hasText: 'Seed participant 060' })).toHaveCount(1);
+});
+
+test('a 403 on a list that loaded itself after a delete still loads it anew once', async ({ page }) => {
+  await signIn(page);
+  await open(page, '/admin/participants?q=Seed%20participant%2005');
+  await openDelete(page, rowsOf(page).filter({ hasText: 'Seed participant 050' }).getByRole('button'));
+  await reloadedBy(page, () => dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click());
+  await expect(live(page)).toHaveText('Participant Seed participant 050 deleted.');
+  await answerDeletes(page, 403, { error: 'Forbidden' });
+  await openDelete(page, rowsOf(page).filter({ hasText: 'Seed participant 051' }).getByRole('button'));
+  await reloadedBy(page, () => dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click());
+  expect(here(page)).toBe('/admin/participants?q=Seed%20participant%2005');
+  await expect(live(page)).toHaveText(RETRY);
+  await page.unrouteAll({ behavior: 'wait' });
+  await expect(rowsOf(page).filter({ hasText: 'Seed participant 051' })).toHaveCount(1);
+});
+
+test('deleting the one row of the last page: the list shows the page before it', async ({ page }) => {
+  await signIn(page);
+  await open(page, '/admin/participants?offset=200');
+  // 205 participants: the last page holds 5. Four go by the API, the last by its row.
+  const ids = await rowsOf(page).locator('button.delete-open').evaluateAll((bs) => bs.map((b) => b.getAttribute('data-delete-id')!));
+  expect(ids).toHaveLength(5);
+  for (const id of ids.slice(0, 4)) expect(await deleteThroughApi(page, 'participants', id)).toBe(200);
+  await open(page, '/admin/participants?offset=200');
+  await expect(rowsOf(page)).toHaveCount(1);
+  await openDelete(page, rowsOf(page).locator('button.delete-open'));
+  await reloadedBy(page, () => dialog(page).locator('button.danger').click());
+  await expect(page).toHaveURL(`${ORIGIN}/admin/participants?offset=150`);
+  await expect(rowsOf(page)).toHaveCount(50);
+  await expect(live(page)).toHaveText(/^Participant .+ deleted\.$/);
+  await expect(page.locator('#page-4')).toHaveAttribute('aria-current', 'page');
 });

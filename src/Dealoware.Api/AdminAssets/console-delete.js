@@ -18,7 +18,11 @@
  *          typed exactly (case and spaces too) before the button works.
  *   409 Blocked -> "This artifact can't be deleted" and the negotiations
  *          that use it, each a link to its page; Close is the only button.
- *   404 -> the record is not there any more; Close.
+ *   404 -> the record is not there any more (deleted already, perhaps by a
+ *          first try whose answer was lost): the page goes to the list,
+ *          which says so.
+ * While that request is out, Delete, Edit and the actions beside it are
+ * disabled, so nothing else starts under the dialog.
  * The confirm token stays in this script's memory while the dialog is open,
  * and goes with the dialog. It travels in the X-Admin-Confirm-Token header,
  * never in an address.
@@ -32,21 +36,31 @@
  *          state, which only this script sets, never in the address.
  *   409 ConfirmTokenInvalid or Conflict -> nothing was deleted: the dialog
  *          asks the server again and shows its fresh answer, with "This
- *          confirmation expired. Review the details again." (or that the
- *          record changed).
+ *          confirmation is no longer valid. Review the details again." (or
+ *          that the record changed). What was typed is kept for that answer.
  *   409 Blocked, 404 -> as above.
  *   500 from the server, or its 400 -> "Nothing was deleted." and Retry.
  *   401 from the session gate -> sign-in with the "session ended" note.
  *   403 -> the gate did not take this page's anti-forgery token: still
  *          signed in, the page loads itself anew once with #fresh.
  *   Anything else, or no reply -> ask GET /admin/api/me: the session gone ->
- *          sign-in; otherwise the retry sentence, and Retry.
+ *          sign-in; otherwise "We couldn't confirm the delete. Reload the
+ *          page to see whether it went through.", and Retry.
+ * aria-busy is on the dialog only while a request is out.
  *
  * The dialog handles Escape itself, in a capture-phase keydown on the
  * document (an Escape that ends text composition is left alone). Escape,
  * Cancel and a press on the backdrop close it and give the focus back to the
- * Delete that opened it at once; nothing is sent, so no audit row is
- * written. Tab and Shift+Tab stay in the dialog.
+ * Delete that opened it at once (or to the page's main area, should it be
+ * gone); nothing is sent, so no audit row is written. Every open starts
+ * empty: nothing typed, no sentence, no token from an earlier one. Tab and
+ * Shift+Tab stay in the dialog.
+ *
+ * The list is loaded anew with location.reload() after replaceState, so that
+ * the history entry's state reaches it. That state holds what the sentence
+ * needs (the record's name, or that it was missing) and is taken off as soon
+ * as the list has read it. A list that arrived this way still loads itself
+ * anew once over a refused anti-forgery token.
  *
  * Nothing is stored. Text goes into the page through textContent only.
  */
@@ -102,9 +116,6 @@
   alertLine.setAttribute("role", "alert");
   actions.parentNode.insertBefore(alertLine, actions);
 
-  // A page loaded anew (by a script over a refused token, or by the owner) does not do it again by itself.
-  var navigation = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation") : [];
-  var mayReload = !(navigation.length > 0 && navigation[0].type === "reload");
 
   // The page is going away: an answer that arrives now changes nothing.
   var leaving = false;
@@ -141,16 +152,24 @@
   /* ---- What a delete just did, said once the list has loaded anew ---- */
 
   var arrived = history.state && typeof history.state === "object" ? history.state : null;
-  if (arrived && typeof arrived.dwDeleted === "string") {
+  var arrivedByDelete = !!arrived && (arrived.dwDelete === "deleted" || arrived.dwDelete === "missing");
+  if (arrivedByDelete) {
     // Set by this script just before it loaded the list; used once, and gone from the history entry.
-    var deletedName = arrived.dwDeleted;
+    var sentence = arrived.dwDelete === "deleted" && typeof arrived.name === "string"
+      ? fill(words("note"), NAME, arrived.name)
+      : words("notFound");
     history.replaceState(null, "", location.pathname + location.search + location.hash);
     if (location.pathname === listPath) {
       if (main) main.focus();
       // A moment after load, so that screen readers hear the change.
-      setTimeout(function () { say(fill(words("note"), NAME, deletedName)); }, 100);
+      setTimeout(function () { say(sentence); }, 100);
     }
   }
+
+  // A page loaded anew (by a script over a refused token, or by the owner) does not do it again by
+  // itself. The list this script loaded after a delete is not such a page.
+  var navigation = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation") : [];
+  var mayReload = arrivedByDelete || !(navigation.length > 0 && navigation[0].type === "reload");
 
   /* ---- Requests ---- */
 
@@ -197,7 +216,7 @@
   }
 
   /** The gate refused this page's anti-forgery token: load the page anew once, if still signed in. */
-  function afterTokenRefused(fail) {
+  function afterTokenRefused(fail, sentence) {
     AdminRequest.get(ME).then(function (reply) {
       if (leaving || signedOut(reply)) return;
       var body = reply.body || {};
@@ -205,20 +224,20 @@
         history.replaceState(null, "", location.pathname + location.search + FRESH);
         location.reload();
       } else {
-        fail(words("unclear"));
+        fail(sentence);
       }
     }, function () {
-      if (!leaving) fail(words("unclear"));
+      if (!leaving) fail(sentence);
     });
   }
 
-  /** No clear answer. A session that has gone means sign-in. */
-  function afterUnclearReply(fail) {
+  /** No clear answer. A session that has gone means sign-in; otherwise the given sentence. */
+  function afterUnclearReply(fail, sentence) {
     AdminRequest.get(ME).then(function (reply) {
       if (leaving || signedOut(reply)) return;
-      fail(words("unclear"));
+      fail(sentence);
     }, function () {
-      if (!leaving) fail(words("unclear"));
+      if (!leaving) fail(sentence);
     });
   }
 
@@ -266,6 +285,37 @@
     typedInput = null;
   }
 
+  /** No request is out: the dialog can close, and it is no longer busy. */
+  function idle() {
+    busy = false;
+    node.removeAttribute("aria-busy");
+  }
+
+  /**
+   * While the delete-intent is out and the dialog not yet open: Delete, Edit and the actions are
+   * disabled, so neither another dialog nor edit mode starts under this one. Only what this script
+   * disabled is enabled again.
+   */
+  function lockPage(on) {
+    var controls = document.querySelectorAll("button.delete-open, #edit-button, button.record-action");
+    for (var i = 0; i < controls.length; i += 1) {
+      var c = controls[i];
+      if (on && !c.disabled) {
+        c.disabled = true;
+        c.setAttribute("data-delete-locked", "");
+      } else if (!on && c.hasAttribute("data-delete-locked")) {
+        c.disabled = false;
+        c.removeAttribute("data-delete-locked");
+      }
+    }
+  }
+
+  /** The focus back to the Delete that opened the dialog; to the page's main area should it be gone. */
+  function focusBack(back) {
+    if (back && !back.hidden && !back.disabled && document.contains(back)) back.focus();
+    else if (main) main.focus();
+  }
+
   /** The focus is where nobody put it: on nothing, on the page itself, or still in the closed dialog. */
   function focusAdrift() {
     var active = document.activeElement;
@@ -287,7 +337,7 @@
   function closeByOwner() {
     var back = opener;
     node.close();
-    if (back && !back.hidden && !node.open && document.contains(back)) back.focus();
+    if (!node.open) focusBack(back);
   }
 
   // Any close: the token and the answer go with the dialog, and a focus left adrift goes back to
@@ -299,11 +349,14 @@
     opener = null;
     current = null;
     intent = null;
+    // Nothing of this open stays for the next: what was typed, the sentence, the buttons.
+    reset("");
+    idle();
+    lockPage(false);
     clearTimeout(refocusTimer);
-    if (!back || back.hidden || !document.contains(back)) return;
-    if (focusAdrift()) back.focus();
+    if (focusAdrift()) focusBack(back);
     refocusTimer = setTimeout(function () {
-      if (!node.open && focusAdrift()) back.focus();
+      if (!node.open && focusAdrift()) focusBack(back);
     }, 0);
   });
 
@@ -366,7 +419,8 @@
 
   /** One sentence and Close: the record is gone, or there was no clear answer. */
   function showMessage(sentence) {
-    busy = false;
+    idle();
+    lockPage(false);
     reset(fill(words("title"), NAME, current ? current.name : ""));
     content.appendChild(paragraph(sentence));
     open(addClose());
@@ -374,7 +428,8 @@
 
   /** UXR-C05: the negotiations that use the artifact, each a link; Close only, no destructive button. */
   function showBlocked(body) {
-    busy = false;
+    idle();
+    lockPage(false);
     intent = null;
     reset(words("blockedTitle"));
     content.appendChild(paragraph(words("blockedLede")));
@@ -410,7 +465,7 @@
   }
 
   /** UXR-C01, C02, C06: the record, what goes with it, the warning, the undo statement, the typed confirmation. */
-  function showConfirm(body, note) {
+  function showConfirm(body, note, keepTyped) {
     var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
     var cascade = body.cascade && typeof body.cascade === "object" ? body.cascade : {};
     var id = current.id;
@@ -426,9 +481,11 @@
     if (type === "participants" && (negotiations > 0 || offers > 0)) typed = name;
     if (isOpen) typed = id;
 
-    var before = typedInput ? typedInput.value : "";
+    // What was typed stays only when the server is asked again within this open.
+    var before = keepTyped && typedInput ? typedInput.value : "";
     intent = { token: text(body.confirmToken), name: name, typed: typed };
-    busy = false;
+    idle();
+    lockPage(false);
     reset(fill(words("title"), NAME, name));
 
     content.appendChild(paragraph(fill(words("id"), NAME, id), "delete-id"));
@@ -466,7 +523,7 @@
       typedInput = document.createElement("input");
       typedInput.type = "text";
       typedInput.id = "delete-dialog-typed";
-      typedInput.autocomplete = "off";
+      typedInput.setAttribute("autocomplete", "off");
       typedInput.spellcheck = false;
       typedInput.setAttribute("autocapitalize", "off");
       typedInput.value = before;
@@ -496,9 +553,12 @@
   }
 
   function setDeleting(on) {
-    busy = on;
-    if (on) node.setAttribute("aria-busy", "true");
-    else node.removeAttribute("aria-busy");
+    if (on) {
+      busy = true;
+      node.setAttribute("aria-busy", "true");
+    } else {
+      idle();
+    }
     if (confirmButton && on) AdminDom.setText(confirmButton, words("busy"));
     if (cancelButton) cancelButton.disabled = on;
     updateConfirm();
@@ -518,33 +578,38 @@
   /** Asks the server what a delete of the record would take, and shows its answer. */
   function askIntent(note) {
     busy = true;
+    if (node.open) node.setAttribute("aria-busy", "true");
     send("POST", apiPath(current.id) + "/delete-intent").then(function (reply) {
       if (leaving || !current) return;
       var body = reply.body || {};
       if (reply.status === 200 && text(body.entityType) === type && text(body.id).toLowerCase() === current.id
           && CONFIRM_TOKEN.test(text(body.confirmToken))) {
-        showConfirm(body, note);
+        showConfirm(body, note, note !== null);
         return;
       }
       if (signedOut(reply)) return;
       if (reply.status === 409 && body.error === BLOCKED) {
         showBlocked(body);
       } else if (reply.status === 404 && body.error === NOT_FOUND) {
-        showMessage(words("notFound"));
+        toList({ dwDelete: "missing" });
       } else if (reply.status === 403) {
-        afterTokenRefused(showMessage);
+        afterTokenRefused(showMessage, words("unclear"));
       } else {
-        afterUnclearReply(showMessage);
+        afterUnclearReply(showMessage, words("unclear"));
       }
     }, function () {
       if (leaving || !current) return;
-      afterUnclearReply(showMessage);
+      afterUnclearReply(showMessage, words("unclear"));
     });
   }
 
-  /** Deleted: the list, with its state, loaded anew; it says what was deleted. */
-  function done() {
-    history.replaceState({ dwDeleted: intent.name }, "", returnTo);
+  /**
+   * Deleted, or not there any more: the list, with its state, loaded anew, and what it is to say
+   * in the history entry's state (never the address). The dialog stays busy until the page goes.
+   */
+  function toList(state) {
+    busy = true;
+    history.replaceState(state, "", returnTo);
     location.reload();
   }
 
@@ -559,7 +624,7 @@
       var body = reply.body || {};
       if (reply.status === 200 && text(body.entityType) === type && text(body.id).toLowerCase() === id
           && body.deleted && typeof body.deleted === "object") {
-        done();
+        toList({ dwDelete: "deleted", name: intent.name });
         return;
       }
       if (signedOut(reply)) return;
@@ -571,18 +636,19 @@
       } else if (reply.status === 409 && body.error === BLOCKED) {
         showBlocked(body);
       } else if (reply.status === 404 && body.error === NOT_FOUND) {
-        showMessage(words("notFound"));
+        toList({ dwDelete: "missing" });
       } else if (reply.status === 403) {
-        afterTokenRefused(deleteFailed);
+        // The gate refused it before the delete was reached: nothing was deleted.
+        afterTokenRefused(deleteFailed, words("nothing"));
       } else if ((reply.status === 500 && body.error === SERVER_FAULT) || (reply.status === 400 && body.error === BAD_REQUEST)) {
         // The server refused it, or rolled it back with its audit rows: nothing was written.
         deleteFailed(words("nothing"));
       } else {
-        afterUnclearReply(deleteFailed);
+        afterUnclearReply(deleteFailed, words("unclearDelete"));
       }
     }, function () {
       if (leaving || !current) return;
-      afterUnclearReply(deleteFailed);
+      afterUnclearReply(deleteFailed, words("unclearDelete"));
     });
   }
 
@@ -594,6 +660,8 @@
     opener = trigger;
     current = { id: id, name: trigger.getAttribute("data-delete-name") || id };
     intent = null;
+    reset("");
+    lockPage(true);
     askIntent(null);
   }
 

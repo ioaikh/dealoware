@@ -143,6 +143,7 @@ public static class AdminDeletePage
             ["retry"] = AdminDeleteCopy.Retry,
             ["notFound"] = AdminDeleteCopy.NotFound,
             ["unclear"] = AdminDeleteCopy.Unclear,
+            ["unclearDelete"] = AdminDeleteCopy.UnclearDelete,
             ["note"] = AdminDeleteCopy.DeletedNote(noun, name)
         };
     }

@@ -10,8 +10,10 @@ using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Dealoware.Api.Tests;
 
@@ -111,7 +113,8 @@ public class AdminDeletePageTests
     }
 
     /// <summary>One request as console-delete.js sends it: the session, the anti-forgery pair, the Origin, and the token header if given.</summary>
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, Guid session, string? confirmToken = null)
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpMethod method, string path, Guid session, string? confirmToken = null, WebApplicationFactory<Program>? host = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Host = AdminHost;
@@ -123,7 +126,10 @@ public class AdminDeletePageTests
         request.Headers.TryAddWithoutValidation("Origin", AdminHostOptions.ProductionAdminOrigin);
         if (confirmToken is not null)
             request.Headers.TryAddWithoutValidation(AdminDeleteEndpoints.ConfirmTokenHeader, confirmToken);
-        return await Client().SendAsync(request);
+        var client = host is null
+            ? Client()
+            : host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false, BaseAddress = new Uri("https://localhost") });
+        return await client.SendAsync(request);
     }
 
     private static string Tag(string html, string id)
@@ -352,6 +358,54 @@ public class AdminDeletePageTests
         Assert.Equal(2, block.RootElement.GetProperty("negotiationCount").GetInt32());
     }
 
+    // TD-ADM-102 through the page's path: the real audit insert fails, the whole delete rolls back,
+    // and the server's answer is the exact 500 the script reads as "Nothing was deleted." with
+    // Retry; the same token then deletes once the fault is gone.
+    [Fact]
+    public async Task AuditInsertFails_TheAnswerIsTheScriptsServerFault_NothingDeleted_RetryWithTheSameTokenDeletes()
+    {
+        var prefix = $"dp7-{Guid.NewGuid():N}";
+        var g = await SeedAsync(prefix);
+        var session = await SessionAsync();
+        var api = $"/admin/api/offers/{g.OpenOffer.Id:D}";
+        using var intent = await SendAsync(HttpMethod.Post, api + "/delete-intent", session);
+        using var intentBody = JsonDocument.Parse(await intent.Content.ReadAsStringAsync());
+        var token = intentBody.RootElement.GetProperty("confirmToken").GetString()!;
+
+        await using (var failing = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                     {
+                         services.RemoveAll<IAdminAuditRepository>();
+                         services.AddScoped<IAdminAuditRepository, FailingAuditRepository>();
+                     })))
+        {
+            failing.Services.GetRequiredService<FakeAdminClock>().UtcNow = _factory.Services.GetRequiredService<FakeAdminClock>().UtcNow;
+            using var refused = await SendAsync(HttpMethod.Delete, api, session, token, failing);
+            Assert.Equal(HttpStatusCode.InternalServerError, refused.StatusCode);
+            using var fault = JsonDocument.Parse(await refused.Content.ReadAsStringAsync());
+            Assert.Equal(AdminSecurityHeadersMiddleware.GenericErrorMessage, fault.RootElement.GetProperty("error").GetString());
+        }
+
+        var (page, _) = await PageAsync($"/admin/offers/{g.OpenOffer.Id:D}", session);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        using var retry = await SendAsync(HttpMethod.Delete, api, session, token);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+    }
+
+    /// <summary>An audit log that cannot be written to.</summary>
+    private sealed class FailingAuditRepository : IAdminAuditRepository
+    {
+        public Task AddAsync(AdminAuditEntry entry, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("audit insert failed");
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<(IReadOnlyList<AdminAuditEntry> Items, int Total)> ListPageAsync(
+            AdminAuditListCriteria criteria,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<(IReadOnlyList<AdminAuditEntry>, int)>(([], 0));
+    }
+
     [Fact]
     public async Task WithoutASession_NoDeleteScript()
     {
@@ -376,7 +430,10 @@ public class AdminDeletePageTests
         Assert.Equal("Cancel", AdminDeleteCopy.Cancel);
         Assert.Equal("Deleting…", AdminDeleteCopy.Deleting);
         Assert.Equal("This can't be restored from the admin.", AdminDeleteCopy.Undo);
-        Assert.Equal("This confirmation expired. Review the details again.", AdminDeleteCopy.Expired);
+        Assert.Equal("This confirmation is no longer valid. Review the details again.", AdminDeleteCopy.Expired);
+        Assert.Equal("This record changed after this dialog opened. Nothing was deleted. Review the details again.", AdminDeleteCopy.ChangedReview);
+        Assert.Equal("We couldn't confirm the delete. Reload the page to see whether it went through.", AdminDeleteCopy.UnclearDelete);
+        Assert.Equal("We can't find this record. It may have been deleted already.", AdminDeleteCopy.NotFound);
         Assert.Equal("This artifact can't be deleted", AdminDeleteCopy.BlockedTitle);
         Assert.Equal("It is used by these negotiations:", AdminDeleteCopy.BlockedLede);
         Assert.Equal("Close", AdminDeleteCopy.Close);
@@ -440,7 +497,13 @@ public class AdminDeletePageTests
         Assert.Contains("}, true);", script, StringComparison.Ordinal);
         // What the list announces comes from its history entry's state, never the address.
         Assert.DoesNotContain("location.hash.indexOf", script, StringComparison.Ordinal);
-        Assert.Contains("history.replaceState({ dwDeleted: intent.name }, \"\", returnTo);", script, StringComparison.Ordinal);
+        Assert.Contains("history.replaceState(state, \"\", returnTo);", script, StringComparison.Ordinal);
+        Assert.Contains("toList({ dwDelete: \"deleted\", name: intent.name });", script, StringComparison.Ordinal);
+        Assert.Contains("toList({ dwDelete: \"missing\" });", script, StringComparison.Ordinal);
+        // The note is taken off the history entry as soon as the list has read it.
+        Assert.Contains("history.replaceState(null, \"\", location.pathname + location.search + location.hash);", script, StringComparison.Ordinal);
+        // An unclear answer to the DELETE never says it did not go through.
+        Assert.Contains("afterUnclearReply(deleteFailed, words(\"unclearDelete\"))", script, StringComparison.Ordinal);
         // Text goes in through textContent only.
         Assert.DoesNotContain(".innerText", script, StringComparison.Ordinal);
     }
