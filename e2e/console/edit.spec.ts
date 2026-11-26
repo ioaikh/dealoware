@@ -662,11 +662,19 @@ test('history in edit mode: a reload starts in view mode, loads once and Back le
   await expect(name).toBeFocused();
   await expect(name).toHaveValue('Alex R.');
 
-  // A reload in edit mode: the page starts in view mode on a plain entry and loads once. Back then
-  // leaves within two steps (the record's own entry is still behind this one) and stays left.
+  // A reload in edit mode: the page starts in view mode on a plain entry, loads once and adds no
+  // history entry. Back then leaves within two steps (the record's own entry is still behind this
+  // one) and stays left. The reload is the page's own (location.reload), as F5 is: Playwright's
+  // page.reload() in Firefox loads the address as a new history entry, even on a page with no
+  // script, so it would add a Back that no owner meets.
+  const entries = await page.evaluate(() => history.length);
   loads = 0;
-  await page.reload();
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.evaluate(() => { setTimeout(() => location.reload(), 0); }),
+  ]);
   await expectStyled(page);
+  expect(await page.evaluate(() => history.length)).toBe(entries);
   await expect(editButton(page)).toBeVisible();
   await expect(name).toBeHidden();
   expect(await page.evaluate(() => history.state)).toBeNull();
