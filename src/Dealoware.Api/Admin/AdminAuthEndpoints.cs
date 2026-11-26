@@ -182,7 +182,9 @@ public static class AdminAuthEndpoints
         var password = AdminPasswordRules.Normalize(body?.Password ?? string.Empty);
         var now = clock.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
-        var returnPath = AdminReturnPath.Resolve(body?.ReturnPath);
+        // The page the session gate kept when it sent the browser here (checked
+        // again as it is read), else what an API client sent; else Stats.
+        var returnPath = AdminReturnCookie.Read(context) ?? AdminReturnPath.Resolve(body?.ReturnPath);
 
         var account = string.IsNullOrWhiteSpace(ownerEmail)
             ? null
@@ -729,6 +731,8 @@ public static class AdminAuthEndpoints
             context.RequestAborted);
 
         context.Response.Cookies.Delete(AdminPendingAuthCookie.Name, AdminPendingAuthCookie.ExpiredOptions());
+        // The kept page has done its work: it is in the pending sign-in, and "next" names it.
+        AdminReturnCookie.Forget(context);
         context.Response.Cookies.Append(
             AdminSessionCookie.Name,
             session.Id.ToString("D"),
@@ -737,20 +741,50 @@ public static class AdminAuthEndpoints
         return Results.Json(new { verified = true, next = pending.ReturnPath });
     }
 
+    // Sign-out: POST only, behind the origin check and the anti-forgery token
+    // (the session gate). It is idempotent: with no session it still answers
+    // the same and clears the same cookies. Ending a session the gate would
+    // still accept writes one sign_out audit row; a session that had already
+    // run out, or a sign-in in progress given up, writes none.
+    // The page's script gets JSON; the sign-out form sent without JavaScript
+    // (urlencoded, to /admin/sign-out) gets a 303 to the sign-in page.
     private static async Task<IResult> SignOut(
         HttpContext context,
-        IAdminSessionRepository sessions)
+        IAdminSessionRepository sessions,
+        IAdminAuditRepository audit,
+        IIpHasher ipHasher,
+        IAdminClock clock,
+        IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (context.Request.Cookies.TryGetValue(AdminSessionCookie.Name, out var raw)
             && Guid.TryParse(raw, out var sessionId))
         {
+            var session = await sessions.GetByIdAsync(sessionId, context.RequestAborted);
             await sessions.DeleteAsync(sessionId, context.RequestAborted);
             await sessions.SaveChangesAsync(context.RequestAborted);
+            if (AdminSessionMiddleware.IsAcceptedSession(session, coreOwnerOptions.Value.Email, clock.UtcNow))
+            {
+                await WriteAuthEventAsync(
+                    audit,
+                    AdminAuthEvents.SignOut,
+                    session.Email,
+                    HashIp(ipHasher, context),
+                    reasonClass: null,
+                    context.RequestAborted);
+            }
         }
 
         context.Response.Cookies.Delete(AdminSessionCookie.Name, AdminSessionCookie.ExpiredOptions());
         context.Response.Cookies.Delete(AdminPendingAuthCookie.Name, AdminPendingAuthCookie.ExpiredOptions());
         context.Response.Cookies.Delete(AdminAntiForgeryCookie.Name, AdminAntiForgeryCookie.ExpiredOptions());
+        if (context.Request.HasFormContentType
+            && string.Equals(context.Request.Path.Value, AdminSignedOutExemptions.SignOut, StringComparison.OrdinalIgnoreCase))
+        {
+            SetNoStore(context);
+            context.Response.Headers.Location = AdminSignInPages.SignedOutLocation;
+            return Results.StatusCode(StatusCodes.Status303SeeOther);
+        }
+
         return Results.Json(new { signedOut = true });
     }
 

@@ -812,13 +812,22 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
                 v => Assert.DoesNotContain(probe, v, StringComparison.Ordinal));
         }
 
-        // A path that is not exactly the page gets the gate's 401 as before.
-        foreach (var notThePage in new[] { path + "/", path + "/extra", path.Replace("/setup/", "/setup%2f", StringComparison.Ordinal) })
+        // A path that is not exactly the page is not sent back to step 1. One that does not
+        // canonicalise gets the gate's 401 as before; an extra segment is a signed-in page
+        // path like any other, which without a session goes to sign-in with the "ended" note.
+        foreach (var notThePage in new[] { path + "/", path.Replace("/setup/", "/setup%2f", StringComparison.Ordinal) })
         {
             using var denied = await GetAsync(_configured, notThePage, owner.Pending);
             Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
             Assert.False(denied.Headers.Contains("Location"));
             Assert.Equal("{\"error\":\"Unauthorized\"}", await denied.Content.ReadAsStringAsync());
+        }
+
+        using (var extra = await GetAsync(_configured, path + "/extra", owner.Pending))
+        {
+            Assert.Equal(HttpStatusCode.Found, extra.StatusCode);
+            Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(extra.Headers.GetValues("Location")));
+            Assert.Equal(string.Empty, await extra.Content.ReadAsStringAsync());
         }
 
         // Another method on the page path is not a visit either.

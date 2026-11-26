@@ -41,6 +41,9 @@ public static class AdminSignInCopy
     /// </summary>
     public const string SessionEnded = "Your session has ended. Sign in again to continue.";
 
+    /// <summary>Shown above the form after the owner signed out (UXR-A39, TD-ADM-UI-auth-17).</summary>
+    public const string SignedOut = "You've been signed out.";
+
     // ---- S-A2: authenticator code ----
 
     public const string CodePageTitle = "Enter code · Dealoware admin";

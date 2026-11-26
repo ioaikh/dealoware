@@ -15,6 +15,9 @@ public static class AdminAuditActions
     public const string RecoveryCodeUse = "recovery_code_use";
     public const string SecondFactorFailed = "signin.second_factor_failed";
 
+    /// <summary>The owner signed out of a signed-in session (TD-ADM-175). No reason class.</summary>
+    public const string SignOut = "sign_out";
+
     public const string EntityEdit = "entity_edit";
     public const string EntityDelete = "entity_delete";
 

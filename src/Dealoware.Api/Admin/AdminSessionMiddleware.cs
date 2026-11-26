@@ -13,10 +13,14 @@ namespace Dealoware.Api.Admin;
 /// requires the token. Rejects are a generic 403 (R17).
 /// Exempts only exact canonical path+method pairs for the session cookie.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
-/// One answer differs: a GET of one of the four pages that are served only
-/// during a pending sign-in (the code page, the recovery page, authenticator
-/// set-up and its recovery codes), asked for without one, is redirected to
-/// step 1 (a page for a browser, not a 401).
+/// Two answers differ, both for a browser's GET of a page, never for
+/// /admin/api/**, a static file or any other method:
+/// a GET of one of the four pages that are served only during a pending
+/// sign-in (the code page, the recovery page, authenticator set-up and its
+/// recovery codes), asked for without one, is redirected to step 1; and a GET
+/// of a signed-in page without a valid session is redirected to sign-in with
+/// the "session ended" note, the page kept for after sign-in
+/// (<see cref="AdminReturnCookie"/>).
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -63,7 +67,7 @@ public sealed class AdminSessionMiddleware
                 return;
             }
 
-            if (!IsAntiForgeryAllowListed(context) && !antiforgery.TryValidate(context))
+            if (!IsAntiForgeryAllowListed(context) && !await HasAntiForgeryTokenAsync(context, antiforgery))
             {
                 var csrfReason = HasPresentedAntiForgery(context) ? CsrfInvalid : CsrfMissing;
                 logger.LogWarning("Admin request rejected: {ReasonClass}", csrfReason);
@@ -98,7 +102,7 @@ public sealed class AdminSessionMiddleware
 
         if (!TryGetSessionId(context, out var sessionId))
         {
-            await AdminDeny.WriteUnauthorizedAsync(context);
+            await DenyAsync(context);
             return;
         }
 
@@ -106,13 +110,9 @@ public sealed class AdminSessionMiddleware
         var ownerEmail = coreOwnerOptions.Value.Email;
 
         var now = clock.UtcNow;
-        if (session is null
-            || session.IsExpired(now)
-            || !session.TotpVerified
-            || string.IsNullOrWhiteSpace(ownerEmail)
-            || !string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase))
+        if (!IsAcceptedSession(session, ownerEmail, now))
         {
-            await AdminDeny.WriteUnauthorizedAsync(context);
+            await DenyAsync(context);
             return;
         }
 
@@ -127,7 +127,7 @@ public sealed class AdminSessionMiddleware
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
 
-        session.UpdateActivity(now);
+        session!.UpdateActivity(now);
         try
         {
             await sessions.SaveChangesAsync(context.RequestAborted);
@@ -138,6 +138,77 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// The one rule for a session the gate lets through: it exists, has not run
+    /// out (30 minutes idle, 8 hours in all), passed its second step, and is
+    /// the configured owner's.
+    /// </summary>
+    internal static bool IsAcceptedSession(AdminSession? session, string? ownerEmail, DateTimeOffset now)
+        => session is not null
+           && !session.IsExpired(now)
+           && session.TotpVerified
+           && !string.IsNullOrWhiteSpace(ownerEmail)
+           && string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// No valid session. A browser's GET of a signed-in page is sent to
+    /// sign-in with the "session ended" note, and the page it asked for is
+    /// kept for after sign-in when it is one a sign-in may return to. Nothing
+    /// is exempted by this: no handler runs, the target is a constant, and
+    /// the only cookie set is the kept page (or its removal). Every other
+    /// request keeps the 401: every /admin/api/ path, every static-file path,
+    /// and every method but GET.
+    /// </summary>
+    private static Task DenyAsync(HttpContext context)
+    {
+        if (!IsSignedInPageGet(context, out var canonical))
+            return AdminDeny.WriteUnauthorizedAsync(context);
+
+        AdminReturnCookie.Remember(context, canonical);
+        context.Response.StatusCode = StatusCodes.Status302Found;
+        context.Response.Headers.Location = AdminSignInPages.SessionEndedLocation;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Under /admin and never under them: the JSON routes, and the two static-file folders.</summary>
+    private static readonly string[] NotPagePrefixes =
+    [
+        "/admin/api",
+        AdminSignedOutExemptions.AuthStaticPrefix,
+        AdminSignedInPage.AssetPrefix
+    ];
+
+    /// <summary>
+    /// GET of a page path under /admin, by the canonical path the exemption
+    /// rules use (a path that does not canonicalise is not one).
+    /// </summary>
+    internal static bool IsSignedInPageGet(HttpContext context, out string canonical)
+    {
+        if (!HttpMethods.IsGet(context.Request.Method)
+            || !AdminPathCanonicalizer.TryGetComparablePath(context, out canonical))
+        {
+            canonical = string.Empty;
+            return false;
+        }
+
+        if (!string.Equals(canonical, AdminHostMiddleware.AdminPathPrefix, StringComparison.OrdinalIgnoreCase)
+            && !canonical.StartsWith(AdminHostMiddleware.AdminPathPrefix + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var prefix in NotPagePrefixes)
+        {
+            if (string.Equals(canonical, prefix, StringComparison.OrdinalIgnoreCase)
+                || canonical.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -268,7 +339,7 @@ public sealed class AdminSessionMiddleware
         if (AdminSignedOutExemptions.IsSignOut(canonical) && !hasSessionCookie)
             return true;
 
-        if (antiforgery.TryValidate(context))
+        if (await HasAntiForgeryTokenAsync(context, antiforgery))
             return true;
 
         if (AdminSignedOutExemptions.IsAuthPost(canonical))
@@ -280,6 +351,21 @@ public sealed class AdminSessionMiddleware
     }
 
     internal const string AntiForgeryDeniedKey = "AdminAntiForgeryDenied";
+
+    /// <summary>
+    /// The anti-forgery token in the X-CSRF-TOKEN header; for POST
+    /// /admin/sign-out alone, also the sign-out form's hidden field, so that
+    /// signing out works with JavaScript off. No other route reads a form token.
+    /// </summary>
+    private static async Task<bool> HasAntiForgeryTokenAsync(HttpContext context, AdminAntiForgeryService antiforgery)
+    {
+        // A sign-out let past the origin check by its Sec-Fetch-* headers is the browser's own
+        // form submission: its token must be the form's field, never a header.
+        if (context.Items.ContainsKey(AdminOriginGate.NullOriginSignOutKey))
+            return await antiforgery.TryValidateSignOutFormAsync(context);
+
+        return antiforgery.TryValidate(context) || await antiforgery.TryValidateSignOutFormAsync(context);
+    }
 
     private static bool IsAntiForgeryAllowListed(HttpContext context)
         => AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)

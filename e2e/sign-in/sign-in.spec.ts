@@ -664,11 +664,20 @@ test('a hostile or malformed "next" is never followed: the page goes to /admin/ 
     ['/admin/participants'],
     { path: '/admin/participants' },
   ];
+  // The reply is the test's, so nothing is signed in: the page goes where it decided, and the
+  // session gate then sends the browser on to sign-in. What is checked is where the page went.
+  const goesTo = async (path: string, why: string): Promise<void> => {
+    const [navigation] = await Promise.all([
+      page.waitForRequest((r) => r.isNavigationRequest() && r.frame() === page.mainFrame()),
+      signInButton(page).click(),
+    ]);
+    expect(navigation.url(), why).toBe(ORIGIN + path);
+    await expect(page, why).toHaveURL(ORIGIN + SIGN_IN);
+  };
   for (const value of refused) {
     reply = { verified: true, next: value };
     await page.locator('#code').fill('123456');
-    await signInButton(page).click();
-    await expect(page, `next = ${JSON.stringify(value)}`).toHaveURL(ORIGIN + HOME);
+    await goesTo(HOME, `next = ${JSON.stringify(value)}`);
     // Nothing was signed in (the reply was the test's), so the pending sign-in still opens the code page.
     await page.goto(CODE);
     await expect(page.locator('#second-step-form')).toBeVisible();
@@ -677,17 +686,21 @@ test('a hostile or malformed "next" is never followed: the page goes to /admin/ 
   // A reply without any "next" goes to /admin/ too.
   reply = { verified: true };
   await page.locator('#code').fill('123456');
-  await signInButton(page).click();
-  await expect(page).toHaveURL(ORIGIN + HOME);
+  await goesTo(HOME, 'no next');
 
   // Control: the same stand-in reply with a plain admin path is followed.
   await page.goto(CODE);
   reply = { verified: true, next: '/admin/audit' };
   await page.locator('#code').fill('123456');
-  await signInButton(page).click();
-  await expect(page).toHaveURL(`${ORIGIN}/admin/audit`);
+  await goesTo('/admin/audit', 'a plain admin path');
 
-  expect(counts.count).toBe(refused.length + 2);
+  // And a list path with a plain query, as the server writes a kept list view.
+  await page.goto(CODE);
+  reply = { verified: true, next: '/admin/offers?sort=amount&status=Open' };
+  await page.locator('#code').fill('123456');
+  await goesTo('/admin/offers?sort=amount&status=Open', 'a list path with its checked query');
+
+  expect(counts.count).toBe(refused.length + 3);
   // Nothing was asked of any other host, at any point.
   for (const url of seen.urls) expect([new URL(ORIGIN).hostname, WIDGET_HOST]).toContain(new URL(url).hostname);
 });
