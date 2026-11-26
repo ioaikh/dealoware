@@ -12,12 +12,12 @@ public static class AdminConsoleCopy
 {
     public const string TitleSuffix = " · Dealoware admin";
 
-    /// <summary>The name above the nav. The product name the titles already carry.</summary>
+    /// <summary>The name above the nav, as draft #39 had it; the titles carry it too.</summary>
     public const string Brand = "Dealoware admin";
 
     public const string SkipLink = "Skip to main content";
 
-    /// <summary>The nav's accessible name. New copy.</summary>
+    /// <summary>The nav's accessible name, as draft #39 had it.</summary>
     public const string NavLabel = "Admin";
 
     public const string NavStats = "Stats";

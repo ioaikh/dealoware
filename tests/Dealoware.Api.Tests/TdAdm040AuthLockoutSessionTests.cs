@@ -428,9 +428,13 @@ public class TdAdm040AuthLockoutSessionTests
         // No GET twin under /admin/api/auth, and extra segments are never exempt.
         using var apiGet = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.ApiBootstrap, null);
         Assert.Equal(HttpStatusCode.Unauthorized, apiGet.StatusCode);
+        // An extra segment is not the exempt page: it is a signed-in page path like any other,
+        // which without a session the gate sends to sign-in, never to the bootstrap page.
         using var extra = await SendAuthAsync(
             client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap + "/extra", null);
-        Assert.Equal(HttpStatusCode.Unauthorized, extra.StatusCode);
+        Assert.Equal(HttpStatusCode.Found, extra.StatusCode);
+        Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(extra.Headers.GetValues("Location")));
+        Assert.Equal(string.Empty, await extra.Content.ReadAsStringAsync());
     }
 
     private HttpClient CreateClient() =>
