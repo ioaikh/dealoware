@@ -187,6 +187,18 @@ public sealed class Offer
     }
 
     /// <summary>
+    /// Records an admin edit: the next <see cref="Version"/> and the time of
+    /// the edit (UTC). The admin's one offer change is <see cref="Cancel"/>;
+    /// amount, currency and terms stay as the party sent them, so there is no
+    /// mutator for them.
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Withdraws this open offer. Maker-only (FromParticipantId). This is the only
     /// way to set <see cref="OfferStatus.Withdrawn"/>; admin edits cannot set it.
     /// </summary>

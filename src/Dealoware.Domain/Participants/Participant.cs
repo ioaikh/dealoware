@@ -97,6 +97,25 @@ public sealed class Participant
     }
 
     /// <summary>
+    /// Reactivates a suspended participant (admin edit path E1). Active stays Active.
+    /// </summary>
+    public void Activate()
+    {
+        IsActive = true;
+    }
+
+    /// <summary>
+    /// Records an admin edit: the next <see cref="Version"/> and the time of the
+    /// edit (UTC). Every admin write calls this, so a later write prepared
+    /// against the earlier state is refused.
+    /// </summary>
+    public void MarkEdited(DateTimeOffset? now = null)
+    {
+        Version++;
+        UpdatedAt = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Updates the login email (owner-only operation).
     /// </summary>
     public void UpdateLoginEmail(string? loginEmail)
