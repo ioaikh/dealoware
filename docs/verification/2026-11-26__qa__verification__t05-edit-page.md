@@ -7,7 +7,7 @@
 | Rules | Story A7 Step 9 (UXR-B14 to B17); test design TD-ADM-UI-na-B10 (narrowed), na-expire, na-B11, na-B12, -axe and -kbd; the edit API's replies (`AdminEditEndpoints`, review record `2026-11-26__qa__verification__t05-edit-api.md`) |
 | Reference | Draft pull request #41. Its page shell and test harness are not used. |
 | Date | 2026-11-26 |
-| Result | **PASS**, after the fixes listed below |
+| Result | Pending: PASS once CI is green on the final head |
 
 ## What the page does
 
@@ -63,7 +63,7 @@ The builder and the reviewer were separate Claude Code agents.
 
 | # | Severity | Finding | Outcome |
 |---|----------|---------|---------|
-| 10 | High | WebKit keeps the history state when the same address is opened again. The new page took that for a reload in edit mode and stepped back, so the navigation never finished: red on WebKit, and a double load for Safari users. | Fixed. The page steps back only after a real reload. Any other load starts in view mode on that entry, made a plain one. Tested: a reload in edit mode starts in view mode, loads once, and one Back goes to the page before. |
+| 10 | High | On load, a page on edit mode's history entry stepped back in history. In WebKit, opening the same address again timed out; the likely cause, not confirmed, is that WebKit keeps the entry's history state. A first fix stepped back only after a real reload. It still hung on a WebKit reload, and in Firefox one Back after the reload stayed on the record. | Fixed. On any load that lands on edit mode's entry, the page makes the entry a plain one and starts in view mode. It never moves in history while loading. Tested: a reload in edit mode starts in view mode and loads once; Back then leaves within two steps and stays left. |
 | 11 | Medium | In edit mode the skip link added a history entry that the page read as Back: edit mode closed, or the discard dialog opened and Back then needed pressing twice. | Fixed. A link within the page only moves the focus while editing, and adds no entry. Tested: the skip link keeps edit mode and the typing, puts the focus in main, and Back still asks once. |
 | 12 | Low | After Edit, Back and Forward, a second Edit made Back do nothing once. | Fixed. Forward onto an old edit entry in view mode turns it into a plain entry. Tested. |
 | 13 | Optional | After Back with changes, Keep editing put the focus on Cancel. | Fixed. It returns to the field being typed in. Tested. |
@@ -78,6 +78,7 @@ The reviewer found:
 ## Tests
 
 - **.NET page tests.** `AdminEditPageTests`: 7 of 7. They cover the controls per type and state, everything starting hidden, the page's token being the one the edit API takes, soft-deleted records, encoding, nothing sensitive in the page, and the script's house rules.
+- **Final head.** Run on Chromium here only; the result stays pending until CI is green on all three engines.
 - **Full suite on Windows.** 2,078 tests: 2,067 passed, 6 skipped, 5 failed. The same five fail on untouched `main` on this machine. The six skipped are the PostgreSQL-only tests and one older placeholder.
 - **Browser tests.** `e2e/console/edit.spec.ts`: 13 tests, all passing on Chromium here. GitHub runs them on Chromium, Firefox and WebKit on Linux. They cover:
   - each type's edit;
@@ -95,8 +96,9 @@ The reviewer found:
 1. After a save the page loads itself anew to show the new values, rather than updating them in place.
 2. After a 409, Reload drops the typed values. The test design asks for them to stay beside the new version for reference; the page keeps nothing stale instead.
 3. A reload, closing the tab or typing an address in edit mode is not asked about. The page does not use the browser's own leave prompt.
-4. The Edit button's row label and the Owner field's label both read "Owner participant".
-5. Return to the same record after signing in again (test design B13) is not covered here.
+4. After a reload in edit mode, it takes one extra Back to leave the record: the record's own history entry is still behind the reloaded one. The page never moves in history while it loads, so it cannot remove that entry.
+5. In edit mode the owner's row label and its field's label both read "Owner participant".
+6. Return to the same record after signing in again (test design B13) is not covered here.
 
 ## New wording for the owner's approval
 
