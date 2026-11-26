@@ -64,6 +64,9 @@ package-lock.json
 # Setup-page Playwright has its own pinned lockfile (see e2e/bootstrap/run.sh)
 !e2e/bootstrap/package-lock.json
 e2e/bootstrap/test-results/
+# Sign-in pages Playwright, the same way (see e2e/sign-in/run.sh)
+!e2e/sign-in/package-lock.json
+e2e/sign-in/test-results/
 
 # Confirm-page Playwright (local run; certs are mktemp, never committed)
 e2e/reset-confirm/test-results/

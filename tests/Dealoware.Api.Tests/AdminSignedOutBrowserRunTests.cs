@@ -5,15 +5,15 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// Pins on the browser runs for the signed-out admin pages (e2e/bootstrap for
-/// the first-time setup page; more suites follow) and on the runner they
-/// share (e2e/signed-out): a run stays on this machine, needs
+/// the first-time setup page, e2e/sign-in for the three sign-in pages) and on
+/// the runner they share (e2e/signed-out): a run stays on this machine, needs
 /// no privilege, keeps the loopback proxy guard, and uses the stand-in
 /// Turnstile verifier only with the app in Development.
 /// The browser tests themselves are started with each suite's run.sh.
 /// </summary>
 public class AdminSignedOutBrowserRunTests
 {
-    private static readonly string[] Suites = ["bootstrap"];
+    private static readonly string[] Suites = ["bootstrap", "sign-in"];
 
     private static readonly string[] NeverInARunner =
     [
@@ -55,6 +55,7 @@ public class AdminSignedOutBrowserRunTests
 
     [Theory]
     [InlineData("bootstrap", "BOOTSTRAP_E2E", "bootstrap.spec.ts")]
+    [InlineData("sign-in", "SIGN_IN_E2E", "sign-in.spec.ts")]
     public void SuiteRunner_NamesItsPortsAndPrefix_AndLeavesTheRestToTheSharedRunner(
         string suite,
         string envPrefix,
@@ -159,6 +160,7 @@ public class AdminSignedOutBrowserRunTests
 
     [Theory]
     [InlineData("bootstrap")]
+    [InlineData("sign-in")]
     public void Suite_HasItsOwnPackage_WithPlaywrightAtTheSharedPin(string suite)
     {
         // e2e/package.json feeds the Admin UI CI workflow, so each run keeps its
@@ -187,6 +189,33 @@ public class AdminSignedOutBrowserRunTests
     {
         var bootstrap = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "bootstrap", "bootstrap.spec.ts"));
         Assert.Contains("const GOOD_PASSWORD = crypto.randomBytes(16).toString('hex');", bootstrap, StringComparison.Ordinal);
+
+        // The sign-in suite seeds its owner itself: a password, an authenticator key and recovery
+        // codes, all random, known only to the test process and the run's throwaway database.
+        var signIn = Path.Combine(RepoRoot(), "e2e", "sign-in");
+        var owner = File.ReadAllText(Path.Combine(signIn, "owner.ts"));
+        Assert.Contains("export const OWNER_PASSWORD = crypto.randomBytes(16).toString('hex');", owner, StringComparison.Ordinal);
+        Assert.Contains("const secret = state.enrolled ? crypto.randomBytes(20) : null;", owner, StringComparison.Ordinal);
+        Assert.Contains("crypto.randomInt(RECOVERY_ALPHABET.length)", owner, StringComparison.Ordinal);
+        Assert.Contains("const PASSWORD_ROUNDS = 220_000;", owner, StringComparison.Ordinal);
+        Assert.Equal(220_000, Dealoware.Infrastructure.Admin.AdminPasswordHasher.IterationCount);
+        // The keys come from the runner's environment; none is spelled out, and nothing is logged.
+        Assert.Contains("process.env.SIGN_IN_E2E_TOTP_KEY", owner, StringComparison.Ordinal);
+        Assert.Contains("process.env.SIGN_IN_E2E_RECOVERY_KEY", owner, StringComparison.Ordinal);
+        Assert.DoesNotContain("console.", owner, StringComparison.Ordinal);
+        Assert.DoesNotContain("writeFile", owner, StringComparison.Ordinal);
+
+        var runner = ShellCode(Path.Combine(signIn, "run.sh"));
+        Assert.Contains("export SIGN_IN_E2E_TOTP_KEY=\"$TOTP_KEY\"", runner, StringComparison.Ordinal);
+        Assert.Contains("export SIGN_IN_E2E_RECOVERY_KEY=\"$RECOVERY_KEY\"", runner, StringComparison.Ordinal);
+        Assert.Contains("export SIGN_IN_E2E_DB=\"$DB\"", runner, StringComparison.Ordinal);
+
+        // The seeding script only writes the rows it is handed.
+        var seed = File.ReadAllText(Path.Combine(signIn, "seed_owner.py"));
+        Assert.Contains("state = json.load(sys.stdin)", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("print(", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("hashlib", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("import os", seed, StringComparison.Ordinal);
     }
 
     /// <summary>A shell script without its comment lines. It must have Unix line endings, or bash cannot run it.</summary>
