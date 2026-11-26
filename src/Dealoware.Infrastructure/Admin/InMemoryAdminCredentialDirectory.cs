@@ -48,7 +48,8 @@ public sealed class InMemoryAdminCredentialDirectory : IAdminCredentialDirectory
             hash = _passwordHash;
         }
 
-        return Task.FromResult(VerifySecret(hash, password));
+        // Same rule as the production directory: verify the NFKC form.
+        return Task.FromResult(VerifySecret(hash, AdminPasswordRules.Normalize(password)));
     }
 
     public Task<bool> VerifyTotpAsync(string email, string code, CancellationToken ct)

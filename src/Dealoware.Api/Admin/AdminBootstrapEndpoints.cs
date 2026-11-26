@@ -3,6 +3,7 @@ using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Admin;
@@ -133,11 +134,6 @@ public static class AdminBootstrapEndpoints
         var passwordHash = hasher.Hash(AdminPasswordRules.Normalize(proposed));
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (!await tokens.TryConsumeAsync(hash, now, ct))
-        {
-            await tx.RollbackAsync(ct);
-            return await FailInvalidLinkAsync(audit, ipHmac, now, http);
-        }
 
         // Read the owner row again inside the transaction, dropping what the
         // check above tracked: a parallel request may have set the password
@@ -146,8 +142,7 @@ public static class AdminBootstrapEndpoints
         var account = await accounts.GetByEmailAsync(ownerEmail, ct);
         if (account is not null && !string.IsNullOrEmpty(account.PasswordHash))
         {
-            await tx.RollbackAsync(ct);
-            return await FailInvalidLinkAsync(audit, ipHmac, now, http);
+            return await RollBackAsInvalidLinkAsync(tx, db, audit, ipHmac, now, http);
         }
 
         if (account is null)
@@ -162,21 +157,44 @@ public static class AdminBootstrapEndpoints
             AdminAuditEntry.CreateAuthEvent(AdminAuthEvents.BootstrapComplete, ownerEmail, ipHmac, timestamp: now),
             ct);
 
+        // The owner rows are written before any link row is touched: their
+        // unique email is where parallel requests queue, so two requests
+        // holding different links cannot wait on each other's link rows.
         try
         {
             await audit.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (DatabaseErrors.IsUniqueViolation(ex))
         {
-            // Another request created the owner rows first (unique email).
-            // Roll back so this link's consume and both rows go together.
-            await tx.RollbackAsync(ct);
-            db.ChangeTracker.Clear();
-            return await FailInvalidLinkAsync(audit, ipHmac, now, http);
+            // Another request created the owner rows first. Any other database
+            // fault is not a bad link: it propagates and the transaction rolls back.
+            return await RollBackAsInvalidLinkAsync(tx, db, audit, ipHmac, now, http);
         }
 
+        if (!await tokens.TryConsumeAsync(hash, now, ct))
+        {
+            return await RollBackAsInvalidLinkAsync(tx, db, audit, ipHmac, now, http);
+        }
+
+        // Setup is complete: no other link may stay usable.
+        await tokens.InvalidateUnusedAsync(now, ct);
+        await tx.CommitAsync(ct);
+
         return Results.Json(new { passwordSet = true, next = "sign-in" });
+    }
+
+    /// <summary>Undoes the owner rows and the link consume together, then gives the one invalid-link answer.</summary>
+    private static async Task<IResult> RollBackAsInvalidLinkAsync(
+        IDbContextTransaction tx,
+        DealowareDbContext db,
+        IAdminAuditRepository audit,
+        string ipHmac,
+        DateTimeOffset now,
+        HttpContext http)
+    {
+        await tx.RollbackAsync(http.RequestAborted);
+        db.ChangeTracker.Clear();
+        return await FailInvalidLinkAsync(audit, ipHmac, now, http);
     }
 
     /// <summary>

@@ -19,8 +19,8 @@ public interface IAdminBootstrapTokenRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Burns every unused bootstrap token. Called when a newer link is issued
-    /// and on the account-wide lock.
+    /// Burns every unused bootstrap token. Called when a newer link is issued,
+    /// when the first password is set, and on the account-wide lock.
     /// </summary>
     Task InvalidateUnusedAsync(
         DateTimeOffset now,

@@ -1573,7 +1573,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     {
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
-        var whenLockTrips = await InsertBootstrapTokenAsync();
+        var whenLockTrips = (await InsertBootstrapTokenAsync()).Id;
 
         for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts - 1; i++)
         {
@@ -1598,7 +1598,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.True(await BootstrapTokenBurnedAsync(whenLockTrips));
 
         // A later submission that meets the lock burns again, with reset tokens and sessions.
-        var whileLocked = await InsertBootstrapTokenAsync();
+        var whileLocked = (await InsertBootstrapTokenAsync()).Id;
         var resetWhileLocked = await InsertResetTokenAsync();
         using var locked = await PostConfirmAsync(new
         {
@@ -1609,6 +1609,63 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         AssertLinkExpired(locked);
         Assert.True(await BootstrapTokenBurnedAsync(whileLocked));
         Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+    }
+
+    [Fact]
+    public async Task TD_ADM_031_BootstrapLink_PresentedAtTheResetConfirmRoute_IsRefused()
+    {
+        await SeedCredentialAsync();
+        var bootstrap = await InsertBootstrapTokenAsync();
+
+        using var response = await PostConfirmAsync(new
+        {
+            token = bootstrap.Raw,
+            newPassword = NextPassword,
+            totp = CurrentTotp()
+        });
+
+        AssertLinkExpired(response);
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+        Assert.False(await BootstrapTokenBurnedAsync(bootstrap.Id));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TD_ADM_031_R10_AfterReset_SignInPasswordStepAcceptsTheNewPassword(bool compatibilityCharacters)
+    {
+        await SeedCredentialAsync();
+        await ClearAccountLockoutsAsync();
+        var token = await RequestRawTokenAsync();
+
+        // Run-time value: a strong base, optionally followed by characters NFKC
+        // rewrites (horizontal ellipsis, no-break space, full-width letter).
+        var password = $"{Guid.NewGuid():N}{Guid.NewGuid():N}"[..40]
+                       + (compatibilityCharacters ? "… Ａ" : string.Empty);
+        Assert.Equal(compatibilityCharacters, password != AdminPasswordRules.Normalize(password));
+
+        using var complete = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = password,
+            totp = CurrentTotp()
+        });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        var client = CreateClient();
+        var signInAf = await IssueSignInAntiForgeryAsync(client);
+        using var step1 = await client.SendAsync(SignInJson(
+            AdminSignedOutExemptions.ApiSignIn,
+            new
+            {
+                email = CoreOwnerEmail,
+                password,
+                turnstileToken = FakeTurnstileVerifier.ValidToken
+            },
+            signInAf));
+        Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+        var payload = await step1.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("totp", payload.GetProperty("next").GetString());
     }
 
     [Fact]
@@ -2571,17 +2628,18 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         return raw;
     }
 
-    private async Task<Guid> InsertBootstrapTokenAsync()
+    private async Task<(Guid Id, string Raw)> InsertBootstrapTokenAsync()
     {
+        var raw = AdminAuthService.CreateOpaqueToken();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var row = AdminBootstrapToken.Create(
             CoreOwnerEmail,
-            AdminBootstrapToken.HashRaw(AdminAuthService.CreateOpaqueToken()),
+            AdminBootstrapToken.HashRaw(raw),
             Clock().UtcNow);
         db.AdminBootstrapTokens.Add(row);
         await db.SaveChangesAsync();
-        return row.Id;
+        return (row.Id, raw);
     }
 
     private async Task<bool> BootstrapTokenBurnedAsync(Guid id)

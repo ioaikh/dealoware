@@ -92,7 +92,9 @@ public sealed class AdminMailSendQueue : IHostedService
             {
                 try
                 {
-                    await _mail.SendAsync(queued.To, queued.Kind, queued.Token, stoppingToken);
+                    await (queued.Kind == MailLinkKind.Bootstrap
+                        ? _mail.SendBootstrapLinkAsync(queued.To, queued.Token, stoppingToken)
+                        : _mail.SendPasswordResetLinkAsync(queued.To, queued.Token, stoppingToken));
                     queued.Sent.TrySetResult(true);
                 }
                 catch (Exception ex)

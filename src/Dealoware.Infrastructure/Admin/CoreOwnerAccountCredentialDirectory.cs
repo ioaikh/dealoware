@@ -42,7 +42,8 @@ public sealed class CoreOwnerAccountCredentialDirectory : IAdminCredentialDirect
             return false;
         }
 
-        return AdminPasswordHasher.Verify(password, account.PasswordHash);
+        // The stored hash is of the NFKC form (bootstrap and reset), so verify that form.
+        return AdminPasswordHasher.Verify(AdminPasswordRules.Normalize(password), account.PasswordHash);
     }
 
     public Task<bool> VerifyTotpAsync(string email, string code, CancellationToken ct)

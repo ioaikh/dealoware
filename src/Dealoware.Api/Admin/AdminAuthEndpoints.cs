@@ -174,7 +174,9 @@ public static class AdminAuthEndpoints
 
         var ownerEmail = AdminAuthService.NormalizeEmail(coreOwnerOptions.Value.Email);
         var submittedEmail = AdminAuthService.NormalizeEmail(body?.Email);
-        var password = body?.Password ?? string.Empty;
+        // Bootstrap and reset store the hash of the NFKC form, so the
+        // submitted password is verified in that form too.
+        var password = AdminPasswordRules.Normalize(body?.Password ?? string.Empty);
         var now = clock.UtcNow;
         var ipHmac = HashIp(ipHasher, context);
         var returnPath = AdminReturnPath.Resolve(body?.ReturnPath);

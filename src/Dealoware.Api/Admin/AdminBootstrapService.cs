@@ -26,12 +26,6 @@ public sealed record AdminBootstrapLinkResult(AdminBootstrapLinkOutcome Outcome,
 /// </summary>
 public sealed class AdminBootstrapService
 {
-    /// <summary>
-    /// Audit <c>IpHmac</c> value for a link issued by the one-shot command,
-    /// where there is no client address to hash.
-    /// </summary>
-    public const string CommandOrigin = "command";
-
     private readonly IAdminBootstrapTokenRepository _tokens;
     private readonly IAdminCredentialStore _credentials;
     private readonly IAdminCoreOwnerAccountRepository _accounts;
@@ -90,7 +84,7 @@ public sealed class AdminBootstrapService
             AdminAuditEntry.CreateAuthEvent(
                 AdminAuthEvents.BootstrapLinkIssued,
                 _ownerEmail,
-                CommandOrigin,
+                AdminAuditEntry.CommandOrigin,
                 timestamp: now),
             cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);

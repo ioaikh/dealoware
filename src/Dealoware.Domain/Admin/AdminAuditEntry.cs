@@ -27,7 +27,15 @@ public sealed class AdminAuditEntry
     public string ActorEmail { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Keyed HMAC-SHA256 of the client IP. Raw IP is never stored.
+    /// <see cref="IpHmac"/> value for an event raised by an operator command
+    /// (the bootstrap-link one-shot), where there is no client address to hash.
+    /// </summary>
+    public const string CommandOrigin = "command";
+
+    /// <summary>
+    /// Keyed HMAC-SHA256 of the client IP for a request. Raw IP is never stored.
+    /// For an operator command, which has no client address, this holds the
+    /// literal marker <see cref="CommandOrigin"/> instead of an HMAC.
     /// </summary>
     public string IpHmac { get; private set; } = string.Empty;
 

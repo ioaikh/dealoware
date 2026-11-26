@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Dealoware.Api.Tests;
 
@@ -71,7 +72,7 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         var audit = await AuditAsync();
         var issued = Assert.Single(audit, e => e.Action == AdminAuthEvents.BootstrapLinkIssued);
         Assert.Equal(OwnerEmail, issued.ActorEmail);
-        Assert.Equal(AdminBootstrapService.CommandOrigin, issued.IpHmac);
+        Assert.Equal(AdminAuditEntry.CommandOrigin, issued.IpHmac);
         AssertNotInAudit(audit, token, AdminBootstrapToken.HashRaw(token));
     }
 
@@ -320,11 +321,15 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         AssertKeyedIpHmac(complete.IpHmac);
     }
 
-    [Fact]
-    public async Task TD_ADM_012_AfterBootstrap_SignInLeadsToTotpEnrolment_WithNoSessionYet()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TD_ADM_012_AfterBootstrap_SignInAcceptsThePassword_AndLeadsToTotpEnrolment_WithNoSessionYet(
+        bool compatibilityCharacters)
     {
         await ResetOwnerAsync();
-        var password = NewPassword();
+        var password = compatibilityCharacters ? NewPasswordWithCompatibilityCharacters() : NewPassword();
+        Assert.Equal(compatibilityCharacters, password != AdminPasswordRules.Normalize(password));
         var token = await IssueLinkAsync();
         using var set = await PostBootstrapAsync(Body(token, password));
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
@@ -345,9 +350,47 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         Assert.Contains(cookies, c => c.StartsWith(AdminPendingAuthCookie.Name + "=", StringComparison.Ordinal));
         Assert.DoesNotContain(cookies, c => c.StartsWith(AdminCookieNames.Session + "=", StringComparison.Ordinal));
 
+        // The same password typed in its NFKC form is the same password.
+        using var normalised = await PostJsonAsync(
+            AdminSignedOutExemptions.ApiSignIn,
+            new
+            {
+                email = OwnerEmail,
+                password = AdminPasswordRules.Normalize(password),
+                turnstileToken = FakeTurnstileVerifier.ValidToken
+            });
+        Assert.Equal(HttpStatusCode.OK, normalised.StatusCode);
+
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         Assert.Empty(db.AdminSessions.ToList());
+    }
+
+    [Fact]
+    public async Task TD_ADM_012_CredentialDirectories_VerifyTheNfkcFormOfTheSubmittedPassword()
+    {
+        await ResetOwnerAsync();
+        var password = NewPasswordWithCompatibilityCharacters();
+        var token = await IssueLinkAsync();
+        using var set = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+
+        // The production directory, over the rows bootstrap just wrote.
+        using var scope = _factory.Services.CreateScope();
+        var production = new CoreOwnerAccountCredentialDirectory(
+            scope.ServiceProvider.GetRequiredService<IAdminCoreOwnerAccountRepository>(),
+            scope.ServiceProvider.GetRequiredService<IOptions<CoreOwnerOptions>>());
+        Assert.True(await production.VerifyPasswordAsync(OwnerEmail, password, CancellationToken.None));
+        Assert.True(await production.VerifyPasswordAsync(
+            OwnerEmail, AdminPasswordRules.Normalize(password), CancellationToken.None));
+        Assert.False(await production.VerifyPasswordAsync(
+            OwnerEmail, NewPasswordWithCompatibilityCharacters(), CancellationToken.None));
+
+        // The Development stand-in follows the same rule.
+        var development = new InMemoryAdminCredentialDirectory(OwnerEmail);
+        await development.SetPasswordAsync(OwnerEmail, AdminPasswordRules.Normalize(password), CancellationToken.None);
+        Assert.True(await development.VerifyPasswordAsync(OwnerEmail, password, CancellationToken.None));
+        Assert.False(await development.VerifyPasswordAsync(OwnerEmail, NewPassword(), CancellationToken.None));
     }
 
     [Fact]
@@ -605,54 +648,137 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         Assert.Single(after.AdminCredentials.ToList());
     }
 
-    [Fact]
-    public async Task TD_ADM_011_LinkConsumeAndBothOwnerRows_AreOneTransaction()
+    [SqliteOnlyFact]
+    public async Task TD_ADM_011_LostRaceOnTheOwnerRows_IsTheInvalidLinkAnswer_AndUndoesEverything()
     {
         await ResetOwnerAsync();
         var token = await IssueLinkAsync();
         var password = NewPassword();
 
-        // Make the credential insert fail, as a lost race on the owner rows would.
-        const string trigger = "bootstrap_test_refuse_credential";
-        using (var scope = _factory.Services.CreateScope())
+        // Another request wins the owner rows between this one's check and its insert:
+        // the credential row appears first, so this insert hits the unique email.
+        await using (await WithTriggerAsync(
+            "bootstrap_test_lost_race",
+            "BEFORE INSERT ON \"AdminCoreOwnerAccounts\" BEGIN "
+            + "INSERT INTO \"AdminCredentials\" (\"Email\", \"PasswordHash\", \"PasswordUpdatedAt\") "
+            + "VALUES (NEW.\"Email\", 'taken-by-the-other-request', NEW.\"CreatedAt\"); END;"))
         {
-            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            if (!db.Database.IsSqlite())
-            {
-                return;
-            }
-
-            await db.Database.ExecuteSqlRawAsync(
-                $"CREATE TRIGGER \"{trigger}\" BEFORE INSERT ON \"AdminCredentials\" "
-                + "BEGIN SELECT RAISE(ABORT, 'refused'); END;");
+            using var lost = await PostBootstrapAsync(Body(token, password));
+            AssertInvalidLink(lost);
         }
 
-        try
-        {
-            using var failed = await PostBootstrapAsync(Body(token, password));
-            AssertInvalidLink(failed);
-        }
-        finally
-        {
-            using var scope = _factory.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            await db.Database.ExecuteSqlRawAsync($"DROP TRIGGER \"{trigger}\";");
-        }
-
-        // Nothing was half-written: no account row, and the link was not spent.
-        Assert.False(await OwnerRowsExistAsync());
-        var audit = await AuditAsync();
-        Assert.DoesNotContain(audit, e => e.Action == AdminAuthEvents.BootstrapComplete);
-        Assert.Contains(audit, e => e.ReasonClass == AdminAuthEvents.ReasonInvalidLink);
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-            Assert.Null(db.AdminBootstrapTokens.Single().ConsumedAt);
-        }
+        await AssertNothingWrittenAndLinkUnspentAsync();
+        Assert.Contains(await AuditAsync(), e => e.ReasonClass == AdminAuthEvents.ReasonInvalidLink);
 
         using var ok = await PostBootstrapAsync(Body(token, password));
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    [SqliteOnlyFact]
+    public async Task TD_ADM_011_OtherDatabaseFault_IsAServerError_NotABadLink_AndUndoesEverything()
+    {
+        await ResetOwnerAsync();
+        var token = await IssueLinkAsync();
+        var password = NewPassword();
+
+        await using (await WithTriggerAsync(
+            "bootstrap_test_refuse_credential",
+            "BEFORE INSERT ON \"AdminCredentials\" BEGIN SELECT RAISE(ABORT, 'refused'); END;"))
+        {
+            using var failed = await PostBootstrapAsync(Body(token, password));
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+            Assert.Null(failed.Headers.Location);
+            var body = await failed.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(token, body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(password, body, StringComparison.Ordinal);
+            Assert.DoesNotContain("refused", body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Fail closed: no half-written owner, no spent link, and no "bad link" audit row.
+        await AssertNothingWrittenAndLinkUnspentAsync();
+        Assert.DoesNotContain(await AuditAsync(), e => e.ReasonClass == AdminAuthEvents.ReasonInvalidLink);
+
+        using var ok = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    [Fact]
+    public async Task TD_ADM_180_CompletedSetup_BurnsEveryOtherUnusedLink()
+    {
+        // Two usable links, as two concurrent runs of the issue command could leave.
+        await ResetOwnerAsync();
+        var used = await InsertTokenRowAsync(OwnerEmail);
+        var other = await InsertTokenRowAsync(OwnerEmail);
+        var password = NewPassword();
+
+        using var ok = await PostBootstrapAsync(Body(used, password));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var rows = db.AdminBootstrapTokens.ToList();
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, t => Assert.NotNull(t.ConsumedAt));
+        }
+
+        using var late = await PostBootstrapAsync(Body(other, NewPassword()));
+        AssertInvalidLink(late);
+        Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    [Fact]
+    public async Task TD_ADM_010_ResetLink_PresentedAtTheBootstrapRoute_IsRefused()
+    {
+        await ResetOwnerAsync();
+        var resetRaw = AdminAuthService.CreateOpaqueToken();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            db.AdminPasswordResetTokens.RemoveRange(db.AdminPasswordResetTokens);
+            db.AdminPasswordResetTokens.Add(AdminPasswordResetToken.Create(
+                OwnerEmail, AdminPasswordResetToken.HashRaw(resetRaw), Clock().UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await PostBootstrapAsync(Body(resetRaw, NewPassword()));
+
+        AssertInvalidLink(response);
+        Assert.False(await OwnerRowsExistAsync());
+        using var check = _factory.Services.CreateScope();
+        Assert.Null(check.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminPasswordResetTokens.Single().ConsumedAt);
+    }
+
+    [Fact]
+    public async Task TD_ADM_010_OwnerEmailNotConfigured_FailsClosedWithTheInvalidLinkAnswer()
+    {
+        await ResetOwnerAsync();
+        var token = await IssueLinkAsync();
+        var password = NewPassword();
+        using var unknown = await PostBootstrapAsync(Body(Guid.NewGuid().ToString("N"), password));
+        var unknownReply = await ReplyAsync(unknown);
+
+        var owner = _factory.Services.GetRequiredService<IOptions<CoreOwnerOptions>>().Value;
+        var configured = owner.Email;
+        owner.Email = "  ";
+        try
+        {
+            using var response = await PostBootstrapAsync(Body(token, password));
+            AssertInvalidLink(response);
+            Assert.Equal(unknownReply, await ReplyAsync(response));
+        }
+        finally
+        {
+            owner.Email = configured;
+        }
+
+        await AssertNothingWrittenAndLinkUnspentAsync();
+
+        using var ok = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
     [Fact]
@@ -763,7 +889,7 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         var token = await IssueLinkAsync();
         var passwords = new[] { NewPassword(), NewPassword() };
 
-        var responses = await Task.WhenAll(passwords.Select(p => PostBootstrapAsync(Body(token, p))));
+        var responses = await PostBootstrapTogetherAsync(Body(token, passwords[0]), Body(token, passwords[1]));
         try
         {
             await AssertExactlyOneWonAsync(responses, passwords);
@@ -790,8 +916,8 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         var tokens = new[] { await InsertTokenRowAsync(OwnerEmail), await InsertTokenRowAsync(OwnerEmail) };
         var passwords = new[] { NewPassword(), NewPassword() };
 
-        var responses = await Task.WhenAll(
-            Enumerable.Range(0, 2).Select(i => PostBootstrapAsync(Body(tokens[i], passwords[i]))));
+        var responses = await PostBootstrapTogetherAsync(
+            Body(tokens[0], passwords[0]), Body(tokens[1], passwords[1]));
         try
         {
             await AssertExactlyOneWonAsync(responses, passwords);
@@ -802,6 +928,13 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
             {
                 response.Dispose();
             }
+        }
+
+        // The winner burned the loser's link as well as its own.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.All(db.AdminBootstrapTokens.ToList(), t => Assert.NotNull(t.ConsumedAt));
         }
 
         foreach (var token in tokens)
@@ -1079,6 +1212,13 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
     private static string NewPassword()
         => $"{Guid.NewGuid():N}{Guid.NewGuid():N}"[..40];
 
+    /// <summary>
+    /// A strong run-time base plus characters NFKC rewrites: horizontal
+    /// ellipsis, no-break space and a full-width letter.
+    /// </summary>
+    private static string NewPasswordWithCompatibilityCharacters()
+        => NewPassword() + "\u2026\u00A0\uFF21";
+
     private static string TooShortPassword()
         => Guid.NewGuid().ToString("N")[..(AdminPasswordRules.MinCodePoints - 1)];
 
@@ -1217,6 +1357,36 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         Assert.Single(db.AdminAuditLog.ToList(), e => e.Action == AdminAuthEvents.BootstrapComplete);
     }
 
+    private async Task AssertNothingWrittenAndLinkUnspentAsync()
+    {
+        Assert.False(await OwnerRowsExistAsync());
+        Assert.DoesNotContain(await AuditAsync(), e => e.Action == AdminAuthEvents.BootstrapComplete);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        Assert.Null(db.AdminBootstrapTokens.Single().ConsumedAt);
+    }
+
+    /// <summary>Installs a SQLite trigger for the duration of the returned scope.</summary>
+    private async Task<IAsyncDisposable> WithTriggerAsync(string name, string definition)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var sql = string.Concat("CREATE TRIGGER \"", name, "\" ", definition);
+        await db.Database.ExecuteSqlRawAsync(sql);
+        return new TriggerScope(_factory, name);
+    }
+
+    private sealed class TriggerScope(IsolatedWebApplicationFactory factory, string name) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var sql = string.Concat("DROP TRIGGER \"", name, "\"");
+            await db.Database.ExecuteSqlRawAsync(sql);
+        }
+    }
+
     private async Task<AdminResetIpCounter?> ResetCounterAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -1293,16 +1463,53 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
     private Task<HttpResponseMessage> PostBootstrapAsync(object body, string path = AdminBootstrapEndpoints.ApiPath)
         => PostJsonAsync(path, body);
 
-    /// <summary>POST with the keyed anti-forgery token the bootstrap GET issues.</summary>
     private async Task<HttpResponseMessage> PostJsonAsync(string path, object body)
     {
+        using var request = await BuildPostAsync(path, body);
+        return await CreateClient().SendAsync(request);
+    }
+
+    /// <summary>POST with the keyed anti-forgery token the bootstrap GET issues.</summary>
+    private async Task<HttpRequestMessage> BuildPostAsync(string path, object body)
+    {
         var (token, cookie) = await IssueAntiForgeryAsync();
-        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
         request.Headers.Host = AdminHost;
         request.Headers.TryAddWithoutValidation("Cookie", cookie);
         request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, token);
         request.Content = JsonContent.Create(body);
-        return await CreateClient().SendAsync(request);
+        return request;
+    }
+
+    /// <summary>
+    /// Sends ready-built password-set requests at the same instant: every
+    /// sender waits at one barrier, so none can finish before the others start.
+    /// </summary>
+    private async Task<HttpResponseMessage[]> PostBootstrapTogetherAsync(params object[] bodies)
+    {
+        var requests = new List<HttpRequestMessage>();
+        foreach (var body in bodies)
+        {
+            requests.Add(await BuildPostAsync(AdminBootstrapEndpoints.ApiPath, body));
+        }
+
+        try
+        {
+            var client = CreateClient();
+            using var start = new Barrier(requests.Count);
+            return await Task.WhenAll(requests.Select(request => Task.Run(async () =>
+            {
+                Assert.True(start.SignalAndWait(TimeSpan.FromSeconds(30)), "senders did not line up");
+                return await client.SendAsync(request);
+            })));
+        }
+        finally
+        {
+            foreach (var request in requests)
+            {
+                request.Dispose();
+            }
+        }
     }
 
     private async Task<HttpResponseMessage> SendJsonWithoutAntiForgeryAsync(string path, object body)
