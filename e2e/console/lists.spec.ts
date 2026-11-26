@@ -304,6 +304,7 @@ test('Participants filter by status; the Artifacts owner picker asks for one pag
   await expect(page.locator('#participant-options [role="option"]')).toHaveText(['No matches']);
   await page.keyboard.press('Escape');
   await expect(page.locator('#participant-options')).toBeHidden();
+  await expectStyled(page);
   await expectNoSeriousAxeFindings(page, 'list_artifacts_owner-filter');
 });
 
@@ -463,6 +464,7 @@ test('Show deleted: off on every list, kept on reload; a deleted row shows Delet
   await expect(row).toHaveCount(1);
   await expect(row.locator('.badges .badge')).toHaveText(['Open', 'Deleted']);
   await expect(row.locator('.badges time')).toHaveText(/^Nov 19, 2026, \d{1,2}:\d{2} (AM|PM) ET$/);
+  await expectStyled(page);
   await expectNoSeriousAxeFindings(page, 'list_offers_show-deleted');
 
   await row.locator('a.id').first().click();
@@ -689,12 +691,22 @@ test('keyboard only: skip link, nav, search, a heading, a filter and its chip, a
   await page.getByRole('link', { name: 'Back to list', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(ORIGIN + '/admin/participants?offset=50');
+  // A page just loaded: until its stylesheet applies, a focused box wears the browser's own ring.
+  await expectStyled(page);
 
-  // The focus ring shows on the controls this walk used.
-  for (const locator of [page.locator('#q'), page.locator('#sort-name'), page.locator('#limit'), page.getByLabel('Show deleted', { exact: true })]) {
+  // The page's 2px ring shows on the controls this walk used, in every engine.
+  for (const [name, locator] of [
+    ['search', page.locator('#q')],
+    ['Name heading', page.locator('#sort-name')],
+    ['page size', page.locator('#limit')],
+    ['Show deleted', page.getByLabel('Show deleted', { exact: true })],
+  ] as const) {
     await locator.focus();
-    // WebKit draws its own ring (auto) on a box it focused itself; the others draw the page's.
-    expect(await locator.evaluate((el) => getComputedStyle(el).outlineStyle)).toEqual(engine() === 'webkit' ? expect.stringMatching(/^(solid|auto)$/) : 'solid');
+    await expect(locator).toBeFocused();
+    expect(await locator.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return `${style.outlineStyle} ${style.outlineWidth}`;
+    }), `the focus ring on ${name}`).toBe('solid 2px');
   }
 });
 
