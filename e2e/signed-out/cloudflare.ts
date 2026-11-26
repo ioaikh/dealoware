@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 /**
  * Stand-in for Cloudflare's Turnstile widget, shared by the signed-out admin
- * page suites (e2e/bootstrap, e2e/sign-in).
+ * page suites (e2e/bootstrap, e2e/sign-in, e2e/enrol).
  *
  * The browser never reaches Cloudflare: every request to
  * challenges.cloudflare.com is answered here with a stand-in widget, loaded

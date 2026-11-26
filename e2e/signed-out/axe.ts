@@ -4,7 +4,7 @@ import path from 'node:path';
 
 /**
  * The accessibility gate of the signed-out admin page suites (e2e/bootstrap,
- * e2e/sign-in).
+ * e2e/sign-in, e2e/enrol).
  *
  * It runs axe-core against the page as it stands (WCAG 2.0, 2.1 and 2.2,
  * levels A and AA) and fails on any serious or critical finding. The full

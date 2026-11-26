@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared runner for the browser tests of the signed-out admin pages. It is
-# sourced by a suite's run.sh (e2e/bootstrap/run.sh, e2e/sign-in/run.sh) and
-# does nothing by itself. Not wired into Admin UI CI.
+# sourced by a suite's run.sh (e2e/bootstrap/run.sh, e2e/sign-in/run.sh,
+# e2e/enrol/run.sh) and does nothing by itself. Not wired into Admin UI CI.
 #
 # The suite's run.sh sets these, then sources this file:
 #
