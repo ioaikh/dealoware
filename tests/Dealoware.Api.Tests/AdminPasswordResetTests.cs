@@ -1883,23 +1883,30 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     {
         await SeedCredentialAsync();
         var token = await RequestRawTokenAsync();
+        var hash = AdminPasswordResetToken.HashRaw(token);
 
-        var totpSw = System.Diagnostics.Stopwatch.StartNew();
+        // Timing must not reveal which factor failed. Wall-clock limits on a shared
+        // runner cannot prove that, so this checks the work instead: each wrong
+        // factor costs exactly one evaluation and the same failure bookkeeping
+        // (one failed attempt on the token and one on the account).
+        Rfc6238Totp.ResetEvaluationCount();
         using var totp = await PostConfirmAsync(new
         {
             token,
             newPassword = NextPassword,
             totp = "000000"
         });
-        totpSw.Stop();
-        var recoverySw = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(1, Rfc6238Totp.EvaluationCount);
+        Assert.Equal((1, 1), FailedAttempts(hash));
+
         using var recovery = await PostConfirmAsync(new
         {
             token,
             newPassword = NextPassword,
             recoveryCode = "not-a-real-recovery-code"
         });
-        recoverySw.Stop();
+        Assert.Equal(2, Rfc6238Totp.EvaluationCount);
+        Assert.Equal((2, 2), FailedAttempts(hash));
 
         await AssertWrongFactorUnauthorizedAsync(totp, NextPassword);
         await AssertWrongFactorUnauthorizedAsync(recovery, NextPassword);
@@ -1909,9 +1916,15 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Equal(totpBody, recoveryBody);
         Assert.Equal(totp.Content.Headers.ContentType?.ToString(), recovery.Content.Headers.ContentType?.ToString());
         Assert.Equal(totp.Headers.Location?.ToString(), recovery.Headers.Location?.ToString());
-        Assert.True(totpSw.Elapsed < TimeSpan.FromSeconds(2));
-        Assert.True(recoverySw.Elapsed < TimeSpan.FromSeconds(2));
-        Assert.True((totpSw.Elapsed - recoverySw.Elapsed).Duration() < TimeSpan.FromSeconds(1));
+    }
+
+    private (int Token, int Account) FailedAttempts(string tokenHash)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var token = db.AdminPasswordResetTokens.Single(t => t.TokenHash == tokenHash);
+        var account = db.AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        return (token.FailedCodeAttempts, account.FailedFactorAttempts);
     }
 
     [Fact]
