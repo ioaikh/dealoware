@@ -11,6 +11,8 @@ public static class AdminDeny
 
     public const string GenericBadRequest = "BadRequest";
     public const string GenericNotFound = "NotFound";
+    public const string GenericConflict = "Conflict";
+    public const string GenericPreconditionRequired = "PreconditionRequired";
 
     public static IResult UnauthorizedResult() =>
         Results.Json(new { error = GenericError }, statusCode: StatusCodes.Status401Unauthorized);
@@ -20,6 +22,29 @@ public static class AdminDeny
 
     public static IResult NotFoundResult() =>
         Results.Json(new { error = GenericNotFound }, statusCode: StatusCodes.Status404NotFound);
+
+    /// <summary>
+    /// A write prepared against a record that has changed since (Spec §5:
+    /// 409 with a safe message, no silent overwrite). Says nothing of what changed.
+    /// </summary>
+    public static IResult ConflictResult() =>
+        Results.Json(
+            new { error = GenericConflict, message = AdminEditCopy.Conflict },
+            statusCode: StatusCodes.Status409Conflict);
+
+    /// <summary>A write sent without the <c>If-Match</c> it must carry.</summary>
+    public static IResult PreconditionRequiredResult() =>
+        Results.Json(
+            new { error = GenericPreconditionRequired },
+            statusCode: StatusCodes.Status428PreconditionRequired);
+
+    /// <summary>
+    /// The generic 400, with a message for each field whose value breaks a
+    /// rule. Each message is a fixed sentence about the rule; no submitted or
+    /// stored value is echoed, and nothing says what state the record is in.
+    /// </summary>
+    public static IResult ValidationResult(IReadOnlyDictionary<string, string> fields) =>
+        Results.Json(new { error = GenericBadRequest, fields }, statusCode: StatusCodes.Status400BadRequest);
 
     public static Task WriteUnauthorizedAsync(HttpContext context)
     {

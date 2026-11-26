@@ -390,6 +390,7 @@ app.MapInboundConnectorEndpoints();
 app.MapAdminMeEndpoints();
 app.MapAdminSessionEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAdminEditEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();
