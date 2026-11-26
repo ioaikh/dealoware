@@ -505,12 +505,17 @@
   // Escape is handled here, not left to the browser: WebKit fires no "cancel" for an Escape typed
   // in the dialog's fields, so the dialog would stay open; and Chromium closes a modal dialog on a
   // second Escape even when its "cancel" was refused. While a request is out the dialog waits for
-  // the answer, so a refusal is never written into a closed dialog.
-  dialog.addEventListener("keydown", function (event) {
-    if (event.key !== "Escape" && event.key !== "Esc") return;
+  // the answer, so a refusal is never written into a closed dialog. It listens on the document:
+  // while a request is out the dialog's Continue is disabled, so the focus may have left the
+  // dialog for the body, and Escape then reaches no element in it. An Escape meant for anything
+  // else (another dialog in front, a field outside) is left alone.
+  document.addEventListener("keydown", function (event) {
+    if (!dialog.open || (event.key !== "Escape" && event.key !== "Esc")) return;
+    var target = event.target;
+    if (target !== dialog && !dialog.contains(target) && target !== document.body && target !== document.documentElement) return;
     event.preventDefault();
     if (!busy) dialog.close();
-  });
+  }, true);
   // Any other close the browser asks for: the same rule.
   dialog.addEventListener("cancel", function (event) {
     if (busy) event.preventDefault();
