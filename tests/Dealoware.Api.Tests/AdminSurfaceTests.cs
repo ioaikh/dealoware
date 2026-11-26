@@ -129,7 +129,9 @@ public class AdminSurfaceTests
     [Fact]
     public async Task TdAdm003_ExpiredAbsoluteSession_DeniesAdminMe()
     {
-        var id = await SeedSessionAsync(createdAt: DateTimeOffset.UtcNow.AddHours(-9));
+        // Measured from the host's test clock, as the idle test below is, not from the machine's.
+        var now = _factory.Services.GetRequiredService<IAdminClock>().UtcNow;
+        var id = await SeedSessionAsync(createdAt: now.AddHours(-9));
         var client = CreateClient();
         using var response = await client.SendAsync(AdminGet("/admin/api/me", AdminHost, id));
         await AssertGenericUnauthorized(response);
@@ -138,7 +140,11 @@ public class AdminSurfaceTests
     [Fact]
     public async Task TdAdm003_ExpiredIdleSession_DeniesAdminMe()
     {
-        var id = await SeedSessionAsync(createdAt: DateTimeOffset.UtcNow.AddMinutes(-31));
+        // 31 minutes before what the gate takes for "now". That is the host's test clock, which
+        // stands still between the tests that set it: measured from the machine's clock instead,
+        // the session stopped being idle-expired once this host had been up for over a minute.
+        var now = _factory.Services.GetRequiredService<IAdminClock>().UtcNow;
+        var id = await SeedSessionAsync(createdAt: now.AddMinutes(-31));
         var client = CreateClient();
         using var response = await client.SendAsync(AdminGet("/admin/api/me", AdminHost, id));
         await AssertGenericUnauthorized(response);

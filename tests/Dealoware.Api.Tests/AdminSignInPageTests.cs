@@ -514,12 +514,14 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             page,
             StringComparison.Ordinal);
 
-        // The first script reads the flag, compares it with two constants and removes it. Nothing else.
+        // The first script reads the flag, compares it with four constants and removes it. Nothing else.
         var arrival = File.ReadAllText(AssetPath("admin-arrival.js"));
         Assert.Contains("var AGAIN = \"#again\";", arrival, StringComparison.Ordinal);
         Assert.Contains("var FRESH = \"#fresh\";", arrival, StringComparison.Ordinal);
+        Assert.Contains("var ENDED = \"#ended\";", arrival, StringComparison.Ordinal);
+        Assert.Contains("var CHANGED = \"#changed\";", arrival, StringComparison.Ordinal);
         Assert.Contains(
-            "var flag = location.hash === AGAIN ? \"again\" : location.hash === FRESH ? \"fresh\" : \"\";",
+            "var flag = hash === AGAIN ? \"again\" : hash === FRESH ? \"fresh\" : hash === ENDED ? \"ended\" : hash === CHANGED ? \"changed\" : \"\";",
             arrival,
             StringComparison.Ordinal);
         Assert.Contains(

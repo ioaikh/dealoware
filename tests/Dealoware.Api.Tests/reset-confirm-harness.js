@@ -100,7 +100,7 @@ if (!only) {
 
 if (!only) {
   const headingRe = new RegExp(
-    `<h1 id="reset-heading">${headingText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\\/h1>`
+    `<h1 id="page-heading">${headingText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<\\/h1>`
   );
   assert.match(htmlSource, headingRe);
   assert.match(htmlSource, /id="reset-status" role="status" hidden/);

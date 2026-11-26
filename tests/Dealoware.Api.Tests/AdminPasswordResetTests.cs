@@ -258,7 +258,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.DoesNotContain("history.replaceState", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("window.__dwCsrf", queryBody, StringComparison.Ordinal);
         Assert.Contains($"<title>{AdminPasswordResetCopy.ConfirmPageTitle}</title>", queryBody);
-        Assert.Contains($"<h1 id=\"reset-heading\">{AdminPasswordResetCopy.ConfirmHeading}</h1>", queryBody);
+        Assert.Contains($"<h1 id=\"page-heading\">{AdminPasswordResetCopy.ConfirmHeading}</h1>", queryBody);
+        Assert.Single(Regex.Matches(queryBody, "<h1[ >]"));
         Assert.Contains(AdminPasswordResetCopy.ConfirmNoscript, queryBody);
         Assert.Contains("id=\"reset-status\" role=\"status\" hidden", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("role=\"alert\"", queryBody, StringComparison.Ordinal);
@@ -306,10 +307,7 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     {
         var html = File.ReadAllText(Path.Combine(
             RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
-        Assert.Contains(
-            "<h1 id=\\\"reset-heading\\\">{AdminPasswordResetCopy.ConfirmHeading}</h1>",
-            html,
-            StringComparison.Ordinal);
+        Assert.Contains("Heading = AdminPasswordResetCopy.ConfirmHeading,", html, StringComparison.Ordinal);
         Assert.Contains(
             "<p id=\\\"reset-status\\\" role=\\\"status\\\" hidden>",
             html,
@@ -451,19 +449,24 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var alertIdx = html.IndexOf("id=\\\"reset-alert\\\"", StringComparison.Ordinal);
         var retryIdx = html.IndexOf("id=\\\"reset-retry\\\"", StringComparison.Ordinal);
         var statusIdx = html.IndexOf("id=\\\"reset-status\\\"", StringComparison.Ordinal);
-        var mainIdx = html.IndexOf("<main id=\\\"reset-main\\\"", StringComparison.Ordinal);
-        var headingIdx = html.IndexOf("id=\\\"reset-heading\\\"", StringComparison.Ordinal);
-        Assert.True(mainIdx >= 0 && headingIdx > mainIdx, "visible h1 sits inside main (UXR-A36)");
-        Assert.True(statusIdx > headingIdx, "h1 remains in markup for states 1 and 4");
-        Assert.True(mainIdx >= 0 && statusIdx > mainIdx, "reset-status must sit inside main");
+        // The shared shell renders <main> and the one h1 before this block (asserted on the
+        // served page in TD_ADM_031_ConfirmGet_IgnoresQueryToken_SameForm_NoStore). The block that
+        // carries aria-busy while the link is checked holds the status, the message and the button.
+        var mainIdx = html.IndexOf("<div id=\\\"reset-main\\\" aria-busy=\\\"true\\\">", StringComparison.Ordinal);
+        Assert.Contains("AdminSignedOutPage.Render(http, antiforgery", html, StringComparison.Ordinal);
+        Assert.True(mainIdx >= 0 && statusIdx > mainIdx, "reset-status must sit inside the busy block");
         Assert.True(alertIdx > statusIdx, "reset-alert follows reset-status");
         Assert.True(retryIdx > alertIdx, "reset-alert comes before reset-retry in DOM/reading order (v1.14 L248 Rule C)");
         Assert.Contains("tabindex=\\\"-1\\\"", html, StringComparison.Ordinal);
-        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
-        Assert.Contains("#reset-retry:focus", html, StringComparison.Ordinal);
-        Assert.Contains("outline:2px solid currentColor", html, StringComparison.Ordinal);
-        Assert.Contains("outline-offset:2px", html, StringComparison.Ordinal);
-        Assert.Contains("style-src 'nonce-", html, StringComparison.Ordinal);
+        // The focus ring of the message and of "Try again" now comes from the shared stylesheet,
+        // which the shell links with the page nonce. The page has no style of its own.
+        Assert.DoesNotContain("<style", html, StringComparison.OrdinalIgnoreCase);
+        var css = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin", "auth", "signed-out.css")).Replace("\r\n", "\n");
+        Assert.Contains(
+            "input:focus,\nbutton:focus,\na:focus,\n[tabindex=\"-1\"]:focus {\n  outline: 2px solid var(--focus);\n  outline-offset: 2px;\n}",
+            css,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("aria-live", html, StringComparison.Ordinal);
         Assert.DoesNotContain("role=\\\"alert\\\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("overflow:hidden", html, StringComparison.OrdinalIgnoreCase);
@@ -715,10 +718,17 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains($"<title>{AdminPasswordResetCopy.LinkExpiredPageTitle}</title>", html, StringComparison.Ordinal);
         Assert.Contains(
-            $"<h1 id=\"link-expired-heading\" tabindex=\"-1\" autofocus>{AdminPasswordResetCopy.LinkExpiredHeading}</h1>",
+            $"<h1 id=\"page-heading\">{AdminPasswordResetCopy.LinkExpiredHeading}</h1>",
             html,
             StringComparison.Ordinal);
-        Assert.Contains("document.getElementById(\"link-expired-heading\").focus()", html, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(html, "<h1[ >]"));
+        // The heading still takes the focus: by the one script of this page, a static file.
+        var script = Assert.Single(Regex.Matches(html, "<script[^>]*>"));
+        Assert.StartsWith(
+            $"<script src=\"{AdminPasswordResetPages.HeadingScriptPath}\" nonce=\"",
+            script.Value,
+            StringComparison.Ordinal);
+        Assert.Empty(response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : []);
         Assert.Contains(
             $"<p id=\"link-expired-body\">{(setup ? AdminPasswordResetCopy.LinkExpiredSetupBody : AdminPasswordResetCopy.LinkExpiredResetBody)}</p>",
             html,
@@ -770,7 +780,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var client = _factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
         request.Headers.Host = "core.dealoware.com";
-        request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+        request.Content = JsonContent.Create(
+            new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
@@ -813,7 +824,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         bad.Headers.Host = AdminHost;
         bad.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
         bad.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, "not-the-cookie");
-        bad.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+        bad.Content = JsonContent.Create(
+            new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
         using var invalid = await client.SendAsync(bad);
 
         await AssertGenericForbiddenAsync(missing);
@@ -1088,7 +1100,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             request.Headers.Host = AdminHost;
             request.Headers.TryAddWithoutValidation("Cookie", issued.CookieHeader);
             request.Headers.TryAddWithoutValidation(AdminAntiForgeryCookie.HeaderName, forged);
-            request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+            request.Content = JsonContent.Create(
+            new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
             using var response = await client.SendAsync(request);
             await AssertGenericForbiddenAsync(response);
         }
@@ -2103,6 +2116,108 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Empty(Mail().Sent);
     }
 
+    [Theory]
+    [InlineData(AdminSignedOutExemptions.ApiReset)]
+    [InlineData(AdminSignedOutExemptions.Reset)]
+    public async Task TD_ADM_040_Request_BadTurnstile_IsRefusedBeforeTheEmail_CountsNothing_AuditsCaptchaFailed(string path)
+    {
+        await SeedCredentialAsync();
+        var auditBefore = await AuditIdsAsync();
+        Mail().Clear();
+        var fake = _factory.Services.GetRequiredService<FakeTurnstileVerifier>();
+        const string badTurnstile = "expired-turnstile-response";
+
+        // Missing, not valid, and a verifier that cannot be reached: one answer, for the owner and for anyone.
+        using var missing = await PostRequestBodyAsync(new { email = CoreOwnerEmail }, path);
+        using var invalid = await PostRequestBodyAsync(new { email = CoreOwnerEmail, turnstileToken = badTurnstile }, path);
+        using var unknown = await PostRequestBodyAsync(new { email = "nobody@example.test", turnstileToken = badTurnstile }, path);
+        HttpResponseMessage unavailable;
+        fake.Unavailable = true;
+        try
+        {
+            unavailable = await PostRequestBodyAsync(
+                new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken },
+                path);
+        }
+        finally
+        {
+            fake.Unavailable = false;
+        }
+
+        // The sign-in route's own answer to a failed security check.
+        var expected = $$"""{"error":"{{AdminAuthCopy.VerificationFailed}}"}""";
+        foreach (var response in new[] { missing, invalid, unknown, unavailable })
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal(expected, await response.Content.ReadAsStringAsync());
+            Assert.Null(response.Headers.Location);
+            Assert.False(response.Headers.Contains("Retry-After"));
+        }
+
+        unavailable.Dispose();
+
+        // More bad answers than the address's whole budget never throttle it.
+        for (var i = 0; i < AdminResetIpCounter.Threshold + 5; i++)
+        {
+            using var flood = await PostRequestBodyAsync(new { email = CoreOwnerEmail, turnstileToken = badTurnstile }, path);
+            Assert.Equal(HttpStatusCode.Unauthorized, flood.StatusCode);
+        }
+
+        // Nothing was counted, stored or sent.
+        Assert.Null(await ResetCounterAsync());
+        Assert.Empty(Mail().Sent);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Empty(db.AdminPasswordResetTokens.ToList());
+            var audit = db.AdminAuditLog.AsNoTracking().ToList().Where(e => !auditBefore.Contains(e.Id)).ToList();
+            Assert.Equal(4 + AdminResetIpCounter.Threshold + 5, audit.Count);
+            Assert.All(audit, e =>
+            {
+                Assert.Equal(AdminPasswordResetEndpoints.RequestFailedEvent, e.Action);
+                Assert.Equal(AdminAuthReason.CaptchaFailed, e.ReasonClass);
+                Assert.Equal("anonymous", e.ActorEmail);
+                Assert.False(string.IsNullOrWhiteSpace(e.IpHmac));
+                Assert.DoesNotContain(badTurnstile, e.IpHmac + e.ReasonClass + e.BeforeSnapshot + e.AfterSnapshot);
+            });
+        }
+
+        // A valid answer goes on: the neutral reply, one slot taken, one mail for the owner.
+        using var ok = await PostRequestBodyAsync(
+            new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken },
+            path);
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Contains(AdminPasswordResetCopy.RequestAccepted, await ok.Content.ReadAsStringAsync());
+        Assert.Equal(1, (await ResetCounterAsync())!.FailureCount);
+        await Mail().WaitForSentAsync(1);
+    }
+
+    [Fact]
+    public async Task TD_ADM_040_Request_LockedIp_GetsThe429First_WhateverTheTurnstileAnswer()
+    {
+        await SeedCredentialAsync();
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            using var taken = await PostRequestAsync(CoreOwnerEmail);
+            Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+        }
+
+        var auditBefore = await AuditIdsAsync();
+        Mail().Clear();
+
+        // The throttle still answers first, as it did before the security check was added.
+        using var bad = await PostRequestBodyAsync(new { email = CoreOwnerEmail, turnstileToken = "not-valid" });
+        using var none = await PostRequestBodyAsync(new { email = CoreOwnerEmail });
+        using var good = await PostRequestAsync(CoreOwnerEmail);
+        var body = await AssertRequestThrottledAsync(bad);
+        Assert.Equal(body, await AssertRequestThrottledAsync(none));
+        Assert.Equal(body, await AssertRequestThrottledAsync(good));
+
+        Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+        Assert.Empty(Mail().Sent);
+        Assert.Equal(auditBefore, await AuditIdsAsync());
+    }
+
     [Fact]
     public async Task TD_ADM_030_SC6_R3_ParallelBurst_AtMostTwentyPassOrIssueTokens()
     {
@@ -2507,7 +2622,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             request.Headers.TryAddWithoutValidation("Referer", referer);
         }
 
-        request.Content = JsonContent.Create(new { email = CoreOwnerEmail });
+        request.Content = JsonContent.Create(
+            new { email = CoreOwnerEmail, turnstileToken = FakeTurnstileVerifier.ValidToken });
         return await client.SendAsync(request);
     }
 
@@ -2672,8 +2788,30 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminPasswordResetEndpoints.RequestApiPath);
         request.Headers.Host = AdminHost;
         AttachAntiForgery(request, af);
-        request.Content = JsonContent.Create(new { email });
+        request.Content = JsonContent.Create(new { email, turnstileToken = FakeTurnstileVerifier.ValidToken });
         return await client.SendAsync(request);
+    }
+
+    /// <summary>A reset request with exactly this body, to the JSON route or its page-path twin.</summary>
+    private async Task<HttpResponseMessage> PostRequestBodyAsync(
+        object body,
+        string path = AdminPasswordResetEndpoints.RequestApiPath)
+    {
+        var af = await IssueAntiForgeryAsync();
+        var client = CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Host = AdminHost;
+        AttachAntiForgery(request, af);
+        request.Content = JsonContent.Create(body);
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>The audit rows there are now, so a test can tell which ones it added. The log is append-only.</summary>
+    private async Task<HashSet<Guid>> AuditIdsAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        return (await db.AdminAuditLog.AsNoTracking().Select(e => e.Id).ToListAsync()).ToHashSet();
     }
 
     private async Task<HttpResponseMessage> PostConfirmAsync(object body)
@@ -2807,8 +2945,11 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Contains($"script-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
         Assert.Contains($"style-src 'nonce-{nonce}'", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("style-src 'self'", csp, StringComparison.Ordinal);
-        Assert.Contains("#reset-alert:focus", html, StringComparison.Ordinal);
-        Assert.Contains("#reset-retry:focus", html, StringComparison.Ordinal);
+        Assert.Contains(
+            $"<link rel=\"stylesheet\" href=\"{AdminSignedOutPage.StylesheetPath}\" nonce=\"{nonce}\">",
+            html,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("<style", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("*", csp, StringComparison.Ordinal);

@@ -35,6 +35,12 @@ public static class AdminSignInCopy
 
     public const string ForgotPassword = "Forgot your password?";
 
+    /// <summary>
+    /// S-A11: shown above the form when the browser was sent here because its
+    /// session ended. It gives no reason and no duration.
+    /// </summary>
+    public const string SessionEnded = "Your session has ended. Sign in again to continue.";
+
     // ---- S-A2: authenticator code ----
 
     public const string CodePageTitle = "Enter code · Dealoware admin";

@@ -30,6 +30,10 @@
  *
  * When the browser was sent back here because no pending sign-in was left
  * (see admin-arrival.js), the page opens with the server's sign-in sentence.
+ * When it was sent here because a session ended, or because a reset has just
+ * changed the password, the page opens with that one sentence in the status
+ * line above the form. The sentences are in the page; the address carries
+ * only which one.
  */
 (function () {
   "use strict";
@@ -42,6 +46,7 @@
   var panel = document.getElementById("sign-in-panel");
   var form = document.getElementById("sign-in-form");
   var alertEl = document.getElementById("form-alert");
+  var statusEl = document.getElementById("form-status");
   if (!panel || !form || !alertEl) {
     return;
   }
@@ -93,6 +98,18 @@
   function hideAlert() {
     AdminDom.setText(alertEl, "");
     AdminDom.show(alertEl, false);
+  }
+
+  /** The status line: shown empty first, then filled, so that it is announced. */
+  function showStatus(message) {
+    if (!statusEl || !message) return;
+    AdminDom.show(statusEl, true);
+    AdminDom.setText(statusEl, message);
+  }
+
+  function hideStatus() {
+    AdminDom.setText(statusEl, "");
+    AdminDom.show(statusEl, false);
   }
 
   function retrySentence() {
@@ -162,6 +179,7 @@
     event.preventDefault();
     if (busy) return;
     hideAlert();
+    hideStatus();
     var emailMessage = checkEmail();
     var passwordMessage = checkPassword();
     if (emailMessage) {
@@ -199,6 +217,9 @@
   var arrival = AdminArrival.flag();
   if (arrival === "again") showAlert(form.getAttribute("data-sent-back") || "");
   else if (arrival === "fresh") showAlert(retrySentence());
-  else if (email.value) password.focus();
-  else email.focus();
+  else {
+    if (arrival === "ended" || arrival === "changed") showStatus(statusEl && statusEl.getAttribute("data-" + arrival));
+    if (email.value) password.focus();
+    else email.focus();
+  }
 })();
