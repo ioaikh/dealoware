@@ -254,7 +254,7 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
     }
 
     [Fact]
-    public async Task Markup_CarriesNoLinkTokenAndNoSecret()
+    public async Task Markup_CarriesNoLinkTokenAndNoPrivateKey()
     {
         var linkToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
 
@@ -521,7 +521,7 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
     [InlineData("/admin/auth/admin-password.js", "text/javascript")]
     [InlineData("/admin/auth/admin-turnstile.js", "text/javascript")]
     [InlineData("/admin/auth/bootstrap.js", "text/javascript")]
-    public async Task PageAssets_AreServedSignedOut_WithNoSecretsAndNoInlineCopy(string path, string mediaType)
+    public async Task PageAssets_AreServedSignedOut_WithNothingPrivateAndNoInlineCopy(string path, string mediaType)
     {
         using var response = await GetAsync(_configured, path);
 

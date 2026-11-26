@@ -128,7 +128,7 @@ public class TurnstileOptionsValidatorTests
     }
 
     [Fact]
-    public async Task Host_Production_NoSiteKey_StartsAndWarnsOnce_WithoutTheSecret()
+    public async Task Host_Production_NoSiteKey_StartsAndWarnsOnce_AndLogsNoPrivateKey()
     {
         var secret = "test-secret-" + Guid.NewGuid().ToString("N");
         using var factory = new TurnstileConfigWebApplicationFactory("Production", builder =>
