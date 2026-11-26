@@ -257,6 +257,8 @@ test('Stats at 320 px: nothing scrolls sideways, every nav entry and Sign out st
 });
 
 test('every nav entry opens its page in one step, with its title, one h1 and aria-current on it alone', async ({ page }) => {
+  // Seven pages, each scanned by axe: more than the default 30 s in the slower engines.
+  test.setTimeout(90_000);
   await signIn(page);
   for (const entry of NAV) {
     await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true }).click();
