@@ -114,6 +114,21 @@ public sealed class AdminSecuritySettingsStore
     }
 
     /// <summary>
+    /// Takes the account row lock (PostgreSQL holds it to the end of the
+    /// caller's transaction) without changing anything. Every S-A12
+    /// transaction takes it first, before any recovery-code row, session row
+    /// or step-up row, so two of them always wait on the same row in the same
+    /// order and never deadlock.
+    /// </summary>
+    public async Task<bool> LockAccountRowAsync(Guid accountId, CancellationToken ct)
+    {
+        var rows = await _db.AdminCoreOwnerAccounts
+            .Where(a => a.Id == accountId)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.RecoveryCodesIssued, a => a.RecoveryCodesIssued), ct);
+        return rows == 1;
+    }
+
+    /// <summary>
     /// Replaces the whole recovery-code set, in the caller's transaction. The
     /// account row is written first, which holds its row lock to the end of
     /// the transaction on PostgreSQL: a second replacement waits, then deletes

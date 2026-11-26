@@ -570,6 +570,59 @@ public class AdminSecuritySettingsTests : IClassFixture<SecuritySettingsWebAppli
         }
     }
 
+    // Lock order: a password change spending a recovery code and a new set of codes, at the same moment.
+    // Both take the account row first, so on PostgreSQL neither deadlocks (40P01 would be a 500), and
+    // exactly one of them wins whichever runs first; the state is the winner's alone.
+    [Fact]
+    public async Task Sa12PasswordWithRecoveryCode_AndRegenerate_AtOnce_OneWins_NoDeadlock()
+    {
+        for (var round = 0; round < 5; round++)
+        {
+            await SeedAsync();
+            var a = await NewSessionAsync();
+            var b = await NewSessionAsync();
+            await StepUpAsync(a);
+            var recovery = _recoveryCodes[round];
+
+            var responses = await Task.WhenAll(
+                PostAsync(AdminSecuritySettingsEndpoints.RecoveryCodesPath, new { }, a),
+                PostAsync(
+                    AdminSecuritySettingsEndpoints.PasswordPath,
+                    new { currentPassword = CurrentPassword, newPassword = NextPassword, recoveryCode = recovery },
+                    b));
+            try
+            {
+                var (regenerate, password) = (responses[0], responses[1]);
+                Assert.DoesNotContain(responses, r => r.StatusCode == HttpStatusCode.InternalServerError);
+                Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+
+                var hasher = _factory.Services.GetRequiredService<AdminRecoveryCodeHasher>();
+                var stored = await CodeHashesAsync();
+                var passwordHash = (await AccountAsync()).PasswordHash!;
+                if (regenerate.StatusCode == HttpStatusCode.OK)
+                {
+                    var codes = ReadCodes(await regenerate.Content.ReadAsStringAsync());
+                    Assert.Equal(AdminRecoveryCodes.Count, stored.Count);
+                    Assert.All(codes, item => Assert.Contains(hasher.Hash(item), stored));
+                    Assert.True(AdminPasswordHasher.Verify(CurrentPassword, passwordHash));
+                }
+                else
+                {
+                    Assert.True(AdminPasswordHasher.Verify(NextPassword, passwordHash));
+                    Assert.Equal(AdminRecoveryCodes.Count - 1, stored.Count);
+                    Assert.DoesNotContain(hasher.Hash(recovery), stored);
+                    Assert.All(_recoveryCodes.Where(c => c != recovery), item => Assert.Contains(hasher.Hash(item), stored));
+                    Assert.False(await SessionExistsAsync(a));
+                }
+            }
+            finally
+            {
+                foreach (var response in responses)
+                    response.Dispose();
+            }
+        }
+    }
+
     // TD-ADM-UI-auth-18 step 2: "Create new codes" with the password and a recovery code sent with it.
     [Fact]
     public async Task Sa12Regenerate_ProofSentWithTheAction_RecoveryCode_Works()
@@ -948,12 +1001,19 @@ public class AdminSecuritySettingsTests : IClassFixture<SecuritySettingsWebAppli
         var seeded = new List<AdminAuditEntry>();
         for (var i = 0; i < 24; i++)
         {
-            var action = i == 20 ? AdminAuthEvents.SecondFactorFailed : AdminAuditActions.LoginSuccess;
+            var (action, reason) = i switch
+            {
+                20 => (AdminAuthEvents.SecondFactorFailed, AdminAuthReason.Bad2Fa),
+                21 => (AdminAuditActions.StepUpFailed, AdminAuthReason.Bad2Fa),
+                22 => (AdminAuditActions.PasswordChangeFailed, AdminAuthReason.Bad2Fa),
+                23 => (AdminAuditActions.StepUpFailed, AdminAuthReason.BadPassword),
+                _ => (AdminAuditActions.LoginSuccess, (string?)null)
+            };
             seeded.Add(AdminAuditEntry.CreateAuthEvent(
                 action,
                 OwnerEmail,
                 ipHmac,
-                action == AdminAuthEvents.SecondFactorFailed ? AdminAuthReason.Bad2Fa : null,
+                reason,
                 now.AddDays(1).AddMinutes(i)));
         }
 
@@ -973,7 +1033,24 @@ public class AdminSecuritySettingsTests : IClassFixture<SecuritySettingsWebAppli
             Assert.Equal(times.OrderByDescending(t => t).ToList(), times);
             Assert.Equal(now.AddDays(1).AddMinutes(23), times[0]);
             Assert.All(items, i => Assert.Equal(network, i.GetProperty("network").GetString()));
-            Assert.Single(items, i => i.GetProperty("event").GetString() == AdminAuthEvents.SecondFactorFailed);
+            var secondFactor = Assert.Single(items, i => i.GetProperty("event").GetString() == AdminAuthEvents.SecondFactorFailed);
+            Assert.Equal(AdminAuthReason.Bad2Fa, secondFactor.GetProperty("reasonClass").GetString());
+
+            // A failed S-A12 step-up shows no reason: the feed must not tell whether a guessed password was right.
+            var stepUpFailures = items
+                .Where(i => i.GetProperty("event").GetString() is AdminAuditActions.StepUpFailed or AdminAuditActions.PasswordChangeFailed)
+                .ToList();
+            Assert.Equal(3, stepUpFailures.Count);
+            Assert.All(stepUpFailures, i => Assert.Equal(JsonValueKind.Null, i.GetProperty("reasonClass").ValueKind));
+            Assert.DoesNotContain(AdminAuthReason.BadPassword, text, StringComparison.Ordinal);
+
+            // The audit log keeps it.
+            var logged = (await NewAuditAsync([]))
+                .Where(e => e.IpHmac == ipHmac && e.Action is AdminAuditActions.StepUpFailed or AdminAuditActions.PasswordChangeFailed)
+                .ToList();
+            Assert.Equal(3, logged.Count);
+            Assert.Contains(logged, e => e.ReasonClass == AdminAuthReason.BadPassword);
+            Assert.All(logged, e => Assert.NotNull(e.ReasonClass));
             Assert.DoesNotContain("203.0.113.", text, StringComparison.Ordinal);
             Assert.DoesNotContain(ipHmac, text, StringComparison.Ordinal);
             Assert.DoesNotContain(actor, text, StringComparison.Ordinal);

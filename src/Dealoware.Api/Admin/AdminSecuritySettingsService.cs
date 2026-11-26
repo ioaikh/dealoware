@@ -150,12 +150,24 @@ public sealed class AdminSecuritySettingsService
         {
             timestamp = e.Timestamp,
             @event = e.Action,
-            reasonClass = e.ReasonClass,
+            reasonClass = FeedReasonClass(e),
             network = NetworkPrefix(e.IpHmac)
         }).ToArray();
 
         return Results.Json(new { items, @lock = await LockNoticeAsync(owner, ct) });
     }
+
+    /// <summary>
+    /// The S-A12 step-up failures carry no reason in the feed: their audit
+    /// rows say whether the password or the code was wrong, and the feed is
+    /// read with the same session that sent the guess, so showing it would
+    /// tell a holder of a stolen session cookie that a guessed password was
+    /// right. The audit log keeps the reason.
+    /// </summary>
+    private static string? FeedReasonClass(AdminAuditEntry entry)
+        => entry.Action is AdminAuditActions.StepUpFailed or AdminAuditActions.PasswordChangeFailed
+            ? null
+            : entry.ReasonClass;
 
     private async Task<object?> LockNoticeAsync(Owner owner, CancellationToken ct)
     {
@@ -344,10 +356,11 @@ public sealed class AdminSecuritySettingsService
 
         await using (var tx = await _db.Database.BeginTransactionAsync(ct))
         {
-            // Account row first (its lock orders two replacements), then the
-            // claim on this step-up: one set per step-up, so a repeated submit
-            // issues nothing.
-            if (!await _store.ReplaceRecoveryCodesAsync(owner.Account.Id, hashed, ct)
+            // Lock order, as everywhere here: account row, recovery codes,
+            // sessions and step-ups. The claim on this step-up comes last: one
+            // set per step-up, so a repeated submit issues nothing.
+            if (!await _store.LockAccountRowAsync(owner.Account.Id, ct)
+                || !await _store.ReplaceRecoveryCodesAsync(owner.Account.Id, hashed, ct)
                 || !await _store.TryClaimCodesIssueAsync(owner.Session.Id, owner.Now, ct))
             {
                 await tx.RollbackAsync(ct);
@@ -472,9 +485,11 @@ public sealed class AdminSecuritySettingsService
         var (plain, hashed) = NewRecoveryCodes(owner);
         await using (var tx = await _db.Database.BeginTransactionAsync(ct))
         {
-            // Account row first, then this session's step-up: the key is
-            // taken once, so a repeated confirm changes nothing.
-            if (!await _store.TryReplaceAuthenticatorAsync(owner.Account.Id, pendingCipher, step, owner.Now, ct)
+            // Lock order, as everywhere here: account row, recovery codes,
+            // then this session's step-up. The key is taken once, so a
+            // repeated confirm changes nothing.
+            if (!await _store.LockAccountRowAsync(owner.Account.Id, ct)
+                || !await _store.TryReplaceAuthenticatorAsync(owner.Account.Id, pendingCipher, step, owner.Now, ct)
                 || !await _store.ReplaceRecoveryCodesAsync(owner.Account.Id, hashed, ct)
                 || !await _store.TryTakePendingKeyAsync(owner.Session.Id, pendingCipher, owner.Now, ct))
             {
@@ -640,8 +655,17 @@ public sealed class AdminSecuritySettingsService
     }
 
     /// <summary>Burns the recovery code, or records the accepted step, in the caller's transaction.</summary>
+    /// <remarks>
+    /// The account row is locked first, as in every S-A12 transaction
+    /// (<see cref="AdminSecuritySettingsStore.LockAccountRowAsync"/>): a burn
+    /// that took the recovery-code row before the account row could deadlock
+    /// with a replacement of the set, which takes them the other way round.
+    /// </remarks>
     private async Task<bool> CommitFactorAsync(Owner owner, AdminSecondFactorVerifyResult factor, CancellationToken ct)
     {
+        if (!await _store.LockAccountRowAsync(owner.Account.Id, ct))
+            return false;
+
         if (factor.UsedRecoveryCode)
         {
             return !string.IsNullOrEmpty(factor.RecoveryCodeHash)
