@@ -307,6 +307,46 @@ test('UI-auth-14 and TD-ADM-176: left open, the dialog keeps nothing alive; at t
   await expect(page).toHaveURL(ORIGIN + '/admin/negotiations');
 });
 
+test('a status reply sent before Stay signed in but arriving after it is dropped: "Still there?" does not reopen', async ({ page }) => {
+  await signInAndOpen(page);
+  ageSession({ lastActiveAgo: 28 * MINUTE + SLACK });
+  await page.clock.fastForward('28:00');
+  const dialog = page.getByRole('dialog', { name: IDLE_TITLE });
+  await expectModal(dialog);
+
+  // The next status read is answered by the server now (the old ends: under 2 minutes
+  // left), but its reply is held back until Stay signed in has been answered.
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  let held!: () => void;
+  const heldBack = new Promise<void>((resolve) => { held = resolve; });
+  await page.route((url) => url.pathname === STATUS, async (route) => {
+    const reply = await route.fetch();
+    held();
+    await released;
+    await route.fulfill({ response: reply });
+  }, { times: 1 });
+  // The page asks, as it does when it is shown again.
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await heldBack;
+
+  const stayAnswered = page.waitForResponse((r) => new URL(r.url()).pathname === STAY);
+  await dialog.getByRole('button', { name: 'Stay signed in', exact: true }).click();
+  expect((await stayAnswered).status()).toBe(200);
+  await expect(page.locator('dialog')).toHaveCount(0);
+
+  // Now the old reply arrives. It must not overwrite what Stay signed in told the page.
+  const lateFinished = page.waitForEvent('requestfinished', (r) => isStatusRead(r));
+  release();
+  await lateFinished;
+  await page.waitForTimeout(500);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  // And no dialog until the next 28 minutes.
+  await page.clock.fastForward('05:00');
+  await expect(page.locator('dialog')).toHaveCount(0);
+  expect((await serverTimes(page)).idleSecondsLeft).toBeGreaterThan(29 * MINUTE);
+});
+
 test('Stay signed in with no answer: the retry sentence in the dialog, the focus back on Stay signed in, and a second press works', async ({ page }) => {
   await signInAndOpen(page);
   ageSession({ lastActiveAgo: 28 * MINUTE + SLACK });

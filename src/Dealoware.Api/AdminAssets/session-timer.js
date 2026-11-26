@@ -26,8 +26,10 @@
  *                             sends nothing.
  *   "Your session is ending"  the 8-hour end is within those 2 minutes.
  *                             role="alertdialog", one "OK"; Escape acts as
- *                             OK. Nothing can extend the session, and the
- *                             dialog does not come back once closed.
+ *                             OK. Nothing can extend the session. Once
+ *                             closed, the dialog does not come back in this
+ *                             page; a page opened later in those last 2
+ *                             minutes shows it again.
  *
  * Either dialog is modal: focus moves into it, Tab stays in it, and on
  * closing, focus goes back to where it was. An open dialog sends nothing by
@@ -39,6 +41,9 @@
  * "session ended" note, keeping the page for after sign-in. Still signed in
  * (the owner was active in another tab) -> the dialog closes and the count
  * starts again. No clear answer -> it asks again 30 seconds later.
+ *
+ * Replies can arrive out of order. A status reply to a read sent before the
+ * latest Stay signed in is dropped, so it never undoes the renewal.
  *
  * Nothing is stored, and text goes into the page through textContent only.
  */
@@ -77,8 +82,11 @@
   var busy = false;
   /** The open dialog: { kind: "idle" | "ending", dialog, returnTo }, or null. */
   var open = null;
-  /** The 8-hour end whose dialog the owner has closed, or 0. */
+  /** The 8-hour end whose dialog the owner has closed in this page, or 0. */
   var endingClosedFor = 0;
+  /** Requests sent so far, and the number of the latest Stay signed in (0: none). */
+  var sent = 0;
+  var staySentAs = 0;
 
   function isGateDenial(reply) {
     return reply.status === 401 && (reply.body || {}).error === GATE_DENIED;
@@ -103,16 +111,29 @@
     timer = setTimeout(ask, Math.max(ms, MIN_WAIT_MS));
   }
 
+  /**
+   * A status read sent before the latest Stay signed in may carry the ends
+   * from before the renewal, whenever its reply arrives: it is dropped, and
+   * the Stay signed in reply decides instead. Every request takes the next
+   * number in the order sent.
+   */
+  function isOutdated(readSentAs) {
+    return readSentAs < staySentAs;
+  }
+
   function ask() {
     if (asking || ending) return;
     asking = true;
+    var sentAs = ++sent;
     AdminRequest.get(STATUS).then(function (reply) {
       asking = false;
+      if (isOutdated(sentAs)) return;
       if (isGateDenial(reply)) end();
       else if (learn(reply)) decide();
       else wait(RETRY_MS);
     }, function () {
       asking = false;
+      if (isOutdated(sentAs)) return;
       wait(RETRY_MS);
     });
   }
@@ -260,10 +281,21 @@
     stay.focus();
   }
 
+  /**
+   * No clear answer to Stay signed in. A status read dropped meanwhile (see
+   * isOutdated) left no timer behind, so the next look is set again: in 30
+   * seconds, or at the end if that comes first.
+   */
+  function stayFailed(stay) {
+    sayRetry(stay);
+    wait(Math.min(RETRY_MS, Math.min(idleEnd, absoluteEnd) - Date.now()));
+  }
+
   function staySignedIn(stay) {
     if (busy) return;
     busy = true;
     stay.disabled = true;
+    staySentAs = ++sent;
     AdminRequest.post(STAY_SIGNED_IN, {}).then(function (reply) {
       busy = false;
       stay.disabled = false;
@@ -273,12 +305,12 @@
         close();
         decide();
       } else {
-        sayRetry(stay);
+        stayFailed(stay);
       }
     }, function () {
       busy = false;
       stay.disabled = false;
-      sayRetry(stay);
+      stayFailed(stay);
     });
   }
 
