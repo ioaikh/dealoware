@@ -520,22 +520,33 @@
     var target = event.target;
     if (target !== dialog && !dialog.contains(target) && target !== document.body && target !== document.documentElement) return;
     event.preventDefault();
-    if (!busy) dialog.close();
+    if (!busy) closeByOwner();
   }, true);
   // Any other close the browser asks for: the same rule.
   dialog.addEventListener("cancel", function (event) {
     if (busy) event.preventDefault();
   });
+  /**
+   * Closed by the owner (Escape or Cancel): the focus goes back to the button that opened it, at
+   * once, after the close. Some engines move the focus themselves as the dialog closes (WebKit
+   * gives it to the page's main area), so the page does not wait to see where it went.
+   */
+  function closeByOwner() {
+    var back = opener;
+    dialog.close();
+    if (back && !back.hidden && !dialog.open) back.focus();
+  }
+
   /** The focus is where nobody put it: on nothing, on the page itself, or still in the closed dialog. */
   function focusAdrift() {
     var active = document.activeElement;
     return !active || active === document.body || active === document.documentElement || dialog.contains(active);
   }
 
-  // Closed by the owner (Escape or Cancel): the focus goes back to the button that opened it. That
-  // button may have been disabled while its request was out, so the browser may have nothing to
-  // give the focus back to, and some engines settle the focus only after this event: the page
-  // looks now, and once more on the next tick.
+  // Any close: the dialog's action and fields are cleared, and a focus left adrift goes back to the
+  // button that opened it. The owner's own close has already given the focus back (closeByOwner);
+  // this is for the rest, and for an engine that settles the focus only after this event: the
+  // page looks now, and once more on the next tick.
   // This event comes after the close, not with it (Chromium sends it with the next frame), and
   // the owner may have gone on by then. A focus the owner has put elsewhere stays there: only a
   // focus that is adrift is given to the button. And a dialog that is open again is another one:
@@ -554,7 +565,7 @@
     }, 0);
   });
   stepUpCancel.addEventListener("click", function () {
-    if (!busy) dialog.close();
+    if (!busy) closeByOwner();
   });
   stepUpPassword.addEventListener("input", function () {
     if (stepUpPassword.hasAttribute("aria-invalid")) AdminDom.setInvalid(stepUpPassword, stepUpPasswordError, "");
