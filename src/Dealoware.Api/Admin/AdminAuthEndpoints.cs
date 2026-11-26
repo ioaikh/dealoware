@@ -12,7 +12,8 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Two-step CoreOwner sign-in and TOTP enrollment. JSON on the r5 §2.2 paths;
 /// the three sign-in GETs serve the pages in <see cref="AdminSignInPages"/>
-/// (Step 14), the enrollment GETs are still data only.
+/// and the two enrollment GETs the pages in <see cref="AdminEnrollmentPages"/>
+/// (Step 14).
 /// Session stays unverified until TOTP or a recovery code passes.
 /// Turnstile and lockout (Step 5) share the sign-in routes.
 /// </summary>
@@ -320,6 +321,11 @@ public static class AdminAuthEndpoints
         });
     }
 
+    // S-A6, the page. The key and its QR code are written into the page; this
+    // address no longer answers with them as data. A browser that cannot be
+    // shown the page is sent on rather than given JSON: back to step 1 when
+    // nothing here can be used, and to the recovery codes when the
+    // authenticator is set up already (the key is never shown again).
     private static async Task<IResult> GetSetupAuthenticator(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
@@ -327,17 +333,25 @@ public static class AdminAuthEndpoints
         TotpSecretProtector protector)
     {
         SetNoStore(context);
-        antiforgery.Issue(context);
 
         var pending = await LoadUsablePendingAsync(context, accounts);
-        if (pending is null)
-            return AdminSignInDeny.Failure();
-
-        var account = await accounts.GetByEmailAsync(pending.Email, context.RequestAborted);
+        var account = pending is null
+            ? null
+            : await accounts.GetByEmailAsync(pending.Email, context.RequestAborted);
         if (account is null)
-            return AdminSignInDeny.Failure();
+            return AdminEnrollmentPages.SentBack();
 
-        return ReadEnrollmentSecret(account, protector);
+        if (account.IsTotpEnrolled)
+            return AdminEnrollmentPages.ToRecoveryCodes();
+
+        if (!TryReadPendingKey(account, protector, out var base32))
+            return AdminEnrollmentPages.SentBack();
+
+        return AdminEnrollmentPages.Authenticator(
+            context,
+            antiforgery,
+            base32,
+            Rfc6238Totp.BuildOtpAuthUri(account.Email, base32));
     }
 
     private static async Task<IResult> PostSetupAuthenticator(
@@ -371,21 +385,8 @@ public static class AdminAuthEndpoints
         if (account.IsTotpEnrolled)
             return Results.Json(new { enrolled = true });
 
-        if (string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+        if (!TryReadPendingKey(account, protector, out var base32))
             return AdminSignInDeny.Failure();
-
-        byte[] secret;
-        try
-        {
-            secret = protector.Decrypt(account.PendingTotpSecretCipher);
-        }
-        catch
-        {
-            return AdminSignInDeny.Failure();
-        }
-
-        var base32 = Rfc6238Totp.ToBase32(secret);
-        CryptographicClear(secret);
 
         return Results.Json(new
         {
@@ -394,6 +395,35 @@ public static class AdminAuthEndpoints
             digits = Rfc6238Totp.Digits,
             period = Rfc6238Totp.PeriodSeconds
         });
+    }
+
+    /// <summary>
+    /// The key held between step 1 and the confirming code, as the base32
+    /// text an authenticator app takes. False when there is none or it cannot
+    /// be read.
+    /// </summary>
+    private static bool TryReadPendingKey(
+        AdminCoreOwnerAccount account,
+        TotpSecretProtector protector,
+        out string base32)
+    {
+        base32 = string.Empty;
+        if (string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+            return false;
+
+        byte[] secret;
+        try
+        {
+            secret = protector.Decrypt(account.PendingTotpSecretCipher);
+        }
+        catch
+        {
+            return false;
+        }
+
+        base32 = Rfc6238Totp.ToBase32(secret);
+        CryptographicClear(secret);
+        return true;
     }
 
     private static async Task<IResult> EnrollConfirmAsync(
@@ -465,36 +495,45 @@ public static class AdminAuthEndpoints
         return Results.Json(new { enrolled = true, next = "recovery-codes" });
     }
 
+    // S-A7, the page. The codes are written into it while they can still be
+    // shown: until the pending sign-in that set the authenticator up runs
+    // out, or the next sign-in starts. After that the page says they were
+    // shown once. A browser with nothing to do here is sent back to step 1.
     private static async Task<IResult> GetSetupRecoveryCodes(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
+        AdminAntiForgeryService antiforgery,
         TotpSecretProtector protector)
     {
         SetNoStore(context);
-        var pending = await LoadUsablePendingAsync(context, accounts);
-        if (pending is null)
-            return AdminSignInDeny.Failure();
 
-        var account = await accounts.GetByEmailAsync(pending.Email, context.RequestAborted);
+        var pending = await LoadUsablePendingAsync(context, accounts);
+        var account = pending is null
+            ? null
+            : await accounts.GetByEmailAsync(pending.Email, context.RequestAborted);
         if (account is null || !account.IsTotpEnrolled)
-            return AdminSignInDeny.Failure();
+            return AdminEnrollmentPages.SentBack();
 
         // C3: GET is side-effect free. Reveal cipher is cleared when pending is
         // replaced or consumed, so codes are not re-shown after the enrol window.
         var cipher = account.RecoveryCodesRevealCipher;
         if (string.IsNullOrEmpty(cipher))
-            return Results.Json(new { enrolled = true });
+            return AdminEnrollmentPages.RecoveryCodesAlreadyShown(context, antiforgery);
 
+        string[] codes;
         try
         {
             var json = Encoding.UTF8.GetString(protector.Decrypt(cipher));
-            var codes = JsonSerializer.Deserialize<string[]>(json) ?? [];
-            return Results.Json(new { recoveryCodes = codes });
+            codes = JsonSerializer.Deserialize<string[]>(json) ?? [];
         }
         catch
         {
-            return AdminSignInDeny.Failure();
+            return AdminEnrollmentPages.SentBack();
         }
+
+        return codes.Length == 0
+            ? AdminEnrollmentPages.RecoveryCodesAlreadyShown(context, antiforgery)
+            : AdminEnrollmentPages.RecoveryCodes(context, antiforgery, codes);
     }
 
     private static Task<IResult> VerifyTotp(

@@ -366,7 +366,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
     }
 
     [Fact]
-    public async Task OnlyTheGetOfTheTwoPages_IsRedirected_EveryOtherRequestWithoutAPendingSignInKeepsThe401()
+    public async Task OnlyTheGetOfAPendingSignInPage_IsRedirected_EveryOtherRequestWithoutAPendingSignInKeepsThe401()
     {
         await ClearSignInCountersAsync(_configured);
         Assert.Equal("Unauthorized", AdminDeny.GenericError);
@@ -394,10 +394,10 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         }
 
         // Every other signed-out or signed-in GET without what it needs, the JSON twins included.
+        // (The two set-up pages are redirected like the two above: see AdminEnrollmentPageTests.)
         foreach (var path in new[]
                  {
                      AdminSignedOutExemptions.ApiSignInCode, AdminSignedOutExemptions.ApiSignInRecovery,
-                     AdminSignedOutExemptions.SetupAuthenticator, AdminSignedOutExemptions.SetupRecoveryCodes,
                      "/admin/", "/admin/api/me", "/admin/participants"
                  })
         {
