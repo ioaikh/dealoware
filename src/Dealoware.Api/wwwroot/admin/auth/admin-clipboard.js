@@ -29,18 +29,22 @@
     return true;
   }
 
+  /**
+   * The older way. Whatever goes wrong in it (a browser with no selection, a
+   * node that cannot be selected, a command that ends in an error) is "not
+   * copied", never an error of its own: copy() always has an answer.
+   */
   function copySelection(node) {
-    if (!select(node)) return false;
-    var copied = false;
     try {
-      copied = document.execCommand("copy") === true;
+      if (!select(node)) return false;
+      var copied = document.execCommand("copy") === true;
+      // A selection that was only a means is put away again. One the reader
+      // now has to copy by hand stays.
+      if (copied) global.getSelection().removeAllRanges();
+      return copied;
     } catch (e) {
-      copied = false;
+      return false;
     }
-    // A selection that was only a means is put away again. One the reader
-    // now has to copy by hand stays.
-    if (copied) global.getSelection().removeAllRanges();
-    return copied;
   }
 
   function copy(text, node) {

@@ -7,9 +7,10 @@
  *
  * One request: POST /admin/setup/authenticator with {code}.
  *
- *   200 {"enrolled": true}               -> the authenticator is set up: on to
+ *   200 {"enrolled": true,
+ *        "next": "recovery-codes"}       -> the authenticator is set up: on to
  *                                           the recovery codes, in place of
- *                                           this page.
+ *                                           this page. Both fields, exactly.
  *   401 with the session gate's own word -> there is no pending sign-in any
  *                                           more (it ran out): back to step 1,
  *                                           which says so in the server's
@@ -27,7 +28,7 @@
  *                                           sentence, and what was typed stays.
  *   anything else                        -> no clear answer: no reply, a
  *                                           time-out, a server error, or a 200
- *                                           that does not say enrolled. The
+ *                                           that does not say exactly that. The
  *                                           code may or may not have been
  *                                           accepted, and only the server
  *                                           knows. So the page first asks
@@ -156,7 +157,7 @@
       }
       if (reply.status !== 403) mayReload = true;
       if (reply.status === 200) {
-        if (body.enrolled === true) location.replace(RECOVERY_CODES);
+        if (body.enrolled === true && body.next === "recovery-codes") location.replace(RECOVERY_CODES);
         else afterUnclearReply();
         return;
       }
