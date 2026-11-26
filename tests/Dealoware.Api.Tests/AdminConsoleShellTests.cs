@@ -76,12 +76,8 @@ public partial class AdminConsoleShellTests
 
         Assert.StartsWith("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">", html, StringComparison.Ordinal);
         Assert.Matches("<meta name=\"dw-csrf\" content=\"[0-9A-F]{64}\">", html);
-        // Same-origin referrer for these pages only, so the sign-out form carries the site's origin.
-        Assert.Contains(
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"referrer\" content=\"same-origin\">",
-            html,
-            StringComparison.Ordinal);
-        Assert.Equal("no-referrer", Header(response, "Referrer-Policy"));
+        // The site-wide no-referrer policy holds here too: no page says where it came from.
+        Assert.DoesNotContain("name=\"referrer\"", html, StringComparison.Ordinal);
         Assert.Contains($"<title>{title}</title>", text, StringComparison.Ordinal);
         Assert.EndsWith(" · Dealoware admin", title, StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, "<h1[ >]"));
@@ -721,6 +717,187 @@ public partial class AdminConsoleShellTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.True(await IsSignedInAsync(session));
         Assert.Equal(before, await CountSignOutAuditAsync());
+    }
+
+    // ---- the sign-out form under no-referrer: "Origin: null", taken by Sec-Fetch-* on that route alone ----
+
+    /// <summary>
+    /// A request as a browser sends the sign-out form with JavaScript off under
+    /// the no-referrer policy: the given Origin and Sec-Fetch-* headers (null
+    /// for absent), the session and anti-forgery cookies, and the body.
+    /// Sent with a client that adds no Origin of its own.
+    /// </summary>
+    private async Task<HttpResponseMessage> PostAsBrowserFormAsync(
+        string path,
+        string cookies,
+        HttpContent content,
+        string? origin = "null",
+        string? fetchSite = "same-origin",
+        string? fetchMode = "navigate",
+        string? headerToken = null)
+    {
+        using var post = Request(HttpMethod.Post, path, cookies);
+        if (origin is not null)
+            post.Headers.TryAddWithoutValidation("Origin", origin);
+        if (fetchSite is not null)
+            post.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
+        if (fetchMode is not null)
+            post.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", fetchMode);
+        if (headerToken is not null)
+            post.Headers.TryAddWithoutValidation(AdminAntiForgeryService.HeaderName, headerToken);
+        post.Content = content;
+        using var client = _factory.Server.CreateClient();
+        return await client.SendAsync(post);
+    }
+
+    [Fact]
+    public async Task NullOriginSignOutForm_FromThisSite_BySecFetch_SignsOut()
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var before = await CountSignOutAuditAsync();
+
+        using var response = await PostAsBrowserFormAsync(
+            AdminSignedOutExemptions.SignOut,
+            Join(SessionPair(session), afPair)!,
+            SignOutForm((AdminAntiForgeryService.SignOutFormField, token)));
+
+        Assert.Equal(HttpStatusCode.SeeOther, response.StatusCode);
+        Assert.Equal(AdminSignInPages.SignedOutLocation, Assert.Single(response.Headers.GetValues("Location")));
+        Assert.False(await SessionRowExistsAsync(session));
+        Assert.Equal(before + 1, await CountSignOutAuditAsync());
+    }
+
+    [Theory]
+    [InlineData("cross-site", "navigate")]
+    [InlineData("same-site", "navigate")]
+    [InlineData("none", "navigate")]
+    [InlineData(null, "navigate")]
+    [InlineData("same-origin", null)]
+    [InlineData("same-origin", "cors")]
+    [InlineData("same-origin", "no-cors")]
+    [InlineData("SAME-ORIGIN", "navigate")]
+    [InlineData("same-origin, same-origin", "navigate")]
+    public async Task NullOriginSignOutForm_IsRefused_UnlessTheBrowserSaysSameOriginNavigation(string? site, string? mode)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var before = await CountSignOutAuditAsync();
+
+        using var response = await PostAsBrowserFormAsync(
+            AdminSignedOutExemptions.SignOut,
+            Join(SessionPair(session), afPair)!,
+            SignOutForm((AdminAntiForgeryService.SignOutFormField, token)),
+            fetchSite: site,
+            fetchMode: mode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await IsSignedInAsync(session));
+        Assert.Equal(before, await CountSignOutAuditAsync());
+    }
+
+    /// <summary>Constraint 1: only an Origin of exactly "null"; any other present Origin must match the console exactly.</summary>
+    [Theory]
+    [InlineData("https://evil.example")]
+    [InlineData("https://admin.core.dealoware.com:443")]
+    [InlineData("http://admin.core.dealoware.com")]
+    [InlineData("https://ADMIN.core.dealoware.com")]
+    [InlineData("NULL")]
+    [InlineData("null ")]
+    [InlineData("null, null")]
+    public async Task OnlyAnOriginOfExactlyNull_TakesTheSecFetchBranch(string origin)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+
+        using var response = await PostAsBrowserFormAsync(
+            AdminSignedOutExemptions.SignOut,
+            Join(SessionPair(session), afPair)!,
+            SignOutForm((AdminAntiForgeryService.SignOutFormField, token)),
+            origin: origin);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await IsSignedInAsync(session));
+    }
+
+    /// <summary>Constraint 2: the branch is scoped by the same canonical path as the form token, POST /admin/sign-out only.</summary>
+    [Theory]
+    [InlineData("/admin/api/auth/sign-out")]
+    [InlineData("/admin/SIGN-OUT/")]
+    [InlineData("/admin/sign-out/extra")]
+    [InlineData("/admin/sign-out%2f")]
+    [InlineData("/admin/reset")]
+    [InlineData("/admin/api/auth/sign-in")]
+    [InlineData("/admin/participants")]
+    public async Task TheSecFetchBranch_IsForPostSignOutAlone(string path)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var before = await CountSignOutAuditAsync();
+
+        using var response = await PostAsBrowserFormAsync(
+            path,
+            Join(SessionPair(session), afPair)!,
+            SignOutForm((AdminAntiForgeryService.SignOutFormField, token), ("email", OwnerEmail)),
+            headerToken: token);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await IsSignedInAsync(session));
+        Assert.Equal(before, await CountSignOutAuditAsync());
+    }
+
+    /// <summary>Constraint 3: on the null-origin branch the form's field is mandatory; a header token does not do.</summary>
+    [Fact]
+    public async Task OnTheNullOriginBranch_AValidHeaderToken_WithoutTheFormField_IsRefused()
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var cookies = Join(SessionPair(session), afPair)!;
+
+        // Urlencoded without the field, the header carrying a good token.
+        using (var response = await PostAsBrowserFormAsync(
+                   AdminSignedOutExemptions.SignOut, cookies, SignOutForm(("unrelated", "1")), headerToken: token))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        // A wrong field next to a good header token.
+        using (var response = await PostAsBrowserFormAsync(
+                   AdminSignedOutExemptions.SignOut,
+                   cookies,
+                   SignOutForm((AdminAntiForgeryService.SignOutFormField, new string('A', 64))),
+                   headerToken: token))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        // JSON, as the script sends it, but with "Origin: null": not a form, so not the branch.
+        using (var response = await PostAsBrowserFormAsync(
+                   AdminSignedOutExemptions.SignOut, cookies, JsonContent.Create(new { }), headerToken: token))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        Assert.True(await IsSignedInAsync(session));
+    }
+
+    [Fact]
+    public async Task TheScriptsSignOut_IsUnchanged_RealOriginAndHeaderToken_GetJson()
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+
+        using var response = await PostAsBrowserFormAsync(
+            AdminSignedOutExemptions.SignOut,
+            Join(SessionPair(session), afPair)!,
+            JsonContent.Create(new { }),
+            origin: AdminHostOptions.ProductionAdminOrigin,
+            fetchMode: "cors",
+            headerToken: token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("{\"signedOut\":true}", await response.Content.ReadAsStringAsync());
+        Assert.False(await SessionRowExistsAsync(session));
     }
 
     // ---- the page kept across sign-in: an encoded "?" or "#" is part of the path ----

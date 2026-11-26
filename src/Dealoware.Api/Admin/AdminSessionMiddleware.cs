@@ -358,7 +358,14 @@ public sealed class AdminSessionMiddleware
     /// signing out works with JavaScript off. No other route reads a form token.
     /// </summary>
     private static async Task<bool> HasAntiForgeryTokenAsync(HttpContext context, AdminAntiForgeryService antiforgery)
-        => antiforgery.TryValidate(context) || await antiforgery.TryValidateSignOutFormAsync(context);
+    {
+        // A sign-out let past the origin check by its Sec-Fetch-* headers is the browser's own
+        // form submission: its token must be the form's field, never a header.
+        if (context.Items.ContainsKey(AdminOriginGate.NullOriginSignOutKey))
+            return await antiforgery.TryValidateSignOutFormAsync(context);
+
+        return antiforgery.TryValidate(context) || await antiforgery.TryValidateSignOutFormAsync(context);
+    }
 
     private static bool IsAntiForgeryAllowListed(HttpContext context)
         => AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)

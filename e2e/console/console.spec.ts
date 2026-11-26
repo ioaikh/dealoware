@@ -317,23 +317,23 @@ test('keyboard: the skip link is the first stop and moves the focus to main; the
     for (let i = 0; i < NAV.length + 1; i += 1) await page.keyboard.press('Shift+Tab');
     await expect(skip).toBeFocused();
   } else {
-    // WebKit, like Safari as delivered, passes links by when Tab is pressed, and a fresh page
-    // may hold no focus to start from. So, as in the signed-out suites, start from a known
-    // stop: the skip link takes the focus and shows it, Tab from there reaches Sign out (the
-    // nav links are passed by), and every nav link can take the focus and shows it.
+    // WebKit, like Safari as delivered, passes links by when Tab is pressed, and on Linux a
+    // fresh page holds no focus for Tab to start from. So, as the sign-in suite does for its
+    // reset link, each control is focused directly and must take the focus and show its ring:
+    // the skip link, every nav link and Sign out.
     await skip.focus();
     await expect(skip).toBeFocused();
     await expect(skip).toBeInViewport();
     expect(await ringOf(skip)).toEqual(ring);
-    await page.keyboard.press('Tab');
-    await expect(page.locator('#sign-out')).toBeFocused();
-    expect(await ringOf(page.locator('#sign-out'))).toEqual(ring);
     for (const entry of NAV) {
       const link = page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true });
       await link.focus();
       await expect(link).toBeFocused();
       expect(await ringOf(link)).toEqual(ring);
     }
+    await page.locator('#sign-out').focus();
+    await expect(page.locator('#sign-out')).toBeFocused();
+    expect(await ringOf(page.locator('#sign-out'))).toEqual(ring);
     await skip.focus();
   }
   await page.keyboard.press('Enter');
@@ -368,8 +368,7 @@ test('Sign out sends one POST with the anti-forgery header, lands on sign-in wit
   const sent = await posts[0].allHeaders();
   expect(sent['x-csrf-token']).toMatch(/^[0-9A-F]{64}$/);
   expect(sent['origin']).toBe(ORIGIN);
-  // The signed-in pages send a referrer to this site only (same-origin), never elsewhere.
-  if (sent['referer'] !== undefined) expect(sent['referer']).toBe(ORIGIN + '/admin/participants');
+  expect(sent['referer']).toBeUndefined();
   expect(new URL(posts[0].url()).search).toBe('');
   await expectSignedOut(page);
   await expectNoSeriousAxeFindings(page, 'sign-in_after_sign-out');
@@ -605,9 +604,10 @@ test.describe('JavaScript off', () => {
     const sent = await posts[0].allHeaders();
     expect(sent['content-type']).toBe('application/x-www-form-urlencoded');
     expect(sent['x-csrf-token']).toBeUndefined();
-    // The page's same-origin referrer policy lets the form carry this site's origin, which the
-    // origin check requires; under no-referrer every engine would send "Origin: null".
-    expect(sent['origin']).toBe(ORIGIN);
+    // Under the no-referrer policy the browser sends "Origin: null" and no Referer with a form
+    // POST; the server takes it as same-origin only on this route, by the browser's Sec-Fetch-*.
+    expect(sent['origin']).toBe('null');
+    expect(sent['referer']).toBeUndefined();
     expect(posts[0].postData()).toMatch(/^dw_csrf=[0-9A-F]{64}$/);
     // The server answered with the sign-in page, and the session is gone.
     const redirect = await posts[0].response();

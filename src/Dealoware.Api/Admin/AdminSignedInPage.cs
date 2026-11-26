@@ -81,17 +81,6 @@ public static class AdminSignedInPage
 
     public const string LiveRegionId = "console-status";
 
-    /// <summary>
-    /// The signed-in pages' own referrer policy, set by a meta element over the
-    /// site-wide no-referrer header. Under no-referrer every engine sends
-    /// "Origin: null" with a form POST, which the origin check rightly refuses,
-    /// so the sign-out form could never be sent without JavaScript. Under
-    /// same-origin a form POST to this site carries the site's own origin, and
-    /// a request to any other site still carries no referrer at all. These
-    /// pages load nothing from another origin (default-src 'none').
-    /// </summary>
-    public const string ReferrerPolicy = "same-origin";
-
     public const string Stats = AdminReturnPath.Stats;
     public const string Participants = "/admin/participants";
     public const string Artifacts = "/admin/artifacts";
@@ -134,7 +123,6 @@ public static class AdminSignedInPage
         var html = new StringBuilder(4096);
         html.Append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
         html.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-        html.Append($"<meta name=\"referrer\" content=\"{ReferrerPolicy}\">");
         html.Append($"<meta name=\"{AdminSignedOutPage.CsrfMetaName}\" content=\"{E(token)}\">");
         html.Append($"<title>{E(page.Title)}</title>");
         html.Append($"<link rel=\"stylesheet\" href=\"{StylesheetPath}\" nonce=\"{nonce}\">");
