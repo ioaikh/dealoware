@@ -1300,6 +1300,9 @@ test('no clear answer, and the server cannot be reached: the retry sentence, wha
     { status: 500, json: { error: 'Internal Server Error' } },
     { status: 200, json: {} },
     { status: 200, json: { enrolled: 'true', next: 'recovery-codes' } },
+    // "enrolled" alone, or with another next step, is not the server's reply: the page does not move on for it.
+    { status: 200, json: { enrolled: true } },
+    { status: 200, json: { enrolled: true, next: 'sign-in' } },
     { status: 200, text: 'OK' },
   ];
   let reachable = false;

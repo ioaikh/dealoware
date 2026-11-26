@@ -257,6 +257,66 @@ public class AdminTotpTests
     }
 
     [Fact]
+    public async Task TdAdm012_EachPasswordStepIssuesANewKey_AndAnEarlierKeyNoLongerConfirms()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: false);
+        var client = CreateClient();
+
+        async Task<string> PasswordStepThenKeyAsync()
+        {
+            using var step1 = await client.SendAsync(
+                await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+            Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+            Assert.Equal("enroll", (await step1.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("next").GetString());
+
+            using var setup = await client.SendAsync(AdminGet(SetupPath));
+            var key = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
+
+            // Asked for again within the same pending sign-in, the page shows the same key.
+            using var again = await client.SendAsync(AdminGet(SetupPath));
+            Assert.Equal(key, await AdminEnrollmentPageReader.ReadKeyAsync(again));
+            return key;
+        }
+
+        // Someone sees the set-up page once and keeps the key; the owner confirms nothing.
+        var seenEarlier = await PasswordStepThenKeyAsync();
+
+        // The owner signs in again: a different key, and it is the only one that confirms.
+        var current = await PasswordStepThenKeyAsync();
+        Assert.NotEqual(seenEarlier, current);
+
+        var step = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
+        using (var withTheEarlierKey = await client.SendAsync(await JsonAsync(
+                   client, HttpMethod.Post, SetupPath, new { code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(seenEarlier), step) })))
+        {
+            await AssertGenericSignIn(withTheEarlierKey);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var account = scope.ServiceProvider.GetRequiredService<DealowareDbContext>()
+                .AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.False(account.IsTotpEnrolled);
+        }
+
+        using var confirm = await client.SendAsync(await JsonAsync(
+            client,
+            HttpMethod.Post,
+            SetupPath,
+            new { code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(current), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow)) }));
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+
+        // What the owner's authenticator now holds is the key from the last password step.
+        using var after = _factory.Services.CreateScope();
+        var enrolled = after.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        Assert.True(enrolled.IsTotpEnrolled);
+        Assert.Null(enrolled.PendingTotpSecretCipher);
+        var stored = after.ServiceProvider.GetRequiredService<TotpSecretProtector>().Decrypt(enrolled.TotpSecretCipher!);
+        Assert.Equal(current, Rfc6238Totp.ToBase32(stored));
+    }
+
+    [Fact]
     public async Task TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin()
     {
         var (password, secret, _) = await SeedAccountAsync(enrolled: true);

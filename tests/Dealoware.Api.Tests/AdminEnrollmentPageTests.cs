@@ -17,7 +17,7 @@ namespace Dealoware.Api.Tests;
 /// Both are served only during a pending sign-in, so these requests carry the
 /// cookie of a pending row made here, for an owner put into the state the
 /// test needs. The key, its QR code and the recovery codes are in the page;
-/// neither address answers with them as data any more.
+/// neither address answers with them as data, by GET or by POST.
 /// What the pages do in a browser is covered by e2e/enrol.
 /// </summary>
 [Collection("WebAppTests")]
@@ -436,6 +436,155 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         Assert.Equal(owner.PendingCipher, account.PendingTotpSecretCipher);
         Assert.False(account.IsTotpEnrolled);
         Assert.Null(account.RecoveryCodesRevealCipher);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"code\":\"\"}")]
+    [InlineData("{\"code\":\"   \"}")]
+    [InlineData("{\"code\":null}")]
+    // The code under another field's name is no code either.
+    [InlineData("{\"totpCode\":\"123456\"}")]
+    // No body at all.
+    [InlineData(null)]
+    public async Task PostWithoutACode_IsAnsweredAndCountedLikeAWrongCode_AndNeverWithTheKey(string? json)
+    {
+        // What a wrong code gets, and what it leaves behind.
+        var owner = await SeedAsync(_configured, Owner.SettingUp);
+        var (cookies, token) = await OpenPageAsync(_configured, Authenticator, owner.Pending);
+        var auditBefore = await CountFailedSecondStepsAsync(_configured);
+        string wrongBody;
+        string? wrongContentType;
+        using (var wrong = await PostCodeAsync(_configured, cookies, token, "000000"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+            wrongBody = await wrong.Content.ReadAsStringAsync();
+            wrongContentType = wrong.Content.Headers.ContentType?.ToString();
+        }
+
+        Assert.Equal($"{{\"error\":\"{AdminAuthCopy.SignInFailure}\"}}", wrongBody);
+        var countedForAWrongCode = await CountFailuresAsync(_configured);
+        Assert.True(countedForAWrongCode > 0);
+        Assert.Equal(auditBefore + 1, await CountFailedSecondStepsAsync(_configured));
+
+        // The same request with no code in it, from the same starting point.
+        owner = await SeedAsync(_configured, Owner.SettingUp);
+        (cookies, token) = await OpenPageAsync(_configured, Authenticator, owner.Pending);
+        using var response = await PostAsync(_configured, Authenticator, cookies, token, json);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(wrongBody, body);
+        Assert.Equal(wrongContentType, response.Content.Headers.ContentType?.ToString());
+        Assert.Equal("no-store", Header(response, "Cache-Control"));
+        Assert.Empty(SetCookies(response));
+
+        // The key is not in the answer in any form: not as text, not as an address, not under any name.
+        Assert.DoesNotContain(owner.Base32Key, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("otpauth", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("digits", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("enrolled", body, StringComparison.OrdinalIgnoreCase);
+        Assert.All(
+            response.Headers.Concat(response.Content.Headers).SelectMany(h => h.Value),
+            value => Assert.DoesNotContain(owner.Base32Key, value, StringComparison.OrdinalIgnoreCase));
+
+        // Counted and audited as the wrong code was, and nothing is set up.
+        Assert.Equal(countedForAWrongCode, await CountFailuresAsync(_configured));
+        Assert.Equal(auditBefore + 2, await CountFailedSecondStepsAsync(_configured));
+        using var scope = _configured.Services.CreateScope();
+        var account = scope.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail);
+        Assert.False(account.IsTotpEnrolled);
+        Assert.Equal(owner.PendingCipher, account.PendingTotpSecretCipher);
+    }
+
+    [Fact]
+    public async Task PostWithoutACode_FromAnOwnerWhoIsSetUp_IsToldSo_AsBefore()
+    {
+        var owner = await SeedAsync(_configured, Owner.JustSetUp);
+        var (cookies, token) = await OpenPageAsync(_configured, RecoveryCodes, owner.Pending);
+
+        using var response = await PostAsync(_configured, Authenticator, cookies, token, "{}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("{\"enrolled\":true}", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task ACompletedPasswordReset_LeavesNoKeyWaitingToBeConfirmed()
+    {
+        // An owner who is set up (a reset needs the second factor), with a key still waiting on the row.
+        const string newPassword = "radio station later!";
+        var owner = await SeedAsync(_configured, Owner.SetUp);
+        var resetToken = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(
+                AdminPasswordResetEndpoints.TokenEntropyBytes))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        using (var scope = _configured.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<IAdminPasswordHasher>();
+            var protector = scope.ServiceProvider.GetRequiredService<TotpSecretProtector>();
+            var now = scope.ServiceProvider.GetRequiredService<IAdminClock>().UtcNow;
+            db.AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail)
+                .SetPendingEnrollment(protector.Encrypt(Rfc6238Totp.GenerateSecret()));
+            db.AdminResetIpCounters.RemoveRange(db.AdminResetIpCounters);
+            db.AdminPasswordResetTokens.RemoveRange(db.AdminPasswordResetTokens);
+            db.AdminCredentials.RemoveRange(db.AdminCredentials.Where(c => c.Email == OwnerEmail));
+            db.AdminCredentials.Add(AdminCredential.Create(OwnerEmail, hasher.Hash("radio station prior!"), now));
+            db.AdminPasswordResetTokens.Add(
+                AdminPasswordResetToken.Create(OwnerEmail, AdminPasswordResetToken.HashRaw(resetToken), now));
+            await db.SaveChangesAsync();
+        }
+
+        // The reset itself, as its page sends it: the link's token, the new password, a code.
+        string cookie;
+        string token;
+        using (var page = await GetAsync(_configured, AdminSignedOutExemptions.ResetConfirm))
+        {
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            token = AdminPageAntiForgery.ReadToken(await page.Content.ReadAsStringAsync());
+            cookie = Assert.Single(SetCookies(page)).Split(';', 2)[0];
+        }
+
+        var totp = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(owner.Base32Key), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
+        using (var reset = await PostAsync(
+                   _configured,
+                   AdminSignedOutExemptions.ApiResetConfirm,
+                   cookie,
+                   token,
+                   JsonSerializer.Serialize(new { token = resetToken, newPassword, totp })))
+        {
+            Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+            Assert.Contains(AdminPasswordResetCopy.CompleteSucceeded, await reset.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        using var after = _configured.Services.CreateScope();
+        var account = after.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminCoreOwnerAccounts.Single(a => a.Email == OwnerEmail);
+        Assert.Null(account.PendingTotpSecretCipher);
+        // The reset replaced the password and left the authenticator as it was.
+        Assert.True(after.ServiceProvider.GetRequiredService<IAdminPasswordHasher>()
+            .Verify(AdminPasswordRules.Normalize(newPassword), account.PasswordHash!));
+        Assert.True(account.IsTotpEnrolled);
+    }
+
+    [Fact]
+    public void SettingAPassword_DropsAKeyWaitingToBeConfirmed_WhicheverFlowSetsIt()
+    {
+        var account = AdminCoreOwnerAccount.Create(OwnerEmail);
+        account.SetPendingEnrollment("a key shown under the old password");
+
+        account.SetPasswordHash("hash of the new password");
+
+        Assert.Null(account.PendingTotpSecretCipher);
+        Assert.Equal("hash of the new password", account.PasswordHash);
+
+        // Bootstrap sets the first password through that method (a reset's new one is covered above, end to end).
+        Assert.Contains(
+            "account.SetPasswordHash(passwordHash);",
+            File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminBootstrapEndpoints.cs")),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1072,8 +1221,12 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         Assert.DoesNotContain("body.secret", script, StringComparison.Ordinal);
         Assert.DoesNotContain("recoveryCodes", script, StringComparison.Ordinal);
 
-        // It moves on only when the reply says the authenticator is set up, never for a bare 200.
-        Assert.Contains("if (body.enrolled === true) location.replace(RECOVERY_CODES);", script, StringComparison.Ordinal);
+        // It moves on only when the reply says both things the server's reply says, never for a bare 200
+        // and not for "enrolled" alone.
+        Assert.Contains(
+            "if (body.enrolled === true && body.next === \"recovery-codes\") location.replace(RECOVERY_CODES);",
+            script,
+            StringComparison.Ordinal);
         Assert.Contains("else afterUnclearReply();", script, StringComparison.Ordinal);
         Assert.DoesNotContain("reply.status >= 200", script, StringComparison.Ordinal);
         Assert.DoesNotContain(".ok", script, StringComparison.Ordinal);
@@ -1184,10 +1337,15 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         Assert.Contains("copied = document.execCommand(\"copy\") === true;", script, StringComparison.Ordinal);
         // Only a selection that did its job is put away; one the reader must copy by hand stays.
         Assert.Contains("if (copied) global.getSelection().removeAllRanges();", script, StringComparison.Ordinal);
-        // It never reads the clipboard, and never rejects.
+        // It never rejects: the whole fallback, selecting included, runs where an error becomes "not copied".
+        Assert.Matches(
+            @"function copySelection\(node\) \{\s+try \{\s+if \(!select\(node\)\) return false;[^}]+return copied;\s+\} catch \(e\) \{\s+return false;\s+\}\s+\}",
+            script);
+        Assert.Contains("return Promise.resolve(copySelection(node));", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("throw", script, StringComparison.Ordinal);
+        // And it never reads the clipboard.
         Assert.DoesNotContain("readText", script, StringComparison.Ordinal);
         Assert.DoesNotContain(".read(", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("throw", script, StringComparison.Ordinal);
         Assert.DoesNotContain("AdminRequest", script, StringComparison.Ordinal);
         Assert.Equal("/admin/auth/admin-clipboard.js", AdminSignedOutPage.ClipboardScriptPath);
     }
@@ -1336,6 +1494,53 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         request.Headers.TryAddWithoutValidation(AdminAntiForgeryService.HeaderName, token);
         request.Content = System.Net.Http.Json.JsonContent.Create(new { code });
         return await Client(factory).SendAsync(request);
+    }
+
+    /// <summary>A POST with the given JSON text as its body, or with no body at all.</summary>
+    private static async Task<HttpResponseMessage> PostAsync(
+        IsolatedWebApplicationFactory factory,
+        string path,
+        string cookies,
+        string token,
+        string? json)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Host = AdminHost;
+        request.Headers.TryAddWithoutValidation("Cookie", cookies);
+        request.Headers.TryAddWithoutValidation(AdminAntiForgeryService.HeaderName, token);
+        if (json is not null)
+        {
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        }
+
+        return await Client(factory).SendAsync(request);
+    }
+
+    /// <summary>Opens one of the two pages and returns what its POST needs: the cookies and the anti-forgery token.</summary>
+    private static async Task<(string Cookies, string Token)> OpenPageAsync(
+        IsolatedWebApplicationFactory factory,
+        string path,
+        string pending)
+    {
+        using var page = await GetAsync(factory, path, pending);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        var token = AdminPageAntiForgery.ReadToken(await page.Content.ReadAsStringAsync());
+        var antiForgery = Assert.Single(SetCookies(page)).Split(';', 2)[0];
+        return ($"{antiForgery}; {AdminPendingAuthCookie.Name}={pending}", token);
+    }
+
+    /// <summary>Failures counted towards the account lock and the address throttle.</summary>
+    private static Task<int> CountFailuresAsync(IsolatedWebApplicationFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        return Task.FromResult(scope.ServiceProvider.GetRequiredService<DealowareDbContext>().AdminAuthFailureEvents.Count());
+    }
+
+    private static Task<int> CountFailedSecondStepsAsync(IsolatedWebApplicationFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        return Task.FromResult(scope.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminAuditLog.Count(e => e.Action == AdminAuthEvents.SecondFactorFailed));
     }
 
     private static HttpClient Client(IsolatedWebApplicationFactory factory)

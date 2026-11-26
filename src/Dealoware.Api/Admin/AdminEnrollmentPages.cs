@@ -8,9 +8,10 @@ namespace Dealoware.Api.Admin;
 /// /admin/setup/authenticator and S-A7 at /admin/setup/recovery-codes.
 /// <para>
 /// The authenticator key, its QR code and the recovery codes are written into
-/// the page by the server. No script asks for them, and there is no address
-/// that hands them out as data: they exist in one no-store page, shown while
-/// the pending sign-in from step 1 lasts.
+/// the page by the server. No script asks for them, and no request, GET or
+/// POST, is answered with them as data: they exist in one no-store page,
+/// shown while the pending sign-in from step 1 lasts. Each password step
+/// issues a new key, so a key shown during an earlier sign-in is of no use.
 /// </para>
 /// <para>
 /// As on the sign-in pages, everything but the heading is hidden until the

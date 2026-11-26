@@ -300,10 +300,17 @@ public static class AdminAuthEndpoints
                   ?? account;
 
         await accounts.ConsumeOutstandingPendingAsync(ownerEmail, now, context.RequestAborted);
-        account.ClearRecoveryCodesReveal();
+        // On the row itself, not through the entity this request read earlier:
+        // that copy may be older than a set-up that finished meanwhile.
+        await accounts.ClearRecoveryCodesRevealAsync(account.Id, context.RequestAborted);
 
-        if (!account.IsTotpEnrolled && string.IsNullOrEmpty(account.PendingTotpSecretCipher))
+        if (!account.IsTotpEnrolled)
         {
+            // A new key at every password step, never the one an earlier
+            // sign-in was shown: whoever saw that one (a shared screen, an
+            // old password) does not hold the key the owner goes on to
+            // confirm. Within this pending sign-in the set-up page shows the
+            // same key every time it is asked for.
             var secret = Rfc6238Totp.GenerateSecret();
             account.SetPendingEnrollment(protector.Encrypt(secret));
             CryptographicClear(secret);
@@ -321,11 +328,12 @@ public static class AdminAuthEndpoints
         });
     }
 
-    // S-A6, the page. The key and its QR code are written into the page; this
-    // address no longer answers with them as data. A browser that cannot be
-    // shown the page is sent on rather than given JSON: back to step 1 when
-    // nothing here can be used, and to the recovery codes when the
-    // authenticator is set up already (the key is never shown again).
+    // S-A6, the page. The key and its QR code are written into the page, and
+    // nowhere else: neither this GET nor the POST below answers with them as
+    // data. A browser that cannot be shown the page is sent on rather than
+    // given JSON: back to step 1 when nothing here can be used, and to the
+    // recovery codes when the authenticator is set up already (the key is
+    // never shown again).
     private static async Task<IResult> GetSetupAuthenticator(
         HttpContext context,
         IAdminCoreOwnerAccountRepository accounts,
@@ -373,28 +381,16 @@ public static class AdminAuthEndpoints
         if (account is null)
             return AdminSignInDeny.Failure();
 
-        if (string.IsNullOrWhiteSpace(body?.Code))
-            return ReadEnrollmentSecret(account, protector);
+        var code = body?.Code;
 
-        return await EnrollConfirmAsync(
-            body, account, pending, context, accounts, sessions, audit, ipHasher, protector, recoveryHasher);
-    }
-
-    private static IResult ReadEnrollmentSecret(AdminCoreOwnerAccount account, TotpSecretProtector protector)
-    {
-        if (account.IsTotpEnrolled)
+        // No code, from an owner who is set up already: told so, as before.
+        if (string.IsNullOrWhiteSpace(code) && account.IsTotpEnrolled)
             return Results.Json(new { enrolled = true });
 
-        if (!TryReadPendingKey(account, protector, out var base32))
-            return AdminSignInDeny.Failure();
-
-        return Results.Json(new
-        {
-            secret = base32,
-            otpauthUrl = Rfc6238Totp.BuildOtpAuthUri(account.Email, base32),
-            digits = Rfc6238Totp.Digits,
-            period = Rfc6238Totp.PeriodSeconds
-        });
+        // No code is a wrong code: the same answer, counted and audited the
+        // same way. This request never hands the key out.
+        return await EnrollConfirmAsync(
+            code ?? string.Empty, account, pending, context, accounts, sessions, audit, ipHasher, protector, recoveryHasher);
     }
 
     /// <summary>
@@ -427,7 +423,7 @@ public static class AdminAuthEndpoints
     }
 
     private static async Task<IResult> EnrollConfirmAsync(
-        TotpCodeRequest body,
+        string code,
         AdminCoreOwnerAccount account,
         AdminPendingAuth pending,
         HttpContext context,
@@ -461,7 +457,7 @@ public static class AdminAuthEndpoints
             return SecondFactorDeny(ipReserved);
         }
 
-        if (!Rfc6238Totp.TryVerify(secret, body.Code ?? string.Empty, now, lastUsedTimestep: null, out var step))
+        if (!Rfc6238Totp.TryVerify(secret, code, now, lastUsedTimestep: null, out var step))
         {
             CryptographicClear(secret);
             await RecordFailedSecondFactorAsync(
@@ -514,8 +510,11 @@ public static class AdminAuthEndpoints
         if (account is null || !account.IsTotpEnrolled)
             return AdminEnrollmentPages.SentBack();
 
-        // C3: GET is side-effect free. Reveal cipher is cleared when pending is
-        // replaced or consumed, so codes are not re-shown after the enrol window.
+        // C3: GET is side-effect free. The reveal cipher is cleared by the next
+        // step 1 and by a successful second step, so the codes are not shown
+        // again once either has happened. A pending sign-in that runs out, or
+        // a sign-out, does not clear it: the page is then simply not served,
+        // because the browser has no usable pending sign-in to ask with.
         var cipher = account.RecoveryCodesRevealCipher;
         if (string.IsNullOrEmpty(cipher))
             return AdminEnrollmentPages.RecoveryCodesAlreadyShown(context, antiforgery);
