@@ -91,6 +91,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminSessionRecoveryNotice> AdminSessionRecoveryNotices => Set<AdminSessionRecoveryNotice>();
 
+    /// <summary>
+    /// T06a: hashed single-use confirm tokens of admin deletes (deleted with their session).
+    /// Incremental after the frozen 15-table stamp — not a BaselineSchema table.
+    /// </summary>
+    public DbSet<AdminDeleteConfirmToken> AdminDeleteConfirmTokens => Set<AdminDeleteConfirmToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -170,6 +176,7 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminBootstrapTokenEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminSessionStepUpEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminSessionRecoveryNoticeEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminDeleteConfirmTokenEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)

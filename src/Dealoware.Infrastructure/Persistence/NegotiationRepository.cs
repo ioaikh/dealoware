@@ -3,6 +3,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dealoware.Infrastructure.Persistence;
 
+/// <remarks>
+/// The engine's party lookups. A soft-deleted negotiation (admin delete,
+/// Spec §11) is not found, exactly like an id that does not exist, and the
+/// soft-deleted offers of a negotiation are left out of its offers.
+/// </remarks>
 public class NegotiationRepository : INegotiationRepository
 {
     private readonly DealowareDbContext _context;
@@ -15,15 +20,15 @@ public class NegotiationRepository : INegotiationRepository
     public async Task<Negotiation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Negotiations
-            .Include(n => n.Offers)
-            .FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+            .Include(n => n.Offers.Where(o => o.DeletedAt == null))
+            .FirstOrDefaultAsync(n => n.Id == id && n.DeletedAt == null, cancellationToken);
     }
 
     public async Task<Negotiation?> GetByIdForPartyAsync(Guid id, string participantId, CancellationToken cancellationToken = default)
     {
         return await _context.Negotiations
-            .Include(n => n.Offers)
-            .FirstOrDefaultAsync(n => n.Id == id && 
+            .Include(n => n.Offers.Where(o => o.DeletedAt == null))
+            .FirstOrDefaultAsync(n => n.Id == id && n.DeletedAt == null &&
                 (n.PartyAParticipantId == participantId || n.PartyBParticipantId == participantId), 
                 cancellationToken);
     }
@@ -31,8 +36,9 @@ public class NegotiationRepository : INegotiationRepository
     public async Task<IReadOnlyList<Negotiation>> GetByParticipantAsync(string participantId, CancellationToken cancellationToken = default)
     {
         var negotiations = await _context.Negotiations
-            .Include(n => n.Offers)
-            .Where(n => n.PartyAParticipantId == participantId || n.PartyBParticipantId == participantId)
+            .Include(n => n.Offers.Where(o => o.DeletedAt == null))
+            .Where(n => n.DeletedAt == null
+                        && (n.PartyAParticipantId == participantId || n.PartyBParticipantId == participantId))
             .ToListAsync(cancellationToken);
 
         return negotiations.OrderByDescending(n => n.CreatedAt).ToList();

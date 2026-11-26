@@ -397,6 +397,7 @@ app.MapAdminMeEndpoints();
 app.MapAdminSessionEndpoints();
 app.MapAdminReadEndpoints();
 app.MapAdminEditEndpoints();
+app.MapAdminDeleteEndpoints();
 app.MapAdminAuthEndpoints();
 app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();

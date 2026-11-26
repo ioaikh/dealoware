@@ -67,6 +67,12 @@ public static class DatabaseMigrationBaseline
 
     public const string BootstrapTokensMigrationId = "20261006000390_AdminBootstrapTokens";
 
+    /// <summary>
+    /// T06a: the confirm tokens of admin deletes. A new table only, applied by
+    /// <c>MigrateAsync</c> after any stamp; never part of the frozen table lists.
+    /// </summary>
+    public const string DeleteConfirmTokensMigrationId = Migrations.AdminDeleteConfirmTokens.MigrationId;
+
     public const string HistoryTableName = "__EFMigrationsHistory";
 
     public const string PartialSchemaMessage =

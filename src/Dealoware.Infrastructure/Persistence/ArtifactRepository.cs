@@ -3,6 +3,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dealoware.Infrastructure.Persistence;
 
+/// <remarks>
+/// The engine's party lookups. A soft-deleted artifact (admin delete,
+/// Spec §11) is not found, exactly like an id that does not exist, and is
+/// left out of the owner's list and of search.
+/// </remarks>
 public class ArtifactRepository : IArtifactRepository
 {
     private readonly DealowareDbContext _context;
@@ -19,7 +24,7 @@ public class ArtifactRepository : IArtifactRepository
                 .ThenInclude(e => e.Properties)
             .Include(a => a.Values)
             .Include(a => a.TimePeriods)
-            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == id && a.DeletedAt == null, cancellationToken);
     }
 
     public async Task<Artifact?> GetByIdForOwnerAsync(Guid id, string ownerParticipantId, CancellationToken cancellationToken = default)
@@ -29,7 +34,9 @@ public class ArtifactRepository : IArtifactRepository
                 .ThenInclude(e => e.Properties)
             .Include(a => a.Values)
             .Include(a => a.TimePeriods)
-            .FirstOrDefaultAsync(a => a.Id == id && a.OwnerParticipantId == ownerParticipantId, cancellationToken);
+            .FirstOrDefaultAsync(
+                a => a.Id == id && a.DeletedAt == null && a.OwnerParticipantId == ownerParticipantId,
+                cancellationToken);
     }
 
     public async Task<IReadOnlyList<Artifact>> GetByOwnerAsync(string ownerParticipantId, CancellationToken cancellationToken = default)
@@ -39,7 +46,7 @@ public class ArtifactRepository : IArtifactRepository
                 .ThenInclude(e => e.Properties)
             .Include(a => a.Values)
             .Include(a => a.TimePeriods)
-            .Where(a => a.OwnerParticipantId == ownerParticipantId)
+            .Where(a => a.OwnerParticipantId == ownerParticipantId && a.DeletedAt == null)
             .ToListAsync(cancellationToken);
         
         return artifacts.OrderByDescending(a => a.CreatedAt).ToList();
@@ -69,7 +76,7 @@ public class ArtifactRepository : IArtifactRepository
         var normalizedQuery = query.Trim().ToLowerInvariant();
         
         var matchingArtifactIds = await _context.Artifacts
-            .Where(a => 
+            .Where(a => a.DeletedAt == null && (
                 EF.Functions.Like(a.Intent.ToLower(), $"%{normalizedQuery}%") ||
                 a.Entities.Any(e => 
                     EF.Functions.Like(e.Name.ToLower(), $"%{normalizedQuery}%") ||
@@ -80,7 +87,7 @@ public class ArtifactRepository : IArtifactRepository
                         EF.Functions.Like(p.Name.ToLower(), $"%{normalizedQuery}%") ||
                         EF.Functions.Like(p.Value.ToLower(), $"%{normalizedQuery}%")
                     )
-                )
+                ))
             )
             .OrderByDescending(a => a.Id)
             .Take(limit)
