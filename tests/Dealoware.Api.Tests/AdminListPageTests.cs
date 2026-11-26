@@ -553,8 +553,12 @@ public partial class AdminListPageTests
         Assert.Contains($"Contact email{prefix}-contact@example.test", text, StringComparison.Ordinal);
         Assert.Contains($"Core identifier{g.Alpha.Sub}", text, StringComparison.Ordinal);
         Assert.Contains("StatusActive", text, StringComparison.Ordinal);
-        // No edit or delete control: these pages only read.
-        Assert.DoesNotContain("<form", html.Replace("<form id=\"sign-out-form\"", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        // No delete control. The one other form is edit mode's (T05, AdminEditPageTests): it has no
+        // method or action, so without JavaScript nothing can send it.
+        Assert.Equal(
+            ["sign-out-form", "edit-form"],
+            Regex.Matches(html, "<form id=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray());
+        Assert.Contains("<form id=\"edit-form\" class=\"edit-form\" novalidate>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("STRATEGY-TEXT", html, StringComparison.Ordinal);
 
         (_, html) = await PageAsync($"/admin/offers/{g.OpenOffer.Id:D}", session);

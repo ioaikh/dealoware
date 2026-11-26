@@ -820,3 +820,174 @@ time.ts:focus::after {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Edit mode of the detail pages (T05, AdminEditPage and console-edit.js) ---- */
+
+.record-actions,
+.edit-buttons,
+.edit-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.record-actions {
+  margin: 0 0 1rem;
+}
+
+.edit-form {
+  margin: 0;
+}
+
+.edit-buttons {
+  margin: 1rem 0 0;
+}
+
+.edit .edit-field + .edit-field {
+  margin-top: 0.75rem;
+}
+
+.edit label,
+.edit legend {
+  display: block;
+  margin: 0 0 0.25rem;
+}
+
+.edit input[type="text"],
+.edit input[type="datetime-local"],
+.edit select,
+.edit textarea {
+  width: 100%;
+  max-width: 36rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #767676;
+  border-radius: 0.3rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+.edit textarea {
+  display: block;
+  resize: vertical;
+}
+
+.edit textarea:focus,
+.edit input[type="radio"]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.edit .picker {
+  max-width: 36rem;
+}
+
+.edit-choice {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+
+.edit-choice legend {
+  width: 100%;
+}
+
+.edit-choice input[type="radio"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.hint {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+}
+
+/* An error is a sentence under its field, never colour alone. */
+.field-error {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  color: #8a1c1c;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+[aria-invalid="true"] {
+  border-color: #8a1c1c;
+  border-width: 2px;
+}
+
+.error-summary,
+.edit-conflict,
+.edit-alert {
+  border: 2px solid #8a1c1c;
+  border-radius: 0.3rem;
+  background: var(--card);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.edit-conflict,
+.edit-alert {
+  margin: 1rem 0 0;
+}
+
+.error-summary h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.error-summary ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.edit-conflict p {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.edit-alert {
+  font-weight: 600;
+}
+
+/* The confirm and discard dialogs: modal, over a dimmed page; a press on the dim closes them. */
+.edit-dialog {
+  width: min(30rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 2px solid var(--accent);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.edit-dialog::backdrop {
+  background: rgba(26, 26, 26, 0.55);
+}
+
+.edit-dialog-inner {
+  padding: 1.25rem;
+}
+
+.edit-dialog h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.edit-dialog-alert {
+  font-weight: 600;
+  color: #8a1c1c;
+}
+
+.edit-dialog-alert:empty {
+  display: none;
+}

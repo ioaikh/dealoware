@@ -303,7 +303,8 @@ public sealed record AdminListState
 /// toggle on (<c>includeDeleted=true</c>, carried from the list); otherwise,
 /// like an unknown id, it is S-D3 "We can't find that page." with a 404.
 /// </para>
-/// Lists and details are read-only: no edit or delete control (Steps 9 and 10).
+/// Lists are read-only. A detail page has an edit mode on its own address
+/// (Step 9, <see cref="AdminEditPage"/>); no delete control (Step 10).
 /// </summary>
 public static class AdminListPages
 {
@@ -1010,34 +1011,47 @@ public static class AdminListPages
         // The list's state rides along, so Back to list restores it and the toggle decides about deleted records.
         var state = AdminListState.Read(list, http.Request);
         var principal = AdminReadProjection.CoreOwnerFrom(http);
-        var record = list.Kind switch
+        // The record and its edit token from one read, so the edit mode (T05) saves against what the page shows.
+        var detail = list.Kind switch
         {
-            AdminListKind.Participants => await AdminReadEndpoints.GetParticipantAsync(db, policy, principal, id, state.IncludeDeleted, ct),
-            AdminListKind.Artifacts => await AdminReadEndpoints.GetArtifactAsync(db, policy, principal, id, state.IncludeDeleted, ct),
-            AdminListKind.Negotiations => await AdminReadEndpoints.GetNegotiationAsync(db, policy, principal, id, state.IncludeDeleted, ct),
-            _ => await AdminReadEndpoints.GetOfferAsync(db, policy, principal, id, state.IncludeDeleted, ct)
+            AdminListKind.Participants => await AdminReadEndpoints.ReadParticipantAsync(db, policy, principal, id, state.IncludeDeleted, ct),
+            AdminListKind.Artifacts => await AdminReadEndpoints.ReadArtifactAsync(db, policy, principal, id, state.IncludeDeleted, ct),
+            AdminListKind.Negotiations => await AdminReadEndpoints.ReadNegotiationAsync(db, policy, principal, id, state.IncludeDeleted, ct),
+            _ => await AdminReadEndpoints.ReadOfferAsync(db, policy, principal, id, state.IncludeDeleted, ct)
         };
-        if (record is null)
+        if (detail is null)
             return AdminConsolePages.NotFound(http, antiforgery);
 
+        var record = detail.Dto;
+        var edit = AdminEditPage.For(list.Kind, record, detail.EditToken, policy, principal, DateTimeOffset.UtcNow);
         return AdminSignedInPage.Render(http, antiforgery, new AdminSignedInPageContent
         {
             Title = AdminConsoleCopy.Title(list.DetailScreen),
             Heading = list.DetailScreen,
             Section = list.Section,
-            BodyHtml = DetailBody(list, state, record)
+            BodyHtml = DetailBody(list, state, record, edit),
+            Scripts = edit is null ? [] : [AdminSignedOutPage.DomScriptPath, AdminEditPage.ScriptPath]
         });
     }
 
-    private static string DetailBody(AdminListDefinition list, AdminListState state, Dictionary<string, object?> record)
+    /// <summary>
+    /// The record as text. With an edit plan (<see cref="AdminEditPage"/>),
+    /// the Edit button and the actions come first, the list sits in the edit
+    /// form, and each editable row carries its hidden control beside its text.
+    /// </summary>
+    private static string DetailBody(AdminListDefinition list, AdminListState state, Dictionary<string, object?> record, AdminEditPage.Plan? edit)
     {
         var toggle = state.IncludeDeleted ? "?includeDeleted=true" : string.Empty;
         var html = new StringBuilder(4096);
         html.Append($"<p class=\"back\"><a id=\"back-to-list\" href=\"{E(state.Url(list))}\">{E(AdminConsoleCopy.BackToList)}</a></p>");
+        if (edit is not null)
+            html.Append(AdminEditPage.Start(list.Kind, record, edit));
         html.Append("<dl id=\"details\" class=\"details\">");
 
-        void Item(string label, string valueHtml)
-            => html.Append($"<div class=\"detail\"><dt>{E(label)}</dt><dd>{valueHtml}</dd></div>");
+        void Item(string label, string valueHtml, string? editHtml = null)
+            => html.Append(editHtml is null
+                ? $"<div class=\"detail\"><dt>{E(label)}</dt><dd>{valueHtml}</dd></div>"
+                : $"<div class=\"detail editable\"><dt>{E(label)}</dt><dd><div class=\"view\">{valueHtml}</div>{editHtml}</dd></div>");
 
         string Participant(string nameKey, string subKey)
         {
@@ -1055,7 +1069,7 @@ public static class AdminListPages
         switch (list.Kind)
         {
             case AdminListKind.Participants:
-                Item(AdminConsoleCopy.ColumnName, Text(record, "displayName"));
+                Item(AdminConsoleCopy.ColumnName, Text(record, "displayName"), edit is null ? null : AdminEditPage.DisplayName(edit, record));
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
                 Item(AdminConsoleCopy.CoreIdentifier, Text(record, "sub"));
                 Item(AdminConsoleCopy.LoginEmail, Text(record, "loginEmail"));
@@ -1065,15 +1079,16 @@ public static class AdminListPages
                 Item(AdminConsoleCopy.ColumnName, Text(record, "name"));
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
                 Item(AdminConsoleCopy.Intent, Text(record, "intent"));
-                Item(AdminConsoleCopy.ColumnOwner, Participant("ownerName", "ownerParticipantId"));
-                Item(AdminConsoleCopy.SubjectEntities, Entities(record));
+                Item(AdminConsoleCopy.ColumnOwner, Participant("ownerName", "ownerParticipantId"),
+                    edit is null ? null : AdminEditPage.Owner(edit, record, OwnerShown(record)));
+                Item(AdminConsoleCopy.SubjectEntities, Entities(record), edit is null ? null : AdminEditPage.SubjectEntity(edit, record));
                 break;
             case AdminListKind.Negotiations:
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
                 Item(AdminConsoleCopy.ColumnArtifact, ArtifactLink(record, toggle, state.IncludeDeleted));
                 Item(AdminConsoleCopy.PartyA, Participant("partyAName", "partyAParticipantId"));
                 Item(AdminConsoleCopy.PartyB, Participant("partyBName", "partyBParticipantId"));
-                Item(AdminConsoleCopy.EndsAt, Time(record, "endsAt"));
+                Item(AdminConsoleCopy.EndsAt, Time(record, "endsAt"), edit is null ? null : AdminEditPage.EndsAt(edit, record));
                 break;
             default:
                 Item(AdminConsoleCopy.ColumnId, $"<span class=\"id\">{IdOf(record, "id"):D}</span>");
@@ -1089,12 +1104,19 @@ public static class AdminListPages
         }
 
         // The status badge, with "Deleted" and the deleted time beside it for a soft-deleted record.
-        Item(AdminConsoleCopy.ColumnStatus, StatusCell(list, record));
+        Item(AdminConsoleCopy.ColumnStatus, StatusCell(list, record), edit is null ? null : AdminEditPage.Active(edit, record));
         Item(AdminConsoleCopy.ColumnCreated, Time(record, "createdAt"));
         Item(AdminConsoleCopy.ColumnUpdated, UpdatedTime(record));
         html.Append("</dl>");
+        if (edit is not null)
+            html.Append(AdminEditPage.End(edit));
         return html.ToString();
     }
+
+    /// <summary>The owner as the edit mode's picker shows it: the name, or the Core identifier when there is none.</summary>
+    private static string OwnerShown(Dictionary<string, object?> record)
+        => record.TryGetValue("ownerName", out var n) && n is string name && name.Length > 0 ? name
+            : record.TryGetValue("ownerParticipantId", out var s) && s is string sub ? sub : string.Empty;
 
     /// <summary>An artifact's subject entities: each name, and its description as text.</summary>
     private static string Entities(Dictionary<string, object?> record)
