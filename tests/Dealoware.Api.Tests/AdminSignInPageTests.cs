@@ -350,14 +350,22 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         Assert.False(stepOne.Headers.Contains("Location"));
         Assert.Contains($"<title>{AdminSignInCopy.SignInPageTitle}</title>", await stepOne.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
-        // A path that is not exactly one of the two pages gets the gate's 401 as before.
+        // A path that is not exactly one of the two pages is not sent back to step 1. One that
+        // does not canonicalise gets the gate's 401 as before; an extra segment is a signed-in
+        // page path like any other, which without a session goes to sign-in, "session ended".
         var live = await CreatePendingSignInAsync(_configured);
-        foreach (var notThePage in new[] { path + "/", path + "/extra", path.Replace("/sign-in/", "/sign-in%2f", StringComparison.Ordinal) })
+        foreach (var notThePage in new[] { path + "/", path.Replace("/sign-in/", "/sign-in%2f", StringComparison.Ordinal) })
         {
             using var denied = await GetAsync(_configured, notThePage, live);
             Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
             Assert.False(denied.Headers.Contains("Location"));
             Assert.Equal("{\"error\":\"Unauthorized\"}", await denied.Content.ReadAsStringAsync());
+        }
+
+        using (var extra = await GetAsync(_configured, path + "/extra", live))
+        {
+            Assert.Equal(HttpStatusCode.Found, extra.StatusCode);
+            Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(extra.Headers.GetValues("Location")));
         }
 
         // And with a pending sign-in the page itself is served.
@@ -393,12 +401,13 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             Assert.Equal("{\"error\":\"Unauthorized\"}", await response.Content.ReadAsStringAsync());
         }
 
-        // Every other signed-out or signed-in GET without what it needs, the JSON twins included.
-        // (The two set-up pages are redirected like the two above: see AdminEnrollmentPageTests.)
+        // Every other JSON GET without what it needs, the JSON twins included.
+        // (The two set-up pages are redirected like the two above: see AdminEnrollmentPageTests.
+        // A signed-in page such as /admin/ goes to sign-in: see AdminConsoleShellTests.)
         foreach (var path in new[]
                  {
                      AdminSignedOutExemptions.ApiSignInCode, AdminSignedOutExemptions.ApiSignInRecovery,
-                     "/admin/", "/admin/api/me", "/admin/participants"
+                     "/admin/api/me", "/admin/api/participants"
                  })
         {
             using var response = await GetAsync(_configured, path);
@@ -514,15 +523,17 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             page,
             StringComparison.Ordinal);
 
-        // The first script reads the flag, compares it with four constants and removes it. Nothing else.
+        // The first script reads the flag, compares it with five constants and removes it. Nothing else.
         var arrival = File.ReadAllText(AssetPath("admin-arrival.js"));
         Assert.Contains("var AGAIN = \"#again\";", arrival, StringComparison.Ordinal);
         Assert.Contains("var FRESH = \"#fresh\";", arrival, StringComparison.Ordinal);
         Assert.Contains("var ENDED = \"#ended\";", arrival, StringComparison.Ordinal);
         Assert.Contains("var CHANGED = \"#changed\";", arrival, StringComparison.Ordinal);
+        Assert.Contains("var SIGNED_OUT = \"#signed-out\";", arrival, StringComparison.Ordinal);
         Assert.Contains(
-            "var flag = hash === AGAIN ? \"again\" : hash === FRESH ? \"fresh\" : hash === ENDED ? \"ended\" : hash === CHANGED ? \"changed\" : \"\";",
-            arrival,
+            "var flag = hash === AGAIN ? \"again\" : hash === FRESH ? \"fresh\" : hash === ENDED ? \"ended\" : hash === CHANGED ? \"changed\"\n"
+            + "    : hash === SIGNED_OUT ? \"signed-out\" : \"\";",
+            arrival.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
             "if (flag) history.replaceState(null, \"\", location.pathname + location.search);",
@@ -1083,6 +1094,53 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         {
             Assert.False(rule.IsMatch(path), "the browser must not follow " + Uri.EscapeDataString(path));
         }
+    }
+
+    [Theory]
+    [InlineData("/admin/offers?status=open&sort=amount&dir=ASC&limit=50&amountMin=1.5&bogus=1")]
+    [InlineData("/admin/participants?q=a%20b%26c%3Dd&createdFrom=2026-10-05T19:55:00-04:00")]
+    [InlineData("/admin/participants?q=%2F%2Fevil.example%2F%3Fx%3D1%23y")]
+    [InlineData("/admin/participants?q=%E2%80%94%20%C3%A9")]
+    public void BrowserQueryRule_AcceptsEveryQueryTheServerCanSend(string asked)
+    {
+        // TD-ADM-177: a list page comes back with its checked query; the browser follows it.
+        Assert.True(AdminReturnPath.TryValidate(asked, out var stored));
+        var cut = stored.IndexOf('?', StringComparison.Ordinal);
+        Assert.True(cut > 0);
+        Assert.Matches(BrowserPathRule(), stored[..cut]);
+        Assert.Matches(BrowserQueryRule(), stored[cut..]);
+    }
+
+    [Fact]
+    public void BrowserQueryRule_RefusesEverythingElse()
+    {
+        var rule = BrowserQueryRule();
+        foreach (var query in new[]
+                 {
+                     "?next=//evil.example", "?q=a#x", "?q=a b", "?=x", "?q=", "?q=a&&s=b", "?q=a&", "??q=a",
+                     "?q=<script>", "?q=a/b", "?q=a\\b", "?q=a\"b", "?q=a'b", "?q1=a", "?q=a;b",
+                     "?q=a" + (char)0x0A, string.Empty, "?"
+                 })
+        {
+            Assert.False(rule.IsMatch(query), "the browser must not follow " + Uri.EscapeDataString(query));
+        }
+
+        var script = File.ReadAllText(AssetPath("sign-in-code.js"));
+        Assert.Contains("if (!PLAIN_ADMIN_PATH.test(path) || (query && !PLAIN_QUERY.test(query))) return HOME;", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (target.origin !== location.origin || target.pathname !== path || target.search !== query || target.hash) {",
+            script,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>The rule sign-in-code.js applies to the query of "next", read out of the script itself.</summary>
+    private static Regex BrowserQueryRule()
+    {
+        var script = File.ReadAllText(AssetPath("sign-in-code.js"));
+        var source = Regex.Match(script, @"var PLAIN_QUERY = /(?<rule>.+)/;").Groups["rule"].Value;
+        Assert.NotEqual(string.Empty, source);
+        Assert.EndsWith("$", source, StringComparison.Ordinal);
+        return new Regex(source[..^1] + "\\z", RegexOptions.CultureInvariant);
     }
 
     /// <summary>The rule sign-in-code.js applies to "next", read out of the script itself.</summary>

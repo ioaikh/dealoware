@@ -10,6 +10,12 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 
+  <!-- The signed-in admin pages' files. Outside wwwroot on purpose: they are
+       served only after the session gate (Program.cs, AdminSignedInPage). -->
+  <ItemGroup>
+    <Content Include="AdminAssets\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

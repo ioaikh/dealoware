@@ -1,0 +1,219 @@
+/* Signed-in admin console asset. Served only with a valid session. No secrets. */
+
+/*
+ * Stylesheet of the signed-in console shell (AdminSignedInPage): the skip
+ * link, the header and nav, the main column, and the Stats totals. Linked
+ * with the page nonce, so the policy stays style-src 'nonce-...'.
+ * The colours are the signed-out pages' own and meet WCAG 2.2 AA: text at
+ * least 4.5:1, borders and the focus ring at least 3:1. Every target is at
+ * least 24 by 24 CSS px (2.5.8).
+ */
+
+:root {
+  --ink: #1a1a1a;
+  --muted: #3d3d3d;
+  --bg: #f4f1ea;
+  --card: #ffffff;
+  --accent: #0b4f8a;
+  --accent-ink: #ffffff;
+  --focus: #0b4f8a;
+  --line: #c8c2b6;
+  --banner: #e8f0f8;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", "Liberation Sans", Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+body {
+  min-height: 100vh;
+}
+
+[hidden] { display: none !important; }
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 0.1em;
+}
+
+a:focus,
+button:focus,
+[tabindex="-1"]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Off screen until it has the focus; then at the top left, above everything. */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -10rem;
+  z-index: 10;
+  padding: 0.5rem 0.75rem;
+  background: var(--card);
+  border: 2px solid var(--accent);
+  border-radius: 0.3rem;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+.console-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.brand {
+  margin: 0;
+  font-weight: 700;
+}
+
+.console-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.console-nav a {
+  display: inline-block;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.3rem;
+}
+
+/* The current page: bold and underlined thick, so it is not told by colour alone. */
+.console-nav a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration-thickness: 0.2em;
+}
+
+.console-nav form {
+  margin: 0;
+}
+
+button {
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: var(--card);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.console-main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  overflow-wrap: break-word;
+}
+
+.console-main:focus {
+  outline-offset: -2px;
+}
+
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+  margin: 0 0 1rem;
+}
+
+p, .lede {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+/* The page's one live region. Kept in the page while empty, so it is announced when it fills. */
+.live {
+  margin: 0;
+}
+
+.live:not(:empty) {
+  border: 1px solid var(--accent);
+  background: var(--banner);
+  color: var(--ink);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+  border-radius: 0.3rem;
+}
+
+/* S-B1: one tile per Spec §6 count, as many across as fit. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.stat dt {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.stat dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-of {
+  font-size: 0.95rem;
+}
+
+/* Narrow screens and 200% zoom. */
+@media (max-width: 30rem) {
+  .console-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .console-main {
+    padding: 1rem 0.75rem 2rem;
+  }
+}

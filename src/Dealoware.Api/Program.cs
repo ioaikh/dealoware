@@ -308,14 +308,36 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Static files are served before the session gate, so under /admin only the
+// signed-out assets (/admin/auth/) may be served here. Any other /admin path
+// goes on to the gate, whatever wwwroot holds.
+app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix)
+               || context.Request.Path.StartsWithSegments(AdminSignedOutExemptions.AuthStaticPrefix),
+    branch =>
+    {
+        branch.UseDefaultFiles();
+        branch.UseStaticFiles();
+    });
 
 app.UseRateLimiter();
 
 app.UseMiddleware<AdminSessionMiddleware>();
+
+// The signed-in pages' own files: after the gate, so only a valid session
+// gets one, and from a folder outside wwwroot, so nothing before the gate can
+// serve them.
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = AdminSignedInPage.AssetPrefix,
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(app.Environment.ContentRootPath, AdminSignedInPage.AssetFolder))
+});
 app.UseAuthorization();
 app.UseAntiforgery();
+
+// S-D3 for a signed-in GET of a page path that no route answers.
+app.UseAdminPageNotFound();
 
 // Development only: EnsureCreated for local SQLite. Non-Development schema changes
 // use the migrate one-shot (see DatabaseMigrateCommand) — not baked into API startup.
@@ -372,6 +394,7 @@ app.MapAdminAuditEndpoints();
 app.MapAdminCsrfProbeEndpoint();
 app.MapAdminPasswordReset();
 app.MapAdminBootstrap();
+app.MapAdminConsolePages();
 
 app.Run();
 

@@ -53,6 +53,15 @@ public static class AdminSignInPages
     /// <summary>Where the reset page (S-A10) goes once the server has changed the password.</summary>
     public const string PasswordChangedLocation = AdminSignedOutExemptions.SignIn + "#" + PasswordChangedFlag;
 
+    /// <summary>
+    /// The fixed flag for "the owner has just signed out" (TD-ADM-UI-auth-17).
+    /// S-A1 then opens with <see cref="AdminSignInCopy.SignedOut"/>.
+    /// </summary>
+    public const string SignedOutFlag = "signed-out";
+
+    /// <summary>Where a signed-in page goes once the server has signed the owner out.</summary>
+    public const string SignedOutLocation = AdminSignedOutExemptions.SignIn + "#" + SignedOutFlag;
+
     public const string SignInScriptPath = "/admin/auth/sign-in.js";
 
     /// <summary>One script for both second-step pages; the form says which step it is.</summary>
@@ -163,10 +172,10 @@ public static class AdminSignInPages
     /// <c>data-sent-back</c> is the server's own sign-in sentence, for the
     /// one case where no reply carries it: the browser was sent back to this
     /// page because no pending sign-in was left.
-    /// The status line above the alert is for the two arrivals that are not a
-    /// refusal: a session that ended (S-A11) and a password just changed by a
-    /// reset. It holds both sentences as data and shows one only when the
-    /// address carried that flag.
+    /// The status line above the alert is for the three arrivals that are not
+    /// a refusal: a session that ended (S-A11), a sign-out, and a password
+    /// just changed by a reset. It holds the sentences as data and shows one
+    /// only when the address carried that flag.
     /// </summary>
     private static string SignInBody(TurnstileOptions turnstile)
     {
@@ -177,7 +186,8 @@ public static class AdminSignInPages
             $"<p class=\"lede\">{E(AdminSignInCopy.SignInLede)}</p>" +
             "<p id=\"form-status\" class=\"status\" role=\"status\" hidden" +
             $" data-{SessionEndedFlag}=\"{E(AdminSignInCopy.SessionEnded)}\"" +
-            $" data-{PasswordChangedFlag}=\"{E(AdminPasswordResetCopy.CompleteSucceeded)}\"></p>" +
+            $" data-{PasswordChangedFlag}=\"{E(AdminPasswordResetCopy.CompleteSucceeded)}\"" +
+            $" data-{SignedOutFlag}=\"{E(AdminSignInCopy.SignedOut)}\"></p>" +
             "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>" +
             $"<form id=\"sign-in-form\" method=\"post\" action=\"{AdminSignedOutExemptions.SignIn}\" novalidate" +
             $" data-retry=\"{E(AdminSignInCopy.SubmitRetry)}\"" +

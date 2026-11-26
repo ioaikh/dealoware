@@ -118,6 +118,35 @@ public sealed class AdminAntiForgeryService
         return ComputeRequestToken(cookieToken);
     }
 
+    /// <summary>
+    /// For the signed-in pages: the request token for the anti-forgery
+    /// cookie this browser already holds, so a page opened in one tab does
+    /// not invalidate the token of a page open in another. Only a cookie of
+    /// the exact shape <see cref="Issue"/> makes is used; without one a new
+    /// pair is issued. The token is the same keyed HMAC either way.
+    /// </summary>
+    public string IssueOrReuse(HttpContext context)
+    {
+        if (context.Request.Cookies.TryGetValue(CookieName, out var cookie) && IsIssuedShape(cookie))
+            return ComputeRequestToken(cookie);
+
+        return Issue(context);
+    }
+
+    private static bool IsIssuedShape(string? cookie)
+    {
+        if (cookie is null || cookie.Length != 64)
+            return false;
+
+        foreach (var ch in cookie)
+        {
+            if (ch is not ((>= '0' and <= '9') or (>= 'A' and <= 'F')))
+                return false;
+        }
+
+        return true;
+    }
+
     public bool TryValidate(HttpContext context)
     {
         if (!context.Request.Cookies.TryGetValue(CookieName, out var cookie)

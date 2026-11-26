@@ -13,10 +13,14 @@ namespace Dealoware.Api.Admin;
 /// requires the token. Rejects are a generic 403 (R17).
 /// Exempts only exact canonical path+method pairs for the session cookie.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
-/// One answer differs: a GET of one of the four pages that are served only
-/// during a pending sign-in (the code page, the recovery page, authenticator
-/// set-up and its recovery codes), asked for without one, is redirected to
-/// step 1 (a page for a browser, not a 401).
+/// Two answers differ, both for a browser's GET of a page, never for
+/// /admin/api/**, a static file or any other method:
+/// a GET of one of the four pages that are served only during a pending
+/// sign-in (the code page, the recovery page, authenticator set-up and its
+/// recovery codes), asked for without one, is redirected to step 1; and a GET
+/// of a signed-in page without a valid session is redirected to sign-in with
+/// the "session ended" note, the page kept for after sign-in
+/// (<see cref="AdminReturnCookie"/>).
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -98,7 +102,7 @@ public sealed class AdminSessionMiddleware
 
         if (!TryGetSessionId(context, out var sessionId))
         {
-            await AdminDeny.WriteUnauthorizedAsync(context);
+            await DenyAsync(context);
             return;
         }
 
@@ -112,7 +116,7 @@ public sealed class AdminSessionMiddleware
             || string.IsNullOrWhiteSpace(ownerEmail)
             || !string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase))
         {
-            await AdminDeny.WriteUnauthorizedAsync(context);
+            await DenyAsync(context);
             return;
         }
 
@@ -138,6 +142,65 @@ public sealed class AdminSessionMiddleware
         }
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// No valid session. A browser's GET of a signed-in page is sent to
+    /// sign-in with the "session ended" note, and the page it asked for is
+    /// kept for after sign-in when it is one a sign-in may return to. Nothing
+    /// is exempted by this: no handler runs, the target is a constant, and
+    /// the only cookie set is the kept page (or its removal). Every other
+    /// request keeps the 401: every /admin/api/ path, every static-file path,
+    /// and every method but GET.
+    /// </summary>
+    private static Task DenyAsync(HttpContext context)
+    {
+        if (!IsSignedInPageGet(context, out var canonical))
+            return AdminDeny.WriteUnauthorizedAsync(context);
+
+        AdminReturnCookie.Remember(context, canonical);
+        context.Response.StatusCode = StatusCodes.Status302Found;
+        context.Response.Headers.Location = AdminSignInPages.SessionEndedLocation;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Under /admin and never under them: the JSON routes, and the two static-file folders.</summary>
+    private static readonly string[] NotPagePrefixes =
+    [
+        "/admin/api",
+        AdminSignedOutExemptions.AuthStaticPrefix,
+        AdminSignedInPage.AssetPrefix
+    ];
+
+    /// <summary>
+    /// GET of a page path under /admin, by the canonical path the exemption
+    /// rules use (a path that does not canonicalise is not one).
+    /// </summary>
+    internal static bool IsSignedInPageGet(HttpContext context, out string canonical)
+    {
+        if (!HttpMethods.IsGet(context.Request.Method)
+            || !AdminPathCanonicalizer.TryGetComparablePath(context, out canonical))
+        {
+            canonical = string.Empty;
+            return false;
+        }
+
+        if (!string.Equals(canonical, AdminHostMiddleware.AdminPathPrefix, StringComparison.OrdinalIgnoreCase)
+            && !canonical.StartsWith(AdminHostMiddleware.AdminPathPrefix + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var prefix in NotPagePrefixes)
+        {
+            if (string.Equals(canonical, prefix, StringComparison.OrdinalIgnoreCase)
+                || canonical.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

@@ -387,6 +387,23 @@ public static class AdminReadEndpoints
         if (!TryCoreOwner(context, out var deny))
             return deny!;
 
+        var totals = await CountTotalsAsync(db, cancellationToken);
+        return Results.Json(new
+        {
+            participants = totals.Participants,
+            openNegotiations = totals.OpenNegotiations,
+            offers = totals.Offers,
+            accepts = totals.Accepts,
+            declines = totals.Declines
+        });
+    }
+
+    /// <summary>The five Spec §6 counts. All leave soft-deleted rows out.</summary>
+    internal sealed record Totals(int Participants, int OpenNegotiations, int Offers, int Accepts, int Declines);
+
+    /// <summary>The one count of the Spec §6 totals, for the stats API and the Stats page alike.</summary>
+    internal static async Task<Totals> CountTotalsAsync(DealowareDbContext db, CancellationToken cancellationToken)
+    {
         var participants = await db.Participants.CountAsync(p => p.DeletedAt == null, cancellationToken);
         var openNegotiations = await db.Negotiations.CountAsync(
             n => n.DeletedAt == null && n.Status == NegotiationStatus.Open, cancellationToken);
@@ -395,15 +412,7 @@ public static class AdminReadEndpoints
             o => o.DeletedAt == null && o.Status == OfferStatus.Accepted, cancellationToken);
         var declines = await db.Offers.CountAsync(
             o => o.DeletedAt == null && o.Status == OfferStatus.Declined, cancellationToken);
-
-        return Results.Json(new
-        {
-            participants,
-            openNegotiations,
-            offers,
-            accepts,
-            declines
-        });
+        return new Totals(participants, openNegotiations, offers, accepts, declines);
     }
 
     private static IQueryable<T> ApplyCreatedUpdated<T>(

@@ -9,6 +9,7 @@
  *
  *   200 {"verified": true, "next": path} -> signed in: go to that path if it
  *                                           is a plain path under /admin/,
+ *                                           with at most a plain query,
  *                                           otherwise to /admin/.
  *   401 with the session gate's own word -> there is no pending sign-in any
  *                                           more (it ran out, or was used):
@@ -61,9 +62,12 @@
   // that path against its own list (AdminReturnPath). The browser still
   // follows only this shape: /admin/ and then segments of letters, digits and
   // hyphens. That leaves no room for a scheme, another host ("//" or "\"), a
-  // dot segment, an encoded character, a query, a fragment or a control
-  // character. Everything else goes to /admin/.
+  // dot segment, an encoded character, a fragment or a control character.
+  // A list page may come back with its query, which the server has checked
+  // key by key and written out anew: names of letters only, values of
+  // unreserved characters and percent escapes. Everything else goes to /admin/.
   var PLAIN_ADMIN_PATH = /^\/admin\/(?:[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)*)?$/;
+  var PLAIN_QUERY = /^\?[A-Za-z]+=[A-Za-z0-9._~%-]+(?:&[A-Za-z]+=[A-Za-z0-9._~%-]+)*$/;
 
   var STEPS = {
     code: {
@@ -116,12 +120,14 @@
   var mayReload = AdminArrival.flag() !== "fresh";
 
   function nextPath(value) {
-    if (typeof value !== "string" || value.length > MAX_PATH_LENGTH || !PLAIN_ADMIN_PATH.test(value)) {
-      return HOME;
-    }
+    if (typeof value !== "string" || value.length > MAX_PATH_LENGTH) return HOME;
+    var cut = value.indexOf("?");
+    var path = cut < 0 ? value : value.slice(0, cut);
+    var query = cut < 0 ? "" : value.slice(cut);
+    if (!PLAIN_ADMIN_PATH.test(path) || (query && !PLAIN_QUERY.test(query))) return HOME;
     try {
       var target = new URL(value, location.origin);
-      if (target.origin !== location.origin || target.pathname !== value || target.search || target.hash) {
+      if (target.origin !== location.origin || target.pathname !== path || target.search !== query || target.hash) {
         return HOME;
       }
     } catch (e) {

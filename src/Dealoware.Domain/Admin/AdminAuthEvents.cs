@@ -11,6 +11,7 @@ public static class AdminAuthEvents
     public const string BootstrapLinkIssued = "bootstrap_link_issued";
     public const string BootstrapComplete = "bootstrap_complete";
     public const string BootstrapCompleteFailed = "bootstrap_complete_failed";
+    public const string SignOut = AdminAuditActions.SignOut;
 
     public const string ReasonBadPassword = "bad_password";
     public const string ReasonBad2Fa = "bad_2fa";
