@@ -242,4 +242,79 @@ public static class AdminConsoleCopy
 
     /// <summary>The failure reason class of an entry (Spec §10 Context). New copy.</summary>
     public const string AuditReason = "Reason";
+
+    // ---- Edit mode on the detail pages (T05, A7 Step 9: UXR-B14 to B17) ----
+    // From the test design: Save, Cancel, "Saving…", "Changes saved.",
+    // "Discard your changes?", Discard, Keep editing, Reload, Retry, "Nothing
+    // was changed.", "You can't do that.", the Expire dialog's title, body,
+    // buttons, "Expiring…" and "Negotiation {ID} expired.". The field
+    // sentences and the 409 are the edit API's own (AdminEditCopy). Words
+    // written new are marked "New copy".
+
+    /// <summary>Turns a detail page into its edit mode. New copy.</summary>
+    public const string Edit = "Edit";
+
+    public const string Save = "Save";
+    public const string Saving = "Saving…";
+    public const string CancelEdit = "Cancel";
+    public const string ChangesSaved = "Changes saved.";
+
+    public const string DiscardTitle = "Discard your changes?";
+    public const string Discard = "Discard";
+    public const string KeepEditing = "Keep editing";
+
+    /// <summary>Heads the error summary above the fields. New copy.</summary>
+    public const string ErrorSummaryTitle = "Your changes were not saved.";
+
+    /// <summary>A change the server refused with the generic 400: the test design's two sentences.</summary>
+    public const string EditRefused = "You can't do that. Nothing was changed.";
+
+    public const string NothingChanged = "Nothing was changed.";
+    public const string Reload = "Reload";
+
+    /// <summary>Field labels in edit mode. New copy, except Description and Owner participant (already the page's).</summary>
+    public const string DisplayNameLabel = "Display name";
+    public const string SubjectEntity = "Subject entity";
+    public const string EntityNameLabel = "Name";
+
+    /// <summary>After the label of a field that must have a value (TD-ADM-UI-na-B10: required marked with text). New copy.</summary>
+    public const string RequiredSuffix = " (required)";
+
+    /// <summary>Under Ends at: the zone the time is typed in. New copy.</summary>
+    public const string EndsAtHint = "Eastern Time (ET).";
+
+    /// <summary>Close (new copy, as the Expire dialog words it) and Expire (UXR-B14).</summary>
+    public const string CloseNegotiation = "Close negotiation";
+    public const string Closing = "Closing…";
+    public const string ExpireNegotiation = "Expire negotiation";
+    public const string Expiring = "Expiring…";
+
+    /// <summary>The second button of the Close and Expire dialogs (UXR-B14).</summary>
+    public const string DialogCancel = "Cancel";
+
+    public static string CloseNegotiationTitle(string id) => "Close negotiation " + id + "?";
+    public static string ExpireNegotiationTitle(string id) => "Expire negotiation " + id + "?";
+    public static string NegotiationClosed(string id) => "Negotiation " + id + " closed.";
+    public static string NegotiationExpired(string id) => "Negotiation " + id + " expired.";
+
+    /// <summary>
+    /// The body of the Close and Expire dialogs, from the server's count
+    /// (UXR-B14): "3 open offers will be cancelled.", "No open offers will be
+    /// cancelled."; the one-offer form is new copy.
+    /// </summary>
+    public static string OpenOffersCancelled(int count) => count switch
+    {
+        0 => "No open offers will be cancelled.",
+        1 => "1 open offer will be cancelled.",
+        _ => Count(count) + " open offers will be cancelled."
+    };
+
+    /// <summary>An offer's one admin change (E12). New copy.</summary>
+    public const string CancelOffer = "Cancel offer";
+    public const string Cancelling = "Cancelling…";
+    public const string KeepOffer = "Keep offer";
+    public const string CancelOfferBody = "Its amount, currency and terms stay as sent. Cancelled is final.";
+
+    public static string CancelOfferTitle(string id) => "Cancel offer " + id + "?";
+    public static string OfferCancelled(string id) => "Offer " + id + " cancelled.";
 }

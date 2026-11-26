@@ -7,6 +7,8 @@ Called by e2e/console/entities.ts with one JSON object on standard input:
     empty   optional: names of tables to leave empty after seeding
             (for the "No {type} yet." state), from Participants, Artifacts,
             Negotiations, Offers
+    edit    optional, true: also the rows the edit-mode tests change
+            (e2e/console/edit.spec.ts), listed under EDIT ROWS below
 
 Every run starts from the same rows: the four tables (and the subject
 entities of artifacts) are emptied, then filled. It prints one JSON object
@@ -57,6 +59,11 @@ NAMED_THINGS = [
 ]
 DELETED_THING = ("Broken lamp", "Alex Rivera", "Does not switch on.")
 
+# EDIT ROWS, only with "edit": an artifact with two subject entities; an open negotiation with
+# three open offers and an accepted one, one with no offers, one with a start and an end time,
+# and one whose end time has passed though its status still says Open.
+EDIT_THING = ("Bike parts", "Dana Okafor", [("Frame", "Steel frame, 54 cm."), ("Wheel", "Front wheel, 28 inch.")])
+
 BULK = 200
 OFFERS = 1234
 BASE = datetime(2026, 11, 20, 15, 0, 0, tzinfo=timezone.utc)
@@ -100,6 +107,7 @@ def main() -> None:
     request = json.load(sys.stdin)
     database = a_runs_own_database(request.get("db"))
     empty = set(request.get("empty") or [])
+    edit = request.get("edit") is True
     if not empty <= MAY_BE_EMPTIED:
         sys.exit("empty may name Participants, Artifacts, Negotiations and Offers only")
 
@@ -230,6 +238,37 @@ def main() -> None:
                 from_sub, to_sub = (a, b) if i % 2 == 0 else (b, a)
                 offer(neg, from_sub, to_sub, statuses[i % len(statuses)], Decimal(10) + Decimal(i) * Decimal("1.25"),
                       "USD" if i % 3 else "EUR", None, BASE - timedelta(days=3, minutes=i))
+
+            if edit:
+                name, owner, parts = EDIT_THING
+                aid = new_id()
+                con.execute(
+                    """INSERT INTO Artifacts (Id, OwnerParticipantId, Intent, CreatedAt, UpdatedAt, DeletedAt,
+                         Locations, Version) VALUES (?, ?, 'sell', ?, NULL, NULL, '[]', 0)""",
+                    (aid, sub[owner], stamp(BASE - timedelta(days=15))),
+                )
+                for part, description in parts:
+                    con.execute(
+                        """INSERT INTO SubjectEntities (Id, ArtifactId, Name, Description, Facts)
+                           VALUES (?, ?, ?, ?, '[]')""",
+                        (new_id(), aid, part, description),
+                    )
+                things[name] = aid
+                n["expire-three"] = negotiation(things["Oak desk"], sub["Blair Chen"], sub["Eli Moreau"], "Open",
+                                                BASE - timedelta(days=6))
+                for i in range(3):
+                    o[f"expire-open-{i + 1}"] = offer(n["expire-three"], sub["Blair Chen"], sub["Eli Moreau"], "Open",
+                                                      Decimal(100 + i), "USD", None, BASE - timedelta(days=5, minutes=i))
+                o["expire-accepted"] = offer(n["expire-three"], sub["Eli Moreau"], sub["Blair Chen"], "Accepted",
+                                             Decimal("90"), "USD", None, BASE - timedelta(days=5, minutes=9))
+                n["expire-none"] = negotiation(things["Garden tools"], sub["Eli Moreau"], sub["Dana Okafor"], "Open",
+                                               BASE - timedelta(days=6))
+                n["window"] = negotiation(things["Vintage camera"], sub["Dana Okafor"], sub["Alex Rivera"], "Open",
+                                          BASE - timedelta(days=6), ends=datetime(2099, 1, 15, 17, 0, tzinfo=timezone.utc))
+                con.execute("UPDATE Negotiations SET StartsAt = ? WHERE Id = ?",
+                            (stamp(datetime(2099, 1, 1, 17, 0, tzinfo=timezone.utc)), n["window"]))
+                n["lapsed"] = negotiation(things["Vintage camera"], sub["Dana Okafor"], sub["Blair Chen"], "Open",
+                                          BASE - timedelta(days=6), ends=datetime(2026, 11, 1, 16, 0, tzinfo=timezone.utc))
 
             for table in ("Offers", "Negotiations", "Artifacts", "Participants"):
                 if table in empty:
