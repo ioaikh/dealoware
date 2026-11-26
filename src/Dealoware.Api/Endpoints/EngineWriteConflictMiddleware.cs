@@ -1,4 +1,5 @@
 using Dealoware.Api.Admin;
+using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dealoware.Api.Endpoints;
@@ -17,7 +18,15 @@ namespace Dealoware.Api.Endpoints;
 /// failed is rolled back as a whole. No engine action's own logic is changed.
 /// </para>
 /// <para>
-/// Only the engine's routes: under /admin the edit API answers its own 409.
+/// A save that PostgreSQL stopped because its transaction collided with
+/// another one (a deadlock, 40P01, or a serialization failure, 40001; see
+/// <see cref="DatabaseErrors.IsTransactionCollision"/>) is answered the same
+/// way: that transaction was rolled back whole, and the same request can be
+/// made again. An admin delete or edit that holds rows a party action also
+/// wants can end that way. Any other database fault stays a 500.
+/// </para>
+/// <para>
+/// Only the engine's routes: under /admin the edit and delete APIs answer their own 409.
 /// </para>
 /// </summary>
 public sealed class EngineWriteConflictMiddleware
@@ -39,9 +48,14 @@ public sealed class EngineWriteConflictMiddleware
         {
             await _next(context);
         }
-        catch (DbUpdateConcurrencyException) when (IsEngineRoute(context) && !context.Response.HasStarted)
+        catch (Exception ex) when ((ex is DbUpdateConcurrencyException || DatabaseErrors.IsTransactionCollision(ex))
+                                   && IsEngineRoute(context)
+                                   && !context.Response.HasStarted)
         {
-            _logger.LogInformation("An engine request found its row changed as it saved; answered 409.");
+            _logger.LogInformation(
+                ex is DbUpdateConcurrencyException
+                    ? "An engine request found its row changed as it saved; answered 409."
+                    : "An engine request's transaction collided with another and was rolled back; answered 409.");
             context.Response.Clear();
             context.Response.StatusCode = StatusCodes.Status409Conflict;
             await context.Response.WriteAsJsonAsync(new { error = Message }, context.RequestAborted);
