@@ -2,7 +2,8 @@
 # Authenticator set-up pages Playwright run over HTTPS: S-A6
 # /admin/setup/authenticator and S-A7 /admin/setup/recovery-codes, reached the
 # way an owner reaches them, through a first sign-in. On Chromium, Firefox and
-# WebKit. Not wired into Admin UI CI.
+# WebKit. Admin UI CI runs it with the other suites, through
+# e2e/run-signed-out.sh.
 #
 #   ./e2e/enrol/run.sh
 #   E2E_ENGINES="firefox" ./e2e/enrol/run.sh      one engine only
