@@ -54,9 +54,9 @@ public class CoreOwnerFieldPolicyTests
     [InlineData("NegotiationPartyA", true, false)]
     [InlineData("NegotiationPartyB", true, false)]
     [InlineData("NegotiationArtifactId", true, false)]
-    [InlineData("OfferAmount", true, true)]
-    [InlineData("OfferCurrency", true, true)]
-    [InlineData("OfferTerms", true, true)]
+    [InlineData("OfferAmount", true, false)]
+    [InlineData("OfferCurrency", true, false)]
+    [InlineData("OfferTerms", true, false)]
     [InlineData("OfferStatus", true, true)]
     [InlineData("OfferNegotiationId", true, false)]
     [InlineData("SoftDeletedAt", true, false)]
@@ -69,6 +69,25 @@ public class CoreOwnerFieldPolicyTests
         Assert.Equal(canRead, _policy.Evaluate(_owner, field, FieldAction.Read, _ctx));
         Assert.Equal(canWrite, _policy.Evaluate(_owner, field, FieldAction.Write, _ctx));
         Assert.False(_policy.Evaluate(_owner, field, FieldAction.ShareOutbound, _ctx));
+    }
+
+    /// <summary>
+    /// The owner's decision "Cancel only": the console can cancel an open offer
+    /// and close or expire a negotiation; an offer's amount, currency and terms
+    /// stay exactly as the party sent them. Read and list are unchanged.
+    /// </summary>
+    [Theory]
+    [InlineData("OfferAmount")]
+    [InlineData("OfferCurrency")]
+    [InlineData("OfferTerms")]
+    public void TdAdm005_CoreOwner_NeverWritesWhatAPartySentInAnOffer(string name)
+    {
+        var field = FieldClass.Custom(name);
+        Assert.False(_policy.Evaluate(_owner, field, FieldAction.Write, _ctx));
+        Assert.False(_policy.Evaluate(_owner, field, FieldAction.Write, FieldResourceContext.ForNegotiation("participant:a", "participant:b")));
+        Assert.True(_policy.Evaluate(_owner, field, FieldAction.Read, _ctx));
+        Assert.True(_policy.Evaluate(_owner, field, FieldAction.List, _ctx));
+        Assert.True(_policy.Evaluate(_owner, FieldClass.OfferStatus, FieldAction.Write, _ctx));
     }
 
     [Fact]
