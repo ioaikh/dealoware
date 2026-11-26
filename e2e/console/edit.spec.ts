@@ -29,7 +29,7 @@ const ARTIFACTS = process.env.CONSOLE_E2E_ARTIFACTS;
 const CONFLICT = 'This record changed after you opened it. Reload it and try again.';
 const RETRY = "That didn't go through. Wait a moment and try again.";
 const SESSION_ENDED = 'Your session has ended. Sign in again to continue.';
-const SIGNED_OUT = 'You've been signed out.';
+const SIGNED_OUT = "You've been signed out.";
 
 /** The sign-in page with one of its notes: it takes the note off the address and says its sentence. */
 async function expectSignInWith(page: Page, sentence: string): Promise<void> {
@@ -163,6 +163,10 @@ test.afterAll(() => {
 test('participant: Edit shows Display name and Active or Suspended; Save waits for a change; "Saving…" and one PATCH; "Changes saved."; axe; a screenshot', async ({ page }) => {
   await signIn(page);
   const casey = seeded.participants['Casey Novak'];
+  // An address that names a result announces nothing: only the page itself, after a change it made, does.
+  await open(page, `/admin/participants/${casey.id}#edit-saved`);
+  await page.waitForTimeout(400);
+  await expect(live(page)).toHaveText('');
   await open(page, `/admin/participants/${casey.id}`);
   await expect(editButton(page)).toBeVisible();
   await expect(page.locator('#edit-displayName')).toBeHidden();
@@ -192,6 +196,10 @@ test('participant: Edit shows Display name and Active or Suspended; Save waits f
   const saving = page.locator('#edit-save');
   await expect(saving).toHaveText('Saving…');
   await expect(saving).toBeDisabled();
+  // While the save is out, nothing leaves the page and nothing asks.
+  await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Offers', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(here(page)).toBe(`/admin/participants/${casey.id}`);
   release();
 
   await expect(live(page)).toHaveText('Changes saved.');
@@ -222,6 +230,16 @@ test('artifact: pick the subject entity when there are several; its description 
   // Picking the entity is not a change.
   await expect(saveButton(page)).toBeDisabled();
   await page.getByLabel('Description', { exact: true }).fill('Front wheel, 28 inch.\nWith its tyre.');
+
+  // Another entity over typed words: it asks; Keep editing keeps the entity and the words.
+  await entity.selectOption({ label: 'Frame' });
+  const discard = page.getByRole('dialog', { name: 'Discard your changes?' });
+  await expect(discard).toBeVisible();
+  await discard.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(discard).toBeHidden();
+  await expect(entity.locator('option:checked')).toHaveText('Wheel');
+  await expect(page.getByLabel('Name (required)', { exact: true })).toHaveValue('Wheel');
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Front wheel, 28 inch.\nWith its tyre.');
 
   await ownerBox.fill('Blair');
   await page.getByRole('option', { name: 'Blair Chen', exact: true }).click();
@@ -317,6 +335,61 @@ test('409: the server\'s sentence and Reload, typed values kept until then; Relo
   await editButton(page).click();
   await expect(page.getByLabel('Display name', { exact: true })).toHaveValue('Dana from the second tab');
   expect(here(page)).toBe(`/admin/participants/${dana.id}`);
+});
+
+test('409 then Reload: the page starts again from the record as stored, never from what was picked before (a radio, the subject entity)', async ({ page }) => {
+  await signIn(page);
+  const dana = seeded.participants['Dana Okafor'];
+  await open(page, `/admin/participants/${dana.id}`);
+  await editButton(page).click();
+  await page.getByRole('radio', { name: 'Suspended', exact: true }).check();
+
+  const other = await page.context().newPage();
+  await open(other, `/admin/participants/${dana.id}`);
+  await editButton(other).click();
+  await other.getByLabel('Display name', { exact: true }).fill('Dana O.');
+  await saveButton(other).click();
+  await expect(live(other)).toHaveText('Changes saved.');
+
+  await saveButton(page).click();
+  await expect(page.locator('#edit-conflict')).toContainText(CONFLICT);
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.locator('.details')).toContainText('Dana O.');
+  await expect(page.locator('.details .badge')).toHaveText(['Active']);
+  await editButton(page).click();
+  await expect(page.getByRole('radio', { name: 'Active', exact: true })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Suspended', exact: true })).not.toBeChecked();
+  await expect(saveButton(page)).toBeDisabled();
+
+  // Several subject entities: after Reload the pick and the boxes agree, on the first one.
+  const parts = seeded.artifacts['Bike parts'];
+  await open(page, `/admin/artifacts/${parts}`);
+  await editButton(page).click();
+  const entity = page.getByLabel('Subject entity', { exact: true });
+  const first = (await entity.locator('option:checked').textContent()) ?? '';
+  const second = first === 'Frame' ? 'Wheel' : 'Frame';
+  await entity.selectOption({ label: second });
+  await page.getByLabel('Description', { exact: true }).fill('Typed in the first tab.');
+
+  await open(other, `/admin/artifacts/${parts}`);
+  await editButton(other).click();
+  const otherOwner = other.getByRole('combobox', { name: 'Owner participant' });
+  await otherOwner.fill('Eli');
+  await other.getByRole('option', { name: 'Eli Moreau', exact: true }).click();
+  await saveButton(other).click();
+  await expect(live(other)).toHaveText('Changes saved.');
+  await other.close();
+
+  await saveButton(page).click();
+  await expect(page.locator('#edit-conflict')).toContainText(CONFLICT);
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.locator('.details')).toContainText('Eli Moreau');
+  await editButton(page).click();
+  await expect(entity.locator('option:checked')).toHaveText(first);
+  await expect(page.getByLabel('Name (required)', { exact: true })).toHaveValue(first);
+  await expect(page.getByLabel('Description', { exact: true })).not.toHaveValue('Typed in the first tab.');
+  await expect(page.getByRole('combobox', { name: 'Owner participant' })).toHaveValue('Eli Moreau');
+  await expect(saveButton(page)).toBeDisabled();
 });
 
 test('Expire negotiation: the server\'s count, focus on Cancel, Escape and the backdrop change nothing, "Expiring…" and one request, its open offers cancelled; axe; a screenshot', async ({ page }) => {
@@ -487,6 +560,12 @@ test('unsaved changes: nothing asked with nothing changed; a link, Back and Sign
   await editButton(page).click();
   await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Offers', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers');
+  // Edit mode's history entry went first: one Back is the record, the next the page before it.
+  await page.goBack();
+  await expect(page).toHaveURL(ORIGIN + address);
+  await expect(editButton(page)).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(ORIGIN + '/admin/');
 
   await open(page, address);
   await editButton(page).click();
@@ -542,6 +621,14 @@ test('unsaved changes: nothing asked with nothing changed; a link, Back and Sign
   await expect(page).toHaveURL(ORIGIN + '/admin/');
   await open(page, address);
   await expect(page.locator('.details')).toContainText('Alex Rivera');
+
+  // Sign out, then Discard: signed out.
+  await editButton(page).click();
+  await name.fill('Alex R.');
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(discard).toBeVisible();
+  await discard.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expectSignInWith(page, SIGNED_OUT);
 });
 
 test('the session and the token: a 401 goes to sign-in with "session ended"; a refused token loads the page anew once, which says to try again; no answer says to try again', async ({ page }) => {
