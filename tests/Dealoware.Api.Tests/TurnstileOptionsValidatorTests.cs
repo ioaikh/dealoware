@@ -111,10 +111,32 @@ public class TurnstileOptionsValidatorTests
 
         Assert.Equal(TurnstileOptionsValidator.SiteKeyMissingWarning, warning);
         Assert.Contains("Admin__Turnstile__SiteKey", warning, StringComparison.Ordinal);
-        Assert.Contains("setup and sign-in pages cannot be submitted", warning, StringComparison.Ordinal);
+        Assert.Contains("setup, sign-in and password-reset pages cannot be submitted", warning, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", warning, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(TurnstileOptions.SecretEnvironmentVariable, warning, StringComparison.Ordinal);
         Assert.Equal(TurnstileOptionsValidator.SiteKeyMissingWarning, TurnstileOptionsValidator.SiteKeyWarning(null, environment));
+    }
+
+    [Theory]
+    [InlineData("Production", null)]
+    [InlineData("Production", "")]
+    [InlineData("Staging", "   ")]
+    [InlineData(null, null)]
+    public void VerifierKeyWarning_OutsideDevelopment_WhenMissing_NamesTheVariableOnly(string? environment, string? value)
+    {
+        Assert.Equal(
+            TurnstileOptionsValidator.VerifierKeyMissingWarning,
+            TurnstileOptionsValidator.VerifierKeyWarning(value, environment));
+        Assert.Contains(TurnstileOptions.SecretEnvironmentVariable, TurnstileOptionsValidator.VerifierKeyMissingWarning, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Production", "a-configured-value")]
+    [InlineData("Development", null)]
+    [InlineData("Development", "")]
+    public void VerifierKeyWarning_WhenSet_OrInDevelopment_SaysNothing(string environment, string? value)
+    {
+        Assert.Null(TurnstileOptionsValidator.VerifierKeyWarning(value, environment));
     }
 
     [Theory]

@@ -61,6 +61,8 @@ public static class AdminPasswordResetCopy
 
     public const string ConfirmNoscript = "Turn on JavaScript to set your password.";
 
+    public const string RequestNoscript = "Turn on JavaScript to request a reset link.";
+
     public const string CheckingLink = "Checking your link…";
 
     public const string CheckRetry =

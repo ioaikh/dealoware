@@ -15,8 +15,27 @@ public static class TurnstileOptionsValidator
 
     /// <summary>Names the setting to fix. Holds no value from configuration, so no secret.</summary>
     public const string SiteKeyMissingWarning =
-        "Admin:Turnstile:SiteKey is empty. The admin setup and sign-in pages cannot be submitted " +
+        "Admin:Turnstile:SiteKey is empty. The admin setup, sign-in and password-reset pages cannot be submitted " +
         "until Admin__Turnstile__SiteKey is set to the public Turnstile site key.";
+
+    /// <summary>
+    /// Names the private verification key's variable, never its value. Without
+    /// it every security check is refused before Cloudflare is asked, and the
+    /// refusal itself logs nothing, so this is the one place that says why.
+    /// </summary>
+    public const string VerifierKeyMissingWarning =
+        "DEALOWARE_TURNSTILE_SECRET is empty. Every security check on the admin setup, sign-in and " +
+        "password-reset pages is refused until it is set.";
+
+    /// <summary>
+    /// The warning to log once at start-up when the private verification key
+    /// is missing outside Development, or null. Takes the value only to test
+    /// it for emptiness; the value is never returned or logged.
+    /// </summary>
+    public static string? VerifierKeyWarning(string? verifierKey, string? environmentName)
+        => !IsDevelopment(environmentName) && string.IsNullOrWhiteSpace(verifierKey)
+            ? VerifierKeyMissingWarning
+            : null;
 
     /// <exception cref="InvalidOperationException">
     /// Thrown outside Development when <see cref="TurnstileOptions.VerifyUrl"/>

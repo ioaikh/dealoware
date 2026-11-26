@@ -180,7 +180,7 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
         // With JavaScript off: the heading, one sentence, and a panel only the script can show.
         Assert.Contains(
             $"<h1 id=\"page-heading\">{AdminPasswordResetCopy.RequestHeading}</h1>"
-            + $"<noscript><p>{AdminPasswordResetCopy.ConfirmNoscript}</p></noscript>"
+            + $"<noscript><p>{AdminPasswordResetCopy.RequestNoscript}</p></noscript>"
             + "<div id=\"reset-panel\" hidden>"
             + $"<p class=\"lede\">{AdminPasswordResetCopy.RequestLede}</p>"
             + "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>"
@@ -197,13 +197,15 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
             html,
             StringComparison.Ordinal);
 
-        // The widget sits directly above the button, which only a fresh token can enable; then the way back.
+        // The widget sits directly above the button, which only a fresh token can enable; then the way
+        // back, outside the hidden panel so that it is there with JavaScript off too.
         Assert.Contains(
             "</button></div>"
             + "<button type=\"submit\" id=\"reset-submit\" disabled aria-describedby=\"security-check-status\">"
             + $"{AdminPasswordResetCopy.RequestSubmit}</button>"
+            + "</form></div>"
             + $"<div class=\"links\"><a id=\"back-link\" href=\"{AdminSignedOutExemptions.SignIn}\">{AdminSignInCopy.BackToSignIn}</a></div>"
-            + "</form></div></div></main>",
+            + "</div></main>",
             html,
             StringComparison.Ordinal);
 
