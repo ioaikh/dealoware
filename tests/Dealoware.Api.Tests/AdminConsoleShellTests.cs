@@ -47,12 +47,13 @@ public partial class AdminConsoleShellTests
 
     private static readonly string[] NavOrder =
     [
-        "/admin/", "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", "/admin/settings/security"
+        "/admin/", "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", "/admin/audit",
+        "/admin/settings/security"
     ];
 
     private static readonly string[] NavLabels =
     [
-        "Stats", "Participants", "Artifacts", "Negotiations", "Offers", "Security settings"
+        "Stats", "Participants", "Artifacts", "Negotiations", "Offers", "Audit log", "Security settings"
     ];
 
     // ---- the shell ----
@@ -92,7 +93,7 @@ public partial class AdminConsoleShellTests
         Assert.Contains("</head><body><a class=\"skip-link\" href=\"#main\">Skip to main content</a>", html, StringComparison.Ordinal);
         Assert.Contains("<main id=\"main\" class=\"console-main\" tabindex=\"-1\"><h1 ", html, StringComparison.Ordinal);
 
-        // The nav: the six pages in order, the current one marked, then Sign out as a POST form.
+        // The nav: the seven pages in order (TD-ADM-UI-na-X03), the current one marked, then Sign out as a POST form.
         var links = NavLinks().Matches(html).Select(m => (Href: m.Groups["href"].Value, Current: m.Groups["current"].Success, Label: m.Groups["label"].Value)).ToArray();
         Assert.Equal(NavOrder, links.Select(l => l.Href).ToArray());
         Assert.Equal(NavLabels, links.Select(l => WebUtility.HtmlDecode(l.Label)).ToArray());
@@ -101,7 +102,6 @@ public partial class AdminConsoleShellTests
         var isList = AdminListPages.All.Any(l => l.Path == path);
         if (!isList)
             Assert.Equal(current is null ? 0 : 1, Regex.Matches(html, "aria-current=").Count);
-        Assert.DoesNotContain("Audit log", text, StringComparison.Ordinal);
         Assert.Contains(
             "<form id=\"sign-out-form\" method=\"post\" action=\"/admin/sign-out\""
             + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\">"

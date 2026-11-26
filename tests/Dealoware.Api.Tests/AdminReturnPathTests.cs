@@ -92,9 +92,15 @@ public class AdminReturnPathTests
     [InlineData("/admin/participants?q=%3Cscript%3E", "/admin/participants?q=%3Cscript%3E")]
     [InlineData("/admin/participants?q=a%0Ab", "/admin/participants")]
     [InlineData("/admin/participants?q=a%E2%80%8Bb", "/admin/participants")]
-    // Only the four entity lists take a query.
+    // Only the four entity lists and the audit list take a query.
     [InlineData("/admin/?status=Open", "/admin/")]
-    [InlineData("/admin/audit?action=sign_out", "/admin/audit")]
+    // The audit list keeps its own keys: actions from the fixed list (in the list's order), an entity type, days, a page.
+    [InlineData("/admin/audit?action=sign_out", "/admin/audit?action=sign_out")]
+    [InlineData("/admin/audit?action=SIGN_OUT,nope,login_failure&entityType=offer&q=x&actorEmail=a%40example.test", "/admin/audit?action=login_failure%2Csign_out&entityType=Offer")]
+    [InlineData("/admin/audit?limit=200&offset=400&to=2026-11-20&from=2026-11-01&sort=action", "/admin/audit?from=2026-11-01&to=2026-11-20&offset=400&limit=200")]
+    [InlineData("/admin/audit?action=nope&entityType=Strategy&from=yesterday&to=9999-12-31&limit=201&offset=-1", "/admin/audit")]
+    [InlineData("/admin/audit?action=sign_out&action=login_success", "/admin/audit")]
+    [InlineData("/admin/audit/" + Id + "?action=sign_out", "/admin/audit/" + Id)]
     [InlineData("/admin/offers/" + Id + "?status=Open", "/admin/offers/" + Id)]
     public void TdAdm177_KnownListQuery_IsKeptCheckedAndReEncoded_UnknownIsDropped(string input, string expected)
     {
@@ -126,8 +132,11 @@ public class AdminReturnPathTests
     }
 
     [Fact]
-    public void TdAdm177_EveryListNamesItsKeys_TheAuditListNone()
+    public void TdAdm177_EveryListNamesItsKeys_TheAuditListItsOwn()
     {
+        // The audit list: its filters and its page; no search, no sort, no actor (which can be an email address).
+        Assert.Equal(new[] { "action", "entityType", "from", "to", "offset", "limit" }, AdminReturnQuery.KeysFor("/admin/audit"));
+        Assert.Equal(AdminAuditPages.QueryKeys, AdminReturnQuery.KeysFor(AdminAuditPages.ListPath));
         Assert.Equal("sort", AdminReturnQuery.KeysFor("/admin/participants")[0]);
         Assert.Contains("amountMin", AdminReturnQuery.KeysFor("/admin/offers"));
         Assert.DoesNotContain("amountMin", AdminReturnQuery.KeysFor("/admin/negotiations"));
@@ -153,7 +162,8 @@ public class AdminReturnPathTests
                 Assert.Equal(list.SortKeys.Contains(sort, StringComparer.Ordinal) ? "?sort=" + sort : string.Empty, kept);
             }
         }
-        Assert.Empty(AdminReturnQuery.KeysFor("/admin/audit"));
+        // The audit list has one order, so no sort is kept for it.
+        Assert.Equal(string.Empty, AdminReturnQuery.Filter("/admin/audit", "sort=timestamp"));
         Assert.Empty(AdminReturnQuery.KeysFor("/admin/"));
     }
 }

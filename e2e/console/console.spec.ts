@@ -40,6 +40,7 @@ const NAV = [
   { path: '/admin/artifacts', label: 'Artifacts', title: 'Artifacts · Dealoware admin', heading: 'Artifacts' },
   { path: '/admin/negotiations', label: 'Negotiations', title: 'Negotiations · Dealoware admin', heading: 'Negotiations' },
   { path: '/admin/offers', label: 'Offers', title: 'Offers · Dealoware admin', heading: 'Offers' },
+  { path: '/admin/audit', label: 'Audit log', title: 'Audit log · Dealoware admin', heading: 'Audit log' },
   {
     path: '/admin/settings/security', label: 'Security settings',
     title: 'Security settings · Dealoware admin', heading: 'Security settings',
@@ -160,7 +161,6 @@ async function expectShell(page: Page, title: string, heading: string, current: 
   await expect(page.locator('h1')).toHaveText(heading);
   const nav = page.getByRole('navigation', { name: 'Admin' });
   await expect(nav.getByRole('link')).toHaveText(NAV.map((n) => n.label));
-  await expect(nav.getByRole('link', { name: 'Audit log' })).toHaveCount(0);
   await expect(nav.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   const marked = nav.locator('[aria-current="page"]');
   if (current === null) {
@@ -274,7 +274,7 @@ test('Stats at 320 px: nothing scrolls sideways, every nav entry and Sign out st
 });
 
 test('every nav entry opens its page in one step, with its title, one h1 and aria-current on it alone', async ({ page }) => {
-  // Seven pages, each scanned by axe: more than the default 30 s in the slower engines.
+  // Eight pages, each scanned by axe: more than the default 30 s in the slower engines.
   test.setTimeout(90_000);
   await signIn(page);
   for (const entry of NAV) {

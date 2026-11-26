@@ -1,4 +1,5 @@
 using System.Globalization;
+using Dealoware.Domain.Admin;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Dealoware.Api.Admin;
@@ -10,8 +11,9 @@ namespace Dealoware.Api.Admin;
 /// written out anew in a fixed order. An unknown key, a key given twice and a
 /// value that does not pass are dropped; the path itself stays. Nothing of
 /// the raw text is echoed: every kept value is re-encoded.
-/// Only the four entity lists take a query. The audit list takes none until
-/// its viewer (T07) names its own keys.
+/// The four entity lists and the audit list take a query; no other page does.
+/// The audit list keeps its own keys (<see cref="AdminAuditPages.QueryKeys"/>):
+/// actions from the fixed list, an entity type, a range of days, a page.
 /// <para>
 /// These are exactly the keys each list page reads (<see cref="AdminListPages"/>
 /// passes its own address through <see cref="Filter"/> first, so a page and
@@ -84,6 +86,15 @@ public static class AdminReturnQuery
             ("negotiationId", Id),
             ("amountMin", Amount),
             ("amountMax", Amount)
+        ],
+        [AdminAuditPages.ListPath] =
+        [
+            ("action", Statuses(AdminAuditOutcome.Actions)),
+            ("entityType", OneOf([.. AdminAuditPages.EntityTypeNames])),
+            ("from", DateOrInstant),
+            ("to", DateOrInstant),
+            ("offset", Whole(0, int.MaxValue)),
+            ("limit", Whole(1, AdminAuditListCriteria.MaxLimit))
         ]
     };
 
