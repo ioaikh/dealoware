@@ -284,6 +284,15 @@ test('S-A12 opens from the nav: four sections, the server\'s count, the activity
   await expect(page.locator('h1')).toHaveText('Security settings');
   await expect(page.getByRole('navigation', { name: 'Admin' }).locator('[aria-current="page"]')).toHaveAttribute('href', PAGE);
   await expect(page.locator('main h2:visible')).toHaveText(['Password', 'Recovery codes', 'Authenticator', 'Recent sign-in activity']);
+  // The shell's live region first, then each form's own and each field's error line, all polite.
+  expect(await page.locator('[aria-live]').evaluateAll((els) => els.map((e) => `${e.id}:${e.getAttribute('aria-live')}`))).toEqual([
+    'console-status:polite',
+    'password-alert:polite', 'current-password-error:polite', 'new-password-error:polite', 'confirm-password-error:polite',
+    'password-code-error:polite', 'password-recovery-code-error:polite',
+    'codes-alert:polite', 'authenticator-alert:polite', 'new-key-alert:polite', 'new-key-code-error:polite',
+    'activity-alert:polite',
+    'step-up-alert:polite', 'step-up-password-error:polite', 'step-up-code-error:polite', 'step-up-recovery-code-error:polite',
+  ]);
   await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create new codes', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up again', exact: true })).toBeVisible();
@@ -498,9 +507,23 @@ test('create new codes: the step-up dialog refuses without naming the factor, th
   await shot(page, 'sa12_step-up');
 
   // Wrong password, a good recovery code: one sentence that names neither; both cleared; focus on the password.
+  // The reply is held while Escape is pressed twice: the dialog waits for it, and shows it.
   await stepUpWithRecoveryCode(page, 'not the password at all', owner.recoveryCodes[0]);
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname === API_CODES, async (route) => {
+    await held;
+    await route.continue();
+  });
   await page.locator('#step-up-submit').click();
+  await expect(page.locator('#step-up-submit')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  expect(await page.locator('#step-up-dialog').evaluate((d) => (d as HTMLDialogElement).open)).toBe(true);
+  release();
   await expect(page.locator('#step-up-alert')).toHaveText(STEP_UP_FAILED);
+  await page.unroute((url) => url.pathname === API_CODES);
   await expect(page.locator('#step-up-password')).toHaveValue('');
   await expect(page.locator('#step-up-recovery-code')).toHaveValue('');
   await expect(page.locator('#step-up-password')).toBeFocused();
@@ -858,6 +881,22 @@ test('keyboard: the password form and the dialog in order, each control with its
   await expect(dialog).toBeHidden();
   await expect(create).toBeFocused();
   await expect(page.locator('#step-up-password')).toHaveValue('');
+
+  // Escape closes it from every control in it, fields and buttons alike, and empties it.
+  for (const id of ['step-up-code', 'step-up-factor-switch', 'step-up-recovery-code', 'step-up-submit']) {
+    await create.focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    if (id === 'step-up-recovery-code') await page.locator('#step-up-factor-switch').click();
+    const control = page.locator(`#${id}`);
+    if (id === 'step-up-code' || id === 'step-up-recovery-code') await control.fill('123456');
+    await control.focus();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(create).toBeFocused();
+    await expect(page.locator('#step-up-code')).toHaveValue('');
+    await expect(page.locator('#step-up-recovery-code')).toHaveValue('');
+  }
 
   // The skip link still leads to main.
   const skip = page.getByRole('link', { name: SKIP, exact: true });

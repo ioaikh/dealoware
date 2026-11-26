@@ -711,7 +711,8 @@ public static class AdminAuthEndpoints
         await sessions.AddAsync(session, context.RequestAborted);
         if (usedRecovery)
         {
-            // The UXR-A40 banner of this session, saved with it (AdminRecoveryNotice).
+            // The UXR-A40 banner of this session, saved with it (AdminRecoveryNotice). Needs
+            // migration 20261126000500 applied first: deploy the migration before this code.
             AdminRecoveryNotice.Add(context, session.Id, now);
         }
 

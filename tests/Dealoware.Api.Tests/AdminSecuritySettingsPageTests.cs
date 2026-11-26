@@ -104,6 +104,54 @@ public partial class AdminSecuritySettingsPageTests
         Assert.EndsWith("</body></html>", html, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The shell checks AdminConsoleShellTests makes of every placeholder page, which S-A12 left
+    /// when it got forms of its own: charset, nav order and labels, no Audit log, the exact
+    /// sign-out form, no referrer meta, main then h1, and its own exact set of live regions.
+    /// </summary>
+    [Fact]
+    public async Task Sa12Page_KeepsTheShellsOwnMarkup()
+    {
+        var session = await SeedSessionAsync();
+        using var response = await GetAsync(PagePath, session);
+        var html = await response.Content.ReadAsStringAsync();
+        var text = WebUtility.HtmlDecode(html);
+
+        Assert.Equal("utf-8", response.Content.Headers.ContentType?.CharSet);
+        Assert.DoesNotContain("name=\"referrer\"", html, StringComparison.Ordinal);
+        var links = Regex.Matches(html, "<li><a href=\"([^\"]+)\"(?: aria-current=\"page\")?>([^<]+)</a></li>");
+        Assert.Equal(
+            new[] { "/admin/", "/admin/participants", "/admin/artifacts", "/admin/negotiations", "/admin/offers", PagePath },
+            links.Select(m => m.Groups[1].Value).ToArray());
+        Assert.Equal(
+            new[] { "Stats", "Participants", "Artifacts", "Negotiations", "Offers", "Security settings" },
+            links.Select(m => WebUtility.HtmlDecode(m.Groups[2].Value)).ToArray());
+        Assert.DoesNotContain("Audit log", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "<form id=\"sign-out-form\" method=\"post\" action=\"/admin/sign-out\""
+            + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\">"
+            + $"<input type=\"hidden\" name=\"dw_csrf\" value=\"{AdminPageAntiForgery.ReadToken(html)}\">"
+            + "<button type=\"submit\" id=\"sign-out\" class=\"secondary\">Sign out</button></form>",
+            text,
+            StringComparison.Ordinal);
+        Assert.True(
+            html.IndexOf("id=\"sign-out-form\"", StringComparison.Ordinal)
+            > html.IndexOf("href=\"/admin/settings/security\"", StringComparison.Ordinal));
+        Assert.Contains("<main id=\"main\" class=\"console-main\" tabindex=\"-1\"><h1 ", html, StringComparison.Ordinal);
+
+        // The live regions: the shell's, then each form's own and each field's error line. All polite.
+        Assert.Equal(
+            new[]
+            {
+                "console-status", "password-alert", "current-password-error", "new-password-error", "confirm-password-error",
+                "password-code-error", "password-recovery-code-error", "codes-alert", "authenticator-alert", "new-key-alert",
+                "new-key-code-error", "activity-alert", "step-up-alert", "step-up-password-error", "step-up-code-error",
+                "step-up-recovery-code-error"
+            },
+            Regex.Matches(html, "<[a-z]+ id=\"([^\"]+)\"[^>]* aria-live=\"polite\"").Select(m => m.Groups[1].Value).ToArray());
+        Assert.Equal(16, Regex.Matches(html, "aria-live=").Count);
+    }
+
     [Fact]
     public async Task Sa12Page_HoldsNoCodeKeyCountOrOwnerData_EveryPanelIsEmpty()
     {
@@ -426,6 +474,45 @@ public partial class AdminSecuritySettingsPageTests
         }
 
         Assert.False(await NoticeExistsAsync(withCode));
+    }
+
+    /// <summary>
+    /// The banner is a notice, not a gate: when its table cannot be read (the API started before
+    /// migration 20261126000500), every signed-in page is still served, without the banner, and the
+    /// log names only the exception type.
+    /// </summary>
+    [SqliteOnlyFact]
+    public async Task TheBannerLookup_FailsSoft_WhenItsTableIsMissing()
+    {
+        using var factory = new IsolatedWebApplicationFactory();
+        Guid session;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var now = scope.ServiceProvider.GetRequiredService<IAdminClock>().UtcNow;
+            var row = AdminSession.Create(OwnerEmail, ipHmac: "testhmac-not-an-ip", now: now);
+            row.MarkTotpVerified();
+            db.AdminSessions.Add(row);
+            await db.SaveChangesAsync();
+            session = row.Id;
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE \"AdminSessionRecoveryNotices\"");
+        }
+
+        factory.LogCollector.Clear();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        foreach (var path in new[] { "/admin/", PagePath })
+        {
+            using var request = Request(HttpMethod.Get, path, SessionPair(session));
+            using var page = await client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            Assert.DoesNotContain("recovery-notice", await page.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        // category|level|message|exception type|exception message: the type in the message only, no exception text.
+        var logged = factory.LogCollector.Lines.Where(l => l.Contains("recovery-code banner", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, logged.Count);
+        Assert.All(logged, l => Assert.Matches(
+            @"^Dealoware\.Api\.Admin\.AdminRecoveryNotice\|Warning\|Admin recovery-code banner not read: [A-Za-z]+Exception\|\|$", l));
     }
 
     [Fact]

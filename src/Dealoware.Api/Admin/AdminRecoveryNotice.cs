@@ -36,7 +36,14 @@ public static class AdminRecoveryNotice
 
     private sealed record Pending(int CodesLeft);
 
-    /// <summary>Adds the banner row of a new session to the caller's unit of work; the caller saves it with the session.</summary>
+    /// <summary>
+    /// Adds the banner row of a new session to the caller's unit of work; the
+    /// caller saves it with the session, in the same SaveChanges, so a session
+    /// never exists without its banner. Deploy order: migration
+    /// 20261126000500 must be applied before this code runs, or that save
+    /// fails and the recovery-code sign-in fails after the code was spent.
+    /// The error is not swallowed here on purpose.
+    /// </summary>
     public static void Add(HttpContext http, Guid sessionId, DateTimeOffset now)
     {
         var db = http.RequestServices.GetRequiredService<DealowareDbContext>();
@@ -55,25 +62,43 @@ public static class AdminRecoveryNotice
                 && AdminSessionMiddleware.IsSignedInPageGet(context, out _)
                 && Guid.TryParse(context.Request.Cookies[AdminSessionCookie.Name], out var sessionId))
             {
-                var ct = context.RequestAborted;
-                var db = context.RequestServices.GetRequiredService<DealowareDbContext>();
-                if (await db.AdminSessionRecoveryNotices.AsNoTracking().AnyAsync(n => n.SessionId == sessionId, ct))
+                // The banner is a notice, not a gate: if it cannot be read (for example the
+                // API runs before migration 20261126000500), the page is served without it.
+                try
                 {
-                    var email = AdminAuthService.NormalizeEmail(context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value);
-                    var accountId = await db.AdminCoreOwnerAccounts.AsNoTracking()
-                        .Where(a => a.Email == email)
-                        .Select(a => (Guid?)a.Id)
-                        .FirstOrDefaultAsync(ct);
-                    if (accountId is { } id)
-                    {
-                        var store = context.RequestServices.GetRequiredService<AdminSecuritySettingsStore>();
-                        context.Items[ItemKey] = new Pending(await store.CountUnusedRecoveryCodesAsync(id, ct));
-                    }
+                    var pending = await FindAsync(context, sessionId);
+                    if (pending is not null)
+                        context.Items[ItemKey] = pending;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    context.RequestServices.GetRequiredService<ILoggerFactory>()
+                        .CreateLogger(typeof(AdminRecoveryNotice).FullName!)
+                        .LogWarning("Admin recovery-code banner not read: {ExceptionType}", ex.GetType().Name);
                 }
             }
 
             await next(context);
         });
+
+    private static async Task<Pending?> FindAsync(HttpContext context, Guid sessionId)
+    {
+        var ct = context.RequestAborted;
+        var db = context.RequestServices.GetRequiredService<DealowareDbContext>();
+        if (!await db.AdminSessionRecoveryNotices.AsNoTracking().AnyAsync(n => n.SessionId == sessionId, ct))
+            return null;
+
+        var email = AdminAuthService.NormalizeEmail(context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value);
+        var accountId = await db.AdminCoreOwnerAccounts.AsNoTracking()
+            .Where(a => a.Email == email)
+            .Select(a => (Guid?)a.Id)
+            .FirstOrDefaultAsync(ct);
+        if (accountId is not { } id)
+            return null;
+
+        var store = context.RequestServices.GetRequiredService<AdminSecuritySettingsStore>();
+        return new Pending(await store.CountUnusedRecoveryCodesAsync(id, ct));
+    }
 
     public static void MapAdminRecoveryNotice(this WebApplication app)
     {

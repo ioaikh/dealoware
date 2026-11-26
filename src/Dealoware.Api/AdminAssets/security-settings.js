@@ -502,8 +502,17 @@
     stepUpPassword.focus();
   }
 
+  // Escape is handled here, not left to the browser: WebKit fires no "cancel" for an Escape typed
+  // in the dialog's fields, so the dialog would stay open; and Chromium closes a modal dialog on a
+  // second Escape even when its "cancel" was refused. While a request is out the dialog waits for
+  // the answer, so a refusal is never written into a closed dialog.
+  dialog.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape" && event.key !== "Esc") return;
+    event.preventDefault();
+    if (!busy) dialog.close();
+  });
+  // Any other close the browser asks for: the same rule.
   dialog.addEventListener("cancel", function (event) {
-    // Escape while a request is out: the dialog waits for the answer.
     if (busy) event.preventDefault();
   });
   // Closed by the owner (Escape or Cancel): the focus goes back to the button that opened it. That

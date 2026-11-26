@@ -170,8 +170,10 @@ async function expectShell(page: Page, title: string, heading: string, current: 
     await expect(marked).toHaveAttribute('href', current);
   }
   await expect(page.getByRole('link', { name: SKIP, exact: true })).toHaveAttribute('href', '#main');
-  // One live region of the shell's own; a page's forms keep theirs inside their sections (S-A12).
-  await expect(page.locator('main > [aria-live]')).toHaveCount(1);
+  // One live region in the whole page. S-A12 has forms with their own, and its own test holds it to
+  // its exact set (security-settings.spec.ts); the shell's is still the only one directly in main.
+  if (current === '/admin/settings/security') await expect(page.locator('main > [aria-live]')).toHaveCount(1);
+  else await expect(page.locator('[aria-live]')).toHaveCount(1);
   await expect(page.locator('#console-status')).toHaveAttribute('aria-live', 'polite');
   await expectStyled(page);
 }
