@@ -2,7 +2,8 @@
 # Password-reset pages Playwright run over HTTPS: S-A8 /admin/reset and S-A9
 # /admin/reset/sent, with S-A5 /admin/link-expired, S-A10
 # /admin/reset/confirm and the two sentences S-A1 can open with, on Chromium,
-# Firefox and WebKit. Not wired into Admin UI CI.
+# Firefox and WebKit. Admin UI CI runs it with the other suites, through
+# e2e/run-signed-out.sh.
 #
 #   ./e2e/reset/run.sh
 #   E2E_ENGINES="firefox" ./e2e/reset/run.sh      one engine only

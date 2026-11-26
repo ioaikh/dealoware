@@ -6,7 +6,8 @@ namespace Dealoware.Api.Tests;
 /// <summary>
 /// Pins on the browser runs for the signed-out admin pages (e2e/bootstrap for
 /// the first-time setup page, e2e/sign-in for the three sign-in pages,
-/// e2e/enrol for the two authenticator set-up pages) and on the runner they
+/// e2e/enrol for the two authenticator set-up pages, e2e/reset for the
+/// password-reset pages) and on the runner they
 /// share (e2e/signed-out): a run stays on this machine, needs
 /// no privilege, keeps the loopback proxy guard, and uses the stand-in
 /// Turnstile verifier only with the app in Development.
@@ -16,7 +17,7 @@ namespace Dealoware.Api.Tests;
 /// </summary>
 public class AdminSignedOutBrowserRunTests
 {
-    private static readonly string[] Suites = ["bootstrap", "sign-in", "enrol"];
+    private static readonly string[] Suites = ["bootstrap", "sign-in", "enrol", "reset"];
 
     private static readonly string[] NeverInARunner =
     [
@@ -75,6 +76,7 @@ public class AdminSignedOutBrowserRunTests
     [InlineData("bootstrap", "BOOTSTRAP_E2E", "bootstrap.spec.ts")]
     [InlineData("sign-in", "SIGN_IN_E2E", "sign-in.spec.ts")]
     [InlineData("enrol", "ENROL_E2E", "enrol.spec.ts")]
+    [InlineData("reset", "RESET_E2E", "reset.spec.ts")]
     public void SuiteRunner_NamesItsPortsAndPrefix_AndLeavesTheRestToTheSharedRunner(
         string suite,
         string envPrefix,

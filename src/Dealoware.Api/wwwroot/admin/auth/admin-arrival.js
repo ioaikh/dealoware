@@ -15,6 +15,7 @@
  *
  * Any other fragment is left alone and means nothing here. The page that
  * reads a flag decides what to show for it, in words the server gave it.
+ * The reset-request page loads this script too, for #fresh alone.
  */
 (function (global) {
   "use strict";
