@@ -103,7 +103,9 @@ public static class AdminSignedInPage
     public static readonly IReadOnlyList<string> ShellScripts =
     [
         AdminSignedOutPage.RequestScriptPath,
-        ShellScriptPath
+        ShellScriptPath,
+        // The idle and 8-hour warnings, and "Stay signed in" (AdminSessionEndpoints).
+        AssetPrefix + "/session-timer.js"
     ];
 
     public static IResult Render(
