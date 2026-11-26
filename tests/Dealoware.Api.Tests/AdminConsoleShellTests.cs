@@ -125,7 +125,7 @@ public partial class AdminConsoleShellTests
         var scripts = Regex.Matches(html, "<script src=\"([^\"]+)\" nonce=\"([^\"]+)\"></script>");
         Assert.Equal(
             isList
-                ? new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js", "/admin/assets/console-list.js" }
+                ? new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js", "/admin/auth/admin-dom.js", "/admin/assets/console-delete.js", "/admin/assets/console-list.js" }
                 : new[] { "/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js" },
             scripts.Select(m => m.Groups[1].Value).ToArray());
         Assert.All(scripts, m => Assert.Equal(nonce, m.Groups[2].Value));

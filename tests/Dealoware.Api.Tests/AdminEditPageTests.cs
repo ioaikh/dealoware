@@ -175,7 +175,7 @@ public class AdminEditPageTests
 
         var (response, html) = await PageAsync($"/admin/participants/{g.Alpha.Id:D}", session);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["edit-button"], Actions(html));
+        Assert.Equal(["edit-button", "delete-button"], Actions(html));
         Assert.Equal(["displayName", "isActive"], Keys(html));
         Assert.Contains($"<input type=\"text\" id=\"edit-displayName\" data-key=\"displayName\" maxlength=\"256\" autocomplete=\"off\" spellcheck=\"false\" aria-describedby=\"edit-displayName-error\" value=\"{prefix}-Alpha\">", html, StringComparison.Ordinal);
         Assert.Contains("<input type=\"radio\" id=\"edit-isActive-active\" name=\"isActive\" value=\"true\" checked", html, StringComparison.Ordinal);
@@ -194,7 +194,7 @@ public class AdminEditPageTests
         Assert.Contains("<h2 id=\"discard-dialog-title\">Discard your changes?</h2>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"action-dialog\"", html, StringComparison.Ordinal);
         Assert.Equal(
-            ["/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js", "/admin/auth/admin-dom.js", "/admin/assets/console-edit.js"],
+            ["/admin/auth/admin-request.js", "/admin/assets/console.js", "/admin/assets/session-timer.js", "/admin/auth/admin-dom.js", "/admin/assets/console-edit.js", "/admin/assets/console-delete.js"],
             Scripts(html));
 
         // The page's edit token is the detail read's ETag, and the edit API takes it.
@@ -228,7 +228,7 @@ public class AdminEditPageTests
         var session = await SessionAsync();
 
         var (_, html) = await PageAsync($"/admin/artifacts/{g.Artifact.Id:D}", session);
-        Assert.Equal(["edit-button"], Actions(html));
+        Assert.Equal(["edit-button", "delete-button"], Actions(html));
         Assert.Equal(["name", "description", "ownerParticipantId"], Keys(html).OrderBy(k => k == "ownerParticipantId").ToArray());
         // One entity: its id rides along; no choice to make.
         Assert.Contains($"<input type=\"hidden\" id=\"edit-entityId\" value=\"{g.Artifact.Entities[0].Id:D}\">", html, StringComparison.Ordinal);
@@ -262,7 +262,7 @@ public class AdminEditPageTests
         var session = await SessionAsync();
 
         var (_, html) = await PageAsync($"/admin/negotiations/{g.Open.Id:D}", session);
-        Assert.Equal(["edit-button", "close-button", "expire-button"], Actions(html));
+        Assert.Equal(["edit-button", "close-button", "expire-button", "delete-button"], Actions(html));
         Assert.Equal(["endsAt"], Keys(html));
         // 16:30 UTC on 1 July is 12:30 in New York (daylight time).
         Assert.Contains("<input type=\"datetime-local\" id=\"edit-endsAt\" data-key=\"endsAt\" aria-describedby=\"edit-endsAt-hint edit-endsAt-error\" value=\"2099-07-01T12:30\">", html, StringComparison.Ordinal);
@@ -290,15 +290,15 @@ public class AdminEditPageTests
 
         // Past its end time: it can only be expired. No new end time, no Close.
         (_, html) = await PageAsync($"/admin/negotiations/{g.Lapsed.Id:D}", session);
-        Assert.Equal(["expire-button"], Actions(html));
+        Assert.Equal(["expire-button", "delete-button"], Actions(html));
         Assert.Empty(Keys(html));
         Assert.DoesNotContain("id=\"edit-form\"", html, StringComparison.Ordinal);
 
-        // Closed is final: nothing to change; the page can still say what was just done.
+        // Closed is final: nothing to change but Delete (T06b); the page can still say what was just done.
         (_, html) = await PageAsync($"/admin/negotiations/{g.Closed.Id:D}", session);
-        Assert.DoesNotContain("id=\"record-actions\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("<button type=\"button\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("<dialog", html, StringComparison.Ordinal);
+        Assert.Equal(["delete-button"], Actions(html));
+        Assert.DoesNotContain("id=\"action-dialog\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"discard-dialog\"", html, StringComparison.Ordinal);
         Assert.Empty(Keys(html));
         Assert.Equal($"Negotiation {g.Closed.Id:D} closed.", Attribute(html, "record", "data-note-closed"));
     }
@@ -311,7 +311,7 @@ public class AdminEditPageTests
         var session = await SessionAsync();
 
         var (_, html) = await PageAsync($"/admin/offers/{g.OpenOffer.Id:D}", session);
-        Assert.Equal(["cancel-offer-button"], Actions(html));
+        Assert.Equal(["cancel-offer-button", "delete-button"], Actions(html));
         Assert.Empty(Keys(html));
         Assert.DoesNotContain("id=\"edit-form\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"edit-button\"", html, StringComparison.Ordinal);
@@ -330,9 +330,9 @@ public class AdminEditPageTests
         // The amount and terms still read as text.
         Assert.Contains($"<span class=\"free-text\">{prefix}-terms</span>", html, StringComparison.Ordinal);
 
-        // Accepted is final: no action.
+        // Accepted is final: no action but Delete (T06b).
         (_, html) = await PageAsync($"/admin/offers/{g.AcceptedOffer.Id:D}", session);
-        Assert.DoesNotContain("<button type=\"button\"", html, StringComparison.Ordinal);
+        Assert.Equal(["delete-button"], Actions(html));
         Assert.Empty(Keys(html));
     }
 

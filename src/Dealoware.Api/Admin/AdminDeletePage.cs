@@ -108,7 +108,7 @@ public static class AdminDeletePage
     }
 
     /// <summary>Every word the dialog may show for this kind, templates with {name} or {n} included.</summary>
-    internal static Dictionary<string, string> Copy(AdminListKind kind)
+    public static Dictionary<string, string> Copy(AdminListKind kind)
     {
         const string name = AdminDeleteCopy.NamePlaceholder;
         const string n = AdminDeleteCopy.CountPlaceholder;
