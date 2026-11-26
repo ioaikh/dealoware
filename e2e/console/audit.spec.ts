@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { expectNoSeriousAxeFindings } from './axe';
+import { collectPageErrors } from './page-errors';
 import { seedEntities, type Seeded } from './entities';
 import { authenticatorCode, seedOwner, type Owner } from '../sign-in/owner';
 import { answerCloudflare } from '../signed-out/cloudflare';
@@ -60,7 +61,7 @@ let owner: Owner;
 let entities: Seeded;
 let audit: AuditSeed;
 let cspMessages: string[] = [];
-let pageErrors: string[] = [];
+let pageErrors: () => string[] = () => [];
 
 /** Runs seed_audit.py with the given request. The script decides whether it will touch the database named in it. */
 function runAuditSeedScript(request: Record<string, unknown>): { status: number | null; stdout: string; stderr: string } {
@@ -195,7 +196,6 @@ test.afterAll(() => {
 test.beforeEach(async ({ page }) => {
   owner = seedOwner({ enrolled: true });
   cspMessages = [];
-  pageErrors = [];
   page.on('console', (message) => {
     const text = message.text();
     if (!/content[- ]security[- ]policy/i.test(text)) return;
@@ -204,13 +204,13 @@ test.beforeEach(async ({ page }) => {
     if (at.startsWith('/admin/api/') || at.startsWith('/admin/assets/')) return;
     cspMessages.push(text);
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  pageErrors = collectPageErrors(page);
   await answerCloudflare(page, { token: PASS_TOKEN });
 });
 
 test.afterEach(() => {
   expect(cspMessages).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(pageErrors()).toEqual([]);
 });
 
 test('the audit log, from the nav: the locked columns, newest first with this sign-in on top, its filters, no search box; axe; a screenshot', async ({ page }) => {
