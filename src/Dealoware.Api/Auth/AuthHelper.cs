@@ -84,8 +84,10 @@ public static class AuthHelper
             return (null, null);
         }
 
+        // A soft-deleted participant is refused exactly like an inactive one
+        // (the repository already leaves it out; this keeps the rule here too).
         var participant = await participantRepository.GetBySubAsync(sub2, cancellationToken);
-        if (participant is null || !participant.IsActive)
+        if (participant is null || !participant.IsActive || participant.DeletedAt is not null)
         {
             return (null, null);
         }
@@ -106,7 +108,7 @@ public static class AuthHelper
         if (credential is null || !credential.VerifyKey(apiKey)) return null;
 
         var participant = await participantRepository.GetByIdAsync(credential.ParticipantId, cancellationToken);
-        if (participant is null || !participant.IsActive) return null;
+        if (participant is null || !participant.IsActive || participant.DeletedAt is not null) return null;
 
         return participant.Sub;
     }
