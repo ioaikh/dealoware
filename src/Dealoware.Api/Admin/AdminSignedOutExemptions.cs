@@ -7,8 +7,9 @@ namespace Dealoware.Api.Admin;
 /// <summary>
 /// Exact signed-out exemptions for AdminSessionMiddleware (route-prefix note r3 §2 + §10 C1).
 /// Path is canonicalised first, then compared with ordinal case-insensitive equality.
-/// GET /admin/reset/confirm takes no token (b6194918 item 6). The reset token is
-/// checked on POST only, in the body.
+/// GET /admin/reset/confirm and GET /admin/bootstrap take no token (b6194918
+/// item 6). The reset and bootstrap tokens are checked on POST only, in the
+/// body, by the handler, so a bad link reaches the one generic reply.
 /// </summary>
 public static class AdminSignedOutExemptions
 {
@@ -47,8 +48,7 @@ public static class AdminSignedOutExemptions
     public enum TokenKind
     {
         None,
-        PendingSignIn,
-        Bootstrap
+        PendingSignIn
     }
 
     public readonly record struct ExemptionRule(
@@ -67,8 +67,8 @@ public static class AdminSignedOutExemptions
         new(Reset, HttpMethod.Get, TokenKind.None),
         new(Reset, HttpMethod.Post, TokenKind.None),
         new(ResetSent, HttpMethod.Get, TokenKind.None),
-        new(Bootstrap, HttpMethod.Get, TokenKind.Bootstrap),
-        new(Bootstrap, HttpMethod.Post, TokenKind.Bootstrap),
+        new(Bootstrap, HttpMethod.Get, TokenKind.None),
+        new(Bootstrap, HttpMethod.Post, TokenKind.None),
         new(ResetConfirm, HttpMethod.Get, TokenKind.None),
         new(ResetConfirm, HttpMethod.Post, TokenKind.None),
         new(LinkExpired, HttpMethod.Get, TokenKind.None),
@@ -80,7 +80,7 @@ public static class AdminSignedOutExemptions
         new(ApiSignInCode, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiSignInRecovery, HttpMethod.Post, TokenKind.PendingSignIn),
         new(ApiReset, HttpMethod.Post, TokenKind.None),
-        new(ApiBootstrap, HttpMethod.Post, TokenKind.Bootstrap),
+        new(ApiBootstrap, HttpMethod.Post, TokenKind.None),
         new(ApiResetConfirm, HttpMethod.Post, TokenKind.None),
         new(ApiResetConfirmCheck, HttpMethod.Post, TokenKind.None),
         new(ApiSignOut, HttpMethod.Post, TokenKind.None)

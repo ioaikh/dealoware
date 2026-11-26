@@ -285,6 +285,23 @@ public sealed class PasswordResetWebApplicationFactory : IsolatedWebApplicationF
     }
 }
 
+/// <summary>
+/// Bootstrap suite: a CoreOwner with no rows yet, set through test config, on
+/// its own PostgreSQL database so first-time setup never meets a seeded owner.
+/// </summary>
+public sealed class BootstrapWebApplicationFactory : IsolatedWebApplicationFactory
+{
+    public const string OwnerEmail = "owner@example.test";
+
+    protected override string? PostgresDatabaseName => "dealoware_ci_bootstrap";
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("CoreOwner:Email", OwnerEmail);
+        base.ConfigureWebHost(builder);
+    }
+}
+
 /// <summary>File-backed host used only by SC-6 restart tests. Not a collection fixture.</summary>
 public sealed class SharedStoreWebApplicationFactory : IsolatedWebApplicationFactory
 {

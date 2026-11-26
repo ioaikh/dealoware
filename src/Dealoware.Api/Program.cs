@@ -20,6 +20,14 @@ if (DatabaseMigrateCommand.IsMigrateArgs(args))
     return;
 }
 
+// One-shot bootstrap-link: same image/binary, separate process. Does not start the web host.
+// The only production trigger for the Core admin first-time setup link.
+if (AdminBootstrapLinkCommand.IsBootstrapLinkArgs(args))
+{
+    Environment.ExitCode = await AdminBootstrapLinkCommand.RunAsync(args);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.ConfigureKestrel(options =>
@@ -120,6 +128,7 @@ catch (InvalidOperationException ex)
 }
 
 builder.Services.AddAdminPasswordReset();
+builder.Services.AddAdminBootstrap();
 
 builder.Services.AddAuthorization(options =>
 {
@@ -337,6 +346,7 @@ app.MapAdminTestExceptionEndpoint();
 app.MapAdminAuditEndpoints();
 app.MapAdminCsrfProbeEndpoint();
 app.MapAdminPasswordReset();
+app.MapAdminBootstrap();
 
 app.Run();
 

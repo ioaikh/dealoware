@@ -223,6 +223,7 @@ public static class AdminPasswordResetEndpoints
     private static async Task<IResult> CompleteReset(
         ResetCompleteBody? body,
         IAdminPasswordResetTokenRepository tokens,
+        IAdminBootstrapTokenRepository bootstrapTokens,
         IAdminCredentialStore credentials,
         IAdminCoreOwnerAccountRepository accounts,
         IAdminSecondFactorVerifier secondFactor,
@@ -289,7 +290,7 @@ public static class AdminPasswordResetEndpoints
         if (account.IsFactorLocked(now))
         {
             await using var lockedTx = await db.Database.BeginTransactionAsync(ct);
-            await BurnAccountResetStateAsync(tokens, sessions, ownerEmail, now, ct);
+            await BurnAccountResetStateAsync(tokens, bootstrapTokens, sessions, ownerEmail, now, ct);
             await lockedTx.CommitAsync(ct);
             return await FailExpiredAsync(audit, ipHmac, now, http);
         }
@@ -298,7 +299,7 @@ public static class AdminPasswordResetEndpoints
         if (!factor.Succeeded)
         {
             return await FailWrongFactorAsync(
-                tokens, accounts, sessions, db, ownerEmail, account.Id, hash, now, http, ct);
+                tokens, bootstrapTokens, accounts, sessions, db, ownerEmail, account.Id, hash, now, http, ct);
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -399,6 +400,7 @@ public static class AdminPasswordResetEndpoints
 
     private static async Task<IResult> FailWrongFactorAsync(
         IAdminPasswordResetTokenRepository tokens,
+        IAdminBootstrapTokenRepository bootstrapTokens,
         IAdminCoreOwnerAccountRepository accounts,
         IAdminSessionRepository sessions,
         DealowareDbContext db,
@@ -414,7 +416,7 @@ public static class AdminPasswordResetEndpoints
         await accounts.TryRecordFailedFactorAttemptAsync(accountId, now, ct);
         if (await accounts.IsFactorLockedAsync(accountId, now, ct))
         {
-            await BurnAccountResetStateAsync(tokens, sessions, ownerEmail, now, ct);
+            await BurnAccountResetStateAsync(tokens, bootstrapTokens, sessions, ownerEmail, now, ct);
         }
 
         await tx.CommitAsync(ct);
@@ -427,18 +429,19 @@ public static class AdminPasswordResetEndpoints
     }
 
     /// <summary>
-    /// Account-wide A16 lock: burn every unused reset token (and bootstrap
-    /// tokens, when that table exists) and end every session for the owner,
-    /// in the caller's transaction.
+    /// Account-wide A16 lock: burn every unused reset token and bootstrap
+    /// token and end every session for the owner, in the caller's transaction.
     /// </summary>
     private static async Task BurnAccountResetStateAsync(
         IAdminPasswordResetTokenRepository tokens,
+        IAdminBootstrapTokenRepository bootstrapTokens,
         IAdminSessionRepository sessions,
         string ownerEmail,
         DateTimeOffset now,
         CancellationToken ct)
     {
         await tokens.InvalidateUnusedForEmailAsync(ownerEmail, now, ct);
+        await bootstrapTokens.InvalidateUnusedAsync(now, ct);
         await sessions.RevokeAllForEmailAsync(ownerEmail, ct);
     }
 
@@ -467,7 +470,7 @@ public static class AdminPasswordResetEndpoints
             new { message = AdminPasswordResetCopy.SignInGeneric },
             statusCode: StatusCodes.Status429TooManyRequests);
 
-    private static void ApplyNoStoreNoReferrer(HttpContext http)
+    internal static void ApplyNoStoreNoReferrer(HttpContext http)
     {
         http.Response.Headers.CacheControl = "no-store";
         http.Response.Headers["Referrer-Policy"] = "no-referrer";
@@ -499,7 +502,7 @@ public static class AdminPasswordResetEndpoints
         return ipHasher.Hash(ip);
     }
 
-    private static string ReasonName(AdminPasswordRuleReason reason)
+    internal static string ReasonName(AdminPasswordRuleReason reason)
         => reason switch
         {
             AdminPasswordRuleReason.TooShort => "too_short",

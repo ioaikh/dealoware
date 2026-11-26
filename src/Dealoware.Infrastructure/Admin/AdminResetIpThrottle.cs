@@ -13,6 +13,17 @@ public sealed class AdminResetIpThrottle : IAdminResetIpThrottle
         _context = context;
     }
 
+    public async Task<bool> IsLockedAsync(
+        string ipHmac,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var row = await _context.AdminResetIpCounters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IpHmac == ipHmac, cancellationToken);
+        return row is not null && row.IsLocked(now);
+    }
+
     public async Task<bool> TryReserveAsync(
         string ipHmac,
         DateTimeOffset now,

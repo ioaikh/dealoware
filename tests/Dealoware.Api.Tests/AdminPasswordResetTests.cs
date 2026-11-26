@@ -1569,6 +1569,49 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     }
 
     [Fact]
+    public async Task TD_ADM_031_R11_AccountLock_AlsoBurnsOutstandingBootstrapLinks()
+    {
+        await SeedCredentialAsync();
+        var token = await RequestRawTokenAsync();
+        var whenLockTrips = await InsertBootstrapTokenAsync();
+
+        for (var i = 0; i < AdminCoreOwnerAccount.MaxFailedFactorAttempts - 1; i++)
+        {
+            using var wrong = await PostConfirmAsync(new
+            {
+                token,
+                newPassword = NextPassword,
+                totp = "000000"
+            });
+            await AssertWrongFactorUnauthorizedAsync(wrong, NextPassword);
+        }
+
+        Assert.False(await BootstrapTokenBurnedAsync(whenLockTrips));
+
+        using var lockTrip = await PostConfirmAsync(new
+        {
+            token,
+            newPassword = NextPassword,
+            totp = "000000"
+        });
+        await AssertWrongFactorUnauthorizedAsync(lockTrip, NextPassword);
+        Assert.True(await BootstrapTokenBurnedAsync(whenLockTrips));
+
+        // A later submission that meets the lock burns again, with reset tokens and sessions.
+        var whileLocked = await InsertBootstrapTokenAsync();
+        var resetWhileLocked = await InsertResetTokenAsync();
+        using var locked = await PostConfirmAsync(new
+        {
+            token = resetWhileLocked,
+            newPassword = NextPassword,
+            totp = CurrentTotp()
+        });
+        AssertLinkExpired(locked);
+        Assert.True(await BootstrapTokenBurnedAsync(whileLocked));
+        Assert.True(await CredentialStillMatchesAsync(CurrentPassword));
+    }
+
+    [Fact]
     public async Task TD_ADM_031_SC6_R10_PostgresParallelConfirm_ExactlyOne200()
     {
         await SeedCredentialAsync();
@@ -2526,6 +2569,26 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
                 Clock().UtcNow));
         await db.SaveChangesAsync();
         return raw;
+    }
+
+    private async Task<Guid> InsertBootstrapTokenAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var row = AdminBootstrapToken.Create(
+            CoreOwnerEmail,
+            AdminBootstrapToken.HashRaw(AdminAuthService.CreateOpaqueToken()),
+            Clock().UtcNow);
+        db.AdminBootstrapTokens.Add(row);
+        await db.SaveChangesAsync();
+        return row.Id;
+    }
+
+    private async Task<bool> BootstrapTokenBurnedAsync(Guid id)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        return (await db.AdminBootstrapTokens.AsNoTracking().SingleAsync(t => t.Id == id)).ConsumedAt is not null;
     }
 
     private async Task<string> RequestRawTokenAsync()

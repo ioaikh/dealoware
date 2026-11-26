@@ -8,7 +8,11 @@ public static class AdminAuthEvents
     public const string TotpEnroll = "totp_enroll";
     public const string RecoveryCodeUse = "recovery_code_use";
     public const string SecondFactorFailed = "signin.second_factor_failed";
+    public const string BootstrapLinkIssued = "bootstrap_link_issued";
+    public const string BootstrapComplete = "bootstrap_complete";
+    public const string BootstrapCompleteFailed = "bootstrap_complete_failed";
 
     public const string ReasonBadPassword = "bad_password";
     public const string ReasonBad2Fa = "bad_2fa";
+    public const string ReasonInvalidLink = "invalid_link";
 }
