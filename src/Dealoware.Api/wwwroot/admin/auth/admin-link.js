@@ -2,8 +2,8 @@
  * The first script on a page opened from an emailed link.
  *
  * Before anything else can go wrong it reads the link token from the URL
- * fragment and removes it from the address bar, exactly as reset-confirm.js
- * does. If a later script fails to load, the token is already out of the
+ * fragment and removes it from the address bar, for the setup page (S-A4)
+ * and the reset page (S-A10). If a later script fails to load, the token is already out of the
  * address bar, the history entry and anything a reload would send.
  *
  * The token is kept here in memory until the page script takes it, once.

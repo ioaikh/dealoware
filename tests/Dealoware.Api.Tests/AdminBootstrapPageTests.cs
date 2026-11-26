@@ -577,7 +577,7 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         var reset = File.ReadAllText(AssetPath("reset-confirm.js"));
         var page = File.ReadAllText(AssetPath("bootstrap.js"));
 
-        // The same three steps, in the same words, as reset-confirm.js.
+        // The three steps, read the fragment, clear the address bar, pick out the token.
         foreach (var line in new[]
                  {
                      "var hash = location.hash;",
@@ -586,9 +586,12 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
                      "decodeURIComponent(match[1].replace(/\\+/g, \" \"))"
                  })
         {
-            Assert.Contains(line, reset, StringComparison.Ordinal);
             Assert.Contains(line, link, StringComparison.Ordinal);
         }
+
+        // The reset page (S-A10) takes its token from this script too, and reads no fragment itself.
+        Assert.Contains("var token = AdminLink.takeToken();", reset, StringComparison.Ordinal);
+        Assert.DoesNotContain("location.hash", reset, StringComparison.Ordinal);
 
         // It is the first script of the page and needs nothing from the others,
         // so the address bar is cleared even when a later script fails to load.

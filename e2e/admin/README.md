@@ -34,9 +34,6 @@ E2E_ENGINES="chromium" ./e2e/run-signed-out.sh    # every suite, one engine
 ./e2e/sign-in/run.sh                              # one suite
 ```
 
-`e2e/reset-confirm` is older and has its own run script. It is not built on
-the shared runner, so CI does not run it; start it by hand.
-
 ## Fail closed
 
 1. **A failing test fails the job.** So does a suite that collected no test,
@@ -67,7 +64,8 @@ world-readable.
   the application the run started, and the suites answer Cloudflare's
   requests themselves. Each suite's Playwright configuration refuses to load
   with a proxy that is not `http://127.0.0.1:<port>`
-  (`e2e/reset-confirm/require-proxy.cjs`).
+  (`e2e/signed-out/require-proxy.cjs`, checked by its `require-proxy.check.cjs`
+  and `playwright.base.check.cjs` before any browser starts).
 - **No uploads.** Playwright traces, screenshots and video are off
   (`e2e/signed-out/playwright.base.cjs`). The screenshots and axe reports the
   suites save stay in each suite's `test-results/` folder; the workflow

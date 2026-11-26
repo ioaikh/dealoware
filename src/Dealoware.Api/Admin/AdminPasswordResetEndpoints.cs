@@ -104,41 +104,121 @@ public static class AdminPasswordResetEndpoints
     /// S-A10. It takes no token and changes nothing: the link token stays in
     /// the URL fragment and the page script posts it in the body. Everything
     /// but the heading is hidden until that script has asked the server
-    /// whether the link is usable. The ids, the field names and the order of
-    /// status, message and "Try again" are what reset-confirm.js works with.
+    /// whether the link is usable. The ids and the order of status, message
+    /// and "Try again" are what reset-confirm.js works with.
     /// No security check on this page: the link and the second factor are
     /// what it asks for.
     /// </summary>
     private static IResult ConfirmPageGet(HttpContext http, AdminAntiForgeryService antiforgery)
-    {
-        static string E(string value) => AdminSignedOutPage.Encode(value);
-
-        var body =
-            "<div id=\"reset-main\" aria-busy=\"true\">" +
-            $"<p id=\"reset-status\" role=\"status\" hidden>{E(AdminPasswordResetCopy.CheckingLink)}</p>" +
-            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" class=\"alert\" data-retry=\"{E(AdminPasswordResetCopy.CheckRetry)}\"></p>" +
-            $"<button type=\"button\" id=\"reset-retry\" class=\"secondary\" hidden>{E(AdminPasswordResetCopy.TryAgain)}</button>" +
-            $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\" hidden>" +
-            $"<p class=\"lede\">{E(AdminPasswordResetCopy.ConfirmLede)}</p>" +
-            "<input type=\"hidden\" name=\"token\" id=\"token\" value=\"\">" +
-            "<div class=\"field\"><label for=\"newPassword\">New password</label>" +
-            "<input type=\"password\" name=\"newPassword\" id=\"newPassword\" autocomplete=\"new-password\"></div>" +
-            "<div class=\"field\"><label for=\"totp\">Authenticator code</label>" +
-            "<input type=\"text\" name=\"totp\" id=\"totp\" inputmode=\"numeric\" autocomplete=\"one-time-code\"></div>" +
-            "<div class=\"field\"><label for=\"recoveryCode\">Recovery code</label>" +
-            "<input type=\"text\" name=\"recoveryCode\" id=\"recoveryCode\" autocomplete=\"one-time-code\"></div>" +
-            "<button type=\"submit\">Change password</button></form>" +
-            "</div>";
-
-        return AdminSignedOutPage.Render(http, antiforgery, new AdminSignedOutPageContent
+        => AdminSignedOutPage.Render(http, antiforgery, new AdminSignedOutPageContent
         {
             Title = AdminPasswordResetCopy.ConfirmPageTitle,
             Heading = AdminPasswordResetCopy.ConfirmHeading,
             Noscript = AdminPasswordResetCopy.ConfirmNoscript,
-            BodyHtml = body,
-            Scripts = [ConfirmScriptPath],
+            BodyHtml = ConfirmPageBody(),
+            Scripts =
+            [
+                // First, so the link token leaves the address bar even if a later script fails to load.
+                AdminSignedOutPage.LinkScriptPath,
+                AdminSignedOutPage.DomScriptPath,
+                AdminSignedOutPage.PasswordScriptPath,
+                ConfirmScriptPath
+            ],
             IssueAntiForgery = true
         });
+
+    /// <summary>
+    /// The link check comes first: status, message and "Try again", none of
+    /// them a live region (the message is focused instead). Then the form.
+    /// <para>
+    /// The two password fields are the first-time setup page's (S-A4), with
+    /// the same helper, show toggles and length data: the rules and their
+    /// messages are the server's own (<see cref="AdminPasswordRules"/>).
+    /// Confirm password has no name: it is compared in the browser and never
+    /// sent. Then one second-factor field at a time, the sign-in pages' own
+    /// (S-A2 and S-A3), and a switch between them. The script sends only the
+    /// one on screen.
+    /// </para>
+    /// <para>
+    /// <c>data-changed</c> is the server's success sentence: the page leaves
+    /// for sign-in only on a reply that carries exactly it.
+    /// </para>
+    /// </summary>
+    private static string ConfirmPageBody()
+    {
+        static string E(string value) => AdminSignedOutPage.Encode(value);
+
+        return
+            "<div id=\"reset-main\" aria-busy=\"true\">" +
+            $"<p id=\"reset-status\" role=\"status\" hidden>{E(AdminPasswordResetCopy.CheckingLink)}</p>" +
+            $"<p id=\"reset-alert\" hidden tabindex=\"-1\" class=\"alert\" data-retry=\"{E(AdminPasswordResetCopy.CheckRetry)}\"></p>" +
+            $"<button type=\"button\" id=\"reset-retry\" class=\"secondary\" hidden>{E(AdminPasswordResetCopy.TryAgain)}</button>" +
+            $"<form method=\"post\" action=\"{ConfirmPagePath}\" id=\"reset-form\" hidden novalidate" +
+            $" data-retry=\"{E(AdminPasswordResetCopy.ConfirmRetry)}\"" +
+            $" data-changed=\"{E(AdminPasswordResetCopy.CompleteSucceeded)}\">" +
+            $"<p class=\"lede\">{E(AdminPasswordResetCopy.ConfirmLede)}</p>" +
+            "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>" +
+            "<div class=\"field\">" +
+            $"<label id=\"new-password-label\" for=\"new-password\">{E(AdminBootstrapCopy.NewPasswordLabel)}</label>" +
+            "<div class=\"field-row\">" +
+            "<input id=\"new-password\" name=\"newPassword\" type=\"password\" autocomplete=\"new-password\" required" +
+            " aria-describedby=\"password-helper new-password-error\"" +
+            $" data-min-length=\"{AdminPasswordRules.MinCodePoints}\"" +
+            $" data-max-length=\"{AdminPasswordRules.MaxCodePoints}\"" +
+            $" data-too-short=\"{E(AdminPasswordRules.TooShortMessage)}\"" +
+            $" data-too-long=\"{E(AdminPasswordRules.TooLongMessage)}\">" +
+            AdminSignedOutPage.PasswordToggle("new-password") +
+            "</div>" +
+            $"<span id=\"password-helper\" class=\"helper\">{E(AdminSignedOutCopy.PasswordHelper)}</span>" +
+            "<span id=\"new-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
+            "</div>" +
+            "<div class=\"field\">" +
+            $"<label id=\"confirm-password-label\" for=\"confirm-password\">{E(AdminBootstrapCopy.ConfirmPasswordLabel)}</label>" +
+            "<div class=\"field-row\">" +
+            "<input id=\"confirm-password\" type=\"password\" autocomplete=\"new-password\" required" +
+            " aria-describedby=\"confirm-password-error\"" +
+            $" data-mismatch=\"{E(AdminSignedOutCopy.PasswordMismatch)}\">" +
+            AdminSignedOutPage.PasswordToggle("confirm-password") +
+            "</div>" +
+            "<span id=\"confirm-password-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
+            "</div>" +
+            // Numeric keypad; the value stays text so a leading zero is kept.
+            FactorField("code-field", "code", "totp", " inputmode=\"numeric\"",
+                AdminSignInCopy.CodeLabel, AdminSignInCopy.CodeRequired, hidden: false) +
+            // Letters and digits, so no input mode is set.
+            FactorField("recovery-code-field", "recovery-code", "recoveryCode", string.Empty,
+                AdminSignInCopy.RecoveryLabel, AdminSignInCopy.RecoveryRequired, hidden: true) +
+            $"<button type=\"submit\" id=\"reset-submit\">{E(AdminPasswordResetCopy.ConfirmSubmit)}</button>" +
+            "<div class=\"links\">" +
+            "<button type=\"button\" id=\"factor-switch\" class=\"secondary\" aria-controls=\"code-field recovery-code-field\"" +
+            $" data-to-recovery=\"{E(AdminSignInCopy.UseRecoveryCode)}\"" +
+            $" data-to-code=\"{E(AdminSignInCopy.UseAuthenticatorCode)}\">" +
+            $"{E(AdminSignInCopy.UseRecoveryCode)}</button>" +
+            "</div>" +
+            "</form></div>";
+    }
+
+    /// <summary>One second-factor field, as on the sign-in pages (S-A2, S-A3).</summary>
+    private static string FactorField(
+        string blockId,
+        string inputId,
+        string name,
+        string inputAttributes,
+        string label,
+        string required,
+        bool hidden)
+    {
+        static string E(string value) => AdminSignedOutPage.Encode(value);
+
+        return
+            $"<div class=\"field\" id=\"{blockId}\"{(hidden ? " hidden" : string.Empty)}>" +
+            $"<label for=\"{inputId}\">{E(label)}</label>" +
+            $"<input id=\"{inputId}\" name=\"{name}\" type=\"text\"{inputAttributes}" +
+            " autocomplete=\"one-time-code\" autocapitalize=\"none\" spellcheck=\"false\" required" +
+            $" aria-describedby=\"{inputId}-error\"" +
+            $" data-required=\"{E(required)}\">" +
+            $"<span id=\"{inputId}-error\" class=\"field-error\" aria-live=\"polite\"></span>" +
+            "</div>";
     }
 
     private static IResult ResetRequestPageGet(

@@ -262,13 +262,22 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Single(Regex.Matches(queryBody, "<h1[ >]"));
         Assert.Contains(AdminPasswordResetCopy.ConfirmNoscript, queryBody);
         Assert.Contains("id=\"reset-status\" role=\"status\" hidden", queryBody, StringComparison.Ordinal);
-        Assert.DoesNotContain("role=\"alert\"", queryBody, StringComparison.Ordinal);
-        Assert.DoesNotContain("aria-live", queryBody, StringComparison.Ordinal);
-        Assert.Contains(">Change password</button>", queryBody, StringComparison.Ordinal);
+        // Rule B: the link-check block (status, message, Try again) has no live region. The form's
+        // one alert and its field errors live inside the form, hidden until the form is shown.
+        var checkBlock = queryBody[queryBody.IndexOf("id=\"reset-main\"", StringComparison.Ordinal)..queryBody.IndexOf("<form", StringComparison.Ordinal)];
+        Assert.DoesNotContain("role=\"alert\"", checkBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("aria-live", checkBlock, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(queryBody, "role=\"alert\""));
+        Assert.Contains($">{AdminPasswordResetCopy.ConfirmSubmit}</button>", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("Update password", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("data-timeout-ms", queryBody, StringComparison.Ordinal);
         Assert.DoesNotContain("__dwResetTimeoutMs", queryBody, StringComparison.Ordinal);
         Assert.Contains($"src=\"{AdminPasswordResetCopy.ConfirmScriptPath}\"", queryBody);
+        // The token leaves the address bar in the first script, before any other can fail to load.
+        Assert.Matches(
+            $"<script src=\"{Regex.Escape(AdminSignedOutPage.LinkScriptPath)}\" nonce=\"[^\"]+\"></script><script",
+            queryBody[queryBody.IndexOf("<script", StringComparison.Ordinal)..]);
+        Assert.DoesNotContain("name=\"token\"", queryBody, StringComparison.Ordinal);
         Assert.Contains("autocomplete=\"one-time-code\"", queryBody, StringComparison.Ordinal);
         Assert.Contains("name=\"dw-csrf\"", queryBody, StringComparison.Ordinal);
         AssertConfirmPageNonceCsp(withQuery, queryBody);
@@ -288,10 +297,10 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         using var script = await SendAsync(HttpMethod.Get, AdminPasswordResetCopy.ConfirmScriptPath);
         Assert.Equal(HttpStatusCode.OK, script.StatusCode);
         var scriptBody = await script.Content.ReadAsStringAsync();
-        Assert.Contains("history.replaceState", scriptBody, StringComparison.Ordinal);
-        Assert.Contains("location.hash", scriptBody, StringComparison.Ordinal);
+        Assert.Contains("var token = AdminLink.takeToken();", scriptBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("location.hash", scriptBody, StringComparison.Ordinal);
         Assert.Contains("r.redirected", scriptBody, StringComparison.Ordinal);
-        Assert.Contains("redirect: \"manual\"", scriptBody, StringComparison.Ordinal);
+        Assert.Contains("if (!followRedirect) init.redirect = \"manual\";", scriptBody, StringComparison.Ordinal);
         Assert.Contains("function dwClassifyCheckResponse", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("__dwResetConfirmSkipBoot", scriptBody, StringComparison.Ordinal);
         Assert.DoesNotContain("(function (global)", scriptBody, StringComparison.Ordinal);
@@ -317,7 +326,8 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             html,
             StringComparison.Ordinal);
         Assert.DoesNotContain("id=\\\"reset-alert\\\" role=\\\"alert\\\"", html, StringComparison.Ordinal);
-        Assert.Contains("<button type=\\\"submit\\\">Change password</button>", html, StringComparison.Ordinal);
+        Assert.Contains("AdminPasswordResetCopy.ConfirmSubmit", html, StringComparison.Ordinal);
+        Assert.Equal("Change password", AdminPasswordResetCopy.ConfirmSubmit);
         Assert.DoesNotContain("Update password", html, StringComparison.Ordinal);
         Assert.DoesNotContain("setup-confirm.js", html, StringComparison.Ordinal);
         Assert.DoesNotContain("BootstrapPageGet", html, StringComparison.Ordinal);
@@ -374,8 +384,35 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             Assert.Contains("PASS timeout covers body read and ignores late valid true", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS classifier form exact valid true", stdout, StringComparison.Ordinal);
             Assert.Contains("PASS classifier expired exact valid false", stdout, StringComparison.Ordinal);
-            Assert.Contains("PASS N1 submit retry keeps focus on a visible control", stdout, StringComparison.Ordinal);
-            Assert.Contains("PASS N2 sign-in failure is one role=alert with focus", stdout, StringComparison.Ordinal);
+            Assert.Contains("PASS N2 a refused code shows the server's sentence as sent in one role=alert", stdout, StringComparison.Ordinal);
+            Assert.Contains(
+                "PASS success only on the exact reply: 200 with the server's sentence goes to sign-in#changed",
+                stdout,
+                StringComparison.Ordinal);
+            foreach (var reply in new[]
+                     {
+                         "200 {}", "200 another message", "200 message not a string", "200 not JSON", "204",
+                         "redirect followed elsewhere", "500", "no reply"
+                     })
+            {
+                Assert.Contains($"PASS no clear answer ({reply}): the link is checked again", stdout, StringComparison.Ordinal);
+            }
+
+            Assert.Contains("PASS no clear answer and the link is spent: the change may have happened", stdout, StringComparison.Ordinal);
+            Assert.Contains(
+                "PASS time-out, a link that cannot be checked, then the spent link: sign-in, not the link-expired page",
+                stdout,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "PASS time-out, a link still usable at the check, then the spent link: sign-in, not the link-expired page",
+                stdout,
+                StringComparison.Ordinal);
+            Assert.Contains("PASS a redirect to the link-expired page goes there", stdout, StringComparison.Ordinal);
+            Assert.Contains("PASS a password rule refusal (400): the named reason under New password", stdout, StringComparison.Ordinal);
+            Assert.Contains("PASS the switch sends the recovery code alone", stdout, StringComparison.Ordinal);
+            Assert.Contains("PASS the browser checks length, match and the code before sending anything", stdout, StringComparison.Ordinal);
+            Assert.Contains("PASS without its helper scripts the page takes the token out of the address bar", stdout, StringComparison.Ordinal);
+            Assert.DoesNotContain("FAIL ", stdout, StringComparison.Ordinal);
         }
         finally
         {
@@ -449,15 +486,23 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         var alertIdx = html.IndexOf("id=\\\"reset-alert\\\"", StringComparison.Ordinal);
         var retryIdx = html.IndexOf("id=\\\"reset-retry\\\"", StringComparison.Ordinal);
         var statusIdx = html.IndexOf("id=\\\"reset-status\\\"", StringComparison.Ordinal);
+        var formIdx = html.IndexOf("id=\\\"reset-form\\\"", StringComparison.Ordinal);
         // The shared shell renders <main> and the one h1 before this block (asserted on the
         // served page in TD_ADM_031_ConfirmGet_IgnoresQueryToken_SameForm_NoStore). The block that
         // carries aria-busy while the link is checked holds the status, the message and the button.
-        var mainIdx = html.IndexOf("<div id=\\\"reset-main\\\" aria-busy=\\\"true\\\">", StringComparison.Ordinal);
+        var mainIdx = html.IndexOf("\"<div id=\\\"reset-main\\\" aria-busy=\\\"true\\\">\"", StringComparison.Ordinal);
         Assert.Contains("AdminSignedOutPage.Render(http, antiforgery", html, StringComparison.Ordinal);
         Assert.True(mainIdx >= 0 && statusIdx > mainIdx, "reset-status must sit inside the busy block");
         Assert.True(alertIdx > statusIdx, "reset-alert follows reset-status");
         Assert.True(retryIdx > alertIdx, "reset-alert comes before reset-retry in DOM/reading order (v1.14 L248 Rule C)");
+        Assert.True(formIdx > retryIdx, "the form follows the link-check block");
         Assert.Contains("tabindex=\\\"-1\\\"", html, StringComparison.Ordinal);
+        // Rule B: the link-check block has the one role=status and no live region of its own.
+        // The form's alert and field errors are inside the form, hidden until the form is shown.
+        var checkBlock = html[mainIdx..formIdx];
+        Assert.DoesNotContain("aria-live", checkBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("role=\\\"alert\\\"", checkBlock, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(html, Regex.Escape("role=\\\"alert\\\"")));
         // The focus ring of the message and of "Try again" now comes from the shared stylesheet,
         // which the shell links with the page nonce. The page has no style of its own.
         Assert.DoesNotContain("<style", html, StringComparison.OrdinalIgnoreCase);
@@ -467,8 +512,6 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             "input:focus,\nbutton:focus,\na:focus,\n[tabindex=\"-1\"]:focus {\n  outline: 2px solid var(--focus);\n  outline-offset: 2px;\n}",
             css,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("aria-live", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("role=\\\"alert\\\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("overflow:hidden", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("outline:none", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("outline: none", html, StringComparison.OrdinalIgnoreCase);
@@ -476,10 +519,10 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
 
     private static void AssertConfirmClientSource(string script)
     {
+        script = script.Replace("\r\n", "\n");
         var showRetry = Regex.Match(script, @"function showRetry\([^)]*\) \{[\s\S]*?\n  \}");
         Assert.True(showRetry.Success, "showRetry() must be present");
-        Assert.Contains("retryAction = action || check", showRetry.Value, StringComparison.Ordinal);
-        Assert.Contains("function showRetry(message, action, focusMessage)", script, StringComparison.Ordinal);
+        Assert.Contains("function showRetry(focusMessage)", script, StringComparison.Ordinal);
         Assert.Contains("if (focusMessage && alertEl) alertEl.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("else if (retryBtn) retryBtn.focus()", showRetry.Value, StringComparison.Ordinal);
         Assert.Contains("retryBtn.hidden = false", showRetry.Value, StringComparison.Ordinal);
@@ -498,37 +541,54 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.DoesNotContain("dwClassifyCheckResponse = dwClassifyCheckResponse", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
         Assert.Contains("function submitConfirm()", script, StringComparison.Ordinal);
-        Assert.Contains("retryAction();", script, StringComparison.Ordinal);
         Assert.Contains("aria-disabled", script, StringComparison.Ordinal);
         Assert.Contains("Checking…", script, StringComparison.Ordinal);
         Assert.DoesNotContain("TODO T-A-02", script, StringComparison.Ordinal);
         Assert.DoesNotContain("T-A-02 v1.9", script, StringComparison.Ordinal);
         Assert.DoesNotContain("T-A-02 v1.10", script, StringComparison.Ordinal);
         Assert.DoesNotContain("retryBtn.disabled", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("retryBtn.disabled =", script, StringComparison.Ordinal);
-        Assert.Contains("totp-error", script, StringComparison.Ordinal);
-        Assert.Contains("Enter your authenticator code or a recovery code.", script, StringComparison.Ordinal);
-        Assert.Contains("totpVal ? \"\" : recVal", script, StringComparison.Ordinal);
-        Assert.Contains("showRetry(undefined, submitConfirm, retrying)", script, StringComparison.Ordinal);
         Assert.Contains("if (!token)", script, StringComparison.Ordinal);
         Assert.Contains("location.replace(EXPIRED)", script, StringComparison.Ordinal);
-        Assert.Contains("newPassword-error", script, StringComparison.Ordinal);
-        Assert.Contains("aria-describedby", script, StringComparison.Ordinal);
-        Assert.Contains("aria-invalid", script, StringComparison.Ordinal);
-        Assert.Contains("r.status === 400", script, StringComparison.Ordinal);
-        Assert.Contains("r.status === 401", script, StringComparison.Ordinal);
-        Assert.Contains("r.status === 429", script, StringComparison.Ordinal);
-        Assert.Contains(AdminPasswordResetCopy.SignInGeneric, script, StringComparison.Ordinal);
-        Assert.Contains("totpEl.value = \"\"", script, StringComparison.Ordinal);
-        Assert.Contains("recoveryEl.value = \"\"", script, StringComparison.Ordinal);
-        Assert.Contains("body.message", script, StringComparison.Ordinal);
         var beforeCheck = script[..script.LastIndexOf("\n  check();", StringComparison.Ordinal)];
         Assert.Contains("if (!token)", beforeCheck, StringComparison.Ordinal);
+
+        // The helpers the first-time setup page uses: length counted as the server counts it, the
+        // show toggles, and every message the server's own, from the markup.
+        Assert.Contains("AdminPassword.lengthMessage(newPassword)", script, StringComparison.Ordinal);
+        Assert.Contains("AdminPassword.bindToggle(\"new-password\", \"new-password-toggle\");", script, StringComparison.Ordinal);
+        Assert.Contains("AdminPassword.bindToggle(\"confirm-password\", \"confirm-password-toggle\");", script, StringComparison.Ordinal);
+        Assert.Contains("confirmPassword.getAttribute(\"data-mismatch\")", script, StringComparison.Ordinal);
+        Assert.DoesNotContain(AdminPasswordResetCopy.SignInGeneric, script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Enter your authenticator code or a recovery code.", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("innerHTML", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Storage", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("mode:", script, StringComparison.Ordinal);
+
+        // It leaves for "password changed" in one place: a 200 that carries exactly the server's sentence.
+        Assert.Single(Regex.Matches(script, @"location\.replace\(SIGN_IN\)"));
+        Assert.Contains(
+            "if (r.status === 200) {\n        var message = text(data.message);\n"
+            + "        if (message && message === form.getAttribute(\"data-changed\")) location.replace(SIGN_IN);\n"
+            + "        else afterUnclearReply();\n        return;\n      }",
+            script,
+            StringComparison.Ordinal);
+        // No clear answer: the link is checked again before anything is said.
+        Assert.Contains("if (r.status < 400 || r.status >= 500) {\n        afterUnclearReply();", script, StringComparison.Ordinal);
+        Assert.Contains("}, afterUnclearReply);", script, StringComparison.Ordinal);
+        Assert.Contains("if (outcome === \"expired\") {\n        location.replace(SIGN_IN_PAGE);", script, StringComparison.Ordinal);
+        Assert.Contains("location.replace(unsettled ? SIGN_IN_PAGE : expired);", script, StringComparison.Ordinal);
+        // Only the factor on screen is sent.
+        Assert.Contains("body[factor.sendAs] = factor.read(factor.field.value);", script, StringComparison.Ordinal);
+        // The server's words as sent.
+        Assert.Contains("r.status === 400 && error", script, StringComparison.Ordinal);
+        Assert.Contains("r.status === 401 && error", script, StringComparison.Ordinal);
+        Assert.Contains("r.status === 429 && text(data.message)", script, StringComparison.Ordinal);
         AssertConfirmClientRuleAbc(script);
     }
 
     private static void AssertConfirmClientRuleAbc(string script)
     {
+        script = script.Replace("\r\n", "\n");
         var check = Regex.Match(script, @"function check\(\) \{[\s\S]*?\n  \}");
         Assert.True(check.Success, "check() must be present");
         Assert.Contains("var retrying = isRetryVisible()", check.Value, StringComparison.Ordinal);
@@ -564,13 +624,12 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.True(endCheck.Success, "endCheckFailure() must be present");
         Assert.Contains("Spec v1.14", endCheck.Value, StringComparison.Ordinal);
         Assert.Contains("Rule C", endCheck.Value, StringComparison.Ordinal);
-        Assert.Contains("showRetry(undefined, undefined, retrying)", endCheck.Value, StringComparison.Ordinal);
+        Assert.Contains("showRetry(retrying)", endCheck.Value, StringComparison.Ordinal);
         Assert.DoesNotContain("TODO", endCheck.Value, StringComparison.Ordinal);
 
         var showForm = Regex.Match(script, @"function showForm\(\) \{[\s\S]*?\n  \}");
         Assert.True(showForm.Success, "showForm() must be present");
-        Assert.Contains("field.focus()", showForm.Value, StringComparison.Ordinal);
-        Assert.Contains("newPasswordEl()", showForm.Value, StringComparison.Ordinal);
+        Assert.Contains("newPassword.focus()", showForm.Value, StringComparison.Ordinal);
 
         var click = Regex.Match(
             script,
@@ -1449,48 +1508,14 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
     }
 
     [Fact]
-    public void TD_ADM_031_G2_RunSh_HasNoPrivilegedPortOrSysctl()
-    {
-        var text = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "reset-confirm", "run.sh"));
-        var code = string.Join(
-            "\n",
-            text.Split('\n').Where(line => !line.TrimStart().StartsWith("#", StringComparison.Ordinal)));
-        Assert.DoesNotContain("sudo", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("sysctl", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("/proc/sys", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("setcap", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("/etc/hosts", code, StringComparison.Ordinal);
-        Assert.Contains("API_PORT=18443", code, StringComparison.Ordinal);
-        Assert.Contains("PROXY_PORT=18080", code, StringComparison.Ordinal);
-        Assert.Contains("https://127.0.0.1:${API_PORT}", code, StringComparison.Ordinal);
-        Assert.Contains("RESET_CONFIRM_PROXY=", code, StringComparison.Ordinal);
-        Assert.Contains("playwright.config.cjs", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("host-resolver-rules", code, StringComparison.Ordinal);
-        var spec = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "reset-confirm", "reset-confirm.spec.ts"));
-        Assert.DoesNotContain("host-resolver-rules", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("chromium.launch", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("launchPersistentContext", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("newContext(", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("proxy: undefined", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("proxy:undefined", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("test.use({proxy", spec, StringComparison.Ordinal);
-        Assert.DoesNotContain("test.use({ proxy", spec, StringComparison.Ordinal);
-        Assert.Contains("test.use({ javaScriptEnabled: false })", spec, StringComparison.Ordinal);
-        foreach (Match match in Regex.Matches(code, @"(?<=\d):(\d{2,5})(?!\d)(?!\.)"))
-        {
-            var port = int.Parse(match.Groups[1].Value);
-            Assert.True(port >= 1024, "run.sh must not bind a port below 1024: " + match.Value);
-        }
-    }
-
-    [Fact]
     public async Task TD_ADM_031_PlaywrightConfig_ThrowsUnlessLoopbackProxyPortAtLeast1024()
     {
-        var dir = Path.Combine(RepoRoot(), "e2e", "reset-confirm");
+        // The guard of every signed-out page suite, and the shared configuration that loads it.
+        var dir = Path.Combine(RepoRoot(), "e2e", "signed-out");
         var proxyCheck = await RunNodeFileAsync(Path.Combine(dir, "require-proxy.check.cjs"));
         Assert.Contains("PASS require-proxy checks", proxyCheck, StringComparison.Ordinal);
-        var configCheck = await RunNodeFileAsync(Path.Combine(dir, "playwright.config.check.cjs"));
-        Assert.Contains("PASS playwright.config load checks", configCheck, StringComparison.Ordinal);
+        var configCheck = await RunNodeFileAsync(Path.Combine(dir, "playwright.base.check.cjs"));
+        Assert.Contains("PASS playwright.base load checks", configCheck, StringComparison.Ordinal);
     }
 
     private static Task<string> RunNodeFileAsync(string script)

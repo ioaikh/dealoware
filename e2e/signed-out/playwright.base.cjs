@@ -1,18 +1,12 @@
 "use strict";
 
-const {
-  requireResetConfirmProxy,
-  requireResetConfirmBaseUrl
-} = require("../reset-confirm/require-proxy.cjs");
+const { requireLoopbackProxy, requireBaseUrl } = require("./require-proxy.cjs");
 
-// The same guard as the reset-confirm run: a base URL, and a proxy that must
-// be http://127.0.0.1:<port 1024-65535>. Errors name the suite's variables.
+// The guard: a base URL, and a proxy that must be http://127.0.0.1:<port
+// 1024-65535>. Errors name the suite's variables. Checked by
+// require-proxy.check.cjs and playwright.base.check.cjs.
 function guard(check, envName) {
-  try {
-    return check(process.env[envName]);
-  } catch (err) {
-    throw new Error(String(err.message).replace(/RESET_CONFIRM_[A-Z_]+/g, envName));
-  }
+  return check(process.env[envName], envName);
 }
 
 // The three engines every suite runs on, and the device each one stands for.
@@ -37,8 +31,8 @@ const ENGINES = {
  */
 function signedOutConfig(playwright, envPrefix) {
   const { defineConfig, devices } = playwright;
-  const baseURL = guard(requireResetConfirmBaseUrl, envPrefix + "_BASE_URL");
-  const proxy = guard(requireResetConfirmProxy, envPrefix + "_PROXY");
+  const baseURL = guard(requireBaseUrl, envPrefix + "_BASE_URL");
+  const proxy = guard(requireLoopbackProxy, envPrefix + "_PROXY");
 
   return defineConfig({
     testDir: ".",
