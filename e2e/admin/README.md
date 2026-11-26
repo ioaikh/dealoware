@@ -14,8 +14,8 @@ folder per suite next to this one (such as `e2e/bootstrap`, `e2e/sign-in` and
 
 ## What CI runs
 
-On every pull request that touches `src/**`, `e2e/**` or the workflow file,
-one job per browser engine (Chromium, Firefox, WebKit) builds the application
+On every pull request to `main` (its jobs are required checks there), one job
+per browser engine (Chromium, Firefox, WebKit) builds the application
 and runs:
 
 ```bash
