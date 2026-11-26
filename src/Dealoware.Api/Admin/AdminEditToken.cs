@@ -12,12 +12,17 @@ namespace Dealoware.Api.Admin;
 /// The <c>ETag</c> of an admin detail read, and the <c>If-Match</c> an admin
 /// write must send back (Spec §5: optimistic concurrency, stale write 409).
 /// <para>
-/// It names the state a change was prepared against: the row's
-/// <c>Version</c>, and with it the parts of the row that a party's own action
-/// changes without moving <c>Version</c> (status, the time of the last
-/// change, and the values the admin can overwrite). A token of Version alone
-/// would still match after a party accepted an offer, and the admin's cancel
-/// would then be saved over the acceptance.
+/// It names the one row and the state a change was prepared against: the
+/// row's type and id, its <c>Version</c>, and with them the parts of the row
+/// that a party's own action changes without moving <c>Version</c> (status,
+/// the time of the last change, and the values the admin can overwrite). A
+/// token of Version alone would still match after a party accepted an offer,
+/// and the admin's cancel would then be saved over the acceptance.
+/// </para>
+/// <para>
+/// A negotiation's token also covers its open offers (each one's id, status,
+/// version and time): closing or expiring cancels them, so a close prepared
+/// before a party placed, countered or accepted an offer must not go through.
 /// </para>
 /// <para>
 /// The form is <c>"{version}-{16 hex digits}"</c>. The digits are a hash, so
@@ -26,8 +31,13 @@ namespace Dealoware.Api.Admin;
 /// </summary>
 public static partial class AdminEditToken
 {
+    /// <summary>One open offer of a negotiation, as the negotiation's token covers it.</summary>
+    public readonly record struct OpenOffer(Guid Id, OfferStatus Status, uint Version, DateTimeOffset? UpdatedAt);
+
     public static string For(Participant participant)
         => Build(
+            "participant",
+            participant.Id,
             participant.Version,
             participant.UpdatedAt,
             participant.DeletedAt,
@@ -45,18 +55,32 @@ public static partial class AdminEditToken
             state.Add(entity.Description);
         }
 
-        return Build(artifact.Version, artifact.UpdatedAt, artifact.DeletedAt, state);
+        return Build("artifact", artifact.Id, artifact.Version, artifact.UpdatedAt, artifact.DeletedAt, state);
     }
 
-    public static string For(Negotiation negotiation)
-        => Build(
-            negotiation.Version,
-            negotiation.UpdatedAt,
-            negotiation.DeletedAt,
-            [Number((int)negotiation.Status), Instant(negotiation.EndsAt)]);
+    /// <param name="openOffers">
+    /// The negotiation's offers that are open and not soft-deleted: the ones
+    /// closing or expiring it would cancel.
+    /// </param>
+    public static string For(Negotiation negotiation, IEnumerable<OpenOffer> openOffers)
+    {
+        var state = new List<string?> { Number((int)negotiation.Status), Instant(negotiation.EndsAt) };
+        foreach (var offer in openOffers.OrderBy(o => o.Id))
+        {
+            state.Add(offer.Id.ToString("N"));
+            state.Add(Number((int)offer.Status));
+            state.Add(Number(offer.Version));
+            state.Add(Instant(offer.UpdatedAt));
+        }
+
+        return Build("negotiation", negotiation.Id, negotiation.Version, negotiation.UpdatedAt, negotiation.DeletedAt, state);
+    }
+
+    public static string For(Negotiation negotiation, IEnumerable<Offer> openOffers)
+        => For(negotiation, openOffers.Select(o => new OpenOffer(o.Id, o.Status, o.Version, o.UpdatedAt)));
 
     public static string For(Offer offer)
-        => Build(offer.Version, offer.UpdatedAt, offer.DeletedAt, [Number((int)offer.Status)]);
+        => Build("offer", offer.Id, offer.Version, offer.UpdatedAt, offer.DeletedAt, [Number((int)offer.Status)]);
 
     /// <summary>The token as an <c>ETag</c> header value: a strong validator, in quotes.</summary>
     public static string ToHeader(string token) => $"\"{token}\"";
@@ -105,13 +129,18 @@ public static partial class AdminEditToken
     public static bool Matches(string presented, string current)
         => string.Equals(presented, current, StringComparison.Ordinal);
 
+    /// <param name="type">Which kind of row: with the id, it ties the token to one row.</param>
     private static string Build(
+        string type,
+        Guid id,
         uint version,
         DateTimeOffset? updatedAt,
         DateTimeOffset? deletedAt,
         IEnumerable<string?> state)
     {
         var text = new StringBuilder();
+        Append(text, type);
+        Append(text, id.ToString("N"));
         Append(text, Number(version));
         Append(text, Instant(updatedAt));
         Append(text, Instant(deletedAt));

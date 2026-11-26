@@ -155,8 +155,8 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         var etag = ETagOf(response);
         using var empty = await PatchAsync("artifacts", seed.Artifact.Id, new { name = "   " }, session, etag);
         await AssertFieldErrorAsync(empty, "name", AdminEditCopy.NameRequired);
-        using var notText = await PatchAsync("artifacts", seed.Artifact.Id, new { name = 7 }, session, etag);
-        await AssertFieldErrorAsync(notText, "name", AdminEditCopy.NameRequired);
+        using var none = await PatchAsync("artifacts", seed.Artifact.Id, new { name = (string?)null }, session, etag);
+        await AssertFieldErrorAsync(none, "name", AdminEditCopy.NameRequired);
         using var tooLong = await PatchAsync("artifacts", seed.Artifact.Id, new { name = new string('n', 4097) }, session, etag);
         await AssertFieldErrorAsync(tooLong, "name", AdminEditCopy.NameTooLong);
         Assert.Equal(1u, (await ArtifactAsync(seed.Artifact.Id)).Version);
@@ -300,7 +300,7 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         using var beforeStart = await PatchAsync(
             "negotiations", seed.Open.Id, new { endsAt = seed.Open.StartsAt.Value.AddMinutes(-1).ToString("O") }, session, etag);
         await AssertFieldErrorAsync(beforeStart, "endsAt", AdminEditCopy.EndsAtNotAfterStart);
-        foreach (var notATime in new object[] { "next week", "2026-12-01T10:00:00", "9999-12-31T00:00:00Z", 5 })
+        foreach (var notATime in new[] { "next week", "2026-12-01T10:00:00", "9999-12-31T00:00:00Z", "2031-01-01" })
         {
             using var invalid = await PatchAsync("negotiations", seed.Open.Id, new { endsAt = notATime }, session, etag);
             await AssertFieldErrorAsync(invalid, "endsAt", AdminEditCopy.EndsAtInvalid);
@@ -355,6 +355,14 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         Assert.Equal(OfferStatus.Accepted, accepted.Status);
         Assert.Equal(0u, accepted.Version);
         Assert.Empty(await AuditAsync(seed.Accepted.Id));
+
+        // A soft-deleted open offer is not counted above and not written here:
+        // one rule for the count and the cascade.
+        var deletedOpen = await OfferAsync(seed.DeletedOpenOffer.Id);
+        Assert.Equal(OfferStatus.Open, deletedOpen.Status);
+        Assert.Equal(0u, deletedOpen.Version);
+        Assert.Null(deletedOpen.UpdatedAt);
+        Assert.Empty(await AuditAsync(seed.DeletedOpenOffer.Id));
 
         // What the parties sent is as they sent it.
         Assert.Equal(sent, await OfferTermsAsync(seed.OpenOffers.Select(o => o.Id).Append(seed.Accepted.Id)));
@@ -659,7 +667,7 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         var probe = "PROBE-" + new string('z', 300);
 
         using var response = await PatchRawAsync(
-            "participants", seed.PartyA.Id, JsonSerializer.Serialize(new { displayName = probe, isActive = "yes" }), session, read.ETag);
+            "participants", seed.PartyA.Id, JsonSerializer.Serialize(new { displayName = probe, isActive = (bool?)null }), session, read.ETag);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
@@ -669,6 +677,74 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         var fields = JsonDocument.Parse(text).RootElement.GetProperty("fields");
         Assert.Equal(AdminEditCopy.DisplayNameTooLong, fields.GetProperty("displayName").GetString());
         Assert.Equal(AdminEditCopy.ActiveNotChosen, fields.GetProperty("isActive").GetString());
+    }
+
+    // TD-ADM-141: a value of the wrong JSON type is not "too long" or "required": it is the generic refusal.
+    [Theory]
+    [InlineData("participants", """{"displayName":5}""")]
+    [InlineData("participants", """{"displayName":["x"]}""")]
+    [InlineData("participants", """{"isActive":"yes"}""")]
+    [InlineData("participants", """{"isActive":1}""")]
+    [InlineData("artifacts", """{"name":7}""")]
+    [InlineData("artifacts", """{"name":{"text":"x"}}""")]
+    [InlineData("artifacts", """{"description":5}""")]
+    [InlineData("artifacts", """{"ownerParticipantId":5}""")]
+    [InlineData("negotiations", """{"endsAt":5}""")]
+    [InlineData("negotiations", """{"endsAt":true}""")]
+    public async Task TdAdm141_ValueOfTheWrongJsonType_GenericRefusal_NothingWritten(string type, string body)
+    {
+        var seed = await SeedAsync();
+        var session = await NewSessionAsync();
+        var id = seed.EditableId(type);
+        var read = await GetAsync(type, id, session);
+
+        using var response = await PatchRawAsync(type, id, body, session, read.ETag);
+
+        await AssertGenericDenyAsync(response);
+        await AssertUntouchedAsync(type, id);
+    }
+
+    // E6 and E7, TD-ADM-178 (Closed and Expired final): a negotiation whose end time has
+    // passed has expired, though its stored status still says Open. It is not revived, and not closed.
+    [Theory]
+    [InlineData("""{"endsAt":"2031-01-01T00:00:00Z"}""")]
+    [InlineData("""{"endsAt":"2031-01-01T00:00:00Z","status":"Closed"}""")]
+    [InlineData("""{"endsAt":null}""")]
+    [InlineData("""{"status":"Closed"}""")]
+    public async Task E6_E7_TdAdm178_LapsedNegotiation_NotRevived_NotClosed(string body)
+    {
+        var seed = await SeedAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("negotiations", seed.Lapsed.Id, session);
+        Assert.Equal("Open", read.Body.GetProperty("status").GetString());
+
+        using var response = await PatchRawAsync("negotiations", seed.Lapsed.Id, body, session, read.ETag);
+
+        // The generic refusal: it does not say the negotiation has lapsed.
+        await AssertGenericDenyAsync(response);
+        var stored = await NegotiationAsync(seed.Lapsed.Id);
+        Assert.Equal(NegotiationStatus.Open, stored.Status);
+        Assert.Equal(seed.Lapsed.EndsAt, stored.EndsAt);
+        Assert.Equal(0u, stored.Version);
+        var offer = await OfferAsync(seed.LapsedOffer.Id);
+        Assert.Equal(OfferStatus.Open, offer.Status);
+        Assert.Equal(0u, offer.Version);
+        Assert.Empty(await AuditAsync(seed.Lapsed.Id));
+    }
+
+    // E8: the one thing the owner can do with a lapsed negotiation is expire it.
+    [Fact]
+    public async Task E8_LapsedNegotiation_CanBeExpired()
+    {
+        var seed = await SeedAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("negotiations", seed.Lapsed.Id, session);
+
+        using var response = await PatchAsync("negotiations", seed.Lapsed.Id, new { status = "Expired" }, session, read.ETag);
+
+        await OkAsync(response);
+        Assert.Equal(NegotiationStatus.Expired, (await NegotiationAsync(seed.Lapsed.Id)).Status);
+        Assert.Equal(OfferStatus.Cancelled, (await OfferAsync(seed.LapsedOffer.Id)).Status);
     }
 
     [Theory]
@@ -783,18 +859,51 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         Assert.Single(await AuditAsync(id));
     }
 
-    // A token is for one row: another row's token, even with the same version, does not open this one.
+    // A token is for one row: the token of another row in the very same state does not open this one.
     [Fact]
     public async Task TdAdm081_AnotherRowsToken_409()
     {
-        var seed = await SeedAsync();
         var session = await NewSessionAsync();
-        var other = await GetAsync("participants", seed.Suspended.Id, session);
 
-        using var response = await PatchAsync("participants", seed.PartyA.Id, new { displayName = "x" }, session, other.ETag);
+        // Two participants alike in everything a token covers but their ids.
+        var twins = new[] { Participant.Create("Twin"), Participant.Create("Twin") };
+        await ReadAsync(async db =>
+        {
+            db.Participants.AddRange(twins);
+            return await db.SaveChangesAsync();
+        });
+        var first = await GetAsync("participants", twins[0].Id, session);
+        var second = await GetAsync("participants", twins[1].Id, session);
+        Assert.Equal(first.Body.GetProperty("displayName").GetString(), second.Body.GetProperty("displayName").GetString());
+        Assert.Equal(first.Body.GetProperty("isActive").GetBoolean(), second.Body.GetProperty("isActive").GetBoolean());
+        Assert.Equal(first.Body.GetProperty("version").GetUInt32(), second.Body.GetProperty("version").GetUInt32());
+        Assert.Equal(JsonValueKind.Null, first.Body.GetProperty("updatedAt").ValueKind);
+        Assert.Equal(JsonValueKind.Null, second.Body.GetProperty("updatedAt").ValueKind);
+        Assert.NotEqual(first.ETag, second.ETag);
+
+        using var response = await PatchAsync("participants", twins[0].Id, new { displayName = "x" }, session, second.ETag);
 
         await AssertConflictAsync(response);
-        Assert.Equal(0u, (await ParticipantAsync(seed.PartyA.Id)).Version);
+        Assert.Equal(0u, (await ParticipantAsync(twins[0].Id)).Version);
+        Assert.Empty(await AuditAsync(twins[0].Id));
+    }
+
+    // The same across types and across offers: no two rows share a token.
+    [Fact]
+    public async Task TdAdm081_EveryRowHasItsOwnToken()
+    {
+        var seed = await SeedAsync();
+        var session = await NewSessionAsync();
+        var tokens = new List<string>();
+        foreach (var type in Types)
+            tokens.Add((await GetAsync(type, seed.EditableId(type), session)).ETag);
+        foreach (var offer in seed.OpenOffers)
+            tokens.Add((await GetAsync("offers", offer.Id, session)).ETag);
+        tokens.Add((await GetAsync("negotiations", seed.Closed.Id, session)).ETag);
+        tokens.Add((await GetAsync("negotiations", seed.Lapsed.Id, session)).ETag);
+
+        // seed.EditableId("offers") is seed.OpenOffers[0], read twice: one repeat, no other.
+        Assert.Equal(tokens.Count - 1, tokens.Distinct(StringComparer.Ordinal).Count());
     }
 
     // The detail read and the write give the same token for the same state; a proxy's W/ is tolerated.
@@ -874,7 +983,9 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
 
         var audit = Assert.Single(await AuditAsync(seed.PartyA.Id));
         Assert.Equal(OwnerEmail, audit.ActorEmail);
-        Assert.Equal(_factory.Services.GetRequiredService<IIpHasher>().Hash("unknown"), audit.IpHmac);
+        // The test host gives no client address; the session gate's stand-in is hashed.
+        Assert.Equal(_factory.Services.GetRequiredService<IIpHasher>().Hash("0.0.0.0"), audit.IpHmac);
+        Assert.DoesNotContain("0.0.0.0", audit.IpHmac);
         foreach (var snapshot in new[] { audit.BeforeSnapshot!, audit.AfterSnapshot! })
         {
             var names = JsonDocument.Parse(snapshot).RootElement.EnumerateObject().Select(p => p.Name).Order().ToArray();
@@ -950,6 +1061,7 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         Negotiation Open,
         Negotiation Closed,
         Negotiation Expired,
+        Negotiation Lapsed,
         Negotiation DeletedNegotiation,
         IReadOnlyList<Offer> OpenOffers,
         Offer Accepted,
@@ -957,10 +1069,13 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         Offer Withdrawn,
         Offer Superseded,
         Offer Cancelled,
+        Offer LapsedOffer,
+        Offer DeletedOpenOffer,
         Offer DeletedOffer)
     {
         public IEnumerable<Offer> AllOffers
-            => OpenOffers.Concat([Accepted, Declined, Withdrawn, Superseded, Cancelled, DeletedOffer]);
+            => OpenOffers.Concat(
+                [Accepted, Declined, Withdrawn, Superseded, Cancelled, LapsedOffer, DeletedOpenOffer, DeletedOffer]);
 
         /// <summary>A live row of the type that a valid edit can change.</summary>
         public Guid EditableId(string type) => type switch
@@ -1027,8 +1142,10 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         closed.Close();
         var expired = NewNegotiation(artifact, partyA, partyB);
         expired.Expire();
+        // Its end time has passed and nothing has applied that yet: the stored status is still Open.
+        var lapsed = NewNegotiation(artifact, partyA, partyB, endsAt: new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var deletedNegotiation = NewNegotiation(artifact, partyA, partyB);
-        db.Negotiations.AddRange(open, closed, expired, deletedNegotiation);
+        db.Negotiations.AddRange(open, closed, expired, lapsed, deletedNegotiation);
 
         // Three open offers and one accepted on the open negotiation (TD-ADM-178 step 2).
         var openOffers = new[]
@@ -1047,9 +1164,12 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         superseded.Supersede();
         var cancelled = NewOffer(expired, partyB, partyA, 40m);
         cancelled.Cancel();
+        var lapsedOffer = NewOffer(lapsed, partyA, partyB, 60m);
+        // Open, in the open negotiation, and soft-deleted: no admin write touches it.
+        var deletedOpenOffer = NewOffer(open, partyB, partyA, 500.50m);
         var deletedOffer = NewOffer(deletedNegotiation, partyA, partyB, 9m);
         db.Offers.AddRange(openOffers);
-        db.Offers.AddRange(accepted, declined, withdrawn, superseded, cancelled, deletedOffer);
+        db.Offers.AddRange(accepted, declined, withdrawn, superseded, cancelled, lapsedOffer, deletedOpenOffer, deletedOffer);
 
         await db.SaveChangesAsync();
 
@@ -1057,13 +1177,14 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         await db.Participants.Where(p => p.Id == deletedParty.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.DeletedAt, at));
         await db.Artifacts.Where(a => a.Id == deletedArtifact.Id).ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, at));
         await db.Negotiations.Where(n => n.Id == deletedNegotiation.Id).ExecuteUpdateAsync(s => s.SetProperty(n => n.DeletedAt, at));
-        await db.Offers.Where(o => o.Id == deletedOffer.Id).ExecuteUpdateAsync(s => s.SetProperty(o => o.DeletedAt, at));
+        await db.Offers.Where(o => o.Id == deletedOffer.Id || o.Id == deletedOpenOffer.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.DeletedAt, at));
 
         return new Seed(
             partyA, partyB, suspended, deletedParty,
             artifact, twoEntities, orphan, deletedArtifact,
-            open, closed, expired, deletedNegotiation,
-            openOffers, accepted, declined, withdrawn, superseded, cancelled, deletedOffer);
+            open, closed, expired, lapsed, deletedNegotiation,
+            openOffers, accepted, declined, withdrawn, superseded, cancelled, lapsedOffer, deletedOpenOffer, deletedOffer);
     }
 
     private static Negotiation NewNegotiation(

@@ -35,9 +35,14 @@ namespace Dealoware.Api.Admin;
 /// the <c>If-Match</c> says (<see cref="AdminEditToken"/>); 404 for no record
 /// or a soft-deleted one; the generic 400 for everything else that is
 /// refused (a field that is not editable, a change that is not allowed, a
-/// request that cannot be read), always the same body, with no word about the
-/// record's state; the same 400 with a <c>fields</c> map when a value breaks a
-/// rule (<see cref="AdminEditCopy"/>).
+/// request that cannot be read, a value of the wrong JSON type), always the
+/// same body, with no word about the record's state; the same 400 with a
+/// <c>fields</c> map when a value breaks a rule (<see cref="AdminEditCopy"/>).
+/// </para>
+/// <para>
+/// Expired is final even before the status says so: a negotiation whose end
+/// time has passed is not given a new end time and is not closed, though its
+/// stored status is still Open; it can only be expired.
 /// </para>
 /// <para>
 /// A write never saves over a change it did not see. The engine's party
@@ -56,8 +61,13 @@ namespace Dealoware.Api.Admin;
 /// (<see cref="IAdminAuditUnitOfWork"/>): action <c>entity_edit</c>, before
 /// and after of the fields the request named plus the version, through the
 /// field policy. Closing or expiring a negotiation cancels its open offers
-/// in that transaction; each cancelled offer has its own audit row, tied to
-/// the negotiation's by a correlation id.
+/// in that transaction (not its soft-deleted ones, which no admin write
+/// touches); each cancelled offer has its own audit row, tied to the
+/// negotiation's by a correlation id.
+/// </para>
+/// <para>
+/// A PostgreSQL deadlock or serialization failure in the write's transaction
+/// is answered like any other collision: 409, nothing written.
 /// </para>
 /// </summary>
 public static partial class AdminEditEndpoints
@@ -152,7 +162,9 @@ public static partial class AdminEditEndpoints
         string? displayName = null;
         if (request.Fields.TryGetValue("displayName", out var displayNameValue))
         {
-            if (!TryOptionalText(displayNameValue, out displayName) || displayName is { Length: > MaxDisplayNameLength })
+            if (!TryOptionalText(displayNameValue, out displayName))
+                return AdminDeny.BadRequestResult();
+            if (displayName is { Length: > MaxDisplayNameLength })
                 errors["displayName"] = AdminEditCopy.DisplayNameTooLong;
             else if (string.IsNullOrWhiteSpace(displayName))
                 displayName = null;
@@ -161,10 +173,17 @@ public static partial class AdminEditEndpoints
         bool? isActive = null;
         if (request.Fields.TryGetValue("isActive", out var isActiveValue))
         {
-            if (isActiveValue.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                isActive = isActiveValue.GetBoolean();
-            else
-                errors["isActive"] = AdminEditCopy.ActiveNotChosen;
+            switch (isActiveValue.ValueKind)
+            {
+                case JsonValueKind.True or JsonValueKind.False:
+                    isActive = isActiveValue.GetBoolean();
+                    break;
+                case JsonValueKind.Null:
+                    errors["isActive"] = AdminEditCopy.ActiveNotChosen;
+                    break;
+                default:
+                    return AdminDeny.BadRequestResult();
+            }
         }
 
         if (errors.Count > 0)
@@ -261,7 +280,9 @@ public static partial class AdminEditEndpoints
         string? name = null;
         if (request.Fields.TryGetValue("name", out var nameValue))
         {
-            name = nameValue.ValueKind == JsonValueKind.String ? nameValue.GetString()!.Trim() : null;
+            if (!TryOptionalText(nameValue, out name))
+                return AdminDeny.BadRequestResult();
+            name = name?.Trim();
             if (string.IsNullOrEmpty(name))
                 errors["name"] = AdminEditCopy.NameRequired;
             else if (name.Length > SubjectEntity.MaxTextLength)
@@ -269,17 +290,20 @@ public static partial class AdminEditEndpoints
         }
 
         string? description = null;
-        if (request.Fields.TryGetValue("description", out var descriptionValue)
-            && (!TryOptionalText(descriptionValue, out description)
-                || description is { Length: > SubjectEntity.MaxTextLength }))
+        if (request.Fields.TryGetValue("description", out var descriptionValue))
         {
-            errors["description"] = AdminEditCopy.DescriptionTooLong;
+            if (!TryOptionalText(descriptionValue, out description))
+                return AdminDeny.BadRequestResult();
+            if (description is { Length: > SubjectEntity.MaxTextLength })
+                errors["description"] = AdminEditCopy.DescriptionTooLong;
         }
 
         string? ownerText = null;
         if (request.Fields.TryGetValue("ownerParticipantId", out var ownerValue))
         {
-            ownerText = ownerValue.ValueKind == JsonValueKind.String ? ownerValue.GetString()!.Trim() : null;
+            if (!TryOptionalText(ownerValue, out ownerText))
+                return AdminDeny.BadRequestResult();
+            ownerText = ownerText?.Trim();
             if (string.IsNullOrEmpty(ownerText))
                 errors["ownerParticipantId"] = AdminEditCopy.OwnerNotChosen;
         }
@@ -417,28 +441,51 @@ public static partial class AdminEditEndpoints
         }
 
         DateTimeOffset? endsAt = null;
-        if (request.Fields.TryGetValue("endsAt", out var endsAtValue) && !TryInstant(endsAtValue, out endsAt))
+        if (request.Fields.TryGetValue("endsAt", out var endsAtValue))
         {
-            return AdminDeny.ValidationResult(new Dictionary<string, string>
+            if (endsAtValue.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                return AdminDeny.BadRequestResult();
+            if (!TryInstant(endsAtValue, out endsAt))
             {
-                ["endsAt"] = AdminEditCopy.EndsAtInvalid
-            });
+                return AdminDeny.ValidationResult(new Dictionary<string, string>
+                {
+                    ["endsAt"] = AdminEditCopy.EndsAtInvalid
+                });
+            }
         }
 
-        // Its open offers come with it: closing or expiring cancels them.
+        // Its open offers come with it: closing or expiring cancels them, and
+        // the token covers them. Soft-deleted offers are left out: no admin
+        // write touches a soft-deleted row.
         var negotiation = await db.Negotiations
-            .Include(n => n.Offers.Where(o => o.Status == OfferStatus.Open))
+            .Include(n => n.Offers.Where(o => o.Status == OfferStatus.Open && o.DeletedAt == null))
             .FirstOrDefaultAsync(n => n.Id == id && n.DeletedAt == null, cancellationToken);
         if (negotiation is null)
             return AdminDeny.NotFoundResult();
-        if (!AdminEditToken.Matches(request.IfMatch, AdminEditToken.For(negotiation)))
+
+        // By id: one fixed order for claiming the rows, so that two writers
+        // after the same offers are less likely to end up waiting on each other.
+        var openOffers = negotiation.Offers
+            .Where(o => o.Status == OfferStatus.Open && o.DeletedAt == null)
+            .OrderBy(o => o.Id)
+            .ToList();
+        if (!AdminEditToken.Matches(request.IfMatch, AdminEditToken.For(negotiation, openOffers)))
             return AdminDeny.ConflictResult();
+
+        // Its end time has passed, so it has expired, though the stored status
+        // still says Open (the engine writes Expired when a party next touches
+        // it; this is the engine's clock, as that check uses). Expired is
+        // final: no new end time, and not Closed. It can only be expired.
+        if (negotiation.HasLapsed(DateTimeOffset.UtcNow)
+            && (request.Has("endsAt") || wantedStatus == NegotiationStatus.Closed))
+        {
+            return Refuse(db);
+        }
 
         var version = negotiation.Version;
         var wasStatus = negotiation.Status;
         var hadEndsAt = negotiation.EndsAt;
         var wasUpdatedAt = negotiation.UpdatedAt;
-        var openOffers = negotiation.Offers.Where(o => o.Status == OfferStatus.Open).ToList();
         var openAsRead = openOffers.Select(o => (o.Id, o.Version, o.UpdatedAt)).ToList();
 
         Dictionary<FieldClass, object?> Values() => Named(
@@ -546,7 +593,10 @@ public static partial class AdminEditEndpoints
 
                 var claimed = openAsRead.Select(o => o.Id).ToList();
                 if (await db.Offers.AnyAsync(
-                        o => o.NegotiationId == id && o.Status == OfferStatus.Open && !claimed.Contains(o.Id),
+                        o => o.NegotiationId == id
+                             && o.Status == OfferStatus.Open
+                             && o.DeletedAt == null
+                             && !claimed.Contains(o.Id),
                         ct))
                 {
                     throw new StaleEditException();
@@ -636,7 +686,7 @@ public static partial class AdminEditEndpoints
     /// <summary>
     /// The checks every edit starts with, in this order: the Core owner; the
     /// <c>If-Match</c>; a JSON object; then each key, which must be in the
-    /// table, have an edit path, and be writable by the policy. Nothing is
+    /// table, be writable by the policy, and have an edit path. Nothing is
     /// read from the database before these pass.
     /// </summary>
     private static async Task<(EditRequest? Request, IResult? Refusal)> ReadRequestAsync(
@@ -744,7 +794,7 @@ public static partial class AdminEditEndpoints
     }
 
     /// <summary>
-    /// A time or null. The time is ISO 8601 with its offset (<c>Z</c> or
+    /// A time or null, from a JSON text or null. The time is ISO 8601 with its offset (<c>Z</c> or
     /// <c>+hh:mm</c>), so it is one instant whatever the server's own zone; in
     /// the years 1900 to 2999, as the list filters keep dates; cut to the
     /// millisecond, which every store keeps whole.
@@ -754,8 +804,7 @@ public static partial class AdminEditEndpoints
         at = null;
         if (value.ValueKind == JsonValueKind.Null)
             return true;
-        if (value.ValueKind != JsonValueKind.String
-            || !WithOffset().IsMatch(value.GetString()!)
+        if (!WithOffset().IsMatch(value.GetString()!)
             || !value.TryGetDateTimeOffset(out var parsed)
             || parsed.Year is < 1900 or > 2999)
         {
@@ -827,7 +876,8 @@ public static partial class AdminEditEndpoints
     /// fields and the version, and pass through the field policy
     /// (<see cref="AdminAuditSnapshots.FromAllowedFields"/>): a class the
     /// owner may not read is left out. The client address is stored only as
-    /// its keyed hash, taken as the sign-in events take it.
+    /// its keyed hash; with no address, the hash is of the same stand-in the
+    /// session gate uses (<see cref="AdminAuthService.NormalizeIp"/>).
     /// </summary>
     private static AdminAuditEntry Audit(
         HttpContext context,
@@ -843,14 +893,10 @@ public static partial class AdminEditEndpoints
         Guid? correlationId,
         DateTimeOffset now)
     {
-        var clientIp = context.Connection.RemoteIpAddress?.ToString();
-        if (string.IsNullOrEmpty(clientIp))
-            clientIp = "unknown";
-
         return recorder.Entity(
             AdminAuditActions.EntityEdit,
             request.ActorEmail,
-            clientIp,
+            AdminAuthService.NormalizeIp(context.Connection.RemoteIpAddress?.ToString()),
             entityType,
             entityId,
             Snapshot(fieldPolicy, request.Principal, before, versionBefore),
@@ -934,7 +980,9 @@ public static partial class AdminEditEndpoints
     /// <summary>
     /// The claims, the rows' changes and the audit rows in one transaction;
     /// then the record as the detail read gives it, with its new edit token.
-    /// A stale row is 409 with nothing written.
+    /// A stale row is 409 with nothing written. So is a transaction that
+    /// PostgreSQL stopped because it collided with another (a deadlock or a
+    /// serialization failure): it was rolled back, and the admin reads again.
     /// </summary>
     private static async Task<IResult> SaveAsync(
         HttpContext context,
@@ -949,7 +997,8 @@ public static partial class AdminEditEndpoints
         {
             await unitOfWork.ExecutePairedAsync(claimRowsAsync, audits, cancellationToken);
         }
-        catch (Exception ex) when (ex is StaleEditException or DbUpdateConcurrencyException)
+        catch (Exception ex) when (ex is StaleEditException or DbUpdateConcurrencyException
+                                   || DatabaseErrors.IsTransactionCollision(ex))
         {
             db.ChangeTracker.Clear();
             return AdminDeny.ConflictResult();

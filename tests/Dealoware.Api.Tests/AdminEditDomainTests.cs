@@ -94,22 +94,56 @@ public class AdminEditDomainTests
     public void TD_ADM_178_E6_UpdateEndsAt_WhileOpen_AfterTheStart()
     {
         var start = new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero);
+        var now = start.AddMinutes(30);
         var negotiation = NewNegotiation(start, start.AddHours(2));
 
-        Assert.True(negotiation.UpdateEndsAt(start.AddHours(3)));
+        Assert.True(negotiation.UpdateEndsAt(start.AddHours(3), now));
         Assert.Equal(start.AddHours(3), negotiation.EndsAt);
 
         // Stored as UTC whatever offset it came with.
-        Assert.True(negotiation.UpdateEndsAt(new DateTimeOffset(2026, 11, 1, 15, 0, 0, TimeSpan.FromHours(2))));
+        Assert.True(negotiation.UpdateEndsAt(new DateTimeOffset(2026, 11, 1, 15, 0, 0, TimeSpan.FromHours(2)), now));
         Assert.Equal(TimeSpan.Zero, negotiation.EndsAt!.Value.Offset);
         Assert.Equal(start.AddHours(4), negotiation.EndsAt);
 
-        Assert.False(negotiation.UpdateEndsAt(start));
-        Assert.False(negotiation.UpdateEndsAt(start.AddMinutes(-1)));
+        Assert.False(negotiation.UpdateEndsAt(start, now));
+        Assert.False(negotiation.UpdateEndsAt(start.AddMinutes(-1), now));
         Assert.Equal(start.AddHours(4), negotiation.EndsAt);
 
-        Assert.True(negotiation.UpdateEndsAt(null));
+        Assert.True(negotiation.UpdateEndsAt(null, now));
         Assert.Null(negotiation.EndsAt);
+
+        // With no end time there is nothing to lapse: one can be set at any time.
+        Assert.False(negotiation.HasLapsed(now.AddYears(5)));
+        Assert.True(negotiation.UpdateEndsAt(now.AddYears(6), now.AddYears(5)));
+    }
+
+    // E6: Expired is final even before the status says so.
+    [Fact]
+    public void TD_ADM_178_E6_UpdateEndsAt_RefusedOnceTheEndTimeHasPassed()
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero);
+        var end = start.AddHours(2);
+        var negotiation = NewNegotiation(start, end);
+        Assert.False(negotiation.HasLapsed(end.AddTicks(-1)));
+        Assert.True(negotiation.HasLapsed(end));
+        Assert.True(negotiation.HasLapsed(end.AddDays(1)));
+
+        // The stored status is still Open, and the end time is not moved or cleared.
+        Assert.Equal(NegotiationStatus.Open, negotiation.Status);
+        Assert.False(negotiation.UpdateEndsAt(end.AddYears(1), end));
+        Assert.False(negotiation.UpdateEndsAt(null, end.AddDays(1)));
+        Assert.Equal(end, negotiation.EndsAt);
+
+        // The clock of the engine's own expiry check is the default.
+        var longAgo = NewNegotiation(endsAt: new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        Assert.False(longAgo.UpdateEndsAt(DateTimeOffset.UtcNow.AddYears(1)));
+        Assert.False(longAgo.Close());
+        Assert.Equal(NegotiationStatus.Expired, longAgo.Status);
+
+        // Not lapsed once it is no longer open.
+        var closed = NewNegotiation(start, end);
+        closed.Expire();
+        Assert.False(closed.HasLapsed(end.AddDays(1)));
     }
 
     // E6

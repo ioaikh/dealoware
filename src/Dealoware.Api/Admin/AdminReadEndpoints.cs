@@ -448,7 +448,10 @@ public static class AdminReadEndpoints
 
     /// <summary>
     /// <see cref="GetNegotiationAsync"/>, with the row's edit token. The
-    /// detail says how many open offers the negotiation has (one count).
+    /// detail says how many open offers the negotiation has, and the token
+    /// covers them (one read of their ids, versions and times; a party has at
+    /// most one open offer in a negotiation). Soft-deleted offers are left out
+    /// of both, as closing or expiring leaves them out.
     /// </summary>
     internal static async Task<Detail?> ReadNegotiationAsync(
         DealowareDbContext db,
@@ -470,12 +473,17 @@ public static class AdminReadEndpoints
             [],
             includeDeleted,
             cancellationToken);
-        var openOfferCount = await db.Offers.CountAsync(
-            o => o.NegotiationId == id && o.DeletedAt == null && o.Status == OfferStatus.Open,
-            cancellationToken);
+        var openOffers = (await db.Offers.AsNoTracking()
+                .Where(o => o.NegotiationId == id && o.DeletedAt == null && o.Status == OfferStatus.Open)
+                .Select(o => new { o.Id, o.Status, o.Version, o.UpdatedAt })
+                .ToListAsync(cancellationToken))
+            .Select(o => new AdminEditToken.OpenOffer(o.Id, o.Status, o.Version, o.UpdatedAt))
+            .ToList();
         return new Detail(
-            AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related, openOfferCount),
-            AdminReadProjection.CanReadEditToken(fieldPolicy, principal) ? AdminEditToken.For(negotiation) : null);
+            AdminReadProjection.Negotiation(negotiation, fieldPolicy, principal, detail: true, related, openOffers.Count),
+            AdminReadProjection.CanReadEditToken(fieldPolicy, principal)
+                ? AdminEditToken.For(negotiation, openOffers)
+                : null);
     }
 
     private static async Task<IResult> ListOffers(
