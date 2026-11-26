@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import crypto from 'node:crypto';
 import { expectNoSeriousAxeFindings } from './axe';
+import { collectPageErrors } from './page-errors';
 import { authenticatorCode, seedOwner, wrongAuthenticatorCode, type Owner } from '../sign-in/owner';
 import { answerCloudflare } from '../signed-out/cloudflare';
 import { readQr } from '../enrol/qr-reader';
@@ -62,7 +63,7 @@ const ARTIFACTS = process.env.CONSOLE_E2E_ARTIFACTS;
 
 let owner: Owner;
 let cspMessages: string[] = [];
-let pageErrors: string[] = [];
+let pageErrors: () => string[] = () => [];
 
 function engine(): string {
   return test.info().project.name;
@@ -249,7 +250,6 @@ async function clipboardWritten(page: Page): Promise<string[]> {
 test.beforeEach(async ({ page }) => {
   owner = seedOwner({ enrolled: true });
   cspMessages = [];
-  pageErrors = [];
   page.on('console', (message) => {
     const text = message.text();
     if (!/content[- ]security[- ]policy/i.test(text)) return;
@@ -258,13 +258,13 @@ test.beforeEach(async ({ page }) => {
     if (path.startsWith('/admin/api/') || path.startsWith('/admin/assets/')) return;
     cspMessages.push(text);
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  pageErrors = collectPageErrors(page);
   await answerCloudflare(page, { token: PASS_TOKEN });
 });
 
 test.afterEach(() => {
   expect(cspMessages).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(pageErrors()).toEqual([]);
 });
 
 test('S-A12 opens from the nav: four sections, the server\'s count, the activity panel without a raw address, and no banner', async ({ page }) => {

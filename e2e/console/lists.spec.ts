@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { expectNoSeriousAxeFindings } from './axe';
+import { collectPageErrors } from './page-errors';
 import { runEntitySeedScript, seedEntities, type Seeded } from './entities';
 import { authenticatorCode, seedOwner, type Owner } from '../sign-in/owner';
 import { answerCloudflare } from '../signed-out/cloudflare';
@@ -64,7 +65,7 @@ const LISTS = [
 let owner: Owner;
 let seeded: Seeded;
 let cspMessages: string[] = [];
-let pageErrors: string[] = [];
+let pageErrors: () => string[] = () => [];
 
 function engine(): string {
   return test.info().project.name;
@@ -168,7 +169,6 @@ test.beforeAll(() => {
 test.beforeEach(async ({ page }) => {
   owner = seedOwner({ enrolled: true });
   cspMessages = [];
-  pageErrors = [];
   page.on('console', (message) => {
     const text = message.text();
     if (!/content[- ]security[- ]policy/i.test(text)) return;
@@ -177,13 +177,13 @@ test.beforeEach(async ({ page }) => {
     if (path.startsWith('/admin/api/') || path.startsWith('/admin/assets/')) return;
     cspMessages.push(text);
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  pageErrors = collectPageErrors(page);
   await answerCloudflare(page, { token: PASS_TOKEN });
 });
 
 test.afterEach(() => {
   expect(cspMessages).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(pageErrors()).toEqual([]);
 });
 
 test('each list: the locked columns in order, Updated newest first, its own statuses and controls; axe; a screenshot', async ({ page }) => {
