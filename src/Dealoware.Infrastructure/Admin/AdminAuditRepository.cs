@@ -99,6 +99,12 @@ public sealed class AdminAuditRepository : IAdminAuditRepository
         {
             var reason = criteria.ReasonClass;
             query = query.Where(e => e.ReasonClass == reason);
+            // A reason no read gives is not found by a filter either (AdminAuditOutcome.IsWithheldReason).
+            if (AdminAuditOutcome.IsStepUpGuessReason(reason))
+            {
+                var withheld = AdminAuditOutcome.StepUpFailureActions.ToArray();
+                query = query.Where(e => !withheld.Contains(e.Action));
+            }
         }
 
         if (criteria.CorrelationId is { } correlationId)

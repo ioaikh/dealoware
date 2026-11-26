@@ -12,7 +12,9 @@ namespace Dealoware.Api.Admin;
 /// first <see cref="AdminAuditEndpoints.IpHmacPrefixLength"/> characters of
 /// its keyed hash, never the hash and never an address; the snapshots have
 /// passed the secret-key strip and the field policy; the outcome comes from
-/// <see cref="AdminAuditOutcome"/>.
+/// <see cref="AdminAuditOutcome"/>; the reason class of a failed step-up
+/// that would say whether a guessed password was right is left out
+/// (<see cref="AdminAuditOutcome.IsWithheldReason"/>).
 /// </summary>
 public sealed record AdminAuditView(
     Guid Id,
@@ -153,7 +155,8 @@ public static class AdminAuditEndpoints
             Prefix(entry.IpHmac),
             entry.EntityType,
             entry.EntityId,
-            entry.ReasonClass,
+            // The one place a reason is withheld: the list API, the by-id API and both pages read through here.
+            AdminAuditOutcome.IsWithheldReason(entry.Action, entry.ReasonClass) ? null : entry.ReasonClass,
             AdminAuditOutcome.Of(entry.Action, entry.ReasonClass),
             entry.CorrelationId,
             SanitizeStored(entry.BeforeSnapshot, policy, principal),
@@ -200,8 +203,9 @@ public static class AdminAuditEndpoints
     }
 
     /// <summary>
-    /// Removes, at any depth, each key that is the name of a registered field
-    /// class the reader may not read. True when one was removed.
+    /// Removes, at any depth, each key that names a registered field class
+    /// the reader may not read, however the name is spelled
+    /// (<see cref="FieldNameOf"/>). True when one was removed.
     /// </summary>
     private static bool DropDeniedFields(JsonNode? node, IFieldPolicy policy, FieldPrincipal principal)
     {
@@ -232,15 +236,37 @@ public static class AdminAuditEndpoints
         return removed;
     }
 
-    private static bool IsDeniedField(string key, IFieldPolicy policy, FieldPrincipal principal)
+    /// <summary>
+    /// Every field class the domain names, by its name as <see cref="FieldNameOf"/> reads it.
+    /// </summary>
+    private static readonly Dictionary<string, FieldClass> FieldClassesByName = typeof(FieldClass)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(f => f.FieldType == typeof(FieldClass))
+        .Select(f => (FieldClass)f.GetValue(null)!)
+        .ToDictionary(f => FieldNameOf(f.Name), f => f, StringComparer.Ordinal);
+
+    /// <summary>
+    /// A snapshot key as a field name: letter case ignored, and "_", "-", "."
+    /// and spaces left out, so that StrategyBody, strategyBody, strategy_body
+    /// and STRATEGY-BODY are one name.
+    /// </summary>
+    private static string FieldNameOf(string key)
     {
-        if (key.Length == 0)
-            return false;
-        // A snapshot names a field as its class is named, or with a small first letter.
-        var named = FieldClass.Custom(char.ToUpperInvariant(key[0]) + key[1..]);
-        return policy.IsRegistered(named)
-               && !policy.Evaluate(principal, named, FieldAction.Read, new FieldResourceContext());
+        var name = new System.Text.StringBuilder(key.Length);
+        foreach (var ch in key)
+        {
+            if (ch is '_' or '-' or '.' || char.IsWhiteSpace(ch))
+                continue;
+            name.Append(char.ToLowerInvariant(ch));
+        }
+
+        return name.ToString();
     }
+
+    private static bool IsDeniedField(string key, IFieldPolicy policy, FieldPrincipal principal)
+        => FieldClassesByName.TryGetValue(FieldNameOf(key), out var named)
+           && policy.IsRegistered(named)
+           && !policy.Evaluate(principal, named, FieldAction.Read, new FieldResourceContext());
 
     private static string Prefix(string ipHmac)
     {

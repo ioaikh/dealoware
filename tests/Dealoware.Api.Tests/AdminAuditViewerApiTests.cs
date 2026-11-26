@@ -367,7 +367,18 @@ public class AdminAuditViewerApiTests
     [InlineData("something_new", "locked", "denied")]
     [InlineData("something_new", "bad_password", "failure")]
     [InlineData("something_new", null, "success")]
-    public void Outcome_ComesFromActionAndReasonClass_ByTheOneTable(string action, string? reason, string expected)
+    [InlineData("something_new", "", "success")]
+    // An action the table does not name, written without a reason, is a failure when its name says so.
+    [InlineData("something_new_failed", null, "failure")]
+    [InlineData("something_new_failure", null, "failure")]
+    [InlineData("account.something_failed", "", "failure")]
+    [InlineData("something_failed", "rate-limited", "denied")]
+    // Only at the end of the name, and only those two endings.
+    [InlineData("failed_something", null, "success")]
+    [InlineData("something_failed_over", null, "success")]
+    [InlineData("something_FAILED", null, "success")]
+    [InlineData(null, null, "success")]
+    public void Outcome_ComesFromActionAndReasonClass_ByTheOneTable(string? action, string? reason, string expected)
         => Assert.Equal(expected, AdminAuditOutcome.Of(action, reason));
 
     [Fact]
@@ -382,10 +393,18 @@ public class AdminAuditViewerApiTests
             .Concat(Names(typeof(AdminAuthEvents)))
             .Concat(Names(typeof(AdminAuthAction)))
             .Append(AdminPasswordResetEndpoints.RequestFailedEvent)
-            .Append("reset_complete_failed")
             .Distinct(StringComparer.Ordinal)
             .OrderBy(a => a, StringComparer.Ordinal)
             .ToArray();
+
+        // The two reset failures are named once, in the domain's list; the reset routes write them by that name.
+        Assert.Equal("reset_request_failed", AdminAuditActions.ResetRequestFailed);
+        Assert.Equal("reset_complete_failed", AdminAuditActions.ResetCompleteFailed);
+        Assert.Equal(AdminAuditActions.ResetRequestFailed, AdminPasswordResetEndpoints.RequestFailedEvent);
+        var resetRoutes = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
+        Assert.DoesNotContain("\"reset_complete_failed\"", resetRoutes, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"reset_request_failed\"", resetRoutes, StringComparison.Ordinal);
+        Assert.Contains("AdminAuditActions.ResetCompleteFailed,", resetRoutes, StringComparison.Ordinal);
 
         // A new action name belongs in AdminAuditOutcome's table, with its outcome.
         Assert.Equal(written, AdminAuditOutcome.Actions.OrderBy(a => a, StringComparer.Ordinal).ToArray());
@@ -439,7 +458,13 @@ public class AdminAuditViewerApiTests
             beforeSnapshot: "{\"DisplayName\":\"Before name\",\"StrategyBody\":\"" + denied + " one\","
                             + "\"nested\":{\"strategyBody\":\"" + denied + " two\",\"kept\":1},"
                             + "\"list\":[{\"StrategyBody\":\"" + denied + " three\",\"ContactEmail\":\"kept@example.test\"}]}",
-            afterSnapshot: "{\"DisplayName\":\"After name\"}"));
+            // The same field under other spellings: letter case, and "_", "-", "." and spaces between its words.
+            afterSnapshot: "{\"DisplayName\":\"After name\",\"strategy_body\":\"" + denied + " four\",\"STRATEGYBODY\":\"" + denied + " five\","
+                           + "\"Strategy-Body\":\"" + denied + " six\",\"strategy.body\":\"" + denied + " seven\",\"Strategy Body\":\"" + denied + " eight\","
+                           + "\"STRATEGY_BODY\":\"" + denied + " nine\","
+                           // Not that field: a name that only begins with it, and fields the owner may read, spelled as freely.
+                           + "\"StrategyBodyNote\":\"kept note\",\"display_name\":\"kept display\",\"CONTACT-EMAIL\":\"kept-too@example.test\"}"));
+        Assert.Contains(denied + " four", seeded.AfterSnapshot, StringComparison.Ordinal);
         // The row itself holds it: the read model is what leaves it out.
         Assert.Contains(denied, seeded.BeforeSnapshot, StringComparison.Ordinal);
         var session = await SessionAsync();
@@ -451,7 +476,16 @@ public class AdminAuditViewerApiTests
             var body = await response.Content.ReadAsStringAsync();
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.DoesNotContain(denied, body, StringComparison.Ordinal);
-            Assert.DoesNotContain("strategyBody", body, StringComparison.OrdinalIgnoreCase);
+            // As a key of either snapshot (each travels as a JSON string, read back here as written), under every spelling.
+            var root = JsonDocument.Parse(body).RootElement;
+            var entry = root.TryGetProperty("items", out var listed) ? Assert.Single(listed.EnumerateArray()) : root;
+            var snapshots = entry.GetProperty("beforeSnapshot").GetString() + entry.GetProperty("afterSnapshot").GetString();
+            foreach (var spelling in new[] { "strategyBody\"", "strategy_body", "Strategy-Body", "strategy.body", "Strategy Body" })
+                Assert.DoesNotContain(spelling, snapshots, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"StrategyBodyNote\":\"kept note\"", snapshots, StringComparison.Ordinal);
+            Assert.Contains("kept note", body, StringComparison.Ordinal);
+            Assert.Contains("kept display", body, StringComparison.Ordinal);
+            Assert.Contains("kept-too@example.test", body, StringComparison.Ordinal);
             Assert.Contains("Before name", body, StringComparison.Ordinal);
             Assert.Contains("kept@example.test", body, StringComparison.Ordinal);
             Assert.Contains("After name", body, StringComparison.Ordinal);
@@ -461,5 +495,99 @@ public class AdminAuditViewerApiTests
         var before = JsonDocument.Parse((await JsonAsync(one)).GetProperty("beforeSnapshot").GetString()!).RootElement;
         Assert.Equal(new[] { "DisplayName", "nested", "list" }, before.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("{\"kept\":1}", before.GetProperty("nested").GetRawText());
+        var after = JsonDocument.Parse((await JsonAsync(one)).GetProperty("afterSnapshot").GetString()!).RootElement;
+        Assert.Equal(
+            new[] { "DisplayName", "StrategyBodyNote", "display_name", "CONTACT-EMAIL" },
+            after.EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    // ---- a reason no read gives ----
+
+    [Fact]
+    public async Task TdAdm150_AFailedStepUp_CarriesNoReason_InTheListOrById_AndNoReasonFilterFindsIt()
+    {
+        var at = OwnMoment();
+        var window = $"from={Iso(at)}&to={Iso(at)}";
+        var stepUpCode = await SeedAsync(r => r.Auth(AdminAuditActions.StepUpFailed, OwnerEmail, ClientIp, AdminAuthReason.Bad2Fa, at));
+        var stepUpPassword = await SeedAsync(r => r.Auth(AdminAuditActions.StepUpFailed, OwnerEmail, ClientIp, AdminAuthReason.BadPassword, at));
+        var changeCode = await SeedAsync(r => r.Auth(AdminAuditActions.PasswordChangeFailed, OwnerEmail, ClientIp, AdminAuthReason.Bad2Fa, at));
+        var changePassword = await SeedAsync(r => r.Auth(AdminAuditActions.PasswordChangeFailed, OwnerEmail, ClientIp, AdminAuthReason.BadPassword, at));
+        // Shown as before: a step-up refused by a lock, a sign-in and an authenticator change whose code was wrong.
+        var stepUpLocked = await SeedAsync(r => r.Auth(AdminAuditActions.StepUpFailed, OwnerEmail, ClientIp, AdminAuthReason.Locked, at));
+        var signInCode = await SeedAsync(r => r.Auth(AdminAuditActions.LoginFailure, OwnerEmail, ClientIp, AdminAuthReason.Bad2Fa, at));
+        var signInPassword = await SeedAsync(r => r.Auth(AdminAuditActions.LoginFailure, OwnerEmail, ClientIp, AdminAuthReason.BadPassword, at));
+        var totpCode = await SeedAsync(r => r.Auth(AdminAuditActions.TotpChangeFailed, OwnerEmail, ClientIp, AdminAuthReason.Bad2Fa, at));
+        var withheld = new[] { stepUpCode, stepUpPassword, changeCode, changePassword };
+        var session = await SessionAsync();
+        var client = _factory.CreateClient();
+
+        // By id: no reason, and the outcome is the same for a wrong password and a wrong code.
+        foreach (var entry in withheld)
+        {
+            using var response = await client.SendAsync(Request(HttpMethod.Get, $"/admin/api/audit/{entry.Id:D}", session));
+            var body = await response.Content.ReadAsStringAsync();
+            var json = JsonDocument.Parse(body).RootElement;
+            Assert.Equal(JsonValueKind.Null, json.GetProperty("reasonClass").ValueKind);
+            Assert.Equal("failure", json.GetProperty("outcome").GetString());
+            Assert.DoesNotContain("bad_2fa", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("bad_password", body, StringComparison.Ordinal);
+        }
+
+        // In the list: the same; the others keep theirs.
+        using var list = await client.SendAsync(Request(HttpMethod.Get, $"/admin/api/audit?{window}", session));
+        var items = (await JsonAsync(list)).GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetGuid(), i => $"{i.GetProperty("reasonClass").GetString()}/{i.GetProperty("outcome").GetString()}");
+        Assert.Equal(8, items.Count);
+        Assert.All(withheld, e => Assert.Equal("/failure", items[e.Id]));
+        Assert.Equal("locked/denied", items[stepUpLocked.Id]);
+        Assert.Equal("bad_2fa/failure", items[signInCode.Id]);
+        Assert.Equal("bad_password/failure", items[signInPassword.Id]);
+        Assert.Equal("bad_2fa/failure", items[totpCode.Id]);
+
+        // The reason filter does not find them either, alone or with their action; it still finds the others.
+        async Task<Guid[]> FoundAsync(string query)
+        {
+            using var response = await client.SendAsync(Request(HttpMethod.Get, $"/admin/api/audit?{window}&{query}", session));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var payload = await JsonAsync(response);
+            var ids = payload.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).OrderBy(i => i).ToArray();
+            Assert.Equal(ids.Length, payload.GetProperty("total").GetInt32());
+            return ids;
+        }
+
+        static Guid[] Of(params AdminAuditEntry[] entries) => entries.Select(e => e.Id).OrderBy(i => i).ToArray();
+
+        Assert.Equal(Of(signInCode, totpCode), await FoundAsync("reasonClass=bad_2fa"));
+        Assert.Equal(Of(signInPassword), await FoundAsync("reasonClass=bad_password"));
+        Assert.Equal(Of(), await FoundAsync("reasonClass=bad_2fa&action=account.step_up_failed"));
+        Assert.Equal(Of(), await FoundAsync("reasonClass=bad_password&action=account.step_up_failed,account.password_change_failed"));
+        Assert.Equal(Of(stepUpLocked), await FoundAsync("reasonClass=locked&action=account.step_up_failed"));
+        Assert.Equal(Of(stepUpCode, stepUpPassword, stepUpLocked), await FoundAsync("action=account.step_up_failed"));
+
+        // The stored rows keep their reasons: the log itself is whole.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+        var ids = withheld.Select(e => e.Id).ToArray();
+        var stored = await db.AdminAuditLog.AsNoTracking().Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => e.ReasonClass);
+        Assert.Equal(AdminAuthReason.Bad2Fa, stored[stepUpCode.Id]);
+        Assert.Equal(AdminAuthReason.BadPassword, stored[stepUpPassword.Id]);
+        Assert.Equal(AdminAuthReason.Bad2Fa, stored[changeCode.Id]);
+        Assert.Equal(AdminAuthReason.BadPassword, stored[changePassword.Id]);
+
+        Assert.True(AdminAuditOutcome.IsWithheldReason(AdminAuditActions.StepUpFailed, AdminAuthReason.Bad2Fa));
+        Assert.False(AdminAuditOutcome.IsWithheldReason(AdminAuditActions.StepUpFailed, AdminAuthReason.Locked));
+        Assert.False(AdminAuditOutcome.IsWithheldReason(AdminAuditActions.LoginFailure, AdminAuthReason.Bad2Fa));
+        Assert.False(AdminAuditOutcome.IsWithheldReason(AdminAuditActions.TotpChangeFailed, AdminAuthReason.Bad2Fa));
+        Assert.False(AdminAuditOutcome.IsWithheldReason(AdminAuditActions.StepUpFailed, null));
+        Assert.False(AdminAuditOutcome.IsWithheldReason(null, AdminAuthReason.Bad2Fa));
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Dealoware.sln")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
     }
 }

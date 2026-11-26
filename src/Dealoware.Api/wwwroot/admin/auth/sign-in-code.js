@@ -67,7 +67,7 @@
   // key by key and written out anew: names of letters only, values of
   // unreserved characters and percent escapes. Everything else goes to /admin/.
   var PLAIN_ADMIN_PATH = /^\/admin\/(?:[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)*)?$/;
-  var PLAIN_QUERY = /^\?[A-Za-z]+=[A-Za-z0-9_.~%-]+(?:&[A-Za-z]+=[A-Za-z0-9_.~%-]+)*$/;
+  var PLAIN_QUERY = /^\?[A-Za-z]+=[A-Za-z0-9._~%-]+(?:&[A-Za-z]+=[A-Za-z0-9._~%-]+)*$/;
 
   var STEPS = {
     code: {

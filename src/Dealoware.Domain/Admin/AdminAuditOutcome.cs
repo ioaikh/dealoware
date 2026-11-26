@@ -35,9 +35,9 @@ public static class AdminAuditOutcome
         (AdminAuditActions.SignOut, Success),
         (AdminAuditActions.RecoveryCodeUse, Success),
         (AdminAuditActions.ResetRequest, Success),
-        ("reset_request_failed", Failure),
+        (AdminAuditActions.ResetRequestFailed, Failure),
         (AdminAuditActions.ResetComplete, Success),
-        ("reset_complete_failed", Failure),
+        (AdminAuditActions.ResetCompleteFailed, Failure),
         (AdminAuditActions.TotpEnroll, Success),
         (AdminAuditActions.TotpChange, Success),
         (AdminAuditActions.TotpChangeFailed, Failure),
@@ -75,14 +75,52 @@ public static class AdminAuditOutcome
     /// The outcome of an entry. A reason class decides first: one of the
     /// three refusals is <see cref="Denied"/>, any other is
     /// <see cref="Failure"/>. Without one, the table's row for the action
-    /// decides. An action the table does not name follows the entry's own
-    /// rule (<see cref="AdminAuditEntry.ReasonClass"/> is null for a success).
+    /// decides. An action the table does not name is a
+    /// <see cref="Failure"/> when its name ends in <c>_failed</c> or
+    /// <c>_failure</c>; otherwise it follows the entry's own rule
+    /// (<see cref="AdminAuditEntry.ReasonClass"/> is null for a success).
     /// </summary>
     public static string Of(string? action, string? reasonClass)
     {
         if (!string.IsNullOrEmpty(reasonClass))
             return RefusedBeforeJudged.Contains(reasonClass) ? Denied : Failure;
 
-        return action is not null && Lookup.TryGetValue(action, out var outcome) ? outcome : Success;
+        if (action is not null && Lookup.TryGetValue(action, out var outcome))
+            return outcome;
+
+        return action is not null
+               && (action.EndsWith("_failed", StringComparison.Ordinal) || action.EndsWith("_failure", StringComparison.Ordinal))
+            ? Failure
+            : Success;
     }
+
+    /// <summary>
+    /// The reason classes of a failed step-up that no read of the log gives
+    /// (<see cref="IsWithheldReason(string?, string?)"/>).
+    /// </summary>
+    private static readonly string[] StepUpGuessReasons = [AdminAuthReason.BadPassword, AdminAuthReason.Bad2Fa];
+
+    /// <summary>The actions whose reason class is withheld when it says which part of a step-up was wrong.</summary>
+    public static IReadOnlyList<string> StepUpFailureActions { get; } =
+        [AdminAuditActions.StepUpFailed, AdminAuditActions.PasswordChangeFailed];
+
+    /// <summary>
+    /// True for the reason class of a failed S-A12 step-up
+    /// (<c>account.step_up_failed</c>, <c>account.password_change_failed</c>)
+    /// that says whether the password or the code was wrong. The log is read
+    /// with the same session that sent the guess, so showing it would tell a
+    /// holder of a stolen session cookie that a guessed password was right
+    /// (<c>bad_2fa</c> means the password passed). The stored row keeps its
+    /// reason; no read gives it, and no reason filter finds the row by it.
+    /// The outcome is <see cref="Failure"/> either way, so it tells nothing.
+    /// </summary>
+    public static bool IsWithheldReason(string? action, string? reasonClass)
+        => action is not null
+           && reasonClass is not null
+           && StepUpFailureActions.Contains(action, StringComparer.Ordinal)
+           && StepUpGuessReasons.Contains(reasonClass, StringComparer.Ordinal);
+
+    /// <summary>True for a reason class that is withheld on some action: a filter by it leaves those actions out.</summary>
+    public static bool IsStepUpGuessReason(string? reasonClass)
+        => reasonClass is not null && StepUpGuessReasons.Contains(reasonClass, StringComparer.Ordinal);
 }

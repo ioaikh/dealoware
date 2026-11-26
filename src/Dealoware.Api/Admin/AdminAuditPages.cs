@@ -588,8 +588,11 @@ public static class AdminAuditPages
         Item(AdminConsoleCopy.AuditColumnOutcome, OutcomeBadge(entry.Outcome));
         if (!string.IsNullOrEmpty(entry.ReasonClass))
             Item(AdminConsoleCopy.AuditReason, E(entry.ReasonClass));
-        // The first characters of the keyed hash: on this page only, never in the list.
-        if (!string.IsNullOrEmpty(entry.IpHmacPrefix))
+        // The first characters of the keyed hash: on this page only, never in the list. An entry an
+        // operator command wrote has no address to hash (its stored value is a marker, not a hash): a dash.
+        if (entry.IpHmacPrefix == AdminAuditEntry.CommandOrigin)
+            Item(AdminConsoleCopy.AuditIpPrefix, E(AdminConsoleCopy.NoValue));
+        else if (!string.IsNullOrEmpty(entry.IpHmacPrefix))
             Item(AdminConsoleCopy.AuditIpPrefix, $"<span id=\"ip-prefix\" class=\"id\">{E(entry.IpHmacPrefix)}</span>");
         html.Append("</dl></section>");
         html.Append(Snapshots(entry));
@@ -631,7 +634,7 @@ public static class AdminAuditPages
                      ("snapshot-after", AdminConsoleCopy.AuditAfter, after)
                  })
         {
-            html.Append($"<div id=\"{id}\" class=\"snapshot\"><h3 id=\"{id}-heading\">{E(heading)}</h3>");
+            html.Append($"<div id=\"{id}\" class=\"snapshot\"><h3>{E(heading)}</h3>");
             var shown = compare ? keys : side?.Keys.ToList() ?? [];
             if (side is null || shown.Count == 0)
             {
@@ -639,7 +642,7 @@ public static class AdminAuditPages
                 continue;
             }
 
-            html.Append($"<dl class=\"details\" aria-labelledby=\"{id}-heading\">");
+            html.Append("<dl class=\"details\">");
             foreach (var key in shown)
             {
                 var text = side.TryGetValue(key, out var value) ? value.Text : AdminConsoleCopy.NoValue;

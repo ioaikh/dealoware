@@ -76,12 +76,13 @@ public partial class AdminAuditPageTests
         return entry;
     }
 
-    private async Task<Guid> SessionAsync(IServiceProvider? services = null)
+    private async Task<Guid> SessionAsync(IServiceProvider? services = null, string email = OwnerEmail, bool secondStepDone = true)
     {
         using var scope = (services ?? _factory.Services).CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var session = AdminSession.Create(OwnerEmail, ipHmac: "testhmac-not-an-ip");
-        session.MarkTotpVerified();
+        var session = AdminSession.Create(email, ipHmac: "testhmac-not-an-ip");
+        if (secondStepDone)
+            session.MarkTotpVerified();
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();
         return session.Id;
@@ -240,7 +241,7 @@ public partial class AdminAuditPageTests
             "{\"DisplayName\":\"SNAPSHOT-ONLY-ON-THE-ENTRY-PAGE\"}", "{\"DisplayName\":\"After\"}", timestamp: day.At(3)));
         var deleted = await SeedAsync(r => r.Entity(AdminAuditActions.EntityDelete, OwnerEmail, ClientIp, "Participant", gone.Id, "{\"DisplayName\":\"x\"}", timestamp: day.At(4)));
         var orphan = await SeedAsync(r => r.Entity(AdminAuditActions.EntityEdit, OwnerEmail, ClientIp, "Offer", never, timestamp: day.At(5)));
-        var noActor = await SeedAsync(r => r.Auth("reset_complete_failed", string.Empty, ClientIp, "invalid_link", day.At(6)));
+        var noActor = await SeedAsync(r => r.Auth(AdminAuditActions.ResetCompleteFailed, string.Empty, ClientIp, "invalid_link", day.At(6)));
         var session = await SessionAsync();
 
         var (response, html) = await PageAsync($"/admin/audit?{day.Query}", session);
@@ -476,9 +477,20 @@ public partial class AdminAuditPageTests
         var marker = $"only-with-a-session-{Guid.NewGuid():N}";
         var seeded = await SeedAsync(r => r.Entity(AdminAuditActions.EntityEdit, marker, ClientIp, "Offer", Guid.NewGuid(), "{\"OfferTerms\":\"" + marker + "\"}"));
 
-        foreach (Guid? session in new Guid?[] { null, Guid.NewGuid() })
+        // No cookie, a session nobody has, one whose second step is not done, and one of another address.
+        foreach (Guid? session in new Guid?[]
+                 {
+                     null,
+                     Guid.NewGuid(),
+                     await SessionAsync(secondStepDone: false),
+                     await SessionAsync(email: "other@example.com")
+                 })
         {
-            foreach (var path in new[] { "/admin/audit", "/admin/audit?action=entity_edit", $"/admin/audit/{seeded.Id:D}" })
+            foreach (var path in new[]
+                     {
+                         "/admin/audit", "/admin/audit?action=entity_edit", $"/admin/audit/{seeded.Id:D}",
+                         $"/admin/audit/{Guid.NewGuid():D}", "/admin/audit/not-an-id"
+                     })
             {
                 var (response, html) = await PageAsync(path, session);
                 Assert.Equal(HttpStatusCode.Found, response.StatusCode);
@@ -560,8 +572,8 @@ public partial class AdminAuditPageTests
         Assert.Contains("<h2 id=\"snapshots-heading\">Before and after</h2>", html, StringComparison.Ordinal);
         var before = Panel(html, "snapshot-before");
         var after = Panel(html, "snapshot-after");
-        Assert.StartsWith("<h3 id=\"snapshot-before-heading\">Before</h3><dl class=\"details\" aria-labelledby=\"snapshot-before-heading\">", before, StringComparison.Ordinal);
-        Assert.StartsWith("<h3 id=\"snapshot-after-heading\">After</h3><dl class=\"details\" aria-labelledby=\"snapshot-after-heading\">", after, StringComparison.Ordinal);
+        Assert.StartsWith("<h3>Before</h3><dl class=\"details\">", before, StringComparison.Ordinal);
+        Assert.StartsWith("<h3>After</h3><dl class=\"details\">", after, StringComparison.Ordinal);
         var fields = new[] { "DisplayName", "ContactEmail", "ParticipantActive", "Note", "EntityVersion" };
         Assert.Equal(fields, Regex.Matches(before, "<dt>([^<]+)</dt>").Select(m => m.Groups[1].Value).ToArray());
         Assert.Equal(fields, Regex.Matches(after, "<dt>([^<]+)</dt>").Select(m => m.Groups[1].Value).ToArray());
@@ -617,7 +629,7 @@ public partial class AdminAuditPageTests
         var before = Panel(html, "snapshot-before");
         Assert.Contains("<dt>OfferTerms</dt><dd><span class=\"free-text\">as it was</span></dd>", before, StringComparison.Ordinal);
         Assert.Contains("<dt>OfferAmount</dt><dd><span class=\"free-text\">12.5</span></dd>", before, StringComparison.Ordinal);
-        Assert.Equal("<h3 id=\"snapshot-after-heading\">After</h3><p class=\"none\">No allowed fields.</p>", Panel(html, "snapshot-after"));
+        Assert.Equal("<h3>After</h3><p class=\"none\">No allowed fields.</p>", Panel(html, "snapshot-after"));
         Assert.DoesNotContain(">Changed<", html, StringComparison.Ordinal);
         // The record is not there: its id is text, not a link.
         Assert.Contains($"<dt>Entity ID</dt><dd><span class=\"id\">{gone:D}</span></dd>", html, StringComparison.Ordinal);
@@ -628,9 +640,14 @@ public partial class AdminAuditPageTests
         (_, html) = await PageAsync($"/admin/audit/{empty.Id:D}", session);
         Assert.Equal(2, Regex.Matches(html, "<p class=\"none\">No allowed fields.</p>").Count);
 
-        // An entry written by an operator command has no address to hash: the marker shows as it is.
+        // An entry written by an operator command has no address to hash: a dash, not the stored marker.
+        Assert.Equal(AdminAuditEntry.CommandOrigin, command.IpHmac);
         (_, html) = await PageAsync($"/admin/audit/{command.Id:D}", session);
-        Assert.Contains("<span id=\"ip-prefix\" class=\"id\">command</span>", html, StringComparison.Ordinal);
+        Assert.Contains("<dt>IP HMAC prefix</dt><dd>—</dd>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"ip-prefix\"", html, StringComparison.Ordinal);
+        var shownEntry = Regex.Match(html, "<dl id=\"entry\".*?</dl>", RegexOptions.Singleline).Value;
+        Assert.DoesNotContain(AdminAuditEntry.CommandOrigin, shownEntry, StringComparison.Ordinal);
+        Assert.Contains("<dt>Action</dt><dd>bootstrap_link_issued</dd>", shownEntry, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -783,7 +800,8 @@ public partial class AdminAuditPageTests
                 Set(entry, nameof(AdminAuditEntry.BeforeSnapshot),
                     "{\"DisplayName\":\"Shown before\",\"passwordHash\":\"" + hidden + "-1\",\"totpSeed\":\"" + hidden + "-2\","
                     + "\"api_key\":\"" + hidden + "-3\",\"nested\":{\"recoveryCode\":\"" + hidden + "-4\",\"kept\":\"nested kept\"},"
-                    + "\"StrategyBody\":\"" + hidden + "-5\",\"sessionToken\":\"" + hidden + "-6\"}");
+                    + "\"StrategyBody\":\"" + hidden + "-5\",\"sessionToken\":\"" + hidden + "-6\","
+                    + "\"strategy_body\":\"" + hidden + "-10\",\"STRATEGYBODY\":\"" + hidden + "-11\"}");
                 Set(entry, nameof(AdminAuditEntry.AfterSnapshot),
                     "{\"DisplayName\":\"Shown after\",\"Authorization\":\"Bearer " + hidden + "-7\",\"strategyBody\":\"" + hidden + "-8\",\"ipHmacKey\":\"" + hidden + "-9\"}");
             });
@@ -801,7 +819,7 @@ public partial class AdminAuditPageTests
         foreach (var html in new[] { entry, list })
         {
             Assert.DoesNotContain(hidden, html, StringComparison.Ordinal);
-            foreach (var key in new[] { "passwordHash", "totpSeed", "api_key", "recoveryCode", "StrategyBody", "sessionToken", "Authorization", "ipHmacKey" })
+            foreach (var key in new[] { "passwordHash", "totpSeed", "api_key", "recoveryCode", "StrategyBody", "strategy_body", "sessionToken", "Authorization", "ipHmacKey" })
                 Assert.DoesNotContain(key, html, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -810,6 +828,64 @@ public partial class AdminAuditPageTests
         Assert.Contains("<span class=\"free-text\">Shown before</span>", entry, StringComparison.Ordinal);
         Assert.Contains("<span class=\"free-text\">Shown after</span>", entry, StringComparison.Ordinal);
         Assert.Contains("nested kept", entry, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TdAdm150_AFailedStepUp_ShowsNoReason_SoTheLogDoesNotTellWhetherAGuessedPasswordWasRight()
+    {
+        var day = OwnDay.New();
+        var withheld = new List<AdminAuditEntry>();
+        foreach (var (action, reason) in new[]
+                 {
+                     (AdminAuditActions.StepUpFailed, AdminAuthReason.Bad2Fa),
+                     (AdminAuditActions.StepUpFailed, AdminAuthReason.BadPassword),
+                     (AdminAuditActions.PasswordChangeFailed, AdminAuthReason.Bad2Fa),
+                     (AdminAuditActions.PasswordChangeFailed, AdminAuthReason.BadPassword)
+                 })
+        {
+            var minute = withheld.Count;
+            withheld.Add(await SeedAsync(r => r.Auth(action, OwnerEmail, ClientIp, reason, day.At(minute))));
+        }
+
+        // Shown as before: a step-up refused by a lock, and a sign-in whose code was wrong.
+        var lockedStepUp = await SeedAsync(r => r.Auth(AdminAuditActions.StepUpFailed, OwnerEmail, ClientIp, AdminAuthReason.Locked, day.At(10)));
+        var signIn = await SeedAsync(r => r.Auth(AdminAuditActions.LoginFailure, OwnerEmail, ClientIp, AdminAuthReason.Bad2Fa, day.At(11)));
+        var session = await SessionAsync();
+
+        var shown = new Dictionary<Guid, string>();
+        foreach (var entry in withheld)
+        {
+            // The stored row keeps its reason; the page gives none.
+            Assert.Contains(entry.ReasonClass, new[] { AdminAuthReason.Bad2Fa, AdminAuthReason.BadPassword });
+            var (response, html) = await PageAsync($"/admin/audit/{entry.Id:D}", session);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(
+                new[] { "Time (ET)", "Actor", "Action", "Entity type", "Entity ID", "Outcome", "IP HMAC prefix" },
+                Regex.Matches(html, "<dt>([^<]+)</dt>").Select(m => m.Groups[1].Value).ToArray());
+            Assert.Contains($"<dt>Action</dt><dd>{entry.Action}</dd>", html, StringComparison.Ordinal);
+            Assert.Contains("<dt>Outcome</dt><dd><span class=\"badge badge-failure\">Failure</span></dd>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("bad_2fa", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("bad_password", html, StringComparison.Ordinal);
+            Assert.DoesNotContain(">Reason<", html, StringComparison.Ordinal);
+            shown[entry.Id] = Regex.Match(html, "<dt>Actor</dt>.*</dl>", RegexOptions.Singleline).Value;
+        }
+
+        // A wrong password and a wrong code read the same, from the actor on: nothing tells one from the other.
+        Assert.Equal(shown[withheld[0].Id], shown[withheld[1].Id]);
+        Assert.Equal(shown[withheld[2].Id], shown[withheld[3].Id]);
+
+        var (_, list) = await PageAsync($"/admin/audit?{day.Query}", session);
+        Assert.Equal(6, Rows(list).Length);
+        Assert.DoesNotContain("bad_2fa", list, StringComparison.Ordinal);
+        Assert.DoesNotContain("bad_password", list, StringComparison.Ordinal);
+        Assert.Equal(5, Regex.Matches(list, "<span class=\"badge badge-failure\">Failure</span>").Count);
+
+        // A reason that tells nothing of a guess still shows.
+        var (_, locked) = await PageAsync($"/admin/audit/{lockedStepUp.Id:D}", session);
+        Assert.Contains("<dt>Reason</dt><dd>locked</dd>", locked, StringComparison.Ordinal);
+        Assert.Contains("<span class=\"badge badge-denied\">Denied</span>", locked, StringComparison.Ordinal);
+        var (_, failedSignIn) = await PageAsync($"/admin/audit/{signIn.Id:D}", session);
+        Assert.Contains("<dt>Reason</dt><dd>bad_2fa</dd>", failedSignIn, StringComparison.Ordinal);
     }
 
     private static void Set(AdminAuditEntry entry, string property, object? value)
