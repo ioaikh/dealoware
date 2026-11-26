@@ -465,6 +465,19 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminResetIpCounters", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionRecoveryNotice", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("SessionId");
+
+                    b.ToTable("AdminSessionRecoveryNotices", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionStepUp", b =>
                 {
                     b.Property<Guid>("SessionId")
@@ -978,6 +991,15 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Strategies_OwnerParticipantId_IsActive");
 
                     b.ToTable("Strategies", (string)null);
+                });
+
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionRecoveryNotice", b =>
+                {
+                    b.HasOne("Dealoware.Domain.Admin.AdminSession", null)
+                        .WithOne()
+                        .HasForeignKey("Dealoware.Domain.Admin.AdminSessionRecoveryNotice", "SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionStepUp", b =>

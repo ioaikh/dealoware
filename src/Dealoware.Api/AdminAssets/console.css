@@ -217,3 +217,25 @@ p, .lede {
     padding: 1rem 0.75rem 2rem;
   }
 }
+
+/* UXR-A40: the recovery-code banner, on every page of a session opened with a recovery code until dismissed. */
+.recovery-notice {
+  border: 1px solid var(--accent);
+  background: var(--banner);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+  border-radius: 0.3rem;
+}
+
+.recovery-notice p {
+  color: var(--ink);
+  margin: 0;
+}
+
+.recovery-notice .recovery-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
