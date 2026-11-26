@@ -2134,6 +2134,10 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
         Assert.True(counter.IsLocked(Clock().UtcNow));
 
+        // Reset mail leaves a hosted queue after the reply (SC-9). Wait for every
+        // owner mail of the twenty before clearing, so a late one is not read as
+        // a mail sent while locked.
+        await Mail().WaitForSentAsync((AdminResetIpCounter.Threshold + 1) / 2);
         Mail().Clear();
         using var knownLocked = await PostRequestAsync(CoreOwnerEmail);
         using var unknownLocked = await PostRequestAsync("nobody@example.test");
@@ -2230,6 +2234,9 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
             Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
         }
 
+        // Reset mail leaves a hosted queue after the reply (SC-9). Wait for all
+        // twenty before clearing, so a late one is not read as a mail sent while locked.
+        await Mail().WaitForSentAsync(AdminResetIpCounter.Threshold);
         var auditBefore = await AuditIdsAsync();
         Mail().Clear();
 
