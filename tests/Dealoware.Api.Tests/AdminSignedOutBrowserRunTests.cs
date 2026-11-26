@@ -289,6 +289,10 @@ public class AdminSignedOutBrowserRunTests
         Assert.Contains("        engine: [chromium, firefox, webkit]\n", workflow, StringComparison.Ordinal);
         Assert.Contains("      E2E_ENGINES: ${{ matrix.engine }}\n", workflow, StringComparison.Ordinal);
         Assert.Matches(@"\n    timeout-minutes: \d+\n", workflow);
+        // On the Ubuntu the pinned Playwright has browsers and system packages for, not on whatever is latest.
+        Assert.Contains("\n    runs-on: ubuntu-24.04\n", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ubuntu-latest", workflow, StringComparison.Ordinal);
+        Assert.Equal("1.48.0", DevDependencies(Path.Combine(RepoRoot(), "e2e", "package.json"))["@playwright/test"]);
 
         // The browser with its system packages, the application built once, then every suite.
         var browser = workflow.IndexOf("run: npx playwright install --with-deps \"$E2E_ENGINES\"\n", StringComparison.Ordinal);

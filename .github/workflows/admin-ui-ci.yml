@@ -77,8 +77,9 @@ env:
 jobs:
   admin-ui-test:
     name: Admin UI Headless Tests (${{ matrix.engine }})
-    # Not ubuntu-latest: the pinned Playwright (1.48.0) knows the system
-    # packages of Ubuntu up to 24.04. Move this together with that pin.
+    # Not ubuntu-latest, which has moved on to a newer Ubuntu: the pinned
+    # Playwright (1.48.0) knows the system packages and has browser builds
+    # for Ubuntu up to 24.04. Move this together with that pin.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -98,7 +99,9 @@ jobs:
       - name: Set up the .NET 10 SDK
         # A plain step: no setup-dotnet commit is pinned in this repository.
         # Uses the SDK on the runner image when it has one, and Microsoft's
-        # install script otherwise.
+        # install script otherwise. As in ci.yml there is no global.json, so
+        # a newer SDK on the runner may do the build; the application targets
+        # .NET 10 and runs on the .NET 10 runtime either way.
         run: |
           sdks=""
           if command -v dotnet >/dev/null 2>&1; then
