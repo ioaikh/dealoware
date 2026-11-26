@@ -220,6 +220,39 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminAuthTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminBootstrapToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("AdminBootstrapTokens", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Admin.AdminCoreOwnerAccount", b =>
                 {
                     b.Property<Guid>("Id")

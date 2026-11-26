@@ -1,3 +1,4 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Domain.Participants;
 using Dealoware.Infrastructure.Persistence;
 using Dealoware.Infrastructure.Persistence.Migrations;
@@ -30,7 +31,8 @@ public class DatabaseMigrationBaselineTests
         DatabaseMigrationBaseline.TotpRecoveryMigrationId,
         DatabaseMigrationBaseline.AdminPasswordResetMigrationId,
         DatabaseMigrationBaseline.LockoutStateMigrationId,
-        AdminAuditLogAppendOnly.MigrationId
+        AdminAuditLogAppendOnly.MigrationId,
+        DatabaseMigrationBaseline.BootstrapTokensMigrationId
     ];
 
     [Fact]
@@ -717,6 +719,46 @@ public class DatabaseMigrationBaselineTests
         Assert.Equal(DatabaseMigrationBaseline.AdminPasswordResetMigrationId, migrations[4]);
         Assert.Equal(DatabaseMigrationBaseline.LockoutStateMigrationId, migrations[5]);
         Assert.Equal(AdminAuditLogAppendOnly.MigrationId, migrations[6]);
+        Assert.Equal(DatabaseMigrationBaseline.BootstrapTokensMigrationId, migrations[7]);
+        Assert.Equal(8, migrations.Count);
+    }
+
+    [Fact]
+    public async Task Apply_FreshDatabase_CreatesBootstrapTokenTable_HashUniqueAndNotInFrozenStamp()
+    {
+        await using var connection = new SqliteConnection("Data Source=Baseline_BootstrapTokens;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseSqlite(connection).Options;
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db);
+        }
+
+        Assert.Equal(
+            new[] { "ConsumedAt", "CreatedAt", "Email", "ExpiresAt", "Id", "TokenHash" },
+            (await ListSqliteColumnsAsync(connection, "AdminBootstrapTokens")).Order(StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain("AdminBootstrapTokens", DatabaseMigrationBaseline.BaselineTableNames);
+        Assert.DoesNotContain("AdminBootstrapTokens", DatabaseMigrationBaseline.Pre20TableNames);
+
+        var now = DateTimeOffset.UtcNow;
+        var hash = AdminBootstrapToken.HashRaw(Guid.NewGuid().ToString("N"));
+        await using (var db = new DealowareDbContext(options))
+        {
+            db.AdminBootstrapTokens.Add(AdminBootstrapToken.Create("owner@example.test", hash, now));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = new DealowareDbContext(options))
+        {
+            var stored = await db.AdminBootstrapTokens.SingleAsync();
+            Assert.Equal(hash, stored.TokenHash);
+            Assert.Equal(now + AdminBootstrapToken.Lifetime, stored.ExpiresAt);
+            Assert.Null(stored.ConsumedAt);
+
+            db.AdminBootstrapTokens.Add(AdminBootstrapToken.Create("owner@example.test", hash, now));
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
     }
 
     [Fact]

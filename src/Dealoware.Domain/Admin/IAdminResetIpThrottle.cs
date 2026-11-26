@@ -13,4 +13,14 @@ public interface IAdminResetIpThrottle
         string ipHmac,
         DateTimeOffset now,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Read-only: true while this IP is inside its 30-minute lock. Counts
+    /// nothing, so a caller can refuse a locked IP before Turnstile and still
+    /// keep rejected Turnstile submissions off the counter (TD-ADM-040).
+    /// </summary>
+    Task<bool> IsLockedAsync(
+        string ipHmac,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 }

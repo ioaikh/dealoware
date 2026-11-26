@@ -421,8 +421,16 @@ public class TdAdm040AuthLockoutSessionTests
         using var resetConfirm = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.ResetConfirm, null);
         Assert.Equal(HttpStatusCode.OK, resetConfirm.StatusCode);
 
+        // Step 2 opened the bootstrap row: the GET takes no token and is signed-out exempt.
         using var bootstrap = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap, null);
-        Assert.Equal(HttpStatusCode.Unauthorized, bootstrap.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, bootstrap.StatusCode);
+
+        // No GET twin under /admin/api/auth, and extra segments are never exempt.
+        using var apiGet = await SendAuthAsync(client, HttpMethod.Get, AdminSignedOutExemptions.ApiBootstrap, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, apiGet.StatusCode);
+        using var extra = await SendAuthAsync(
+            client, HttpMethod.Get, AdminSignedOutExemptions.Bootstrap + "/extra", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, extra.StatusCode);
     }
 
     private HttpClient CreateClient() =>

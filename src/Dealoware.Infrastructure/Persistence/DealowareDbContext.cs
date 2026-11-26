@@ -73,6 +73,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminResetIpCounter> AdminResetIpCounters => Set<AdminResetIpCounter>();
 
+    /// <summary>
+    /// A7 Step 2: hashed single-use bootstrap (first-time setup) tokens.
+    /// Incremental after the frozen 15-table stamp — not a BaselineSchema table.
+    /// </summary>
+    public DbSet<AdminBootstrapToken> AdminBootstrapTokens => Set<AdminBootstrapToken>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -149,6 +155,7 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminPasswordResetTokenEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminResetIpCounterEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminBootstrapTokenEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)
