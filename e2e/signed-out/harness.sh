@@ -98,6 +98,13 @@ RUN_MARKER=".dealoware-e2e-run"
 printf 'dealoware e2e run\n' >"$WORKDIR/$RUN_MARKER"
 
 ENGINES="${E2E_ENGINES:-chromium firefox webkit}"
+# A value of only spaces would run no engine and still pass: refuse it.
+read -ra named_engines <<<"$ENGINES"
+if [[ ${#named_engines[@]} -eq 0 ]]; then
+  echo "E2E_ENGINES names no engine" >&2
+  rm -rf "$WORKDIR"
+  exit 2
+fi
 for engine in $ENGINES; do
   case "$engine" in
     chromium|firefox|webkit) ;;
@@ -164,7 +171,9 @@ PY
 wait_for_port() {
   local port="$1" pid="$2" name="$3"
   for _ in $(seq 1 60); do
-    if port_answers "$port"; then
+    # Ours only if our process is alive too: a port that answers while our
+    # process has died belongs to someone else.
+    if port_answers "$port" && kill -0 "$pid" 2>/dev/null; then
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then

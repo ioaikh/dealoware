@@ -44,6 +44,12 @@ ASSERT_EXECUTED="$E2E/admin/ci/assert-executed.js"
 
 # Named here as well, so that this script knows which reports to expect.
 export E2E_ENGINES="${E2E_ENGINES:-chromium firefox webkit}"
+# A value of only spaces would run no engine and still pass: refuse it.
+read -ra named_engines <<<"$E2E_ENGINES"
+if [[ ${#named_engines[@]} -eq 0 ]]; then
+  echo "E2E_ENGINES names no engine" >&2
+  exit 1
+fi
 
 SUITES=()
 for run in "$E2E"/*/run.sh; do

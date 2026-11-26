@@ -98,10 +98,10 @@ jobs:
 
       - name: Set up the .NET 10 SDK
         # A plain step: no setup-dotnet commit is pinned in this repository.
-        # Uses the SDK on the runner image when it has one, and Microsoft's
-        # install script otherwise. As in ci.yml there is no global.json, so
-        # a newer SDK on the runner may do the build; the application targets
-        # .NET 10 and runs on the .NET 10 runtime either way.
+        # Uses the SDK on the runner image, and fails when there is none:
+        # nothing unpinned is downloaded and run. As in ci.yml there is no
+        # global.json, so a newer SDK on the runner may do the build; the
+        # application targets .NET 10 and runs on the .NET 10 runtime either way.
         run: |
           sdks=""
           if command -v dotnet >/dev/null 2>&1; then
@@ -110,10 +110,8 @@ jobs:
           if grep -q '^10\.0\.' <<<"$sdks"; then
             echo "The runner image has a .NET 10 SDK."
           else
-            curl -fsSL --retry 3 -o "$RUNNER_TEMP/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh
-            bash "$RUNNER_TEMP/dotnet-install.sh" --channel 10.0 --install-dir "$HOME/.dotnet"
-            echo "$HOME/.dotnet" >> "$GITHUB_PATH"
-            echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
+            echo "::error::The runner image has no .NET 10 SDK."
+            exit 1
           fi
 
       - name: Setup Node.js
