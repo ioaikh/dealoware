@@ -188,8 +188,8 @@ public class AdminEditPageTests
         Assert.Equal(2, Regex.Matches(html, "<div class=\"edit\" hidden>").Count);
         Assert.DoesNotMatch("<div class=\"edit\">", html);
         Assert.Contains("<div id=\"edit-buttons\" class=\"edit-buttons\" hidden><button type=\"submit\" id=\"edit-save\" disabled>Save</button><button type=\"button\" id=\"edit-cancel\" class=\"secondary\">Cancel</button></div></form>", html, StringComparison.Ordinal);
-        // The form has no method or action: nothing can send it but the script.
-        Assert.Contains("<form id=\"edit-form\" class=\"edit-form\" novalidate>", html, StringComparison.Ordinal);
+        // The form has no method or action: nothing can send it but the script. A browser keeps no typed value of it.
+        Assert.Contains("<form id=\"edit-form\" class=\"edit-form\" autocomplete=\"off\" novalidate>", html, StringComparison.Ordinal);
         Assert.Contains("<dialog id=\"discard-dialog\" class=\"edit-dialog\" aria-modal=\"true\" aria-labelledby=\"discard-dialog-title\">", html, StringComparison.Ordinal);
         Assert.Contains("<h2 id=\"discard-dialog-title\">Discard your changes?</h2>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"action-dialog\"", html, StringComparison.Ordinal);
@@ -239,7 +239,7 @@ public class AdminEditPageTests
         // The parser drops the first line break after the tag: the page adds one, so the text's own stays.
         Assert.Contains("aria-describedby=\"edit-description-error\">\n&#xA;starts on a new line</textarea>", html, StringComparison.Ordinal);
         // The owner: a typeahead over the participants, the stored value the owner's Core identifier.
-        Assert.Contains($"<input type=\"hidden\" id=\"edit-ownerParticipantId\" data-key=\"ownerParticipantId\" value=\"{g.Alpha.Sub}\">", html, StringComparison.Ordinal);
+        Assert.Contains($"<input type=\"hidden\" id=\"edit-ownerParticipantId\" data-key=\"ownerParticipantId\" value=\"{g.Alpha.Sub}\" data-initial=\"{g.Alpha.Sub}\">", html, StringComparison.Ordinal);
         Assert.Contains($"role=\"combobox\"", html, StringComparison.Ordinal);
         Assert.Matches($"id=\"edit-owner-picker\"[^>]* value=\"{prefix}-Alpha\">", html);
         Assert.Equal("/admin/api/participants", Attribute(html, "edit-owner", "data-source"));
@@ -342,10 +342,20 @@ public class AdminEditPageTests
         var prefix = $"ep5-{Guid.NewGuid():N}";
         var g = await SeedAsync(prefix);
         var session = await SessionAsync();
+        // An artifact and an open negotiation that would each have controls, soft-deleted.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var at = new DateTimeOffset(2026, 7, 2, 12, 0, 0, TimeSpan.Zero);
+            await db.Artifacts.Where(a => a.Id == g.TwoEntities.Id).ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, at));
+            await db.Negotiations.Where(n => n.Id == g.Bare.Id).ExecuteUpdateAsync(s => s.SetProperty(n => n.DeletedAt, at));
+        }
 
         foreach (var path in new[]
                  {
                      $"/admin/participants/{g.Deleted.Id:D}?includeDeleted=true",
+                     $"/admin/artifacts/{g.TwoEntities.Id:D}?includeDeleted=true",
+                     $"/admin/negotiations/{g.Bare.Id:D}?includeDeleted=true",
                      $"/admin/offers/{g.DeletedOffer.Id:D}?includeDeleted=true"
                  })
         {
@@ -357,6 +367,9 @@ public class AdminEditPageTests
             Assert.DoesNotContain("data-etag", html, StringComparison.Ordinal);
             Assert.Empty(Keys(html));
             Assert.DoesNotContain(AdminEditPage.ScriptPath, html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<dialog", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<textarea", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<select", html, StringComparison.Ordinal);
         }
     }
 
@@ -424,6 +437,9 @@ public class AdminEditPageTests
         Assert.Contains("var SESSION_ENDED = \"" + AdminSignInPages.SessionEndedLocation + "\";", script, StringComparison.Ordinal);
         // Escape is the page's own, in the capture phase, never during text composition.
         Assert.Contains("if (event.isComposing) return;", script, StringComparison.Ordinal);
+        // What the page announces after it loaded itself anew comes from its history entry's state, never the address.
+        Assert.DoesNotContain("location.hash.indexOf", script, StringComparison.Ordinal);
+        Assert.Contains("history.replaceState({ dwNote: note }", script, StringComparison.Ordinal);
         Assert.Contains("}, true);", script, StringComparison.Ordinal);
     }
 

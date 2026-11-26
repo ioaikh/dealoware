@@ -200,7 +200,7 @@ public static class AdminEditPage
 
         if (plan.Fields)
         {
-            html.Append("<form id=\"edit-form\" class=\"edit-form\" novalidate>");
+            html.Append("<form id=\"edit-form\" class=\"edit-form\" autocomplete=\"off\" novalidate>");
             html.Append("<div id=\"edit-summary\" class=\"error-summary\" tabindex=\"-1\" hidden>");
             html.Append($"<h2 id=\"edit-summary-title\">{E(AdminConsoleCopy.ErrorSummaryTitle)}</h2>");
             html.Append("<ul id=\"edit-summary-list\"></ul></div>");
@@ -377,7 +377,7 @@ public static class AdminEditPage
             + "<input type=\"text\" id=\"edit-owner-picker\" role=\"combobox\" aria-autocomplete=\"list\" aria-expanded=\"false\""
             + $" aria-controls=\"edit-owner-options\" autocomplete=\"off\" spellcheck=\"false\" maxlength=\"{AdminListQuery.MaxQueryLength}\""
             + $" aria-describedby=\"edit-ownerParticipantId-error\" value=\"{E(shown)}\">"
-            + $"<input type=\"hidden\" id=\"edit-ownerParticipantId\" data-key=\"ownerParticipantId\" value=\"{E(sub)}\">"
+            + $"<input type=\"hidden\" id=\"edit-ownerParticipantId\" data-key=\"ownerParticipantId\" value=\"{E(sub)}\" data-initial=\"{E(sub)}\">"
             + $"<ul id=\"edit-owner-options\" class=\"options\" role=\"listbox\" aria-label=\"{E(AdminConsoleCopy.ColumnOwner)}\" hidden></ul>"
             + "</div>"
             + Error("ownerParticipantId")

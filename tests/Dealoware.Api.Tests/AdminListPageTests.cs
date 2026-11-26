@@ -558,7 +558,7 @@ public partial class AdminListPageTests
         Assert.Equal(
             ["sign-out-form", "edit-form"],
             Regex.Matches(html, "<form id=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray());
-        Assert.Contains("<form id=\"edit-form\" class=\"edit-form\" novalidate>", html, StringComparison.Ordinal);
+        Assert.Contains("<form id=\"edit-form\" class=\"edit-form\" autocomplete=\"off\" novalidate>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("STRATEGY-TEXT", html, StringComparison.Ordinal);
 
         (_, html) = await PageAsync($"/admin/offers/{g.OpenOffer.Id:D}", session);

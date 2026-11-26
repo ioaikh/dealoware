@@ -16,10 +16,11 @@
  * the page's values back and returns to the view.
  *
  * Replies (navigation only on these exact contracts):
- *   200 with this record's id -> the page loads itself anew with the note
- *       #edit-saved (or #edit-closed, #edit-expired, #edit-cancelled); the new
- *       page shows the new values and says "Changes saved." (or "Negotiation
- *       {ID} expired." and the rest) in the shell's live region.
+ *   200 with this record's id -> the page loads itself anew, with a note in
+ *       its history entry's state (never in the address, so a crafted address
+ *       announces nothing); the new page shows the new values and says
+ *       "Changes saved." (or "Negotiation {ID} expired." and the rest) in the
+ *       shell's live region, once.
  *   400 with "fields" -> each sentence (the server's own, never a value)
  *       under its field and in the summary above, which takes the focus; the
  *       typed values stay.
@@ -44,8 +45,15 @@
  *
  * Unsaved changes. While a value differs, leaving asks "Discard your
  * changes?" in the page's own dialog (Discard, Keep editing): a link, Sign
- * out, and Back (edit mode is a history entry of the same address, so Back
- * first leaves edit mode). With nothing changed nothing is asked.
+ * out, Back (edit mode is a history entry of the same address, so Back
+ * first leaves edit mode; Keep editing steps forward again), and picking
+ * another subject entity over typed words. With nothing changed nothing is
+ * asked. While a save is out nothing leaves. Every way out takes edit
+ * mode's history entry off first, so one Back returns to the record.
+ *
+ * The controls start from the server's values (defaultValue, defaultChecked,
+ * defaultSelected, the owner's data-initial), never from what a browser put
+ * back on reload or Back; the form also has autocomplete="off".
  *
  * Nothing is stored. Text goes into the page through textContent only.
  */
@@ -58,7 +66,6 @@
   var BAD_REQUEST = "BadRequest";
   var SIGNED_IN_AS = "CoreOwner";
   var FRESH = "#fresh";
-  var NOTE_MARK = "#edit-";
   var NOTES = ["saved", "closed", "expired", "cancelled"];
   var TIMEOUT_MS = 15000;
   var PAUSE_MS = 300;
@@ -142,11 +149,15 @@
     });
   }
 
-  /** The change was made: the page loads itself anew, with the note it then says. */
+  /**
+   * The change was made: the page loads itself anew and then says so. The note rides in this
+   * history entry's state, which only this script sets, never in the address: an address someone
+   * crafted cannot make the page announce a change that did not happen.
+   */
   function done(note) {
     guarded = false;
     leaveEditEntry(function () {
-      history.replaceState(null, "", location.pathname + location.search + NOTE_MARK + note);
+      history.replaceState({ dwNote: note }, "", location.pathname + location.search);
       location.reload();
     });
   }
@@ -293,6 +304,8 @@
   var editButton = el("edit-button");
   var guarded = true;
   var editing = false;
+  // Takes edit mode's history entry off before the page goes; a page without edit mode has none.
+  var leaveEditEntry = function (then) { then(); };
 
   if (actions && actions.querySelector("button")) AdminDom.show(actions, true);
 
@@ -312,7 +325,6 @@
     var edits = root.querySelectorAll(".detail.editable .edit");
     var keyed = form.querySelectorAll("[data-key]");
     var initial = {};
-    var ownerShown = ownerBox ? ownerBox.value : "";
 
     var read = function (control) {
       if (control.tagName === "FIELDSET") {
@@ -335,7 +347,27 @@
       return control.getAttribute("data-key");
     };
 
-    for (var k = 0; k < keyed.length; k += 1) initial[keyOf(keyed[k])] = read(keyed[k]);
+    // The page's values are the server's, never what the browser kept from an earlier visit (some
+    // engines put typed values, a checked radio or a chosen option back on reload and on Back): every
+    // control is set to the value it was written with, then that is what a change is measured from.
+    if (entityPick && entityPick.tagName === "SELECT") {
+      for (var o = 0; o < entityPick.options.length; o += 1) entityPick.options[o].selected = entityPick.options[o].defaultSelected;
+    }
+    for (var k = 0; k < keyed.length; k += 1) {
+      var control = keyed[k];
+      if (control.tagName === "FIELDSET") {
+        var radios = control.querySelectorAll("input");
+        for (var c = 0; c < radios.length; c += 1) radios[c].checked = radios[c].defaultChecked;
+      } else if (control.type === "hidden") {
+        control.value = control.getAttribute("data-initial") || "";
+      } else {
+        control.value = control.defaultValue;
+      }
+      initial[keyOf(control)] = read(control);
+    }
+    if (ownerBox) ownerBox.value = ownerBox.defaultValue;
+    var ownerShown = ownerBox ? ownerBox.value : "";
+    var entityIndex = entityPick && entityPick.tagName === "SELECT" ? entityPick.selectedIndex : -1;
 
     var changed = function (control) {
       return read(control) !== initial[keyOf(control)];
@@ -404,6 +436,9 @@
     };
 
     // ---- Back leaves edit mode (one history entry of the same address) ----
+    // Edit pushes one entry (on the owner's press, so every engine keeps it). Back from it leaves
+    // edit mode; with changes it asks first, and Keep editing steps forward onto it again. Every
+    // way out of the page takes the entry off first, so one Back always returns to the record.
 
     var editEntry = false;
     var afterPop = null;
@@ -418,7 +453,7 @@
     };
 
     /** Takes edit mode's history entry off (if it is the current one), then goes on. */
-    var leaveEditEntry = function (then) {
+    leaveEditEntry = function (then) {
       if (!editEntry) {
         then();
         return;
@@ -442,17 +477,25 @@
         then();
         return;
       }
+      var state = history.state;
+      if (state && state.dwEdit) {
+        // Forward onto edit mode's entry again: after Keep editing, or Forward.
+        if (editing) editEntry = true;
+        return;
+      }
       if (!editEntry) return;
       editEntry = false;
       if (!editing) return;
-      if (dirty() && guarded) {
-        pushEditEntry();
+      var stay = function () { history.forward(); };
+      if (busy) {
+        stay();
+        return;
+      }
+      if (guarded && dirty()) {
         askDiscard(cancelButton, function () {
-          leaveEditEntry(function () {
-            setMode(false);
-            editButton.focus();
-          });
-        });
+          setMode(false);
+          editButton.focus();
+        }, stay);
         return;
       }
       setMode(false);
@@ -464,56 +507,82 @@
     var discardNode = el("discard-dialog");
     var discard = discardNode ? Dialog(discardNode) : null;
     var discardThen = null;
+    var discardKeep = null;
 
-    var askDiscard = function (opener, then) {
+    /**
+     * "Discard your changes?": Discard goes on with then(); Keep editing, Escape or the backdrop
+     * goes on with keep(), if given. Never while a save is out.
+     */
+    var askDiscard = function (opener, then, keep) {
+      if (busy) {
+        if (keep) keep();
+        return;
+      }
       if (!discard) {
         then();
         return;
       }
       discardThen = then;
+      discardKeep = keep || null;
+      discard.onClose = function () {
+        var kept = discardKeep;
+        discardThen = null;
+        discardKeep = null;
+        if (kept) kept();
+      };
       discard.open(opener, el("discard-keep"));
     };
 
     el("discard-keep").addEventListener("click", function () {
-      discardThen = null;
       discardNode.close();
     });
 
     el("discard-confirm").addEventListener("click", function () {
+      if (busy) return;
       var then = discardThen;
       discardThen = null;
+      discardKeep = null;
       discard.opener = null;
       discardNode.close();
       if (then) then();
     });
 
-    // A link out of the page, while a value differs. A link opened elsewhere (a modifier, another
-    // button) loses nothing, and a link within the page (the error summary's) goes nowhere.
+    // A link out of the page, from edit mode. With changes it asks first; either way edit mode's
+    // history entry goes before the page does. While a save is out it waits for the answer. A link
+    // opened elsewhere (a modifier, another button) loses nothing, and a link within the page (the
+    // error summary's) goes nowhere.
     document.addEventListener("click", function (event) {
-      if (!editing || !guarded || event.defaultPrevented || !dirty()) return;
+      if (!editing || !guarded || event.defaultPrevented) return;
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       var link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
       if (!link || link.target) return;
       var href = link.getAttribute("href") || "";
       if (href === "" || href.charAt(0) === "#") return;
       event.preventDefault();
-      askDiscard(link, function () {
+      if (busy) return;
+      var go = function () {
         guarded = false;
-        location.assign(link.href);
-      });
+        leaveEditEntry(function () { location.assign(link.href); });
+      };
+      if (dirty()) askDiscard(link, go);
+      else go();
     }, true);
 
-    // Sign out (or any other form of the page), while a value differs.
+    // Sign out (or any other form of the page) while editing, the same way.
     document.addEventListener("submit", function (event) {
-      if (event.target === form || !editing || !guarded || !dirty()) return;
+      if (event.target === form || !editing || !guarded) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      var other = event.target;
-      var button = other.querySelector("button[type=submit]");
-      askDiscard(button, function () {
-        setMode(false);
-        if (button) button.click();
-      });
+      if (busy) return;
+      var button = event.target.querySelector("button[type=submit]");
+      var go = function () {
+        leaveEditEntry(function () {
+          setMode(false);
+          if (button) button.click();
+        });
+      };
+      if (dirty()) askDiscard(button, go);
+      else go();
     }, true);
 
     // ---- the owner picker: one page of matches from the read API ----
@@ -660,22 +729,41 @@
     // ---- several subject entities: the one picked is the one edited ----
 
     if (entityPick && entityPick.tagName === "SELECT") {
-      entityPick.addEventListener("change", function () {
+      var entityName = el("edit-name");
+      var entityDescription = el("edit-description");
+
+      /** The picked entity's stored words into the boxes; a change is measured from what the boxes then hold. */
+      var loadEntity = function () {
         var option = entityPick.options[entityPick.selectedIndex];
         if (!option) return;
-        var name = el("edit-name");
-        var description = el("edit-description");
-        if (name) {
-          initial.name = option.getAttribute("data-name") || "";
-          name.value = initial.name;
-          setFieldError(name, "");
+        entityIndex = entityPick.selectedIndex;
+        if (entityName) {
+          entityName.value = option.getAttribute("data-name") || "";
+          // A text box drops line breaks: a stored name with one is not a change by being shown.
+          initial.name = read(entityName);
+          setFieldError(entityName, "");
         }
-        if (description) {
-          initial.description = option.getAttribute("data-description") || "";
-          description.value = initial.description;
-          setFieldError(description, "");
+        if (entityDescription) {
+          entityDescription.value = option.getAttribute("data-description") || "";
+          initial.description = read(entityDescription);
+          setFieldError(entityDescription, "");
         }
         updateSave();
+      };
+
+      entityPick.addEventListener("change", function () {
+        var typed = (entityName && changed(entityName)) || (entityDescription && changed(entityDescription));
+        if (!typed) {
+          loadEntity();
+          return;
+        }
+        // What was typed for this entity would go: the pick waits for the owner's answer.
+        var wanted = entityPick.selectedIndex;
+        entityPick.selectedIndex = entityIndex;
+        askDiscard(entityPick, function () {
+          entityPick.selectedIndex = wanted;
+          loadEntity();
+        });
       });
     }
 
@@ -853,8 +941,6 @@
     });
 
     setMode(false);
-  } else {
-    var leaveEditEntry = function (then) { then(); };
   }
 
   /* ---- Actions: Close, Expire, Cancel offer ---- */
@@ -956,9 +1042,15 @@
 
   /* ---- What was just done, said once the page has loaded anew ---- */
 
-  if (location.hash.indexOf(NOTE_MARK) === 0) {
-    var note = location.hash.slice(NOTE_MARK.length);
-    history.replaceState(null, "", location.pathname + location.search);
+  var arrived = history.state && typeof history.state === "object" ? history.state : null;
+  if (arrived && arrived.dwEdit) {
+    // Loaded anew on edit mode's history entry (a reload in edit mode): step back onto the
+    // record's own entry, so one Back still leaves the page.
+    history.back();
+  } else if (arrived && typeof arrived.dwNote === "string") {
+    // Set by this script just before it loaded the page anew over a change it made; used once.
+    var note = arrived.dwNote;
+    history.replaceState(null, "", location.pathname + location.search + location.hash);
     var sentence = NOTES.indexOf(note) >= 0 ? root.getAttribute("data-note-" + note) : null;
     if (sentence) {
       var target = note === "saved" && editButton && !editButton.hidden ? editButton : main;
