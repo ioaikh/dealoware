@@ -260,14 +260,19 @@ test('a heading sorts on the server: one request, the order turns, aria-sort mov
 test('Participants filter by status; the Artifacts owner picker asks for one page of matches as the owner types', async ({ page }) => {
   await signIn(page);
   await open(page, '/admin/participants');
-  await page.getByLabel('Suspended', { exact: true }).check();
+  // A box that moves the page as it changes is clicked, not check()ed: check() reads the box
+  // again after the click, and by then the page it reads is the one being left or the new one.
+  // The new page's own box, written by the server from the address, is what is checked.
+  await page.getByLabel('Suspended', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/participants?status=Suspended');
+  await expect(page.getByLabel('Suspended', { exact: true })).toBeChecked();
   await expect(page.getByLabel('Suspended', { exact: true })).toBeFocused();
   const badges = await page.locator('#list-table tbody .badge').allTextContents();
   expect(new Set(badges)).toEqual(new Set(['Suspended']));
   expect(await totalOf(page)).toBe(21);
-  await page.getByLabel('Active', { exact: true }).check();
+  await page.getByLabel('Active', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/participants?status=Active%2CSuspended');
+  await expect(page.getByLabel('Active', { exact: true })).toBeChecked();
   expect(await totalOf(page)).toBe(seeded.counts.participants);
   await expect(page.locator('#chips')).toContainText('Status: Active, Suspended');
 
@@ -383,8 +388,10 @@ test('paging: 50, 100 or 200 a page; the range and Previous, Next and Page N; an
   // A filter, a sort, a search: each back to page 1.
   await open(page, '/admin/offers?offset=300&limit=100');
   await expect(page.getByRole('link', { name: 'Page 4', exact: true })).toHaveAttribute('aria-current', 'page');
-  await page.getByLabel('Accepted', { exact: true }).check();
+  // Clicked, not check()ed: the box moves the page (see the status filter test).
+  await page.getByLabel('Accepted', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?limit=100&status=Accepted');
+  await expect(page.getByLabel('Accepted', { exact: true })).toBeChecked();
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
   await page.locator('#sort-created').click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&limit=100&status=Accepted');
@@ -465,7 +472,8 @@ test('Show deleted: off on every list, kept on reload; a deleted row shows Delet
   }
 
   await open(page, '/admin/offers?sort=created');
-  await page.getByLabel('Show deleted', { exact: true }).check();
+  // Clicked, not check()ed: the toggle moves the page (see the status filter test).
+  await page.getByLabel('Show deleted', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&includeDeleted=true');
   await page.reload();
   await expectStyled(page);
