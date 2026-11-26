@@ -284,6 +284,22 @@ async function codesOnPage(page: Page): Promise<string[]> {
   return codes;
 }
 
+/** The object each helper script puts on window once it has run. */
+const HELPER_GLOBALS: Record<string, string> = {
+  'admin-arrival.js': 'AdminArrival',
+  'admin-dom.js': 'AdminDom',
+  'admin-request.js': 'AdminRequest',
+  'admin-clipboard.js': 'AdminClipboard',
+};
+
+/** Of the given helper scripts, those that ran on the page, by file name. */
+async function helpersOnPage(page: Page, files: string[]): Promise<string[]> {
+  const ran = await page.evaluate(
+    (names) => names.map((name) => typeof (window as any)[name] === 'object'),
+    files.map((file) => HELPER_GLOBALS[file]));
+  return files.filter((_, i) => ran[i]);
+}
+
 /** The one alert of S-A6: the text, announced, with the cursor back in the code field. */
 async function expectAlert(page: Page, text: string): Promise<void> {
   const alert = page.locator('#form-alert');
@@ -1451,12 +1467,27 @@ test('when a script S-A6 needs does not load, it says so and shows neither the k
   await confirmButton(page).click();
   await expect(page).toHaveURL(ORIGIN + RECOVERY_CODES);
   const codes = await codesOnPage(page);
+  // S-A7 is left only once it has finished loading. The codes are in the markup before its scripts
+  // have arrived, and a page left while it is still loading leaves WebKit's preloads of those
+  // scripts behind: a later visit is then handed them from the memory cache without asking the
+  // network, so page.route below never sees the request it is meant to refuse.
+  await expect(page.locator('#recovery-codes-list')).toBeVisible();
+  await page.waitForLoadState('load');
 
   // S-A7: the codes matter more than the buttons.
-  for (const missing of ['admin-arrival.js', 'admin-clipboard.js', 'admin-request.js']) {
+  const helpers = ['admin-arrival.js', 'admin-clipboard.js', 'admin-request.js'];
+  for (const missing of helpers) {
+    let refused = 0;
     await page.unrouteAll({ behavior: 'wait' });
-    await page.route((url) => url.pathname === `/admin/auth/${missing}`, (route) => route.abort('failed'));
+    await page.route((url) => url.pathname === `/admin/auth/${missing}`, (route) => {
+      refused += 1;
+      return route.abort('failed');
+    });
     await page.goto(RECOVERY_CODES);
+    // What this round stands on: the browser asked for the helper and was refused, so the page has
+    // every helper but that one.
+    expect(refused, missing).toBeGreaterThan(0);
+    expect(await helpersOnPage(page, helpers), missing).toEqual(helpers.filter((helper) => helper !== missing));
     await expect(page.locator('#recovery-codes-list'), missing).toBeVisible();
     expect(await codesOnPage(page)).toEqual(codes);
     await expect(continueButton(page)).toBeDisabled();
@@ -1466,6 +1497,7 @@ test('when a script S-A6 needs does not load, it says so and shows neither the k
   }
 
   // Without the request helper Continue cannot ask the server first; it still leaves for step 1.
+  expect(await helpersOnPage(page, ['admin-request.js'])).toEqual([]);
   await savedBox(page).check();
   await continueButton(page).click();
   await expect(page).toHaveURL(ORIGIN + SIGN_IN);
