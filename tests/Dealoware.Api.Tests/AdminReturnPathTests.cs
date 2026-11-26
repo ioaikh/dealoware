@@ -69,6 +69,13 @@ public class AdminReturnPathTests
     [InlineData("/admin/artifacts?artifact=not-a-guid&includeDeleted=TRUE", "/admin/artifacts?includeDeleted=true")]
     [InlineData("/admin/offers?amountMin=1e5&amountMax=12.50", "/admin/offers?amountMax=12.50")]
     [InlineData("/admin/participants?createdFrom=2026-10-05T19:55:00-04:00", "/admin/participants?createdFrom=2026-10-05T23%3A55%3A00Z")]
+    // A status is one or more of the list's own names, comma-separated: the known ones kept, in the list's order.
+    [InlineData("/admin/offers?status=withdrawn,OPEN,Deleted,open", "/admin/offers?status=Open%2CWithdrawn")]
+    [InlineData("/admin/negotiations?status=Withdrawn,Accepted", "/admin/negotiations")]
+    [InlineData("/admin/participants?status=suspended", "/admin/participants?status=Suspended")]
+    [InlineData("/admin/artifacts?status=Open&participant=sub-1", "/admin/artifacts?participant=sub-1")]
+    // A date filter as the pages write it (an ET calendar date) stays a date.
+    [InlineData("/admin/negotiations?createdFrom=2026-10-05&updatedTo=2026-13-40", "/admin/negotiations?createdFrom=2026-10-05")]
     // A key given twice, or spelled another way, is not a known key.
     [InlineData("/admin/participants?q=a&q=b", "/admin/participants")]
     [InlineData("/admin/participants?Q=a", "/admin/participants")]
@@ -117,7 +124,11 @@ public class AdminReturnPathTests
         Assert.Equal("sort", AdminReturnQuery.KeysFor("/admin/participants")[0]);
         Assert.Contains("amountMin", AdminReturnQuery.KeysFor("/admin/offers"));
         Assert.DoesNotContain("amountMin", AdminReturnQuery.KeysFor("/admin/negotiations"));
-        Assert.DoesNotContain("status", AdminReturnQuery.KeysFor("/admin/participants"));
+        // Participants filter by Active / Suspended; they have no participant filter, and Artifacts no artifact filter.
+        Assert.Contains("status", AdminReturnQuery.KeysFor("/admin/participants"));
+        Assert.DoesNotContain("participant", AdminReturnQuery.KeysFor("/admin/participants"));
+        Assert.DoesNotContain("artifact", AdminReturnQuery.KeysFor("/admin/artifacts"));
+        Assert.DoesNotContain("status", AdminReturnQuery.KeysFor("/admin/artifacts"));
         Assert.Empty(AdminReturnQuery.KeysFor("/admin/audit"));
         Assert.Empty(AdminReturnQuery.KeysFor("/admin/"));
     }
