@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sign-in pages Playwright run over HTTPS: S-A1 /admin/sign-in, S-A2
 # /admin/sign-in/code and S-A3 /admin/sign-in/recovery, on Chromium, Firefox
-# and WebKit. Not wired into Admin UI CI.
+# and WebKit. Admin UI CI runs it with the other suites, through
+# e2e/run-signed-out.sh.
 #
 #   ./e2e/sign-in/run.sh
 #   E2E_ENGINES="firefox" ./e2e/sign-in/run.sh      one engine only

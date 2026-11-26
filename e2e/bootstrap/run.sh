@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # First-time setup page (S-A4, /admin/bootstrap) Playwright run over HTTPS,
-# on Chromium, Firefox and WebKit. Not wired into Admin UI CI.
+# on Chromium, Firefox and WebKit. Admin UI CI runs it with the other suites,
+# through e2e/run-signed-out.sh.
 #
 #   ./e2e/bootstrap/run.sh
 #   E2E_ENGINES="firefox" ./e2e/bootstrap/run.sh      one engine only

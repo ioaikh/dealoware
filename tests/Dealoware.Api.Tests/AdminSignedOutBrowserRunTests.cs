@@ -10,7 +10,9 @@ namespace Dealoware.Api.Tests;
 /// share (e2e/signed-out): a run stays on this machine, needs
 /// no privilege, keeps the loopback proxy guard, and uses the stand-in
 /// Turnstile verifier only with the app in Development.
-/// The browser tests themselves are started with each suite's run.sh.
+/// The browser tests themselves are started with each suite's run.sh, or all
+/// of them with e2e/run-signed-out.sh, which is what the Admin UI CI workflow
+/// runs; that entry point and the workflow are pinned here too.
 /// </summary>
 public class AdminSignedOutBrowserRunTests
 {
@@ -182,6 +184,167 @@ public class AdminSignedOutBrowserRunTests
             Regex.Matches(baseConfig, @"require\(""([^""]+)""\)").Select(m => m.Groups[1].Value).ToArray());
     }
 
+    [Fact]
+    public void OneEntryPoint_FindsEverySuiteOnTheSharedRunner_AndFailsClosed()
+    {
+        var e2e = Path.Combine(RepoRoot(), "e2e");
+        var code = ShellCode(Path.Combine(e2e, "run-signed-out.sh"));
+
+        Assert.All(NeverInARunner, banned => Assert.DoesNotContain(banned, code, StringComparison.Ordinal));
+        // It looks for suites and names none: a suite is a folder whose run.sh sources the shared runner.
+        Assert.Contains("for run in \"$E2E\"/*/run.sh; do", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "if grep -Eq '^[[:space:]]*(source|\\.)[[:space:]].*/signed-out/harness\\.sh' \"$run\"; then",
+            code,
+            StringComparison.Ordinal);
+        Assert.All(Suites, suite => Assert.DoesNotContain(suite, code, StringComparison.Ordinal));
+        var found = SuitesOnTheSharedRunner();
+        Assert.All(Suites, suite => Assert.Contains(suite, found));
+
+        // No suite found is a failure, not an empty pass.
+        Assert.Matches(@"if \[\[ ""\$\{#SUITES\[@\]\}"" -eq 0 \]\]; then\n +echo [^\n]+ >&2\n +exit 1\n", code);
+        // A suite that fails fails the run, and the suites after it still run.
+        Assert.Contains(
+            "if ! E2E_REPORT_DIR=\"$REPORTS/$suite\" bash \"$E2E/$suite/run.sh\" \"$@\"; then",
+            code,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("break", code, StringComparison.Ordinal);
+        // SKIP is not PASS: each engine's run must have executed a test, by Playwright's own report.
+        Assert.Contains("ASSERT_EXECUTED=\"$E2E/admin/ci/assert-executed.js\"", code, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(e2e, "admin", "ci", "assert-executed.js")));
+        Assert.Contains("export E2E_ENGINES=\"${E2E_ENGINES:-chromium firefox webkit}\"", code, StringComparison.Ordinal);
+        Assert.Contains("for engine in $E2E_ENGINES; do", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "if counts=\"$(node \"$ASSERT_EXECUTED\" \"$REPORTS/$suite/$engine.json\")\"; then",
+            code,
+            StringComparison.Ordinal);
+        Assert.Matches(@"if \[\[ -n ""\$why"" \]\]; then\n +FAILED=1\n", code);
+        Assert.Matches(@"if \[\[ ""\$FAILED"" -ne 0 \]\]; then\n +echo [^\n]+ >&2\n +exit 1\n", code);
+        Assert.DoesNotContain("|| true", code, StringComparison.Ordinal);
+
+        // The shared runner writes those reports when it is asked to, one for each engine.
+        var runner = ShellCode(Path.Combine(e2e, "signed-out", "harness.sh"));
+        Assert.Contains("set -- --reporter=list,json \"$@\"", runner, StringComparison.Ordinal);
+        Assert.Contains(
+            "export PLAYWRIGHT_JSON_OUTPUT_FILE=\"${E2E_REPORT_DIR}/${engine}.json\"",
+            runner,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryBrowserSpec_BelongsToASuiteTheEntryPointFinds_ExceptTheOlderConfirmPageRun()
+    {
+        var e2e = Path.Combine(RepoRoot(), "e2e");
+        var found = SuitesOnTheSharedRunner();
+
+        // A spec in a folder the entry point does not find would never run in Admin UI CI.
+        // e2e/reset-confirm is the one known case: it has its own, older run script.
+        var withSpecs = Directory.GetDirectories(e2e)
+            .Where(dir => Directory.GetFiles(dir, "*.spec.ts").Length > 0)
+            .Select(dir => Path.GetFileName(dir))
+            .ToArray();
+        Assert.NotEmpty(withSpecs);
+        Assert.All(withSpecs, folder => Assert.True(
+            found.Contains(folder) || folder == "reset-confirm",
+            $"e2e/{folder} holds a spec that Admin UI CI does not run"));
+
+        // The workflow installs the browsers once, from the Playwright that e2e/package.json pins,
+        // and the suites run one after the other on one machine: so every suite found, also one
+        // added later, is at that version and has ports of its own.
+        var pinned = DevDependencies(Path.Combine(e2e, "package.json"))["@playwright/test"];
+        var ports = new Dictionary<int, string>();
+        foreach (var suite in found)
+        {
+            Assert.Equal(pinned, DevDependencies(Path.Combine(e2e, suite, "package.json"))["@playwright/test"]);
+            Assert.True(File.Exists(Path.Combine(e2e, suite, "package-lock.json")));
+            var named = Regex.Matches(File.ReadAllText(Path.Combine(e2e, suite, "run.sh")), @"(?m)^(?:API|PROXY|VERIFY)_PORT=(\d+)$");
+            Assert.Equal(3, named.Count);
+            foreach (Match port in named)
+            {
+                Assert.True(
+                    ports.TryAdd(int.Parse(port.Groups[1].Value), suite),
+                    $"e2e/{suite} names a port another suite uses: {port.Value}");
+            }
+        }
+    }
+
+    [Fact]
+    public void AdminUiCi_RunsTheEntryPoint_OncePerEngine_OnPullRequestsThatTouchWhatThePagesAreBuiltFrom()
+    {
+        var workflow = AdminUiWorkflow();
+
+        // Pull requests only, and only those that touch the application, the suites or the workflow.
+        Assert.Contains("\non:\n  pull_request:\n    paths:\n", workflow, StringComparison.Ordinal);
+        var paths = Regex.Match(workflow, @"\n    paths:\n((?:      - '[^'\n]+'\n)+)").Groups[1].Value
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim().TrimStart('-').Trim().Trim('\''))
+            .ToArray();
+        Assert.Equal(new[] { "src/**", "e2e/**", ".github/workflows/admin-ui-ci.yml" }, paths);
+        Assert.DoesNotContain("paths-ignore", workflow, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "Admin")));
+        Assert.True(Directory.Exists(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "wwwroot", "admin")));
+
+        // One job for each engine, side by side, each with a time limit; one failing does not stop the others.
+        Assert.Contains("      fail-fast: false\n", workflow, StringComparison.Ordinal);
+        Assert.Contains("        engine: [chromium, firefox, webkit]\n", workflow, StringComparison.Ordinal);
+        Assert.Contains("      E2E_ENGINES: ${{ matrix.engine }}\n", workflow, StringComparison.Ordinal);
+        Assert.Matches(@"\n    timeout-minutes: \d+\n", workflow);
+        // On the Ubuntu the pinned Playwright has browsers and system packages for, not on whatever is latest.
+        Assert.Contains("\n    runs-on: ubuntu-24.04\n", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ubuntu-latest", workflow, StringComparison.Ordinal);
+        Assert.Equal("1.48.0", DevDependencies(Path.Combine(RepoRoot(), "e2e", "package.json"))["@playwright/test"]);
+
+        // The browser with its system packages, the application built once, then every suite.
+        var browser = workflow.IndexOf("run: npx playwright install --with-deps \"$E2E_ENGINES\"\n", StringComparison.Ordinal);
+        var build = workflow.IndexOf("run: dotnet build src/Dealoware.Api/Dealoware.Api.csproj\n", StringComparison.Ordinal);
+        var run = workflow.IndexOf("run: bash e2e/run-signed-out.sh --forbid-only\n", StringComparison.Ordinal);
+        Assert.True(browser > 0 && build > browser && run > build, "browser install, build and run must come in this order");
+        Assert.Single(Regex.Matches(workflow, "run-signed-out"));
+        Assert.Single(Regex.Matches(workflow, "dotnet build "));
+        // What the build step builds is what the shared runner starts.
+        Assert.Contains(
+            "dotnet run --project \"$ROOT/src/Dealoware.Api/Dealoware.Api.csproj\" --no-launch-profile",
+            ShellCode(Path.Combine(RepoRoot(), "e2e", "signed-out", "harness.sh")),
+            StringComparison.Ordinal);
+
+        // The script that tells a run which executed nothing from a pass is proven in the job itself.
+        var control = workflow.IndexOf(
+            "          node admin/ci/capture-fixtures.js\n          node --test admin/ci/assert-executed.control.js\n",
+            StringComparison.Ordinal);
+        Assert.True(control > 0 && control < run);
+    }
+
+    [Fact]
+    public void AdminUiCi_KeepsWhatAPublicRepositoryNeeds()
+    {
+        var workflow = AdminUiWorkflow();
+
+        // A read-only token, no credentials left in the checkout, never the base repository's context.
+        Assert.Contains("\npermissions:\n  contents: read\n", workflow, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(workflow, @"(?m)^\s*permissions:"));
+        Assert.DoesNotContain(": write", workflow, StringComparison.Ordinal);
+        Assert.Contains("          persist-credentials: false\n", workflow, StringComparison.Ordinal);
+
+        // Every action at a full commit id.
+        var actions = Regex.Matches(workflow, @"(?m)^\s*(?:- )?uses: (\S+)").Select(m => m.Groups[1].Value).ToArray();
+        Assert.Equal(new[] { "actions/checkout", "actions/setup-node" }, actions.Select(a => a.Split('@')[0]).ToArray());
+        Assert.All(actions, action => Assert.Matches(@"^[\w./-]+@[0-9a-f]{40}$", action));
+
+        // Nothing stored is read, nothing is uploaded, and nothing can turn a red run green.
+        foreach (var banned in new[]
+                 {
+                     "secrets.", "upload-artifact", "continue-on-error", "|| true", "if: always()",
+                     "pull_request_target", "ALLOW_LIVE_ADMIN_CORE", "id-token"
+                 })
+        {
+            Assert.DoesNotContain(banned, workflow, StringComparison.Ordinal);
+        }
+
+        // The loopback proxy guard's own checks run before any browser does.
+        var guard = workflow.IndexOf("run: node e2e/reset-confirm/require-proxy.check.cjs\n", StringComparison.Ordinal);
+        Assert.True(guard > 0 && guard < workflow.IndexOf("run: bash e2e/run-signed-out.sh", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("bootstrap")]
     [InlineData("sign-in")]
@@ -296,6 +459,28 @@ public class AdminSignedOutBrowserRunTests
         return string.Join(
             "\n",
             text.Split('\n').Where(line => !line.TrimStart().StartsWith("#", StringComparison.Ordinal)));
+    }
+
+    /// <summary>The suite folders the entry point finds: those whose run.sh sources the shared runner.</summary>
+    private static string[] SuitesOnTheSharedRunner()
+        => Directory.GetDirectories(Path.Combine(RepoRoot(), "e2e"))
+            .Where(dir => File.Exists(Path.Combine(dir, "run.sh"))
+                && Regex.IsMatch(
+                    File.ReadAllText(Path.Combine(dir, "run.sh")),
+                    @"(?m)^[ \t]*(source|\.)[ \t].*/signed-out/harness\.sh"))
+            .Select(dir => Path.GetFileName(dir))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+    /// <summary>The Admin UI CI workflow without its comment lines, with Unix line endings.</summary>
+    private static string AdminUiWorkflow()
+    {
+        var text = File.ReadAllText(Path.Combine(RepoRoot(), ".github", "workflows", "admin-ui-ci.yml"));
+        return string.Join(
+            "\n",
+            text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n')
+                .Where(line => !line.TrimStart().StartsWith("#", StringComparison.Ordinal)));
     }
 
     private static Dictionary<string, string> DevDependencies(string packageJson)
