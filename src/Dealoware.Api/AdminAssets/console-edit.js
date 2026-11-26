@@ -479,8 +479,10 @@
       }
       var state = history.state;
       if (state && state.dwEdit) {
-        // Forward onto edit mode's entry again: after Keep editing, or Forward.
+        // Forward onto edit mode's entry again: after Keep editing it is edit mode's again; in view
+        // mode (Forward after Back) it becomes a plain entry, so the next Edit's entry is the only one.
         if (editing) editEntry = true;
+        else history.replaceState(null, "", location.href);
         return;
       }
       if (!editEntry) return;
@@ -492,7 +494,8 @@
         return;
       }
       if (guarded && dirty()) {
-        askDiscard(cancelButton, function () {
+        var at = document.activeElement;
+        askDiscard(at && at !== form && form.contains(at) ? at : cancelButton, function () {
           setMode(false);
           editButton.focus();
         }, stay);
@@ -549,15 +552,25 @@
 
     // A link out of the page, from edit mode. With changes it asks first; either way edit mode's
     // history entry goes before the page does. While a save is out it waits for the answer. A link
-    // opened elsewhere (a modifier, another button) loses nothing, and a link within the page (the
-    // error summary's) goes nowhere.
+    // opened elsewhere (a modifier, another button) loses nothing. A link within the page (the skip
+    // link, the error summary's) only moves the focus: it adds no history entry, which Back would
+    // otherwise read as leaving edit mode.
     document.addEventListener("click", function (event) {
       if (!editing || !guarded || event.defaultPrevented) return;
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       var link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
       if (!link || link.target) return;
       var href = link.getAttribute("href") || "";
-      if (href === "" || href.charAt(0) === "#") return;
+      if (href === "") return;
+      if (href.charAt(0) === "#") {
+        event.preventDefault();
+        var spot = href.length > 1 ? document.getElementById(href.slice(1)) : null;
+        if (spot) {
+          if (spot.tabIndex < 0 && !spot.hasAttribute("tabindex")) spot.setAttribute("tabindex", "-1");
+          spot.focus();
+        }
+        return;
+      }
       event.preventDefault();
       if (busy) return;
       var go = function () {
@@ -1044,9 +1057,12 @@
 
   var arrived = history.state && typeof history.state === "object" ? history.state : null;
   if (arrived && arrived.dwEdit) {
-    // Loaded anew on edit mode's history entry (a reload in edit mode): step back onto the
-    // record's own entry, so one Back still leaves the page.
-    history.back();
+    // Loaded on edit mode's history entry. After a reload in edit mode, step back onto the record's
+    // own entry, so one Back still leaves the page. Any other load (Safari keeps the state when the
+    // same address is opened again) starts in view mode on this entry, made a plain one.
+    var how = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation") : [];
+    if (how.length > 0 && how[0].type === "reload") history.back();
+    else history.replaceState(null, "", location.href);
   } else if (arrived && typeof arrived.dwNote === "string") {
     // Set by this script just before it loaded the page anew over a change it made; used once.
     var note = arrived.dwNote;
