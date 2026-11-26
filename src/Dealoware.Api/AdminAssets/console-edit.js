@@ -220,6 +220,29 @@
     node.addEventListener("click", function (event) {
       if (event.target === node && !busy) node.close();
     });
+    // Tab and Shift+Tab go round the dialog's buttons; the focus never leaves it for the browser.
+    node.addEventListener("keydown", function (event) {
+      if (event.key !== "Tab") return;
+      var all = node.querySelectorAll("button");
+      var usable = [];
+      for (var i = 0; i < all.length; i += 1) {
+        if (!all[i].disabled && !all[i].hidden) usable.push(all[i]);
+      }
+      if (usable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      var first = usable[0];
+      var last = usable[usable.length - 1];
+      var at = document.activeElement;
+      if (event.shiftKey && (at === first || !node.contains(at))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (at === last || !node.contains(at))) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
     node.addEventListener("close", function () {
       if (node.open) return;
       var back = state.opener;
