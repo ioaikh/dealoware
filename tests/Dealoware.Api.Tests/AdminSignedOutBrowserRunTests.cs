@@ -17,7 +17,7 @@ namespace Dealoware.Api.Tests;
 /// </summary>
 public class AdminSignedOutBrowserRunTests
 {
-    private static readonly string[] Suites = ["bootstrap", "sign-in", "enrol", "reset"];
+    private static readonly string[] Suites = ["bootstrap", "sign-in", "enrol", "reset", "console"];
 
     private static readonly string[] NeverInARunner =
     [
@@ -77,6 +77,7 @@ public class AdminSignedOutBrowserRunTests
     [InlineData("sign-in", "SIGN_IN_E2E", "sign-in.spec.ts")]
     [InlineData("enrol", "ENROL_E2E", "enrol.spec.ts")]
     [InlineData("reset", "RESET_E2E", "reset.spec.ts")]
+    [InlineData("console", "CONSOLE_E2E", "console.spec.ts")]
     public void SuiteRunner_NamesItsPortsAndPrefix_AndLeavesTheRestToTheSharedRunner(
         string suite,
         string envPrefix,
@@ -353,6 +354,7 @@ public class AdminSignedOutBrowserRunTests
     [InlineData("bootstrap")]
     [InlineData("sign-in")]
     [InlineData("enrol")]
+    [InlineData("console")]
     public void Suite_HasItsOwnPackage_WithPlaywrightAtTheSharedPin(string suite)
     {
         // e2e/package.json feeds the Admin UI CI workflow, so each run keeps its
@@ -453,6 +455,32 @@ public class AdminSignedOutBrowserRunTests
         Assert.Empty(Regex.Matches(reader, @"(?m)^import "));
         Assert.DoesNotContain("require(", reader, StringComparison.Ordinal);
         Assert.Contains("} from './qr-reader';", spec, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheConsoleSuite_SeedsItsOwnerLikeTheSignInSuite_AndSignsInThroughThePages()
+    {
+        // The signed-in suite seeds its owner with the sign-in suite's module, so it hands the same
+        // things over under the same names, and writes no key of its own.
+        var console = Path.Combine(RepoRoot(), "e2e", "console");
+        var runner = ShellCode(Path.Combine(console, "run.sh"));
+        foreach (var handed in new[]
+                 {
+                     "DB=\"$DB\"", "PYTHON=\"$PY\"", "OWNER=\"$OWNER\"", "TOTP_KEY=\"$TOTP_KEY\"", "RECOVERY_KEY=\"$RECOVERY_KEY\""
+                 })
+        {
+            Assert.Contains("export SIGN_IN_E2E_" + handed, runner, StringComparison.Ordinal);
+        }
+
+        var spec = File.ReadAllText(Path.Combine(console, "console.spec.ts"));
+        Assert.Contains("} from '../sign-in/owner';", spec, StringComparison.Ordinal);
+        Assert.Contains("owner = seedOwner({ enrolled: true });", spec, StringComparison.Ordinal);
+        // Signed in through S-A1 and S-A2, never with a session made up by the test.
+        Assert.Contains("await continueButton.click();", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("dw_admin_session=", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("addCookies", spec, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"console\.\w+\(", spec);
+        Assert.DoesNotContain("writeFile", spec, StringComparison.Ordinal);
     }
 
     /// <summary>A shell script without its comment lines. It must have Unix line endings, or bash cannot run it.</summary>
