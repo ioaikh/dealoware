@@ -136,6 +136,7 @@ catch (InvalidOperationException ex)
 
 builder.Services.AddAdminPasswordReset();
 builder.Services.AddAdminBootstrap();
+builder.Services.AddAdminSecuritySettings();
 
 builder.Services.AddAuthorization(options =>
 {
@@ -372,6 +373,7 @@ app.MapAdminAuditEndpoints();
 app.MapAdminCsrfProbeEndpoint();
 app.MapAdminPasswordReset();
 app.MapAdminBootstrap();
+app.MapAdminSecuritySettings();
 
 app.Run();
 
