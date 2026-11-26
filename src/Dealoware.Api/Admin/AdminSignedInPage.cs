@@ -11,6 +11,7 @@ public enum AdminConsoleSection
     Artifacts,
     Negotiations,
     Offers,
+    AuditLog,
     SecuritySettings
 }
 
@@ -56,11 +57,10 @@ public sealed record AdminSignedInPageContent
 /// <list type="bullet">
 /// <item>"Skip to main content", the first thing that takes the focus;</item>
 /// <item>the nav: Stats, Participants, Artifacts, Negotiations, Offers,
-/// Security settings, and Sign out (a POST form, driven by
+/// Audit log, Security settings, and Sign out (a POST form, driven by
 /// <see cref="ShellScriptPath"/>; no inline handler);</item>
 /// <item>main, holding the h1 and the page's one polite live region.</item>
 /// </list>
-/// "Audit log" joins the nav with its viewer (T07).
 /// A page is one call: <see cref="Render"/> with a title, a heading, a body
 /// and its scripts. The handlers that call it run only behind the session
 /// gate, so nothing here is ever sent to a browser without a session.
@@ -89,6 +89,7 @@ public static class AdminSignedInPage
     public const string Artifacts = "/admin/artifacts";
     public const string Negotiations = "/admin/negotiations";
     public const string Offers = "/admin/offers";
+    public const string AuditLog = "/admin/audit";
     public const string SecuritySettings = "/admin/settings/security";
 
     /// <summary>The nav, in order: path, label, the section it marks as current.</summary>
@@ -99,6 +100,7 @@ public static class AdminSignedInPage
         (Artifacts, AdminConsoleCopy.NavArtifacts, AdminConsoleSection.Artifacts),
         (Negotiations, AdminConsoleCopy.NavNegotiations, AdminConsoleSection.Negotiations),
         (Offers, AdminConsoleCopy.NavOffers, AdminConsoleSection.Offers),
+        (AuditLog, AdminConsoleCopy.NavAuditLog, AdminConsoleSection.AuditLog),
         (SecuritySettings, AdminConsoleCopy.NavSecuritySettings, AdminConsoleSection.SecuritySettings)
     ];
 

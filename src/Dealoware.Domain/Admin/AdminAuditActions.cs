@@ -9,7 +9,14 @@ public static class AdminAuditActions
     public const string LoginSuccess = "login_success";
     public const string LoginFailure = "login_failure";
     public const string ResetRequest = "reset_request";
+
+    /// <summary>A reset request refused before the email was looked at (the security check did not pass).</summary>
+    public const string ResetRequestFailed = "reset_request_failed";
+
     public const string ResetComplete = "reset_complete";
+
+    /// <summary>A reset link that was not valid any more when it was used.</summary>
+    public const string ResetCompleteFailed = "reset_complete_failed";
     public const string TotpEnroll = "totp_enroll";
     public const string TotpChange = "totp_change";
     public const string RecoveryCodeUse = "recovery_code_use";

@@ -30,7 +30,7 @@ public static class AdminPasswordResetEndpoints
     public const int TokenEntropyBytes = 32;
 
     /// <summary>Audit action for a reset request refused before the email was looked at.</summary>
-    public const string RequestFailedEvent = "reset_request_failed";
+    public const string RequestFailedEvent = AdminAuditActions.ResetRequestFailed;
 
     public static void MapAdminPasswordReset(this WebApplication app)
     {
@@ -508,7 +508,7 @@ public static class AdminPasswordResetEndpoints
     {
         await audit.AddAsync(
             AdminAuditEntry.CreateAuthEvent(
-                "reset_complete_failed",
+                AdminAuditActions.ResetCompleteFailed,
                 string.Empty,
                 ipHmac,
                 reasonClass: "invalid_link",

@@ -189,4 +189,57 @@ public static class AdminConsoleCopy
     public const string GoToStats = "Go to Stats";
 
     public static string Title(string screen) => screen + TitleSuffix;
+
+    // ---- S-D1 and S-D2: the audit log (T07) ----
+
+    /// <summary>The nav entry (TD-ADM-UI-na-X03); also S-D1's title, heading and table caption.</summary>
+    public const string NavAuditLog = "Audit log";
+
+    /// <summary>Under S-D1's heading, as draft #42 had it.</summary>
+    public const string AuditLede = "Read-only record of admin authentication and entity changes. This log cannot be edited or deleted.";
+
+    /// <summary>
+    /// Column headings (TD-ADM-UI-na-X02). Action and Entity type also name
+    /// their filters and chips; all six label the entry page's fields.
+    /// </summary>
+    public const string AuditColumnTime = "Time (ET)";
+    public const string AuditColumnActor = "Actor";
+    public const string AuditColumnAction = "Action";
+    public const string AuditColumnEntityType = "Entity type";
+    public const string AuditColumnEntityId = "Entity ID";
+    public const string AuditColumnOutcome = "Outcome";
+
+    /// <summary>Filter labels, as draft #42 had them: every entity type, and the range of days.</summary>
+    public const string AuditAllTypes = "All types";
+    public const string AuditFilterFrom = "From";
+    public const string AuditFilterTo = "To";
+
+    /// <summary>"No audit entries yet." and "We couldn't load the audit log.", as draft #42 had them.</summary>
+    public const string AuditEntriesType = "audit entries";
+    public const string AuditLogType = "the audit log";
+
+    /// <summary>The outcome as the Outcome column words it. New copy.</summary>
+    public const string AuditOutcomeSuccess = "Success";
+    public const string AuditOutcomeFailure = "Failure";
+    public const string AuditOutcomeDenied = "Denied";
+
+    /// <summary>S-D2: its title and heading, its way back and its two sections, as draft #42 had them.</summary>
+    public const string AuditEntry = "Audit entry";
+    public const string BackToAuditLog = "Back to audit log";
+    public const string AuditEntryHeading = "Entry";
+    public const string AuditBeforeAfter = "Before and after";
+    public const string AuditBefore = "Before";
+    public const string AuditAfter = "After";
+
+    /// <summary>The marker on a field whose before and after differ (TD-ADM-UI-na-X02).</summary>
+    public const string AuditChanged = "Changed";
+
+    /// <summary>A side with no fields to show, as draft #42 had it.</summary>
+    public const string AuditNoFields = "No allowed fields.";
+
+    /// <summary>The first characters of the keyed hash of the IP, as draft #42 named it.</summary>
+    public const string AuditIpPrefix = "IP HMAC prefix";
+
+    /// <summary>The failure reason class of an entry (Spec §10 Context). New copy.</summary>
+    public const string AuditReason = "Reason";
 }

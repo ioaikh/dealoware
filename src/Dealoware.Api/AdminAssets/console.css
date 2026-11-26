@@ -735,3 +735,88 @@ time.ts:focus::after {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* ---- S-D1 and S-D2: the audit log (AdminAuditPages) ---- */
+
+/* The action filter has many names: it takes the whole row, and a long name wraps. */
+.filters .field.wide {
+  grid-column: 1 / -1;
+}
+
+.audit-filters .checks li {
+  min-width: 0;
+}
+
+.audit-filters .checks input {
+  flex: none;
+}
+
+.audit-filters .checks label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* An outcome is a word; the border only sets the three apart. */
+.badge-failure {
+  border-width: 2px;
+}
+
+.badge-denied {
+  border-style: dashed;
+}
+
+.audit-section h2 {
+  font-size: 1.2rem;
+  line-height: 1.3;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.audit-section:first-of-type h2 {
+  margin-top: 0;
+}
+
+/* A long id wraps on a narrow screen instead of pushing the page sideways. */
+.audit-details .id {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Before and after side by side; one under the other on a narrow screen. */
+.snapshots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.snapshot h3 {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.snapshot .detail {
+  grid-template-columns: minmax(6rem, 10rem) 1fr;
+}
+
+.snapshot .none {
+  margin: 0;
+}
+
+/* "Changed" is a word beside the value, never colour alone. */
+.badge-changed {
+  margin-top: 0.25rem;
+  background: var(--banner);
+  border-color: var(--accent);
+}
+
+@media (max-width: 48rem) {
+  .snapshots {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 30rem) {
+  .snapshot .detail {
+    grid-template-columns: 1fr;
+  }
+}

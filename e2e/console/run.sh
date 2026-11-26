@@ -29,6 +29,8 @@ start_app_behind_proxy
 # Nothing is seeded here. The list spec writes its made-up participants,
 # artifacts, negotiations and offers into the run's database itself
 # (entities.ts and seed_entities.py, which refuse any other database).
+# The audit viewer's spec (audit.spec.ts) writes its made-up audit entries
+# the same way (seed_audit.py, which refuses any other database too).
 # Before every test the spec seeds the owner with a
 # password and an enrolled authenticator through the sign-in suite's own
 # seeding (e2e/sign-in/owner.ts and seed_owner.py), and signs in through the
