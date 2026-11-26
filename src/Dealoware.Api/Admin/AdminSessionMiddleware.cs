@@ -13,6 +13,9 @@ namespace Dealoware.Api.Admin;
 /// requires the token. Rejects are a generic 403 (R17).
 /// Exempts only exact canonical path+method pairs for the session cookie.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
+/// An accepted request renews the idle window, save one: GET of
+/// <see cref="AdminSessionEndpoints.StatusPath"/>, which only reads how long
+/// the session has left (<see cref="IsNonRenewingRead"/>).
 /// Two answers differ, both for a browser's GET of a page, never for
 /// /admin/api/**, a static file or any other method:
 /// a GET of one of the four pages that are served only during a pending
@@ -127,18 +130,37 @@ public sealed class AdminSessionMiddleware
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
 
-        session!.UpdateActivity(now);
-        try
+        // Every accepted request renews the idle window, except the one read
+        // that only asks how long the session has left: a page's timer reads
+        // it, and a timer must never keep a session alive (TD-ADM-176). That
+        // read is checked exactly as above; only the renewal is skipped.
+        if (!IsNonRenewingRead(context))
         {
-            await sessions.SaveChangesAsync(context.RequestAborted);
-        }
-        catch
-        {
-            // Sliding renewal is best-effort; do not fail a valid session on activity write.
+            session!.UpdateActivity(now);
+            try
+            {
+                await sessions.SaveChangesAsync(context.RequestAborted);
+            }
+            catch
+            {
+                // Sliding renewal is best-effort; do not fail a valid session on activity write.
+            }
         }
 
         await _next(context);
     }
+
+    /// <summary>
+    /// GET of <see cref="AdminSessionEndpoints.StatusPath"/>, by the exact
+    /// canonical path, and nothing else: the one accepted request that does
+    /// not renew the idle window. It lets nothing through that the gate
+    /// would refuse. Any other spelling of the path, and any other method,
+    /// renews as every request does.
+    /// </summary>
+    internal static bool IsNonRenewingRead(HttpContext context)
+        => HttpMethods.IsGet(context.Request.Method)
+           && AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)
+           && string.Equals(canonical, AdminSessionEndpoints.StatusPath, StringComparison.Ordinal);
 
     /// <summary>
     /// The one rule for a session the gate lets through: it exists, has not run
