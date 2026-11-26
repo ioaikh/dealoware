@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Dealoware.Api.Admin;
 using Dealoware.Application.Admin;
 using Dealoware.Domain.Admin;
@@ -1205,6 +1206,252 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
         Assert.Throws<ArgumentException>(() => AdminBootstrapToken.Create(OwnerEmail, " ", now));
     }
 
+    [Fact]
+    public async Task TD_ADM_010_LinkCheck_UsableLink_Answers200Valid_ChangesNothing_NeedsNoTurnstile_WritesNoAudit()
+    {
+        await ResetOwnerAsync();
+        var token = await IssueLinkAsync();
+        var auditBefore = (await AuditAsync()).Count;
+        _factory.LogCollector.Clear();
+        // The widget is not on screen when the page asks, so no Turnstile token is sent or needed.
+        _factory.Services.GetRequiredService<FakeTurnstileVerifier>().Unavailable = true;
+
+        using var api = await PostBootstrapAsync(Check(token));
+        using var page = await PostBootstrapAsync(Check(token), AdminBootstrapEndpoints.PagePath);
+        // A password or a Turnstile token sent along is not read: a check never sets anything.
+        using var withExtras = await PostBootstrapAsync(new
+        {
+            token,
+            check = true,
+            newPassword = NewPassword(),
+            turnstileToken = FakeTurnstileVerifier.ValidToken
+        });
+
+        foreach (var reply in new[] { api, page, withExtras })
+        {
+            Assert.Equal(HttpStatusCode.OK, reply.StatusCode);
+            Assert.Equal("""{"valid":true}""", await reply.Content.ReadAsStringAsync());
+            Assert.Contains("no-store", reply.Headers.CacheControl?.ToString() ?? string.Empty, StringComparison.Ordinal);
+            Assert.Null(reply.Headers.Location);
+            Assert.Empty(ReadSetCookie(reply));
+        }
+
+        // Nothing changed: no owner rows, the link is unused, no audit row.
+        Assert.False(await OwnerRowsExistAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Null(db.AdminBootstrapTokens.Single().ConsumedAt);
+        }
+
+        Assert.Equal(auditBefore, (await AuditAsync()).Count);
+
+        // Each check took one slot of the shared reset/bootstrap IP budget.
+        Assert.Equal(3, (await ResetCounterAsync())!.FailureCount);
+
+        // Like the reset pre-check: the outcome class in the log, never the token or its hash.
+        var logs = string.Join("\n", _factory.LogCollector.Lines);
+        Assert.Contains(AdminBootstrapEndpoints.CheckLogCategory + "|Information|Admin bootstrap check: valid", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain("Admin bootstrap check: invalid", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain(token, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(AdminBootstrapToken.HashRaw(token), logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(OwnerEmail, logs, StringComparison.OrdinalIgnoreCase);
+
+        // The same link still sets the password, with its security check as before.
+        var password = NewPassword();
+        using var refused = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        _factory.Services.GetRequiredService<FakeTurnstileVerifier>().Unavailable = false;
+        using var ok = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal("""{"passwordSet":true,"next":"sign-in"}""", await ok.Content.ReadAsStringAsync());
+        Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TD_ADM_010_LinkCheck_EveryDeadLink_GetsTheOneInvalidLinkReply_WithNoAuditRow(bool credentialRow)
+    {
+        var password = NewPassword();
+
+        await ResetOwnerAsync();
+        var live = await IssueLinkAsync();
+        _factory.LogCollector.Clear();
+        using var unknown = await PostBootstrapAsync(Check(Guid.NewGuid().ToString("N")));
+        using var truncated = await PostBootstrapAsync(Check(live[..^4]));
+        using var missing = await PostBootstrapAsync(new { check = true });
+        using var blank = await PostBootstrapAsync(Check("   "));
+        var unknownReply = await ReplyAsync(unknown);
+        var truncatedReply = await ReplyAsync(truncated);
+        var missingReply = await ReplyAsync(missing);
+        var blankReply = await ReplyAsync(blank);
+        // A dead-link check writes no audit row (the reset pre-check writes none either) but still takes its slot.
+        Assert.DoesNotContain(await AuditAsync(), e => e.Action == AdminAuthEvents.BootstrapCompleteFailed);
+        Assert.Equal(4, (await ResetCounterAsync())!.FailureCount);
+        var logs = string.Join("\n", _factory.LogCollector.Lines);
+        Assert.Contains("Admin bootstrap check: invalid", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain("Admin bootstrap check: valid", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain(live[..^4], logs, StringComparison.OrdinalIgnoreCase);
+
+        await ResetOwnerAsync();
+        var aged = await IssueLinkAsync();
+        Clock().Advance(AdminBootstrapToken.Lifetime);
+        using var expired = await PostBootstrapAsync(Check(aged));
+        var expiredReply = await ReplyAsync(expired);
+
+        await ResetOwnerAsync();
+        var superseded = await IssueLinkAsync();
+        await IssueLinkAsync();
+        using var old = await PostBootstrapAsync(Check(superseded));
+        var supersededReply = await ReplyAsync(old);
+
+        await ResetOwnerAsync();
+        var spent = await IssueLinkAsync();
+        using var ok = await PostBootstrapAsync(Body(spent, password));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        using var again = await PostBootstrapAsync(Check(spent));
+        var usedReply = await ReplyAsync(again);
+
+        // A link that is still unused, but the owner already has a password.
+        await ResetOwnerAsync();
+        var afterSetup = await IssueLinkAsync();
+        await SeedExistingPasswordAsync(NewPassword(), credentialRow);
+        using var alreadySetUp = await PostBootstrapAsync(Check(afterSetup));
+        var alreadySetUpReply = await ReplyAsync(alreadySetUp);
+
+        AssertInvalidLink(unknown);
+        Assert.Equal(string.Empty, unknownReply.Body);
+        Assert.Equal(unknownReply, truncatedReply);
+        Assert.Equal(unknownReply, missingReply);
+        Assert.Equal(unknownReply, blankReply);
+        Assert.Equal(unknownReply, expiredReply);
+        Assert.Equal(unknownReply, supersededReply);
+        Assert.Equal(unknownReply, usedReply);
+        Assert.Equal(unknownReply, alreadySetUpReply);
+
+        // It is the very reply a submission with a dead link gets.
+        using var submitted = await PostBootstrapAsync(Body(Guid.NewGuid().ToString("N"), password));
+        Assert.Equal(unknownReply, await ReplyAsync(submitted));
+    }
+
+    [Fact]
+    public async Task TD_ADM_051_LinkCheck_SharesTheIpBudgetWithSubmissions_AndIsRefusedOnceThrottled()
+    {
+        await ResetOwnerAsync();
+        var token = await IssueLinkAsync();
+        var password = NewPassword();
+
+        // Checks and submissions count on one counter: half each, good and dead links alike.
+        for (var i = 0; i < AdminResetIpCounter.Threshold; i++)
+        {
+            switch (i % 4)
+            {
+                case 0:
+                    using (var usable = await PostBootstrapAsync(Check(token)))
+                    {
+                        Assert.Equal(HttpStatusCode.OK, usable.StatusCode);
+                    }
+
+                    break;
+                case 1:
+                    using (var dead = await PostBootstrapAsync(Check(Guid.NewGuid().ToString("N"))))
+                    {
+                        AssertInvalidLink(dead);
+                    }
+
+                    break;
+                case 2:
+                    using (var deadSubmit = await PostBootstrapAsync(Body(Guid.NewGuid().ToString("N"), password)))
+                    {
+                        AssertInvalidLink(deadSubmit);
+                    }
+
+                    break;
+                default:
+                    using (var viaPage = await PostBootstrapAsync(Check(token), AdminBootstrapEndpoints.PagePath))
+                    {
+                        Assert.Equal(HttpStatusCode.OK, viaPage.StatusCode);
+                    }
+
+                    break;
+            }
+        }
+
+        var counter = await ResetCounterAsync();
+        Assert.NotNull(counter);
+        Assert.Equal(AdminResetIpCounter.Threshold, counter.FailureCount);
+        Assert.True(counter.IsLocked(Clock().UtcNow));
+        var auditBefore = (await AuditAsync()).Count;
+        _factory.LogCollector.Clear();
+
+        using var usableWhileThrottled = await PostBootstrapAsync(Check(token));
+        using var deadWhileThrottled = await PostBootstrapAsync(Check(Guid.NewGuid().ToString("N")));
+        using var pageWhileThrottled = await PostBootstrapAsync(Check(token), AdminBootstrapEndpoints.PagePath);
+        using var submitWhileThrottled = await PostBootstrapAsync(Body(token, password));
+
+        // Usable and dead links are told apart no longer: the same 429 as a throttled submission.
+        var expected = $$"""{"message":"{{AdminAuthCopy.SignInFailure}}"}""";
+        foreach (var response in new[] { usableWhileThrottled, deadWhileThrottled, pageWhileThrottled, submitWhileThrottled })
+        {
+            Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+            Assert.Equal(expected, await response.Content.ReadAsStringAsync());
+            Assert.False(response.Headers.Contains("Retry-After"));
+            Assert.Null(response.Headers.Location);
+        }
+
+        // Throttled checks are not counted, are not answered, and leave no trace of the link.
+        Assert.Equal(AdminResetIpCounter.Threshold, (await ResetCounterAsync())!.FailureCount);
+        Assert.Equal(auditBefore, (await AuditAsync()).Count);
+        Assert.DoesNotContain("Admin bootstrap check:", string.Join("\n", _factory.LogCollector.Lines), StringComparison.Ordinal);
+        Assert.False(await OwnerRowsExistAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            Assert.Null(db.AdminBootstrapTokens.Single().ConsumedAt);
+        }
+
+        // Once the lock has run out the same link checks as usable and still works.
+        Clock().Advance(AdminResetIpCounter.LockDuration + TimeSpan.FromSeconds(1));
+        using var afterLock = await PostBootstrapAsync(Check(token));
+        Assert.Equal(HttpStatusCode.OK, afterLock.StatusCode);
+        using var set = await PostBootstrapAsync(Body(token, password));
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+        Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    [Fact]
+    public async Task TD_ADM_010_LinkCheck_IsOnlyTheJsonTrue_AndNeedsTheAntiForgeryPair()
+    {
+        await ResetOwnerAsync();
+        var token = await IssueLinkAsync();
+        var password = NewPassword();
+
+        // Without the anti-forgery pair a check is refused like any other POST, and counts nothing.
+        using var noCsrf = await SendJsonWithoutAntiForgeryAsync(AdminBootstrapEndpoints.ApiPath, Check(token));
+        Assert.Equal(HttpStatusCode.Forbidden, noCsrf.StatusCode);
+        Assert.Null(await ResetCounterAsync());
+
+        // "check": false is an ordinary submission, with every check a submission gets.
+        using var noTurnstile = await PostBootstrapAsync(new { token, check = false, newPassword = password });
+        Assert.Equal(HttpStatusCode.Unauthorized, noTurnstile.StatusCode);
+        Assert.Null(await ResetCounterAsync());
+        using var submitted = await PostBootstrapAsync(new
+        {
+            token,
+            check = false,
+            newPassword = password,
+            turnstileToken = FakeTurnstileVerifier.ValidToken
+        });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        Assert.Equal("""{"passwordSet":true,"next":"sign-in"}""", await submitted.Content.ReadAsStringAsync());
+        Assert.True(await StoredPasswordMatchesAsync(password));
+    }
+
+    /// <summary>The page's link pre-check: the token and "check": true, nothing else.</summary>
+    private static object Check(string token)
+        => new { token, check = true };
+
     private static object Body(string token, string password)
         => new { token, newPassword = password, turnstileToken = FakeTurnstileVerifier.ValidToken };
 
@@ -1524,16 +1771,17 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
     {
         using var response = await SendAsync(HttpMethod.Get, AdminBootstrapEndpoints.PagePath);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("bootstrap", payload.GetProperty("screen").GetString());
-        var token = payload.GetProperty("csrfToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        var html = await response.Content.ReadAsStringAsync();
+        var meta = Regex.Match(html, "<meta name=\"dw-csrf\" content=\"([0-9A-Fa-f]+)\">");
+        Assert.True(meta.Success, "the bootstrap page must carry the anti-forgery token in meta dw-csrf");
+        var token = meta.Groups[1].Value;
         var setCookie = Assert.Single(
             ReadSetCookie(response),
             c => c.StartsWith(AdminCookieNames.AntiForgery + "=", StringComparison.Ordinal));
         var nonce = setCookie.Split(';', 2)[0].Split('=', 2)[1];
         Assert.NotEqual(nonce, token);
-        return (token!, $"{AdminCookieNames.AntiForgery}={nonce}");
+        Assert.DoesNotContain(nonce, html, StringComparison.Ordinal);
+        return (token, $"{AdminCookieNames.AntiForgery}={nonce}");
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path)
