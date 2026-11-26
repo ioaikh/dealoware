@@ -721,8 +721,13 @@ public static partial class AdminDeleteEndpoints
             fieldPolicy, principal, fields, FieldResourceContext.ForSelfProfile(string.Empty));
     }
 
+    /// <summary>
+    /// The name an artifact is shown by: its subject entity with the lowest id,
+    /// the order the edit token and the cascade hash use. Rows come back in no
+    /// fixed order, so the first loaded is not used.
+    /// </summary>
     private static string? ArtifactName(Artifact artifact)
-        => artifact.Entities.Count == 0 ? null : artifact.Entities[0].Name;
+        => artifact.Entities.OrderBy(e => e.Id).FirstOrDefault()?.Name;
 
     private static string HashToken(string raw)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.ASCII.GetBytes(raw)));

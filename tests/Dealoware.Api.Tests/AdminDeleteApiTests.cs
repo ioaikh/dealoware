@@ -555,6 +555,25 @@ public partial class AdminDeleteApiTests : IClassFixture<DeleteWebApplicationFac
         await AssertLiveAsync("participants", seed.PartyA.Id);
     }
 
+    // An artifact with several subject entities is named by the one with the lowest id, in the
+    // intent and in its audit row, whatever order the rows come back in.
+    [Fact]
+    public async Task TdAdm094_ArtifactWithSeveralEntities_NamedByTheLowestId()
+    {
+        var seed = await SeedAsync();
+        var session = await NewSessionAsync();
+        var expected = seed.TwoEntityArtifact.Entities.OrderBy(e => e.Id).First().Name;
+
+        var intent = await IntentAsync("artifacts", seed.TwoEntityArtifact.Id, session);
+        Assert.Equal(expected, intent.Body.GetProperty("identity").GetProperty("name").GetString());
+        using var response = await DeleteAsync("artifacts", seed.TwoEntityArtifact.Id, session, intent.Token);
+
+        await OkAsync(response);
+        var audit = Assert.Single(await AuditAsync(seed.TwoEntityArtifact.Id));
+        Assert.Equal(expected, JsonDocument.Parse(audit.BeforeSnapshot!).RootElement.GetProperty("ArtifactName").GetString());
+        Assert.Equal(2, (await ArtifactAsync(seed.TwoEntityArtifact.Id)).Entities.Count);
+    }
+
     // TD-ADM-094 negative: a negotiation that refers to the artifact appears after the intent:
     // the delete is refused as blocked, and the artifact stays.
     [Fact]
