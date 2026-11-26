@@ -1,1 +1,299 @@
 /* Signed-out admin auth asset. No secrets. */
+
+/*
+ * Shared stylesheet for the signed-out admin pages (sign-in, first-time
+ * setup, password reset, authenticator setup). It is linked with the page
+ * nonce, so the page policy stays style-src 'nonce-...' with no 'self'.
+ * Colours meet WCAG 2.2 AA: text at least 4.5:1, field borders and the
+ * focus ring at least 3:1 against the surface they sit on.
+ */
+
+:root {
+  --ink: #1a1a1a;
+  --muted: #3d3d3d;
+  --bg: #f4f1ea;
+  --card: #ffffff;
+  --accent: #0b4f8a;
+  --accent-ink: #ffffff;
+  --danger: #8a1515;
+  --danger-bg: #fdecec;
+  --focus: #0b4f8a;
+  --line: #c8c2b6;
+  --field-line: #6b6557;
+  --banner: #e8f0f8;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", "Liberation Sans", Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+body {
+  min-height: 100vh;
+}
+
+[hidden] { display: none !important; }
+
+.auth-shell {
+  max-width: 28rem;
+  margin: 2.5rem auto;
+  padding: 0 1.25rem 3rem;
+}
+
+.auth-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  overflow-wrap: break-word;
+}
+
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+  margin: 0 0 1rem;
+}
+
+p, .lede {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.field {
+  margin: 0 0 1rem;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="text"],
+input[type="tel"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--field-line);
+  border-radius: 0.3rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--danger);
+  border-width: 2px;
+}
+
+input:focus,
+button:focus,
+a:focus,
+[tabindex="-1"]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button,
+.btn {
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.secondary,
+.btn.secondary {
+  background: var(--card);
+  color: var(--accent);
+}
+
+button.secondary[aria-pressed="true"] {
+  background: var(--banner);
+}
+
+.toggle {
+  flex: 0 0 auto;
+}
+
+.helper,
+.field-error {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.helper,
+.field-error:not(:empty) {
+  margin-top: 0.35rem;
+}
+
+.helper {
+  color: var(--muted);
+}
+
+.field-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.alert {
+  border: 2px solid var(--danger);
+  background: var(--danger-bg);
+  color: var(--ink);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+  border-radius: 0.3rem;
+}
+
+.banner,
+.status {
+  border: 1px solid var(--accent);
+  background: var(--banner);
+  color: var(--ink);
+  padding: 0.75rem 0.85rem;
+  margin: 0 0 1rem;
+  border-radius: 0.3rem;
+}
+
+.banner-actions {
+  margin-top: 0.5rem;
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin: 0.75rem 0 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 0.1em;
+}
+
+.turnstile {
+  margin: 0 0 1rem;
+  min-height: 4.5rem;
+  max-width: 100%;
+}
+
+.turnstile-status {
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+/* Kept in the page while empty so the status region is announced when it fills. */
+.turnstile-status:empty {
+  margin: 0;
+}
+
+#turnstile-widget,
+#turnstile-widget iframe {
+  max-width: 100%;
+}
+
+#turnstile-widget:not(:empty) {
+  margin: 0 0 0.5rem;
+}
+
+.codes {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.75rem;
+  margin: 0 0 1rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.qr {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  height: 12rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  margin: 0 0 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0 0 1rem;
+}
+
+.check input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.2rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.live {
+  min-height: 1.25rem;
+}
+
+/* Narrow screens and 200% zoom: give the form the full width. */
+@media (max-width: 30rem) {
+  .auth-shell {
+    margin: 1rem auto;
+    padding: 0 0.5rem 2rem;
+  }
+
+  .auth-card {
+    padding: 1rem 0.75rem;
+  }
+}
