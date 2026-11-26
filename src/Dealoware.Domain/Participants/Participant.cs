@@ -116,6 +116,24 @@ public sealed class Participant
     }
 
     /// <summary>
+    /// Admin soft delete (Spec §11.1): sets <see cref="DeletedAt"/>, the next
+    /// <see cref="Version"/> and the time of the change, and nothing else.
+    /// Nothing is erased. False, with nothing changed, when the participant is
+    /// already soft-deleted: a deleted row is never deleted again.
+    /// </summary>
+    public bool SoftDelete(DateTimeOffset now)
+    {
+        if (DeletedAt is not null)
+            return false;
+
+        var at = now.ToUniversalTime();
+        DeletedAt = at;
+        Version++;
+        UpdatedAt = at;
+        return true;
+    }
+
+    /// <summary>
     /// Updates the login email (owner-only operation).
     /// </summary>
     public void UpdateLoginEmail(string? loginEmail)

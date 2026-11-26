@@ -34,7 +34,8 @@ public class DatabaseMigrationBaselineTests
         AdminAuditLogAppendOnly.MigrationId,
         DatabaseMigrationBaseline.BootstrapTokensMigrationId,
         AdminSessionStepUps.MigrationId,
-        AdminSessionRecoveryNotices.MigrationId
+        AdminSessionRecoveryNotices.MigrationId,
+        DatabaseMigrationBaseline.DeleteConfirmTokensMigrationId
     ];
 
     [Fact]
@@ -724,7 +725,9 @@ public class DatabaseMigrationBaselineTests
         Assert.Equal(DatabaseMigrationBaseline.BootstrapTokensMigrationId, migrations[7]);
         Assert.Equal(AdminSessionStepUps.MigrationId, migrations[8]);
         Assert.Equal(AdminSessionRecoveryNotices.MigrationId, migrations[9]);
-        Assert.Equal(10, migrations.Count);
+        Assert.Equal(DatabaseMigrationBaseline.DeleteConfirmTokensMigrationId, migrations[10]);
+        Assert.Equal(AdminDeleteConfirmTokens.MigrationId, migrations[10]);
+        Assert.Equal(11, migrations.Count);
     }
 
     [Fact]

@@ -405,6 +405,51 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                     b.ToTable("AdminCredentials", (string)null);
                 });
 
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminDeleteConfirmToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CascadeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("AdminDeleteConfirmTokens", (string)null);
+                });
+
             modelBuilder.Entity("Dealoware.Domain.Admin.AdminPasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -991,6 +1036,15 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Strategies_OwnerParticipantId_IsActive");
 
                     b.ToTable("Strategies", (string)null);
+                });
+
+            modelBuilder.Entity("Dealoware.Domain.Admin.AdminDeleteConfirmToken", b =>
+                {
+                    b.HasOne("Dealoware.Domain.Admin.AdminSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dealoware.Domain.Admin.AdminSessionRecoveryNotice", b =>
