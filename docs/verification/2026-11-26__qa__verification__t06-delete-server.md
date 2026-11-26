@@ -72,6 +72,9 @@ The reviewers found:
   - `AdminTotpTests.SecSc6_NewServiceInstanceKeepsFactorLock`
   - four `PostmanCollectionHygieneTests.RunNewmanScript_*`
 - **CI:** the PostgreSQL job runs the whole `AdminDeleteApiTests` class on every push, including the four live-transaction tests.
+  - The PostgreSQL job passed on every push of the piece. That was the first run anywhere of the four live-transaction tests, and they passed.
+  - On the engine change (fde2166), Build & Test had one failure, the reset-mail test race fixed in pull request #73. Firefox had one failure, the offers-list paging test race fixed in pull request #72. Neither touches this piece. All five new engine tests passed.
+  - After `main` with #73 was merged in, Build & Test and the PostgreSQL job passed. The pull request's five required checks on its last commit are the final record.
 
 ## New wording, for the owner's approval
 
