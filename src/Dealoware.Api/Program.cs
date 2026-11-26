@@ -114,6 +114,13 @@ try
     AdminHostOptionsValidator.Validate(
         adminHostOptions,
         builder.Environment.EnvironmentName);
+
+    // Only Development may verify Turnstile against anything but Cloudflare.
+    var turnstileOptions = new TurnstileOptions();
+    builder.Configuration.GetSection(TurnstileOptions.SectionName).Bind(turnstileOptions);
+    TurnstileOptionsValidator.Validate(
+        turnstileOptions,
+        builder.Environment.EnvironmentName);
 }
 catch (InvalidOperationException ex)
 {
