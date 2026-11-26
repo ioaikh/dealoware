@@ -928,7 +928,7 @@ public partial class AdminConsoleShellTests
     [Fact]
     public void ShellScript_SignsOutByPost_FollowsOnlyTheExactReply_AndKeepsToTheHouseRules()
     {
-        // Read as the repository holds it, whatever line endings the checkout chose.
+        // Line endings as in the repository, whatever a Windows checkout made of them.
         var script = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", AdminSignedInPage.AssetFolder, "console.js"))
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
