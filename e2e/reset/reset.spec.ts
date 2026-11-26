@@ -54,6 +54,7 @@ const EXPIRED_RESET = 'Reset links work once and expire after 1 hour.';
 const EXPIRED_SETUP =
   'Setup links work once and expire after 24 hours. Ask for a new setup link through the same channel you got this one.';
 const NOSCRIPT = 'Turn on JavaScript to request a reset link.';
+const CONFIRM_NOSCRIPT = 'Turn on JavaScript to set your password.';
 const EMAIL_REQUIRED = 'Enter an email address.';
 const EMAIL_INVALID = 'Enter a well-formed email address.';
 const RETRY = 'That didn\'t go through. Wait a moment and try again.';
@@ -1196,7 +1197,7 @@ test('S-A11: sign-in opened after a session ended says so once, and the flag car
 test.describe('JavaScript off', () => {
   test.use({ javaScriptEnabled: false });
 
-  test('with JavaScript off, S-A8 shows its heading, one sentence and the way back, and S-A9 and S-A5 read the same and keep their links', async ({ page }) => {
+  test('with JavaScript off, S-A8 shows its heading, one sentence and the way back, S-A10 its heading and one sentence, and S-A9 and S-A5 read the same and keep their links', async ({ page }) => {
     await page.goto(RESET);
     await expect(page.locator('#reset-request-form')).toBeHidden();
     const shown = (await page.locator('main').innerText()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -1217,7 +1218,7 @@ test.describe('JavaScript off', () => {
     await expect(page.locator('#reset-form')).toBeHidden();
     await expect(page.locator('#reset-status')).toBeHidden();
     const confirmShown = (await page.locator('main').innerText()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    expect(confirmShown).toEqual(['Set a new password', NOSCRIPT]);
+    expect(confirmShown).toEqual(['Set a new password', CONFIRM_NOSCRIPT]);
     await shot(page, 'reset_confirm_js_off');
 
     await page.goto(`${EXPIRED}?for=reset`);
