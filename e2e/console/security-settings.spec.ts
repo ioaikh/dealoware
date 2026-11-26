@@ -259,6 +259,38 @@ test.beforeEach(async ({ page }) => {
     cspMessages.push(text);
   });
   pageErrors = collectPageErrors(page);
+  // PROBE (do not merge): where the WebKit /admin/api/me page error comes from, in "create new codes" only.
+  if (test.info().title.startsWith('create new codes')) {
+    const t0 = Date.now();
+    const log = (...parts: unknown[]) => console.log('PROBE', String(Date.now() - t0).padStart(6), ...parts);
+    page.on('request', (r) => {
+      if (r.isNavigationRequest() && r.frame() === page.mainFrame()) log('nav-request', r.method(), r.url());
+      else if (/\/admin\/(api\/|sign-out)/.test(r.url())) log('request', r.method(), r.url(), 'on', page.url());
+    });
+    page.on('requestfinished', async (r) => {
+      if (!/\/admin\/(api\/|sign-out)/.test(r.url())) return;
+      const response = await r.response().catch(() => null);
+      log('finished', r.method(), r.url(), response?.status());
+    });
+    page.on('requestfailed', (r) => log('failed', r.method(), r.url(), JSON.stringify(r.failure()?.errorText), 'on', page.url()));
+    page.on('framenavigated', (f) => { if (f === page.mainFrame()) log('framenavigated', f.url()); });
+    page.on('load', () => log('load', page.url()));
+    page.on('pageerror', (e) => log('pageerror', JSON.stringify(e.name), JSON.stringify(e.message)));
+    page.on('console', (m) => { if (m.text().startsWith('PROBE-PAGE')) log(m.text()); });
+    await page.addInitScript(() => {
+      const original = window.fetch;
+      window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+        const url = String(input);
+        const watched = url.includes('/admin/api/me');
+        if (watched) console.log('PROBE-PAGE fetch ' + url + ' stack: ' + (new Error().stack || '').replace(/\n/g, ' <- '));
+        const reply = original.call(this, input, init);
+        if (watched) reply.then((r) => console.log('PROBE-PAGE fetch done ' + url + ' ' + r.status), (e) => console.log('PROBE-PAGE fetch rejected ' + url + ' ' + e));
+        return reply;
+      } as typeof window.fetch;
+      addEventListener('pageshow', (e) => console.log('PROBE-PAGE pageshow persisted=' + (e as PageTransitionEvent).persisted + ' ' + location.href));
+      addEventListener('pagehide', (e) => console.log('PROBE-PAGE pagehide persisted=' + (e as PageTransitionEvent).persisted + ' ' + location.href));
+    });
+  }
   await answerCloudflare(page, { token: PASS_TOKEN });
 });
 
