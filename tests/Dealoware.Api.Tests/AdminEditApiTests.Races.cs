@@ -319,6 +319,227 @@ public partial class AdminEditApiTests
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
     }
 
+    // An engine request that had read its row before an admin write changed it: 409 in the
+    // engine's own error shape, not 500, and nothing of the request is saved.
+    [Fact]
+    public async Task EngineAccept_WhoseOfferAnAdminWriteJustChanged_409NotA500_NothingOfItSaved()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("offers", deal.OfferId, session);
+        var landed = 0;
+        await using var host = WithDbInterceptor(new BeforeSave<Offer>(async () =>
+        {
+            landed++;
+            // The accept has read the offer as Open, changed it in memory, and is about to save.
+            using var cancel = await PatchAsync("offers", deal.OfferId, new { status = "Cancelled" }, session, read.ETag);
+            await OkAsync(cancel);
+        }));
+        using var recipient = PartyClient(host, deal.RecipientApiKey);
+
+        using var accept = await recipient.PostAsync($"/offers/{deal.OfferId}/accept", null);
+
+        Assert.Equal(1, landed);
+        await AssertEngineWriteConflictAsync(accept);
+        var offer = await OfferAsync(deal.OfferId);
+        Assert.Equal(OfferStatus.Cancelled, offer.Status);
+        Assert.Equal(1u, offer.Version);
+        Assert.Equal(0, await ReadAsync(db => db.AcceptGrants.CountAsync(g => g.OfferId == deal.OfferId)));
+        Assert.Single(await AuditAsync(deal.OfferId));
+    }
+
+    // The same for a profile save that an admin rename got in ahead of.
+    [Fact]
+    public async Task EngineProfileSave_WhoseParticipantAnAdminWriteJustChanged_409NotA500_NothingOfItSaved()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var participantId = ParticipantIdOf(deal.MakerSub);
+        var read = await GetAsync("participants", participantId, session);
+        await using var host = WithDbInterceptor(new BeforeSave<Participant>(async () =>
+        {
+            using var rename = await PatchAsync("participants", participantId, new { displayName = "Admin's name" }, session, read.ETag);
+            await OkAsync(rename);
+        }));
+        using var maker = PartyClient(host, deal.MakerApiKey);
+
+        using var save = await maker.PatchAsJsonAsync(
+            "/profile", new UpdateProfileRequest { DisplayName = "My own new name", ContactEmail = "maker-contact@example.test" });
+
+        await AssertEngineWriteConflictAsync(save);
+        var participant = await ParticipantAsync(participantId);
+        Assert.Equal("Admin's name", participant.DisplayName);
+        Assert.Null(participant.ContactEmail);
+        Assert.Equal(1u, participant.Version);
+    }
+
+    // And for the engine's read of a negotiation, which saves the expiry it finds.
+    [Fact]
+    public async Task EngineNegotiationRead_WhoseExpiryAnAdminWriteGotInAheadOf_409NotA500()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var past = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        await ReadAsync(db => db.Negotiations.Where(n => n.Id == deal.NegotiationId)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.EndsAt, past)));
+        var read = await GetAsync("negotiations", deal.NegotiationId, session);
+        await using var host = WithDbInterceptor(new BeforeSave<Negotiation>(async () =>
+        {
+            using var expire = await PatchAsync("negotiations", deal.NegotiationId, new { status = "Expired" }, session, read.ETag);
+            await OkAsync(expire);
+        }));
+        using var maker = PartyClient(host, deal.MakerApiKey);
+
+        using var get = await maker.GetAsync($"/negotiations/{deal.NegotiationId}");
+
+        await AssertEngineWriteConflictAsync(get);
+        var negotiation = await NegotiationAsync(deal.NegotiationId);
+        Assert.Equal(NegotiationStatus.Expired, negotiation.Status);
+        Assert.Equal(1u, negotiation.Version);
+        var offer = await OfferAsync(deal.OfferId);
+        Assert.Equal(OfferStatus.Cancelled, offer.Status);
+        Assert.Equal(1u, offer.Version);
+
+        // Asked again, the engine reads what the admin wrote.
+        using var again = await maker.GetAsync($"/negotiations/{deal.NegotiationId}");
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+    }
+
+    // ---- Both at once, two live transactions (PostgreSQL row locks) -------------
+
+    // E12: the party's accept has written the offer and not yet committed. The admin's cancel
+    // waits on that row, and when the accept commits, finds the row changed: 409.
+    [PostgresOnlyFact]
+    public async Task E12_PostgresLive_PartyAcceptHoldsTheRow_AdminCancelWaitsThen409_AcceptStands()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("offers", deal.OfferId, session);
+
+        var (accept, cancel) = await PartyAcceptFirstAsync(
+            deal, () => PatchAsync("offers", deal.OfferId, new { status = "Cancelled" }, session, read.ETag));
+
+        using (accept)
+        using (cancel)
+        {
+            Assert.Equal(HttpStatusCode.OK, accept.StatusCode);
+            await AssertConflictAsync(cancel);
+        }
+
+        await AssertAcceptStandsAsync(deal);
+    }
+
+    // E12: the admin's cancel holds the offer and has not yet committed. The party's accept
+    // waits on that row, and when the cancel commits, finds the row changed: the engine's 409.
+    [PostgresOnlyFact]
+    public async Task E12_PostgresLive_AdminCancelHoldsTheRow_PartyAcceptWaitsThen409_CancelStands()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("offers", deal.OfferId, session);
+
+        var (cancel, accept) = await AdminWriteFirstAsync(
+            deal, host => PatchAsync("offers", deal.OfferId, new { status = "Cancelled" }, session, read.ETag, host));
+
+        using (cancel)
+        using (accept)
+        {
+            await OkAsync(cancel);
+            await AssertEngineWriteConflictAsync(accept);
+        }
+
+        await AssertCancelStandsAsync(deal);
+    }
+
+    // E7: the party's accept holds the offer. The admin's close has claimed the negotiation
+    // and waits on the offer; when the accept commits, the close finds the offer accepted: 409,
+    // and the negotiation is not closed either.
+    [PostgresOnlyFact]
+    public async Task E7_PostgresLive_PartyAcceptHoldsTheOffer_AdminCloseWaitsThen409_NothingCancelled()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("negotiations", deal.NegotiationId, session);
+
+        var (accept, close) = await PartyAcceptFirstAsync(
+            deal, () => PatchAsync("negotiations", deal.NegotiationId, new { status = "Closed" }, session, read.ETag));
+
+        using (accept)
+        using (close)
+        {
+            Assert.Equal(HttpStatusCode.OK, accept.StatusCode);
+            await AssertConflictAsync(close);
+        }
+
+        await AssertAcceptStandsAsync(deal);
+        var negotiation = await NegotiationAsync(deal.NegotiationId);
+        Assert.Equal(NegotiationStatus.Open, negotiation.Status);
+        Assert.Equal(0u, negotiation.Version);
+        Assert.Empty(await AuditAsync(deal.NegotiationId));
+    }
+
+    // E7: the admin's close holds the negotiation and its offer. The party's accept waits on
+    // the offer; when the close commits, the accept finds the row changed: the engine's 409.
+    [PostgresOnlyFact]
+    public async Task E7_PostgresLive_AdminCloseHoldsTheRows_PartyAcceptWaitsThen409_CloseStands()
+    {
+        var deal = await PartyDealAsync();
+        var session = await NewSessionAsync();
+        var read = await GetAsync("negotiations", deal.NegotiationId, session);
+
+        var (close, accept) = await AdminWriteFirstAsync(
+            deal, host => PatchAsync("negotiations", deal.NegotiationId, new { status = "Closed" }, session, read.ETag, host));
+
+        using (close)
+        using (accept)
+        {
+            await OkAsync(close);
+            await AssertEngineWriteConflictAsync(accept);
+        }
+
+        await AssertCancelStandsAsync(deal);
+        var negotiation = await NegotiationAsync(deal.NegotiationId);
+        Assert.Equal(NegotiationStatus.Closed, negotiation.Status);
+        Assert.Equal(1u, negotiation.Version);
+        Assert.Single(await AuditAsync(deal.NegotiationId));
+    }
+
+    // E12 and E7, with no order arranged: the two requests are simply sent together, several
+    // times over. Exactly one of them is the outcome each time; the other gets 409.
+    [PostgresOnlyFact]
+    public async Task E12_E7_PostgresParallel_AdminWriteAndPartyAcceptSentTogether_ExactlyOneWins()
+    {
+        var session = await NewSessionAsync();
+        for (var round = 0; round < 12; round++)
+        {
+            var deal = await PartyDealAsync();
+            var closing = round % 2 == 1;
+            var read = await GetAsync(closing ? "negotiations" : "offers", closing ? deal.NegotiationId : deal.OfferId, session);
+
+            var writing = closing
+                ? PatchAsync("negotiations", deal.NegotiationId, new { status = "Closed" }, session, read.ETag)
+                : PatchAsync("offers", deal.OfferId, new { status = "Cancelled" }, session, read.ETag);
+            var accepting = deal.Recipient.PostAsync($"/offers/{deal.OfferId}/accept", null);
+            using var write = await writing;
+            using var accept = await accepting;
+
+            if (accept.StatusCode == HttpStatusCode.OK)
+            {
+                // The party's accept is the outcome; the admin's write did not save over it.
+                await AssertConflictAsync(write);
+                await AssertAcceptStandsAsync(deal);
+                Assert.Equal(NegotiationStatus.Open, (await NegotiationAsync(deal.NegotiationId)).Status);
+            }
+            else
+            {
+                // The admin's write is the outcome; the accept got a 409 and left nothing behind.
+                Assert.Equal(HttpStatusCode.Conflict, accept.StatusCode);
+                await OkAsync(write);
+                await AssertCancelStandsAsync(deal);
+            }
+        }
+    }
+
     // ---- The write and its audit rows: together or not at all -------------------
 
     // TD-ADM-178 step 2 (the fault hook inside the close/expire transaction), Spec §10 fail closed.
