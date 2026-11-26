@@ -71,6 +71,12 @@ public static class AdminSignedOutPage
     /// </summary>
     public const string RequestScriptPath = "/admin/auth/admin-request.js";
 
+    /// <summary>
+    /// For a page with a copy button: puts a text on the clipboard, or
+    /// selects it when the browser will not. Nothing is stored.
+    /// </summary>
+    public const string ClipboardScriptPath = "/admin/auth/admin-clipboard.js";
+
     /// <summary>The only third-party origin a signed-out page may name, and only for the widget.</summary>
     public const string TurnstileOrigin = "https://challenges.cloudflare.com";
 

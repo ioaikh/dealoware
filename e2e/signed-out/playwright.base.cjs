@@ -26,7 +26,7 @@ const ENGINES = {
 
 /**
  * The Playwright configuration every signed-out admin page suite runs with
- * (e2e/bootstrap, e2e/sign-in): one worker, three engines, the real admin
+ * (e2e/bootstrap, e2e/sign-in, e2e/enrol): one worker, three engines, the real admin
  * origin reached through the loopback proxy that e2e/signed-out/harness.sh
  * starts.
  *

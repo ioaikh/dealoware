@@ -66,10 +66,17 @@ public sealed class AdminCoreOwnerAccount
 
     public bool IsTotpEnrolled => TotpEnrolledAt is not null && !string.IsNullOrEmpty(TotpSecretCipher);
 
+    /// <summary>
+    /// Sets the password: the first one (bootstrap) or a new one (reset).
+    /// An authenticator key still waiting to be confirmed goes with the old
+    /// password: whoever was shown it then must not hold the key the owner
+    /// confirms next. The next password step issues a new one.
+    /// </summary>
     public void SetPasswordHash(string passwordHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
         PasswordHash = passwordHash;
+        ClearPendingEnrollment();
     }
 
     public void SetPendingEnrollment(string pendingSecretCipher)

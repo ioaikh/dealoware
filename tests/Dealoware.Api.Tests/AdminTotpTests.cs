@@ -224,8 +224,7 @@ public class AdminTotpTests
         using var setup = await client.SendAsync(AdminGet(SetupPath));
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
         AssertNoStore(setup);
-        var enrolled = await setup.Content.ReadFromJsonAsync<JsonElement>();
-        var secret = enrolled.GetProperty("secret").GetString();
+        var secret = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
         Assert.False(string.IsNullOrWhiteSpace(secret));
 
         var totp = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret!), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
@@ -235,8 +234,8 @@ public class AdminTotpTests
         using var codes = await client.SendAsync(AdminGet(RecoveryCodesPath));
         Assert.Equal(HttpStatusCode.OK, codes.StatusCode);
         AssertNoStore(codes);
-        var shown = await codes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(AdminRecoveryCodes.Count, shown.GetProperty("recoveryCodes").GetArrayLength());
+        var shown = await AdminEnrollmentPageReader.ReadRecoveryCodesAsync(codes);
+        Assert.Equal(AdminRecoveryCodes.Count, shown.Count);
 
         using (var meAfterEnroll = await client.SendAsync(AdminGet("/admin/api/me")))
         {
@@ -255,6 +254,66 @@ public class AdminTotpTests
 
         using var meOk = await client.SendAsync(AdminGet("/admin/api/me"));
         Assert.Equal(HttpStatusCode.OK, meOk.StatusCode);
+    }
+
+    [Fact]
+    public async Task TdAdm012_EachPasswordStepIssuesANewKey_AndAnEarlierKeyNoLongerConfirms()
+    {
+        var (password, _, _) = await SeedAccountAsync(enrolled: false);
+        var client = CreateClient();
+
+        async Task<string> PasswordStepThenKeyAsync()
+        {
+            using var step1 = await client.SendAsync(
+                await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
+            Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
+            Assert.Equal("enroll", (await step1.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("next").GetString());
+
+            using var setup = await client.SendAsync(AdminGet(SetupPath));
+            var key = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
+
+            // Asked for again within the same pending sign-in, the page shows the same key.
+            using var again = await client.SendAsync(AdminGet(SetupPath));
+            Assert.Equal(key, await AdminEnrollmentPageReader.ReadKeyAsync(again));
+            return key;
+        }
+
+        // Someone sees the set-up page once and keeps the key; the owner confirms nothing.
+        var seenEarlier = await PasswordStepThenKeyAsync();
+
+        // The owner signs in again: a different key, and it is the only one that confirms.
+        var current = await PasswordStepThenKeyAsync();
+        Assert.NotEqual(seenEarlier, current);
+
+        var step = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
+        using (var withTheEarlierKey = await client.SendAsync(await JsonAsync(
+                   client, HttpMethod.Post, SetupPath, new { code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(seenEarlier), step) })))
+        {
+            await AssertGenericSignIn(withTheEarlierKey);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var account = scope.ServiceProvider.GetRequiredService<DealowareDbContext>()
+                .AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+            Assert.False(account.IsTotpEnrolled);
+        }
+
+        using var confirm = await client.SendAsync(await JsonAsync(
+            client,
+            HttpMethod.Post,
+            SetupPath,
+            new { code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(current), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow)) }));
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+
+        // What the owner's authenticator now holds is the key from the last password step.
+        using var after = _factory.Services.CreateScope();
+        var enrolled = after.ServiceProvider.GetRequiredService<DealowareDbContext>()
+            .AdminCoreOwnerAccounts.Single(a => a.Email == CoreOwnerEmail);
+        Assert.True(enrolled.IsTotpEnrolled);
+        Assert.Null(enrolled.PendingTotpSecretCipher);
+        var stored = after.ServiceProvider.GetRequiredService<TotpSecretProtector>().Decrypt(enrolled.TotpSecretCipher!);
+        Assert.Equal(current, Rfc6238Totp.ToBase32(stored));
     }
 
     [Fact]
@@ -340,23 +399,22 @@ public class AdminTotpTests
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
         using var setup = await client.SendAsync(AdminGet(SetupPath));
-        var first = await setup.Content.ReadFromJsonAsync<JsonElement>();
-        var secret = first.GetProperty("secret").GetString()!;
-        Assert.False(first.TryGetProperty("recoveryCodes", out _));
+        var first = await setup.Content.ReadAsStringAsync();
+        var secret = AdminEnrollmentPageReader.ReadKey(first);
+        Assert.Empty(AdminEnrollmentPageReader.ReadRecoveryCodes(first));
 
         var totp = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
         using var confirm = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SetupPath, new { code = totp }));
         Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
 
         using var reveal = await client.SendAsync(AdminGet(RecoveryCodesPath));
-        var shown = await reveal.Content.ReadFromJsonAsync<JsonElement>();
-        var codes = shown.GetProperty("recoveryCodes").EnumerateArray().Select(e => e.GetString()!).ToList();
+        var codes = await AdminEnrollmentPageReader.ReadRecoveryCodesAsync(reveal);
         Assert.Equal(AdminRecoveryCodes.Count, codes.Count);
 
         // C3: GET is side-effect free, so a refresh in the same pending window still shows codes.
         using var revealAgain = await client.SendAsync(AdminGet(RecoveryCodesPath));
-        var stillShown = await revealAgain.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(AdminRecoveryCodes.Count, stillShown.GetProperty("recoveryCodes").GetArrayLength());
+        var stillShown = await AdminEnrollmentPageReader.ReadRecoveryCodesAsync(revealAgain);
+        Assert.Equal(codes, stillShown);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
@@ -370,8 +428,10 @@ public class AdminTotpTests
 
         using var step1b = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SignInPath, new { email = CoreOwnerEmail, password }));
         using var afterWindow = await client.SendAsync(AdminGet(RecoveryCodesPath));
-        var hidden = await afterWindow.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.False(hidden.TryGetProperty("recoveryCodes", out _));
+        Assert.Equal(HttpStatusCode.OK, afterWindow.StatusCode);
+        var hidden = await afterWindow.Content.ReadAsStringAsync();
+        Assert.Empty(AdminEnrollmentPageReader.ReadRecoveryCodes(hidden));
+        Assert.All(codes, code => Assert.DoesNotContain(code, hidden, StringComparison.OrdinalIgnoreCase));
 
         using var useCode = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, RecoveryPath, new { recoveryCode = codes[0].ToLowerInvariant() }));
         Assert.Equal(HttpStatusCode.OK, useCode.StatusCode);
@@ -541,8 +601,22 @@ public class AdminTotpTests
         Assert.Equal(HttpStatusCode.Unauthorized, code.StatusCode);
         Assert.Contains("\"error\":\"Unauthorized\"", await code.Content.ReadAsStringAsync());
 
-        using var setup = await client.SendAsync(AdminGet(SetupPath));
-        Assert.Equal(HttpStatusCode.Unauthorized, setup.StatusCode);
+        // The set-up page is a page: a browser without a pending sign-in is sent to step 1
+        // (a constant address), and is given neither the page nor a key.
+        var browser = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        using var setup = await browser.SendAsync(AdminGet(SetupPath));
+        Assert.Equal(HttpStatusCode.Found, setup.StatusCode);
+        Assert.Equal(AdminSignInPages.SentBackLocation, Assert.Single(setup.Headers.GetValues("Location")));
+        Assert.Equal(string.Empty, await setup.Content.ReadAsStringAsync());
+
+        // Its POST keeps the gate's 401.
+        using var confirm = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SetupPath, new { code = "123456" }));
+        Assert.Equal(HttpStatusCode.Unauthorized, confirm.StatusCode);
+        Assert.Contains("\"error\":\"Unauthorized\"", await confirm.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -686,14 +760,14 @@ public class AdminTotpTests
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
         using var setup = await client.SendAsync(AdminGet(SetupPath));
-        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var secret = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
         var totp = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
         using var confirm = await client.SendAsync(await JsonAsync(client, HttpMethod.Post, SetupPath, new { code = totp }));
         Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
 
         using var reveal = await client.SendAsync(AdminGet(RecoveryCodesPath));
-        var codes = (await reveal.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("recoveryCodes").EnumerateArray().Select(e => e.GetString()!).ToList();
+        var codes = await AdminEnrollmentPageReader.ReadRecoveryCodesAsync(reveal);
+        Assert.Equal(AdminRecoveryCodes.Count, codes.Count);
 
         using var scope = _factory.Services.CreateScope();
         var hasher = scope.ServiceProvider.GetRequiredService<AdminRecoveryCodeHasher>();
@@ -841,7 +915,7 @@ public class AdminTotpTests
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
         using var setup = await client.SendAsync(AdminGet(SetupPath));
-        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var secret = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
         var csrf = await IssueCsrfAsync(client);
         var code = Rfc6238Totp.ComputeCode(Rfc6238Totp.FromBase32(secret), Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow));
         var first = await JsonAsync(client, HttpMethod.Post, SetupPath, new { code }, csrf: csrf);
@@ -958,7 +1032,7 @@ public class AdminTotpTests
         Assert.Equal(HttpStatusCode.OK, step1.StatusCode);
 
         using var setup = await client.SendAsync(AdminGet(SetupPath));
-        var secret = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var secret = await AdminEnrollmentPageReader.ReadKeyAsync(setup);
         var bytes = Rfc6238Totp.FromBase32(secret);
         var step = Rfc6238Totp.TimestepAt(DateTimeOffset.UtcNow);
         var code = Rfc6238Totp.ComputeCode(bytes, step);

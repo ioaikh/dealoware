@@ -5,15 +5,16 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// Pins on the browser runs for the signed-out admin pages (e2e/bootstrap for
-/// the first-time setup page, e2e/sign-in for the three sign-in pages) and on
-/// the runner they share (e2e/signed-out): a run stays on this machine, needs
+/// the first-time setup page, e2e/sign-in for the three sign-in pages,
+/// e2e/enrol for the two authenticator set-up pages) and on the runner they
+/// share (e2e/signed-out): a run stays on this machine, needs
 /// no privilege, keeps the loopback proxy guard, and uses the stand-in
 /// Turnstile verifier only with the app in Development.
 /// The browser tests themselves are started with each suite's run.sh.
 /// </summary>
 public class AdminSignedOutBrowserRunTests
 {
-    private static readonly string[] Suites = ["bootstrap", "sign-in"];
+    private static readonly string[] Suites = ["bootstrap", "sign-in", "enrol"];
 
     private static readonly string[] NeverInARunner =
     [
@@ -71,6 +72,7 @@ public class AdminSignedOutBrowserRunTests
     [Theory]
     [InlineData("bootstrap", "BOOTSTRAP_E2E", "bootstrap.spec.ts")]
     [InlineData("sign-in", "SIGN_IN_E2E", "sign-in.spec.ts")]
+    [InlineData("enrol", "ENROL_E2E", "enrol.spec.ts")]
     public void SuiteRunner_NamesItsPortsAndPrefix_AndLeavesTheRestToTheSharedRunner(
         string suite,
         string envPrefix,
@@ -183,6 +185,7 @@ public class AdminSignedOutBrowserRunTests
     [Theory]
     [InlineData("bootstrap")]
     [InlineData("sign-in")]
+    [InlineData("enrol")]
     public void Suite_HasItsOwnPackage_WithPlaywrightAtTheSharedPin(string suite)
     {
         // e2e/package.json feeds the Admin UI CI workflow, so each run keeps its
@@ -251,6 +254,38 @@ public class AdminSignedOutBrowserRunTests
             seed.IndexOf("database = a_runs_own_database(", StringComparison.Ordinal)
             < seed.IndexOf("sqlite3.connect(", StringComparison.Ordinal));
         Assert.Contains("DB=\"$WORKDIR/e2e.db\"", ShellCode(Path.Combine(RepoRoot(), "e2e", "signed-out", "harness.sh")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSetUpSuite_SeedsItsOwnerLikeTheSignInSuite_AndWritesNoKeyOfItsOwn()
+    {
+        // It uses the sign-in suite's seeding module, so it hands the same things over under the
+        // same names. The authenticator key and the recovery codes are made by the app, and the
+        // spec reads them off the pages as an owner would.
+        var enrol = Path.Combine(RepoRoot(), "e2e", "enrol");
+        var runner = ShellCode(Path.Combine(enrol, "run.sh"));
+        var signInRunner = ShellCode(Path.Combine(RepoRoot(), "e2e", "sign-in", "run.sh"));
+        foreach (var handed in new[]
+                 {
+                     "DB=\"$DB\"", "PYTHON=\"$PY\"", "OWNER=\"$OWNER\"", "TOTP_KEY=\"$TOTP_KEY\"", "RECOVERY_KEY=\"$RECOVERY_KEY\""
+                 })
+        {
+            Assert.Contains("export SIGN_IN_E2E_" + handed, signInRunner, StringComparison.Ordinal);
+            Assert.Contains("export SIGN_IN_E2E_" + handed, runner, StringComparison.Ordinal);
+        }
+
+        var spec = File.ReadAllText(Path.Combine(enrol, "enrol.spec.ts"));
+        Assert.Contains("} from '../sign-in/owner';", spec, StringComparison.Ordinal);
+        Assert.Contains("owner = seedOwner({ enrolled: false });", spec, StringComparison.Ordinal);
+        // It prints nothing, and writes no file but its screenshots (the axe reports are the shared check's).
+        Assert.DoesNotMatch(@"console\.\w+\(", spec);
+        Assert.DoesNotContain("writeFile", spec, StringComparison.Ordinal);
+
+        // The QR code on the page is read back by the suite's own reader, which needs no package at all.
+        var reader = File.ReadAllText(Path.Combine(enrol, "qr-reader.ts"));
+        Assert.Empty(Regex.Matches(reader, @"(?m)^import "));
+        Assert.DoesNotContain("require(", reader, StringComparison.Ordinal);
+        Assert.Contains("} from './qr-reader';", spec, StringComparison.Ordinal);
     }
 
     /// <summary>A shell script without its comment lines. It must have Unix line endings, or bash cannot run it.</summary>

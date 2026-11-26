@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 
 /**
- * The Core admin owner of the sign-in browser tests.
+ * The Core admin owner of the sign-in browser tests. The authenticator set-up
+ * suite (e2e/enrol) seeds its owner with this module too, in the second of
+ * the two states below.
  *
  * Before every test the owner is put into one of two states, straight into
  * the run's database: a password and an enrolled authenticator (with its ten
@@ -88,7 +90,7 @@ export function seedOwner(state: { enrolled: boolean }): Owner {
     SIGN_IN_E2E_RECOVERY_KEY: RECOVERY_KEY,
   };
   for (const [name, value] of Object.entries(fromTheRunner)) {
-    if (!value) throw new Error(`${name} is not set: start this suite with e2e/sign-in/run.sh`);
+    if (!value) throw new Error(`${name} is not set: start the suite with its run.sh (e2e/sign-in or e2e/enrol)`);
   }
   ownerPasswordHash ??= hashPassword(OWNER_PASSWORD);
 
