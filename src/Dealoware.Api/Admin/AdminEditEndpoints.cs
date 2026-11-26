@@ -467,6 +467,18 @@ public static partial class AdminEditEndpoints
 
         if (wantedStatus is { } wanted)
         {
+            // Closing or expiring writes each open offer's status too, so the
+            // policy must allow the owner that write as well.
+            if (openOffers.Count > 0
+                && !fieldPolicy.Evaluate(
+                    request.Principal,
+                    FieldClass.OfferStatus,
+                    FieldAction.Write,
+                    FieldResourceContext.ForNegotiation(negotiation.PartyAParticipantId, negotiation.PartyBParticipantId)))
+            {
+                return Refuse(db);
+            }
+
             // Both cancel the open offers loaded above. Closed and Expired are final.
             var done = wanted == NegotiationStatus.Closed ? negotiation.Close() : negotiation.Expire();
             if (!done || negotiation.Status != wanted)

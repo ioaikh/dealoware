@@ -886,9 +886,14 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         }
 
         // And it reads back through the audit API as written.
-        using var list = await SendAsync(HttpMethod.Get, "/admin/api/audit?action=entity_edit", null, session);
+        using var list = await SendAsync(
+            HttpMethod.Get, $"/admin/api/audit?action=entity_edit&entityId={seed.PartyA.Id}", null, session);
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
-        Assert.Contains(seed.PartyA.Id.ToString(), await list.Content.ReadAsStringAsync());
+        var listed = await list.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, listed.GetProperty("total").GetInt32());
+        var row = listed.GetProperty("items")[0];
+        Assert.Equal("Participant", row.GetProperty("entityType").GetString());
+        Assert.Equal(audit.AfterSnapshot, row.GetProperty("afterSnapshot").GetString());
     }
 
     // Spec §10 large snapshots: a long text is stored as its beginning, its length and its hash.
@@ -1016,7 +1021,8 @@ public partial class AdminEditApiTests : IClassFixture<EditWebApplicationFactory
         db.Artifacts.AddRange(artifact, twoEntities, orphan, deletedArtifact);
 
         var start = new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero);
-        var open = NewNegotiation(artifact, partyA, partyB, start, DateTimeOffset.UtcNow.AddDays(14));
+        // Whole seconds, so the value reads back the same from every store.
+        var open = NewNegotiation(artifact, partyA, partyB, start, new DateTimeOffset(2030, 6, 1, 9, 0, 0, TimeSpan.Zero));
         var closed = NewNegotiation(artifact, partyA, partyB);
         closed.Close();
         var expired = NewNegotiation(artifact, partyA, partyB);

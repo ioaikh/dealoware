@@ -213,6 +213,101 @@ public partial class AdminEditApiTests
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
     }
 
+    // ---- The two at the very same moment (PostgreSQL row locks) ------------------
+
+    // E12: the admin's cancel and the party's accept overlap. One of them is the outcome, whole.
+    [PostgresOnlyFact]
+    public async Task E12_PostgresParallel_AdminCancelAndPartyAcceptAtOnce_OneOutcome_NeverAMix()
+    {
+        var session = await NewSessionAsync();
+        for (var round = 0; round < 8; round++)
+        {
+            var deal = await PartyDealAsync();
+            var read = await GetAsync("offers", deal.OfferId, session);
+
+            var cancelling = PatchAsync("offers", deal.OfferId, new { status = "Cancelled" }, session, read.ETag);
+            var accepting = deal.Recipient.PostAsync($"/offers/{deal.OfferId}/accept", null);
+            using var cancel = await cancelling;
+            using var accept = await accepting;
+
+            var offer = await OfferAsync(deal.OfferId);
+            if (accept.StatusCode == HttpStatusCode.OK)
+            {
+                // The party's accept is the outcome; the admin's cancel did not save over it.
+                await AssertConflictAsync(cancel);
+                await AssertAcceptStandsAsync(deal);
+            }
+            else
+            {
+                // The admin's cancel is the outcome; the accept left nothing behind.
+                AssertEnginesOwnRefusal(accept);
+                await OkAsync(cancel);
+                Assert.Equal(OfferStatus.Cancelled, offer.Status);
+                Assert.Equal(1u, offer.Version);
+                Assert.Equal(TermsAsSent, offer.Terms);
+                Assert.Equal(0, await ReadAsync(db => db.AcceptGrants.CountAsync(g => g.OfferId == deal.OfferId)));
+                Assert.Single(await AuditAsync(deal.OfferId));
+            }
+        }
+    }
+
+    // E7: the admin's close and the party's accept of an offer in it overlap.
+    [PostgresOnlyFact]
+    public async Task E7_PostgresParallel_AdminCloseAndPartyAcceptAtOnce_AnAcceptedOfferIsNeverCancelled()
+    {
+        var session = await NewSessionAsync();
+        for (var round = 0; round < 8; round++)
+        {
+            var deal = await PartyDealAsync();
+            var read = await GetAsync("negotiations", deal.NegotiationId, session);
+
+            var closing = PatchAsync("negotiations", deal.NegotiationId, new { status = "Closed" }, session, read.ETag);
+            var accepting = deal.Recipient.PostAsync($"/offers/{deal.OfferId}/accept", null);
+            using var close = await closing;
+            using var accept = await accepting;
+
+            var offer = await OfferAsync(deal.OfferId);
+            var negotiation = await NegotiationAsync(deal.NegotiationId);
+            if (accept.StatusCode == HttpStatusCode.OK)
+            {
+                // Accepted first. The close either saw it accepted and closed
+                // around it, or was prepared before it and is refused.
+                await AssertAcceptStandsAsync(deal);
+                if (close.StatusCode == HttpStatusCode.OK)
+                {
+                    Assert.Equal(NegotiationStatus.Closed, negotiation.Status);
+                    Assert.Single(await AuditAsync(deal.NegotiationId));
+                }
+                else
+                {
+                    await AssertConflictAsync(close);
+                    Assert.Equal(NegotiationStatus.Open, negotiation.Status);
+                    Assert.Equal(0u, negotiation.Version);
+                    Assert.Empty(await AuditAsync(deal.NegotiationId));
+                }
+            }
+            else
+            {
+                AssertEnginesOwnRefusal(accept);
+                await OkAsync(close);
+                Assert.Equal(NegotiationStatus.Closed, negotiation.Status);
+                Assert.Equal(OfferStatus.Cancelled, offer.Status);
+                Assert.Equal(1u, offer.Version);
+                Assert.Equal(0, await ReadAsync(db => db.AcceptGrants.CountAsync(g => g.OfferId == deal.OfferId)));
+                Assert.Single(await AuditAsync(deal.OfferId));
+            }
+        }
+    }
+
+    /// <summary>
+    /// How the engine's accept answers when the admin's write landed first:
+    /// its own 409 when it read the offer after that write, and a 500 when it
+    /// had read the offer before and found the row moved as it saved (the
+    /// engine has no handler for that; it is as it was, and nothing is saved).
+    /// </summary>
+    private static void AssertEnginesOwnRefusal(HttpResponseMessage accept)
+        => Assert.Contains(accept.StatusCode, new[] { HttpStatusCode.Conflict, HttpStatusCode.InternalServerError });
+
     // ---- The write and its audit rows: together or not at all -------------------
 
     // TD-ADM-178 step 2 (the fault hook inside the close/expire transaction), Spec §10 fail closed.
