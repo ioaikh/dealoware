@@ -15,9 +15,18 @@
  *                              browser still has a session
  *                              (GET /admin/api/me). The session gate's own
  *                              401 -> the sign-in page with the "session
- *                              ended" note. Otherwise the retry sentence in
- *                              the page's live region, and the button works
- *                              again.
+ *                              ended" note. Still signed in after a 403 ->
+ *                              the server did not take this page's
+ *                              anti-forgery token, because the browser was
+ *                              given a newer pair since (a sign-in in another
+ *                              tab): the page loads itself anew, once, with
+ *                              the fixed note #fresh, and then says the
+ *                              request did not go through. Otherwise the
+ *                              retry sentence in the page's live region, and
+ *                              the button works again.
+ *
+ * With JavaScript off the form is sent as it is: its hidden field carries
+ * the same token, and the server answers with the sign-in page.
  *
  * A GET never signs anyone out, and nothing else here sends a request.
  *
@@ -38,6 +47,13 @@
   var SESSION_ENDED = "/admin/sign-in#ended";
   var ME = "/admin/api/me";
   var GATE_DENIED = "Unauthorized";
+  var SIGNED_IN_AS = "CoreOwner";
+  var FRESH = "#fresh";
+
+  // This page has just loaded itself anew over a refused token: it does not do it
+  // again, and the note leaves the address bar at once.
+  var reloaded = location.hash === FRESH;
+  if (reloaded) history.replaceState(null, "", location.pathname + location.search);
 
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) location.reload();
@@ -79,11 +95,17 @@
   }
 
   /** No clear answer to the sign-out. Ask whether this browser still has a session. */
-  function afterUnclearReply() {
+  function afterUnclearReply(tokenRefused) {
     AdminRequest.get(ME).then(function (reply) {
       var body = reply.body || {};
-      if (reply.status === 401 && body.error === GATE_DENIED) location.replace(SESSION_ENDED);
-      else sayRetry();
+      if (reply.status === 401 && body.error === GATE_DENIED) {
+        location.replace(SESSION_ENDED);
+      } else if (tokenRefused && !reloaded && reply.status === 200 && body.principal === SIGNED_IN_AS) {
+        history.replaceState(null, "", location.pathname + location.search + FRESH);
+        location.reload();
+      } else {
+        sayRetry();
+      }
     }, sayRetry);
   }
 
@@ -100,7 +122,11 @@
     AdminRequest.post(SIGN_OUT, {}).then(function (reply) {
       var body = reply.body || {};
       if (reply.status === 200 && body.signedOut === true) location.replace(SIGNED_OUT);
-      else afterUnclearReply();
-    }, afterUnclearReply);
+      else afterUnclearReply(reply.status === 403);
+    }, function () {
+      afterUnclearReply(false);
+    });
   });
+
+  if (reloaded) say(form.getAttribute("data-retry") || "");
 })();

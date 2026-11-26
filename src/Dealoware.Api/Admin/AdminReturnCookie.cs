@@ -47,9 +47,19 @@ public static class AdminReturnCookie
     /// Keeps the page this request asked for, if it is one a sign-in may
     /// return to; otherwise removes whatever an earlier visit kept, so the
     /// owner lands on Stats rather than on an older page.
+    /// <paramref name="canonicalPath"/> is already decoded once: a "?" or "#"
+    /// in it was sent encoded (%3F, %23) as part of the path, so it is not
+    /// the start of a query, and such a path is never kept. The query is
+    /// the request's own, still encoded.
     /// </summary>
     public static void Remember(HttpContext context, string canonicalPath)
     {
+        if (canonicalPath.Contains('?', StringComparison.Ordinal) || canonicalPath.Contains('#', StringComparison.Ordinal))
+        {
+            Forget(context);
+            return;
+        }
+
         var candidate = canonicalPath + context.Request.QueryString.Value;
         if (AdminReturnPath.TryValidate(candidate, out var path))
             context.Response.Cookies.Append(Name, path, CreateOptions());

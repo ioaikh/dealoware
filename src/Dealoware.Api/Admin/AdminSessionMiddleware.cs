@@ -67,7 +67,7 @@ public sealed class AdminSessionMiddleware
                 return;
             }
 
-            if (!IsAntiForgeryAllowListed(context) && !antiforgery.TryValidate(context))
+            if (!IsAntiForgeryAllowListed(context) && !await HasAntiForgeryTokenAsync(context, antiforgery))
             {
                 var csrfReason = HasPresentedAntiForgery(context) ? CsrfInvalid : CsrfMissing;
                 logger.LogWarning("Admin request rejected: {ReasonClass}", csrfReason);
@@ -110,11 +110,7 @@ public sealed class AdminSessionMiddleware
         var ownerEmail = coreOwnerOptions.Value.Email;
 
         var now = clock.UtcNow;
-        if (session is null
-            || session.IsExpired(now)
-            || !session.TotpVerified
-            || string.IsNullOrWhiteSpace(ownerEmail)
-            || !string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase))
+        if (!IsAcceptedSession(session, ownerEmail, now))
         {
             await DenyAsync(context);
             return;
@@ -131,7 +127,7 @@ public sealed class AdminSessionMiddleware
             AuthenticationType);
         context.User = new ClaimsPrincipal(identity);
 
-        session.UpdateActivity(now);
+        session!.UpdateActivity(now);
         try
         {
             await sessions.SaveChangesAsync(context.RequestAborted);
@@ -143,6 +139,18 @@ public sealed class AdminSessionMiddleware
 
         await _next(context);
     }
+
+    /// <summary>
+    /// The one rule for a session the gate lets through: it exists, has not run
+    /// out (30 minutes idle, 8 hours in all), passed its second step, and is
+    /// the configured owner's.
+    /// </summary>
+    internal static bool IsAcceptedSession(AdminSession? session, string? ownerEmail, DateTimeOffset now)
+        => session is not null
+           && !session.IsExpired(now)
+           && session.TotpVerified
+           && !string.IsNullOrWhiteSpace(ownerEmail)
+           && string.Equals(session.Email, ownerEmail, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// No valid session. A browser's GET of a signed-in page is sent to
@@ -331,7 +339,7 @@ public sealed class AdminSessionMiddleware
         if (AdminSignedOutExemptions.IsSignOut(canonical) && !hasSessionCookie)
             return true;
 
-        if (antiforgery.TryValidate(context))
+        if (await HasAntiForgeryTokenAsync(context, antiforgery))
             return true;
 
         if (AdminSignedOutExemptions.IsAuthPost(canonical))
@@ -343,6 +351,14 @@ public sealed class AdminSessionMiddleware
     }
 
     internal const string AntiForgeryDeniedKey = "AdminAntiForgeryDenied";
+
+    /// <summary>
+    /// The anti-forgery token in the X-CSRF-TOKEN header; for POST
+    /// /admin/sign-out alone, also the sign-out form's hidden field, so that
+    /// signing out works with JavaScript off. No other route reads a form token.
+    /// </summary>
+    private static async Task<bool> HasAntiForgeryTokenAsync(HttpContext context, AdminAntiForgeryService antiforgery)
+        => antiforgery.TryValidate(context) || await antiforgery.TryValidateSignOutFormAsync(context);
 
     private static bool IsAntiForgeryAllowListed(HttpContext context)
         => AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)

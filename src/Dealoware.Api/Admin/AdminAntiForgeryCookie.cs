@@ -147,7 +147,65 @@ public sealed class AdminAntiForgeryService
         return true;
     }
 
+    /// <summary>
+    /// The hidden field of the shell's sign-out form. Only POST /admin/sign-out
+    /// reads it (<see cref="TryValidateSignOutFormAsync"/>), so that signing
+    /// out works with JavaScript off; every other route takes the header only.
+    /// </summary>
+    public const string SignOutFormField = "dw_csrf";
+
+    /// <summary>The largest sign-out form read: one field of 64 hex characters needs far less.</summary>
+    public const int SignOutFormMaxBytes = 1024;
+
     public bool TryValidate(HttpContext context)
+    {
+        if (!context.Request.Headers.TryGetValue(HeaderName, out var header)
+            || string.IsNullOrWhiteSpace(header))
+        {
+            return false;
+        }
+
+        return Matches(context, header.ToString());
+    }
+
+    /// <summary>
+    /// The token of the sign-out form: a urlencoded POST to exactly
+    /// /admin/sign-out (by the canonical path the gate compares), of known
+    /// small length, carrying <see cref="SignOutFormField"/> once. The same
+    /// keyed check as the header: the token must be the HMAC of this
+    /// browser's cookie, compared in constant time. The origin check runs
+    /// before this, as for every state-changing request.
+    /// </summary>
+    public async Task<bool> TryValidateSignOutFormAsync(HttpContext context)
+    {
+        var request = context.Request;
+        if (!HttpMethods.IsPost(request.Method)
+            || !AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)
+            || !string.Equals(canonical, AdminSignedOutExemptions.SignOut, StringComparison.OrdinalIgnoreCase)
+            || request.ContentLength is not (> 0 and <= SignOutFormMaxBytes)
+            || !Microsoft.Net.Http.Headers.MediaTypeHeaderValue.TryParse(request.ContentType, out var mediaType)
+            || !string.Equals(mediaType.MediaType.Value, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        IFormCollection form;
+        try
+        {
+            form = await request.ReadFormAsync(context.RequestAborted);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or FormatException)
+        {
+            return false;
+        }
+
+        return form.TryGetValue(SignOutFormField, out var values)
+               && values.Count == 1
+               && !string.IsNullOrWhiteSpace(values[0])
+               && Matches(context, values[0]!);
+    }
+
+    private bool Matches(HttpContext context, string presented)
     {
         if (!context.Request.Cookies.TryGetValue(CookieName, out var cookie)
             || string.IsNullOrWhiteSpace(cookie))
@@ -155,14 +213,7 @@ public sealed class AdminAntiForgeryService
             return false;
         }
 
-        if (!context.Request.Headers.TryGetValue(HeaderName, out var header)
-            || string.IsNullOrWhiteSpace(header))
-        {
-            return false;
-        }
-
         var expected = ComputeRequestToken(cookie);
-        var presented = header.ToString();
         var expectedBytes = Encoding.ASCII.GetBytes(expected);
         var presentedBytes = Encoding.ASCII.GetBytes(presented);
         return expectedBytes.Length == presentedBytes.Length

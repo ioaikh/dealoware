@@ -53,6 +53,7 @@ const SKIP = 'Skip to main content';
 const SESSION_ENDED = 'Your session has ended. Sign in again to continue.';
 const SIGNED_OUT = 'You\'ve been signed out.';
 const SIGN_IN_TITLE = 'Sign in · Dealoware admin';
+const RETRY_SENTENCE = 'That didn\'t go through. Wait a moment and try again.';
 
 const PASS_TOKEN = process.env.CONSOLE_E2E_TURNSTILE_TOKEN ?? '';
 const ARTIFACTS = process.env.CONSOLE_E2E_ARTIFACTS;
@@ -171,6 +172,18 @@ async function expectShell(page: Page, title: string, heading: string, current: 
   await expect(page.getByRole('link', { name: SKIP, exact: true })).toHaveAttribute('href', '#main');
   await expect(page.locator('[aria-live]')).toHaveCount(1);
   await expect(page.locator('#console-status')).toHaveAttribute('aria-live', 'polite');
+  await expectStyled(page);
+}
+
+/**
+ * The page has loaded and its stylesheet applies: a nav link has the shell's own
+ * minimum height (2.5rem). An axe scan, or a size check, before that would judge
+ * the page unstyled.
+ */
+async function expectStyled(page: Page): Promise<void> {
+  await page.waitForLoadState('load');
+  const link = page.getByRole('navigation', { name: 'Admin' }).getByRole('link').first();
+  await expect.poll(() => link.evaluate((el) => getComputedStyle(el).minHeight)).toBe('40px');
 }
 
 const ringOf = (locator: Locator) => locator.evaluate((el) => {
@@ -242,6 +255,7 @@ test('signing in with no page asked for lands on Stats: five totals, the nav, th
 test('Stats at 320 px: nothing scrolls sideways, every nav entry and Sign out stay on screen', async ({ page }) => {
   await signIn(page);
   await page.setViewportSize({ width: 320, height: 800 });
+  await expectStyled(page);
   await expectNoHorizontalScroll(page);
   const nav = page.getByRole('navigation', { name: 'Admin' });
   for (const entry of NAV) await expect(nav.getByRole('link', { name: entry.label, exact: true })).toBeInViewport();
@@ -303,13 +317,24 @@ test('keyboard: the skip link is the first stop and moves the focus to main; the
     for (let i = 0; i < NAV.length + 1; i += 1) await page.keyboard.press('Shift+Tab');
     await expect(skip).toBeFocused();
   } else {
-    // WebKit passes links by: the first stop is Sign out; the skip link still takes the focus and shows it.
-    await page.keyboard.press('Tab');
-    await expect(page.locator('#sign-out')).toBeFocused();
+    // WebKit, like Safari as delivered, passes links by when Tab is pressed, and a fresh page
+    // may hold no focus to start from. So, as in the signed-out suites, start from a known
+    // stop: the skip link takes the focus and shows it, Tab from there reaches Sign out (the
+    // nav links are passed by), and every nav link can take the focus and shows it.
     await skip.focus();
     await expect(skip).toBeFocused();
     await expect(skip).toBeInViewport();
     expect(await ringOf(skip)).toEqual(ring);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#sign-out')).toBeFocused();
+    expect(await ringOf(page.locator('#sign-out'))).toEqual(ring);
+    for (const entry of NAV) {
+      const link = page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true });
+      await link.focus();
+      await expect(link).toBeFocused();
+      expect(await ringOf(link)).toEqual(ring);
+    }
+    await skip.focus();
   }
   await page.keyboard.press('Enter');
   await expect(page.locator('main')).toBeFocused();
@@ -343,7 +368,8 @@ test('Sign out sends one POST with the anti-forgery header, lands on sign-in wit
   const sent = await posts[0].allHeaders();
   expect(sent['x-csrf-token']).toMatch(/^[0-9A-F]{64}$/);
   expect(sent['origin']).toBe(ORIGIN);
-  expect(sent['referer']).toBeUndefined();
+  // The signed-in pages send a referrer to this site only (same-origin), never elsewhere.
+  if (sent['referer'] !== undefined) expect(sent['referer']).toBe(ORIGIN + '/admin/participants');
   expect(new URL(posts[0].url()).search).toBe('');
   await expectSignedOut(page);
   await expectNoSeriousAxeFindings(page, 'sign-in_after_sign-out');
@@ -491,12 +517,41 @@ test('no answer to Sign out, while still signed in: the retry sentence in the li
   });
   const button = page.getByRole('button', { name: 'Sign out', exact: true });
   await button.click();
-  await expect(page.locator('#console-status')).toHaveText('That didn\'t go through. Wait a moment and try again.');
+  await expect(page.locator('#console-status')).toHaveText(RETRY_SENTENCE);
   await expect(button).toBeEnabled();
   await expect(button).toBeFocused();
   expect((await page.request.get(API_ME)).status()).toBe(200);
   await button.click();
   await expectSignInWith(page, SIGNED_OUT);
+});
+
+test('a newer anti-forgery pair from another tab: Sign out here reloads once, then signs out', async ({ page }) => {
+  await signIn(page);
+  // Another tab opens the sign-in page, which hands this browser a new anti-forgery pair:
+  // the token in this page no longer matches, and the server refuses it with a 403.
+  const other = await page.context().newPage();
+  await standInForCloudflare(other);
+  await other.goto(SIGN_IN);
+  await expect(other.locator('#sign-in-form')).toBeVisible();
+  await other.close();
+
+  await page.bringToFront();
+  const replies: number[] = [];
+  page.on('response', (r) => { if (isPostTo(SIGN_OUT)(r.request())) replies.push(r.status()); });
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  // Still signed in, so the page loads itself anew, once, and says the request did not go through.
+  await expect(page.locator('#console-status')).toHaveText(RETRY_SENTENCE);
+  expect(new URL(page.url()).hash).toBe('');
+  expect(new URL(page.url()).pathname).toBe(HOME);
+  expect(replies).toEqual([403]);
+  expect((await page.request.get(API_ME)).status()).toBe(200);
+  await page.waitForLoadState('load');
+
+  // The reloaded page carries the current pair: Sign out now works.
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expectSignInWith(page, SIGNED_OUT);
+  expect(replies).toEqual([403, 200]);
+  await expectSignedOut(page);
 });
 
 test.describe('JavaScript off', () => {
@@ -524,5 +579,41 @@ test.describe('JavaScript off', () => {
     await expect(page.getByRole('navigation', { name: 'Admin' }).getByRole('link')).toHaveText(NAV.map((n) => n.label));
     await page.getByRole('link', { name: 'Negotiations', exact: true }).click();
     await expect(page.locator('h1')).toHaveText('Negotiations');
+  });
+
+  test('with JavaScript off Sign out still signs out: the form carries the token and lands on sign-in', async ({ page }) => {
+    const html = await (await page.request.get(SIGN_IN)).text();
+    const csrf = html.match(/<meta name="dw-csrf" content="([0-9A-F]{64})">/)![1];
+    expect((await page.request.post(API_SIGN_IN, {
+      headers: { 'X-CSRF-TOKEN': csrf, Origin: ORIGIN },
+      data: { email: owner.email, password: owner.password, turnstileToken: PASS_TOKEN },
+    })).status()).toBe(200);
+    expect((await page.request.post(API_CODE, {
+      headers: { 'X-CSRF-TOKEN': csrf, Origin: ORIGIN },
+      data: { code: authenticatorCode(owner.secret!) },
+    })).status()).toBe(200);
+
+    await page.goto(HOME);
+    await expect(page.locator('h1')).toHaveText('Stats');
+    const posts: Request[] = [];
+    page.on('request', (r) => { if (isPostTo(SIGN_OUT)(r)) posts.push(r); });
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+
+    // The browser sent the form itself: one urlencoded POST with the hidden field, no header token.
+    await expect(page).toHaveURL(new RegExp(`^${ORIGIN}${SIGN_IN}(#signed-out)?$`));
+    expect(posts).toHaveLength(1);
+    const sent = await posts[0].allHeaders();
+    expect(sent['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(sent['x-csrf-token']).toBeUndefined();
+    // The page's same-origin referrer policy lets the form carry this site's origin, which the
+    // origin check requires; under no-referrer every engine would send "Origin: null".
+    expect(sent['origin']).toBe(ORIGIN);
+    expect(posts[0].postData()).toMatch(/^dw_csrf=[0-9A-F]{64}$/);
+    // The server answered with the sign-in page, and the session is gone.
+    const redirect = await posts[0].response();
+    expect(redirect!.status()).toBe(303);
+    expect(redirect!.headers()['location']).toBe('/admin/sign-in#signed-out');
+    await expect(page.locator('h1')).toHaveText('Sign in');
+    await expectSignedOut(page);
   });
 });

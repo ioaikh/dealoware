@@ -76,6 +76,12 @@ public partial class AdminConsoleShellTests
 
         Assert.StartsWith("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">", html, StringComparison.Ordinal);
         Assert.Matches("<meta name=\"dw-csrf\" content=\"[0-9A-F]{64}\">", html);
+        // Same-origin referrer for these pages only, so the sign-out form carries the site's origin.
+        Assert.Contains(
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"referrer\" content=\"same-origin\">",
+            html,
+            StringComparison.Ordinal);
+        Assert.Equal("no-referrer", Header(response, "Referrer-Policy"));
         Assert.Contains($"<title>{title}</title>", text, StringComparison.Ordinal);
         Assert.EndsWith(" · Dealoware admin", title, StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, "<h1[ >]"));
@@ -99,9 +105,11 @@ public partial class AdminConsoleShellTests
         Assert.Contains(
             "<form id=\"sign-out-form\" method=\"post\" action=\"/admin/sign-out\""
             + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\">"
+            + $"<input type=\"hidden\" name=\"dw_csrf\" value=\"{AdminPageAntiForgery.ReadToken(html)}\">"
             + "<button type=\"submit\" id=\"sign-out\" class=\"secondary\">Sign out</button></form>",
             text,
             StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(html, "<input "));
         Assert.True(
             html.IndexOf("id=\"sign-out-form\"", StringComparison.Ordinal)
             > html.IndexOf("href=\"/admin/settings/security\"", StringComparison.Ordinal));
@@ -591,6 +599,146 @@ public partial class AdminConsoleShellTests
         Assert.Equal(before, await CountSignOutAuditAsync());
     }
 
+    [Theory]
+    [InlineData("idle-expired")]
+    [InlineData("absolute-expired")]
+    [InlineData("another-email")]
+    public async Task SignOut_OfASessionTheGateWouldNotAccept_EndsItButWritesNoAudit(string state)
+    {
+        var sessionPair = (await SessionCookieForAsync(state))!;
+        var session = Guid.Parse(sessionPair.Split('=', 2)[1]);
+        var (afPair, token) = await AntiForgeryFromSignInAsync();
+        var before = await CountSignOutAuditAsync();
+
+        using var post = Request(HttpMethod.Post, AdminSignedOutExemptions.SignOut, Join(sessionPair, afPair));
+        post.Headers.TryAddWithoutValidation(AdminAntiForgeryService.HeaderName, token);
+        post.Content = JsonContent.Create(new { });
+        using var response = await Client().SendAsync(post);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("{\"signedOut\":true}", await response.Content.ReadAsStringAsync());
+        Assert.False(await SessionRowExistsAsync(session));
+        Assert.Equal(before, await CountSignOutAuditAsync());
+    }
+
+    // ---- sign-out without JavaScript: the form's hidden field, on POST /admin/sign-out alone ----
+
+    private static HttpContent SignOutForm(params (string Key, string Value)[] fields)
+        => new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Key, f.Value)));
+
+    [Fact]
+    public async Task SignOutForm_WithItsHiddenField_SignsOut_AndAnswersWithTheSignInPage()
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var before = await CountSignOutAuditAsync();
+
+        using var post = Request(HttpMethod.Post, AdminSignedOutExemptions.SignOut, Join(SessionPair(session), afPair));
+        post.Content = SignOutForm((AdminAntiForgeryService.SignOutFormField, token));
+        using var response = await Client().SendAsync(post);
+
+        Assert.Equal(HttpStatusCode.SeeOther, response.StatusCode);
+        Assert.Equal("/admin/sign-in#signed-out", Assert.Single(response.Headers.GetValues("Location")));
+        Assert.Equal(AdminSignInPages.SignedOutLocation, Assert.Single(response.Headers.GetValues("Location")));
+        Assert.Equal("no-store", Header(response, "Cache-Control"));
+        Assert.Contains(SetCookies(response), c => c.StartsWith(AdminSessionCookie.Name + "=;", StringComparison.Ordinal));
+        Assert.False(await SessionRowExistsAsync(session));
+        Assert.False(await IsSignedInAsync(session));
+        Assert.Equal(before + 1, await CountSignOutAuditAsync());
+    }
+
+    public static TheoryData<string, string> BadSignOutForms => new()
+    {
+        { "missing", string.Empty },
+        { "wrong", new string('A', 64) },
+        { "twice", "twice" },
+        { "other-name", "other-name" },
+        { "multipart", "multipart" },
+        { "too-long", "too-long" },
+        { "no-cookie", "no-cookie" }
+    };
+
+    [Theory]
+    [MemberData(nameof(BadSignOutForms))]
+    public async Task SignOutForm_WithoutAGoodHiddenField_IsRefused_AndTheSessionStays(string kind, string _)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var cookies = kind == "no-cookie" ? SessionPair(session) : Join(SessionPair(session), afPair);
+        using var post = Request(HttpMethod.Post, AdminSignedOutExemptions.SignOut, cookies);
+        post.Content = kind switch
+        {
+            "missing" => SignOutForm(("unrelated", "1")),
+            "wrong" => SignOutForm((AdminAntiForgeryService.SignOutFormField, new string('A', 64))),
+            "twice" => SignOutForm((AdminAntiForgeryService.SignOutFormField, token), (AdminAntiForgeryService.SignOutFormField, token)),
+            "other-name" => SignOutForm(("__RequestVerificationToken", token)),
+            "multipart" => new MultipartFormDataContent { { new StringContent(token), AdminAntiForgeryService.SignOutFormField } },
+            "too-long" => SignOutForm((AdminAntiForgeryService.SignOutFormField, token), ("pad", new string('x', AdminAntiForgeryService.SignOutFormMaxBytes))),
+            _ => SignOutForm((AdminAntiForgeryService.SignOutFormField, token))
+        };
+        using var response = await Client().SendAsync(post);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(response.Headers.Contains("Location"));
+        Assert.True(await IsSignedInAsync(session));
+    }
+
+    [Theory]
+    [InlineData("https://evil.example")]
+    [InlineData("null")]
+    [InlineData(null)]
+    public async Task SignOutForm_FromAnotherSite_OrWithoutAnOrigin_IsRefused_EvenWithAGoodField(string? origin)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        using var post = Request(HttpMethod.Post, AdminSignedOutExemptions.SignOut, Join(SessionPair(session), afPair));
+        if (origin is not null)
+            post.Headers.TryAddWithoutValidation("Origin", origin);
+        post.Content = SignOutForm((AdminAntiForgeryService.SignOutFormField, token));
+        // A client without the test factory's default Origin header.
+        using var client = _factory.Server.CreateClient();
+        using var response = await client.SendAsync(post);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await IsSignedInAsync(session));
+    }
+
+    [Theory]
+    [InlineData("/admin/api/auth/sign-out")]
+    [InlineData("/admin/SIGN-OUT/")]
+    [InlineData("/admin/reset")]
+    [InlineData("/admin/api/auth/sign-in")]
+    [InlineData("/admin/participants")]
+    public async Task TheFormField_IsReadByPostSignOutAlone(string path)
+    {
+        var session = await SeedSessionAsync();
+        var (afPair, token) = await AntiForgeryFromPageAsync(session);
+        var before = await CountSignOutAuditAsync();
+        using var post = Request(HttpMethod.Post, path, Join(SessionPair(session), afPair));
+        post.Content = SignOutForm((AdminAntiForgeryService.SignOutFormField, token), ("email", OwnerEmail));
+        using var response = await Client().SendAsync(post);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await IsSignedInAsync(session));
+        Assert.Equal(before, await CountSignOutAuditAsync());
+    }
+
+    // ---- the page kept across sign-in: an encoded "?" or "#" is part of the path ----
+
+    [Theory]
+    [InlineData("/admin/offers%3Fstatus=Open")]
+    [InlineData("/admin/offers%3F/x")]
+    [InlineData("/admin/offers%23x")]
+    [InlineData("/admin/participants%3fq=a?q=b")]
+    public async Task AnEncodedQueryOrFragmentMark_InThePath_IsNotKept(string path)
+    {
+        using var response = await GetAsync(path);
+        Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(response.Headers.GetValues("Location")));
+        var set = Assert.Single(SetCookies(response));
+        Assert.StartsWith("dw_admin_return=;", set, StringComparison.Ordinal);
+        Assert.Contains("expires=Thu, 01 Jan 1970", set, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ---- the browser scripts, read as text ----
 
     [Fact]
@@ -607,10 +755,19 @@ public partial class AdminConsoleShellTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(
-            "if (reply.status === 401 && body.error === GATE_DENIED) location.replace(SESSION_ENDED);",
-            script,
+            "if (reply.status === 401 && body.error === GATE_DENIED) {\n        location.replace(SESSION_ENDED);",
+            script.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Equal(2, Regex.Matches(script, @"location\.replace\(").Count);
+        // A refused token while still signed in: the page loads itself anew once, under #fresh.
+        Assert.Contains("else afterUnclearReply(reply.status === 403);", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "} else if (tokenRefused && !reloaded && reply.status === 200 && body.principal === SIGNED_IN_AS) {",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains("var reloaded = location.hash === FRESH;", script, StringComparison.Ordinal);
+        Assert.Contains("if (reloaded) history.replaceState(null, \"\", location.pathname + location.search);", script, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(script, @"location\.reload\(\);\n      \}"));
         Assert.Contains("if (event.persisted) location.reload();", script, StringComparison.Ordinal);
         Assert.Contains("event.preventDefault();", script, StringComparison.Ordinal);
 

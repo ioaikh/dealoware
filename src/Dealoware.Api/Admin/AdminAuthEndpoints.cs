@@ -743,14 +743,18 @@ public static class AdminAuthEndpoints
 
     // Sign-out: POST only, behind the origin check and the anti-forgery token
     // (the session gate). It is idempotent: with no session it still answers
-    // the same and clears the same cookies. Ending a signed-in session (one
-    // that passed its second step) writes one sign_out audit row; giving up a
-    // sign-in in progress writes none.
+    // the same and clears the same cookies. Ending a session the gate would
+    // still accept writes one sign_out audit row; a session that had already
+    // run out, or a sign-in in progress given up, writes none.
+    // The page's script gets JSON; the sign-out form sent without JavaScript
+    // (urlencoded, to /admin/sign-out) gets a 303 to the sign-in page.
     private static async Task<IResult> SignOut(
         HttpContext context,
         IAdminSessionRepository sessions,
         IAdminAuditRepository audit,
-        IIpHasher ipHasher)
+        IIpHasher ipHasher,
+        IAdminClock clock,
+        IOptions<CoreOwnerOptions> coreOwnerOptions)
     {
         if (context.Request.Cookies.TryGetValue(AdminSessionCookie.Name, out var raw)
             && Guid.TryParse(raw, out var sessionId))
@@ -758,7 +762,7 @@ public static class AdminAuthEndpoints
             var session = await sessions.GetByIdAsync(sessionId, context.RequestAborted);
             await sessions.DeleteAsync(sessionId, context.RequestAborted);
             await sessions.SaveChangesAsync(context.RequestAborted);
-            if (session is { TotpVerified: true })
+            if (AdminSessionMiddleware.IsAcceptedSession(session, coreOwnerOptions.Value.Email, clock.UtcNow))
             {
                 await WriteAuthEventAsync(
                     audit,
@@ -773,6 +777,14 @@ public static class AdminAuthEndpoints
         context.Response.Cookies.Delete(AdminSessionCookie.Name, AdminSessionCookie.ExpiredOptions());
         context.Response.Cookies.Delete(AdminPendingAuthCookie.Name, AdminPendingAuthCookie.ExpiredOptions());
         context.Response.Cookies.Delete(AdminAntiForgeryCookie.Name, AdminAntiForgeryCookie.ExpiredOptions());
+        if (context.Request.HasFormContentType
+            && string.Equals(context.Request.Path.Value, AdminSignedOutExemptions.SignOut, StringComparison.OrdinalIgnoreCase))
+        {
+            SetNoStore(context);
+            context.Response.Headers.Location = AdminSignInPages.SignedOutLocation;
+            return Results.StatusCode(StatusCodes.Status303SeeOther);
+        }
+
         return Results.Json(new { signedOut = true });
     }
 
