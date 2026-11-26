@@ -197,8 +197,10 @@ public class AdminDeletePageTests
             var scripts = Scripts(html);
             Assert.Equal(AdminDeletePage.ScriptPath, scripts[^1]);
             Assert.Contains(AdminSignedOutPage.DomScriptPath, scripts);
-            // No role="alert" from the server: the script adds the dialog's alert line; the shell's region stays the one.
-            Assert.Single(Regex.Matches(html, "role=\"(status|alert)\""));
+            // No live region in the dialog's markup: the script adds its alert line; the shell's region stays the page's one.
+            var deleteDialog = Regex.Match(html, "<dialog id=\"delete-dialog\".*?</dialog>").Value;
+            Assert.DoesNotMatch("role=|aria-live", deleteDialog);
+            Assert.Single(Regex.Matches(html, "aria-live="));
         }
     }
 
