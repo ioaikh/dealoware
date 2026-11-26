@@ -921,7 +921,9 @@ public partial class AdminConsoleShellTests
     [Fact]
     public void ShellScript_SignsOutByPost_FollowsOnlyTheExactReply_AndKeepsToTheHouseRules()
     {
-        var script = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", AdminSignedInPage.AssetFolder, "console.js"));
+        // Line endings as in the repository, whatever a Windows checkout made of them.
+        var script = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", AdminSignedInPage.AssetFolder, "console.js"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("var SIGN_OUT = \"/admin/sign-out\";", script, StringComparison.Ordinal);
         Assert.Contains($"var SIGNED_OUT = \"{AdminSignInPages.SignedOutLocation}\";", script, StringComparison.Ordinal);

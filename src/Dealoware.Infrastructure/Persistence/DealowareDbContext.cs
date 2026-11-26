@@ -79,6 +79,12 @@ public class DealowareDbContext : DbContext
     /// </summary>
     public DbSet<AdminBootstrapToken> AdminBootstrapTokens => Set<AdminBootstrapToken>();
 
+    /// <summary>
+    /// T04: S-A12 step-up per signed-in session (deleted with the session).
+    /// Incremental after the frozen 15-table stamp — not a BaselineSchema table.
+    /// </summary>
+    public DbSet<AdminSessionStepUp> AdminSessionStepUps => Set<AdminSessionStepUp>();
+
     public DealowareDbContext(DbContextOptions<DealowareDbContext> options) : base(options)
     {
     }
@@ -156,6 +162,7 @@ public class DealowareDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdminCredentialEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminResetIpCounterEntityConfiguration());
         modelBuilder.ApplyConfiguration(new AdminBootstrapTokenEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new AdminSessionStepUpEntityConfiguration());
     }
 
     private static bool HasNpgsqlExtension(DbContextOptionsBuilder optionsBuilder)

@@ -26,4 +26,13 @@ public static class AdminAuditActions
     public const string ReasonLocked = "locked";
     public const string ReasonRateLimited = "rate-limited";
     public const string ReasonCaptchaFailed = "captcha-failed";
+
+    // S-A12 security settings (T04). Names from the S-A12 password-change
+    // note v1.4 (account.password_changed / account.password_change_failed);
+    // re-enrolment success keeps the Spec §8.8 name TotpChange above.
+    public const string PasswordChanged = "account.password_changed";
+    public const string PasswordChangeFailed = "account.password_change_failed";
+    public const string StepUpFailed = "account.step_up_failed";
+    public const string RecoveryCodesRegenerated = "account.recovery_codes_regenerated";
+    public const string TotpChangeFailed = "account.totp_change_failed";
 }

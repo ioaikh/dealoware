@@ -327,3 +327,33 @@ public class AdminResetIpCounterEntityConfiguration : IEntityTypeConfiguration<A
             .IsRequired();
     }
 }
+
+/// <summary>
+/// T04 S-A12 step-up: one row per session, deleted with it (database cascade),
+/// so a step-up or a waiting re-enrolment key never outlives its session.
+/// </summary>
+public class AdminSessionStepUpEntityConfiguration : IEntityTypeConfiguration<AdminSessionStepUp>
+{
+    public void Configure(EntityTypeBuilder<AdminSessionStepUp> builder)
+    {
+        builder.ToTable("AdminSessionStepUps");
+
+        builder.HasKey(s => s.SessionId);
+
+        builder.Property(s => s.SessionId)
+            .ValueGeneratedNever();
+
+        builder.Property(s => s.SteppedUpAt)
+            .IsRequired();
+
+        builder.Property(s => s.PendingTotpSecretCipher)
+            .HasMaxLength(512);
+
+        builder.Ignore(s => s.ExpiresAt);
+
+        builder.HasOne<AdminSession>()
+            .WithOne()
+            .HasForeignKey<AdminSessionStepUp>(s => s.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
