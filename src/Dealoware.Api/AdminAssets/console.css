@@ -991,3 +991,23 @@ time.ts:focus::after {
 .edit-dialog-alert:empty {
   display: none;
 }
+
+/* A detail row never widens the page: its cells may shrink, and a long id breaks inside the row. */
+.detail > dt,
+.detail > dd,
+.detail .view,
+.detail .edit,
+.edit .edit-field {
+  min-width: 0;
+}
+
+.detail dd span.id {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 30rem) {
+  .detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -28,6 +28,15 @@ const ARTIFACTS = process.env.CONSOLE_E2E_ARTIFACTS;
 
 const CONFLICT = 'This record changed after you opened it. Reload it and try again.';
 const RETRY = "That didn't go through. Wait a moment and try again.";
+const SESSION_ENDED = 'Your session has ended. Sign in again to continue.';
+const SIGNED_OUT = 'You've been signed out.';
+
+/** The sign-in page with one of its notes: it takes the note off the address and says its sentence. */
+async function expectSignInWith(page: Page, sentence: string): Promise<void> {
+  await expect(page).toHaveURL(ORIGIN + SIGN_IN);
+  await expect(page.locator('#form-status')).toHaveText(sentence);
+  await expect(page.locator('.console-nav')).toHaveCount(0);
+}
 
 type EditSeeded = Seeded & {
   negotiations: Seeded['negotiations'] & Record<'expire-three' | 'expire-none' | 'window' | 'lapsed', string>;
@@ -570,7 +579,7 @@ test('the session and the token: a 401 goes to sign-in with "session ended"; a r
   await editButton(page).click();
   await page.getByLabel('Display name', { exact: true }).fill('Eli M.');
   await saveButton(page).click();
-  await expect(page).toHaveURL(ORIGIN + SIGN_IN + '#ended');
+  await expectSignInWith(page, SESSION_ENDED);
 });
 
 test('keyboard only: Edit, a field, Enter saves; at 320 px nothing scrolls sideways and every control is big enough; axe; a screenshot', async ({ page }) => {
