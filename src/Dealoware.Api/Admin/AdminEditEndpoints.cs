@@ -927,7 +927,7 @@ public static partial class AdminEditEndpoints
     /// as its beginning, its full length and its SHA-256 (Spec §10, large
     /// snapshots), which keeps the before and after readable JSON.
     /// </summary>
-    private static object Clip(string text)
+    internal static object Clip(string text)
     {
         var used = 0;
         var keep = 0;
