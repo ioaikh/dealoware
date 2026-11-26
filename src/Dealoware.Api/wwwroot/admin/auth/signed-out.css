@@ -201,8 +201,17 @@ button.secondary[aria-pressed="true"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.65rem;
-  margin: 0.75rem 0 0;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+}
+
+/*
+ * A line of text is 24px high only on paper: Firefox lays it out a hair
+ * under. The padding takes the link clear of the 24 by 24 px target size
+ * (WCAG 2.2, 2.5.8) in every engine.
+ */
+.links a {
+  padding: 0.15rem 0;
 }
 
 a {

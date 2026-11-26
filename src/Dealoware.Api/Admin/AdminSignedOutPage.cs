@@ -55,6 +55,12 @@ public static class AdminSignedOutPage
     /// token out of the address bar before any other script can fail to load.
     /// </summary>
     public const string LinkScriptPath = "/admin/auth/admin-link.js";
+
+    /// <summary>
+    /// For the sign-in pages. List it FIRST: it reads the fixed flag that may
+    /// follow the address and takes it out of the address bar.
+    /// </summary>
+    public const string ArrivalScriptPath = "/admin/auth/admin-arrival.js";
     public const string DomScriptPath = "/admin/auth/admin-dom.js";
     public const string PasswordScriptPath = "/admin/auth/admin-password.js";
     public const string TurnstileScriptPath = "/admin/auth/admin-turnstile.js";

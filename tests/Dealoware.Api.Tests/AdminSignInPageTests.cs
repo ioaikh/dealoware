@@ -31,6 +31,8 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
 
     private static readonly string[] SignInScripts =
     [
+        // First: it takes a flag out of the address bar before anything else can fail.
+        "/admin/auth/admin-arrival.js",
         "/admin/auth/admin-dom.js",
         "/admin/auth/admin-password.js",
         "/admin/auth/admin-turnstile.js",
@@ -40,6 +42,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
 
     private static readonly string[] SecondStepScripts =
     [
+        "/admin/auth/admin-arrival.js",
         "/admin/auth/admin-dom.js",
         "/admin/auth/admin-request.js",
         "/admin/auth/sign-in-code.js"
@@ -308,38 +311,150 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
     [Theory]
     [InlineData(Code)]
     [InlineData(Recovery)]
-    public async Task SecondStepPage_WithoutAPendingSignIn_IsRefusedByTheGate_AndServesNoPage(string path)
+    public async Task SecondStepPage_WithoutAPendingSignIn_SendsTheBrowserToStepOne_AndServesNoPage(string path)
     {
-        // What the page script relies on: with no pending sign-in the session gate
-        // answers before the page handler runs, with its own one-word body.
+        // With no pending sign-in the session gate answers before the page handler runs.
+        // For the GET of these two pages its answer is a redirect to step 1: a constant
+        // address, no body, and no cookie set or cleared.
         await ClearSignInCountersAsync(_configured);
+        Assert.Equal("/admin/sign-in#again", AdminSignInPages.SentBackLocation);
         var neverIssued = AdminPendingToken.Create();
-        foreach (var cookie in new string?[] { null, neverIssued })
+        var used = await CreatePendingSignInAsync(_configured, consumed: true);
+        var probe = "probe" + Guid.NewGuid().ToString("N");
+        foreach (var (address, cookie) in new (string, string?)[]
+                 {
+                     (path, null),
+                     (path, neverIssued),
+                     // A used pending sign-in is no better than none.
+                     (path, used),
+                     // Nothing of the request reaches the target: not a query, not a cookie.
+                     ($"{path}?returnPath=https%3A%2F%2F{probe}.example%2F&next=%2F{probe}", neverIssued)
+                 })
         {
-            using var response = await GetAsync(_configured, path, cookie);
+            using var response = await GetAsync(_configured, address, cookie);
 
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-            Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-            var body = await response.Content.ReadAsStringAsync();
-            Assert.Equal("{\"error\":\"Unauthorized\"}", body);
-            Assert.Equal("Unauthorized", AdminDeny.GenericError);
-            Assert.DoesNotContain("<html", body, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("<form", body, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+            Assert.Equal(AdminSignInPages.SentBackLocation, Assert.Single(response.Headers.GetValues("Location")));
+            Assert.Equal(string.Empty, await response.Content.ReadAsStringAsync());
             Assert.Empty(SetCookies(response));
-            Assert.False(response.Headers.Contains("Location"));
+            Assert.Equal("no-store", Header(response, "Cache-Control"));
+            Assert.Equal("no-referrer", Header(response, "Referrer-Policy"));
+            Assert.All(
+                response.Headers.SelectMany(h => h.Value),
+                v => Assert.DoesNotContain(probe, v, StringComparison.Ordinal));
         }
 
-        // A used pending sign-in is no better than none.
-        var used = await CreatePendingSignInAsync(_configured, consumed: true);
-        using var afterUse = await GetAsync(_configured, path, used);
-        Assert.Equal(HttpStatusCode.Unauthorized, afterUse.StatusCode);
+        // No loop: the target is always served, whatever the browser holds.
+        using var stepOne = await GetAsync(_configured, AdminSignedOutExemptions.SignIn, neverIssued);
+        Assert.Equal(HttpStatusCode.OK, stepOne.StatusCode);
+        Assert.False(stepOne.Headers.Contains("Location"));
+        Assert.Contains($"<title>{AdminSignInCopy.SignInPageTitle}</title>", await stepOne.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
-        // Nor does a query string or a trailing slash open the page.
+        // A path that is not exactly one of the two pages gets the gate's 401 as before.
         var live = await CreatePendingSignInAsync(_configured);
-        using var withSlash = await GetAsync(_configured, path + "/", live);
-        Assert.Equal(HttpStatusCode.Unauthorized, withSlash.StatusCode);
+        foreach (var notThePage in new[] { path + "/", path + "/extra", path.Replace("/sign-in/", "/sign-in%2f", StringComparison.Ordinal) })
+        {
+            using var denied = await GetAsync(_configured, notThePage, live);
+            Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+            Assert.False(denied.Headers.Contains("Location"));
+            Assert.Equal("{\"error\":\"Unauthorized\"}", await denied.Content.ReadAsStringAsync());
+        }
+
+        // And with a pending sign-in the page itself is served.
         using var ok = await GetAsync(_configured, path, live);
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
+    public async Task OnlyTheGetOfTheTwoPages_IsRedirected_EveryOtherRequestWithoutAPendingSignInKeepsThe401()
+    {
+        await ClearSignInCountersAsync(_configured);
+        Assert.Equal("Unauthorized", AdminDeny.GenericError);
+
+        // The form's own paths and the JSON paths, by POST, with a valid anti-forgery pair.
+        using var page = await GetAsync(_configured, SignIn);
+        var token = AdminPageAntiForgery.ReadToken(await page.Content.ReadAsStringAsync());
+        var antiForgeryCookie = Assert.Single(SetCookies(page)).Split(';', 2)[0];
+        foreach (var path in new[]
+                 {
+                     Code, Recovery,
+                     AdminSignedOutExemptions.ApiSignInCode, AdminSignedOutExemptions.ApiSignInRecovery
+                 })
+        {
+            using var post = new HttpRequestMessage(HttpMethod.Post, path);
+            post.Headers.Host = AdminHost;
+            post.Headers.TryAddWithoutValidation("Cookie", antiForgeryCookie);
+            post.Headers.TryAddWithoutValidation(AdminAntiForgeryService.HeaderName, token);
+            post.Content = System.Net.Http.Json.JsonContent.Create(new { code = "123456", recoveryCode = "AAAA-BBBB-CCCC" });
+            using var response = await Client(_configured).SendAsync(post);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.False(response.Headers.Contains("Location"));
+            Assert.Equal("{\"error\":\"Unauthorized\"}", await response.Content.ReadAsStringAsync());
+        }
+
+        // Every other signed-out or signed-in GET without what it needs, the JSON twins included.
+        foreach (var path in new[]
+                 {
+                     AdminSignedOutExemptions.ApiSignInCode, AdminSignedOutExemptions.ApiSignInRecovery,
+                     AdminSignedOutExemptions.SetupAuthenticator, AdminSignedOutExemptions.SetupRecoveryCodes,
+                     "/admin/", "/admin/api/me", "/admin/participants"
+                 })
+        {
+            using var response = await GetAsync(_configured, path);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.False(response.Headers.Contains("Location"));
+            Assert.Equal("{\"error\":\"Unauthorized\"}", await response.Content.ReadAsStringAsync());
+        }
+
+        // Another method on the page path is not a visit either.
+        using var head = new HttpRequestMessage(HttpMethod.Head, Code);
+        head.Headers.Host = AdminHost;
+        using var headResponse = await Client(_configured).SendAsync(head);
+        Assert.Equal(HttpStatusCode.Unauthorized, headResponse.StatusCode);
+        Assert.False(headResponse.Headers.Contains("Location"));
+    }
+
+    [Theory]
+    [InlineData(Code)]
+    [InlineData(Recovery)]
+    public async Task SecondStepPage_FromAThrottledAddress_StillGetsThe429_NotTheRedirect(string path)
+    {
+        // The test client has no remote address, which the app counts as this one.
+        const string address = "0.0.0.0";
+        await ClearSignInCountersAsync(_configured);
+        using (var scope = _configured.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
+            var now = scope.ServiceProvider.GetRequiredService<IAdminClock>().UtcNow;
+            for (var i = 0; i < AdminAuthService.IpFailureLimit; i++)
+            {
+                db.AdminAuthFailureEvents.Add(AdminAuthFailureEvent.Create(AdminAuthScopes.LoginIp, address, now));
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            // With or without a pending sign-in: the throttle is looked at first.
+            foreach (var cookie in new string?[] { null, await CreatePendingSignInAsync(_configured, clearCounters: false) })
+            {
+                using var response = await GetAsync(_configured, path, cookie);
+
+                Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+                Assert.False(response.Headers.Contains("Location"));
+                Assert.False(response.Headers.Contains("Retry-After"));
+                Assert.Equal(
+                    $"{{\"error\":\"{AdminAuthCopy.SignInFailure}\"}}",
+                    await response.Content.ReadAsStringAsync());
+            }
+        }
+        finally
+        {
+            await ClearSignInCountersAsync(_configured);
+        }
     }
 
     [Theory]
@@ -376,8 +491,112 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             "if (reply.status === 401 && error && error === form.getAttribute(\"data-no-sign-in\")) {",
             script,
             StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(script, @"location\.replace\(SIGN_IN\)"));
-        Assert.Contains("var SIGN_IN = \"/admin/sign-in\";", script, StringComparison.Ordinal);
+        // It goes to step 1 with the fixed note that step 1 has to be done again, so that page can say so.
+        Assert.Single(Regex.Matches(script, @"location\.replace\(SIGN_IN_AGAIN\)"));
+        Assert.Contains($"var SIGN_IN_AGAIN = \"{AdminSignInPages.SentBackLocation}\";", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SignIn_OpensWithTheServerSentence_WhenTheBrowserWasSentBack_WithoutStorageCookieOrAnythingPrivateInTheAddress()
+    {
+        // The note is one fixed word after the address. It carries nothing about the visitor.
+        Assert.Equal("again", AdminSignInPages.SentBackFlag);
+        Assert.Equal(AdminSignedOutExemptions.SignIn + "#again", AdminSignInPages.SentBackLocation);
+
+        // The sentence shown is the server's own, carried by the page, not by the address.
+        using var response = await GetPageAsync(_configured, SignIn);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains($" data-sent-back=\"{AdminAuthCopy.SignInFailure}\">", html, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(html, Regex.Escape(AdminAuthCopy.SignInFailure)));
+        var page = File.ReadAllText(AssetPath("sign-in.js"));
+        Assert.Contains(
+            "if (arrival === \"again\") showAlert(form.getAttribute(\"data-sent-back\") || \"\");",
+            page,
+            StringComparison.Ordinal);
+
+        // The first script reads the flag, compares it with two constants and removes it. Nothing else.
+        var arrival = File.ReadAllText(AssetPath("admin-arrival.js"));
+        Assert.Contains("var AGAIN = \"#again\";", arrival, StringComparison.Ordinal);
+        Assert.Contains("var FRESH = \"#fresh\";", arrival, StringComparison.Ordinal);
+        Assert.Contains(
+            "var flag = location.hash === AGAIN ? \"again\" : location.hash === FRESH ? \"fresh\" : \"\";",
+            arrival,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (flag) history.replaceState(null, \"\", location.pathname + location.search);",
+            arrival,
+            StringComparison.Ordinal);
+        Assert.True(
+            arrival.IndexOf("history.replaceState", StringComparison.Ordinal)
+            < arrival.IndexOf("global.AdminArrival", StringComparison.Ordinal),
+            "the address bar is cleared before the script does anything else");
+        foreach (var other in new[]
+                 {
+                     "AdminDom", "AdminRequest", "AdminTurnstile", "fetch(", "document.", "decodeURIComponent",
+                     "localStorage", "sessionStorage", "cookie", "setTimeout"
+                 })
+        {
+            Assert.DoesNotContain(other, arrival, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("/admin/auth/admin-arrival.js", AdminSignedOutPage.ArrivalScriptPath);
+        Assert.Equal(AdminSignedOutPage.ArrivalScriptPath, SignInScripts[0]);
+        Assert.Equal(AdminSignedOutPage.ArrivalScriptPath, SecondStepScripts[0]);
+    }
+
+    [Fact]
+    public void PageScripts_ReloadOnceOnA403_ShowNoFormWithoutTheirHelpers_AndClearWhatWasTypedOnLeaving()
+    {
+        var arrival = File.ReadAllText(AssetPath("admin-arrival.js"));
+        Assert.Contains(
+            "history.replaceState(null, \"\", location.pathname + location.search + FRESH);",
+            arrival,
+            StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(arrival, @"location\.reload\(\)"));
+
+        foreach (var (file, field) in new[] { ("sign-in.js", "password"), ("sign-in-code.js", "field") })
+        {
+            var script = File.ReadAllText(AssetPath(file));
+
+            // A 403 means a stale anti-forgery pair: load the page anew, once. A page that arrived
+            // from such a reload waits for the server to accept a request before it may do it again.
+            Assert.Contains("var mayReload = AdminArrival.flag() !== \"fresh\";", script, StringComparison.Ordinal);
+            Assert.Contains("if (reply.status === 403 && mayReload) {", script, StringComparison.Ordinal);
+            Assert.Contains("if (reply.status !== 403) mayReload = true;", script, StringComparison.Ordinal);
+            Assert.Single(Regex.Matches(script, @"AdminArrival\.reload\(\)"));
+
+            // Without its helpers the page says so and shows no form. The check comes before any helper is used.
+            var guardAt = script.IndexOf("if (typeof AdminArrival === \"undefined\"", StringComparison.Ordinal);
+            Assert.True(guardAt > 0, $"{file} checks that its helpers arrived");
+            Assert.Contains("typeof AdminRequest === \"undefined\"", script, StringComparison.Ordinal);
+            Assert.Contains("typeof AdminDom === \"undefined\"", script, StringComparison.Ordinal);
+            Assert.Contains("form.hidden = true;", script, StringComparison.Ordinal);
+            Assert.Contains("alertEl.textContent = form.getAttribute(\"data-retry\") || \"\";", script, StringComparison.Ordinal);
+            Assert.True(guardAt < script.IndexOf("AdminDom.", StringComparison.Ordinal));
+            Assert.True(guardAt < script.IndexOf("AdminArrival.flag()", StringComparison.Ordinal));
+            Assert.True(guardAt < script.IndexOf("AdminDom.show(panel, true)", StringComparison.Ordinal));
+
+            // What was typed does not stay in a page the browser keeps for its Back button.
+            Assert.Matches(
+                @"window\.addEventListener\(""pagehide"", function \(\) \{\s+" + field + @"\.value = """";\s+\}\);",
+                script);
+        }
+
+        Assert.Contains("typeof AdminTurnstile === \"undefined\"", File.ReadAllText(AssetPath("sign-in.js")), StringComparison.Ordinal);
+        Assert.DoesNotContain("location.reload", File.ReadAllText(AssetPath("sign-in.js")), StringComparison.Ordinal);
+
+        // A step 2 page the browser brings back from its Back-button store asks the server for itself
+        // again, and the server serves it only while the pending sign-in lasts. On a page loaded anew
+        // by Back or Forward, whatever the browser put back into the field is removed.
+        var stepTwo = File.ReadAllText(AssetPath("sign-in-code.js"));
+        Assert.Matches(
+            @"window\.addEventListener\(""pageshow"", function \(event\) \{\s+if \(event\.persisted\) \{\s+location\.reload\(\);\s+return;\s+\}",
+            stepTwo);
+        Assert.Single(Regex.Matches(stepTwo, @"location\.reload\(\)"));
+        Assert.Contains(
+            "if (visits.length > 0 && visits[0].type === \"back_forward\") field.value = \"\";",
+            stepTwo,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -428,7 +647,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         Assert.Contains($"<p class=\"lede\">{AdminSignInCopy.SignInLede}</p>", html, StringComparison.Ordinal);
         Assert.Contains(
             $"<form id=\"sign-in-form\" method=\"post\" action=\"{SignIn}\" novalidate"
-            + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\">",
+            + $" data-retry=\"{AdminSignInCopy.SubmitRetry}\" data-sent-back=\"{AdminAuthCopy.SignInFailure}\">",
             html,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -565,8 +784,10 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             }
 
             // The alert starts empty: what it says after a refusal is the server's sentence, not page copy.
+            // S-A1 holds that sentence once, as data, for a browser that was sent back to it; nothing shows it by default.
             Assert.Contains("role=\"alert\" tabindex=\"-1\" hidden></div>", page, StringComparison.Ordinal);
-            Assert.DoesNotContain(AdminAuthCopy.SignInFailure, page, StringComparison.Ordinal);
+            Assert.Equal(path == SignIn ? 1 : 0, Regex.Matches(page, Regex.Escape(AdminAuthCopy.SignInFailure)).Count);
+            Assert.DoesNotContain(">" + AdminAuthCopy.SignInFailure, page, StringComparison.Ordinal);
             Assert.DoesNotContain(AdminAuthCopy.VerificationFailed, page, StringComparison.Ordinal);
         }
 
@@ -584,7 +805,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         // Cloudflare installs window.turnstile, and its script could then refuse to install.
         var globals = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "turnstile", "AdminDom", "AdminPassword", "AdminTurnstile", "AdminRequest",
+            "turnstile", "AdminArrival", "AdminDom", "AdminPassword", "AdminTurnstile", "AdminRequest",
             "window", "document", "location", "history", "fetch", "URL", "JSON", "Object", "Array",
             "AbortController", "setTimeout", "clearTimeout", "parseInt", "isNaN", "decodeURIComponent",
             // Names every window already has, which an id would be confused with.
@@ -600,6 +821,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             .ToList();
         Assert.Contains("turnstile", reached);
         Assert.Contains("AdminRequest", reached);
+        Assert.Contains("AdminArrival", reached);
         Assert.All(reached, name => Assert.Contains(name, globals));
 
         foreach (var factory in new[] { _configured, _unconfigured })
@@ -621,6 +843,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
     }
 
     [Theory]
+    [InlineData("/admin/auth/admin-arrival.js")]
     [InlineData("/admin/auth/admin-request.js")]
     [InlineData("/admin/auth/sign-in.js")]
     [InlineData("/admin/auth/sign-in-code.js")]
@@ -647,8 +870,14 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         Assert.DoesNotContain("sessionStorage", body, StringComparison.Ordinal);
         Assert.DoesNotContain("indexedDB", body, StringComparison.Ordinal);
         Assert.DoesNotContain("document.cookie", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("location.search", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("location.hash", body, StringComparison.Ordinal);
+        if (path != AdminSignedOutPage.ArrivalScriptPath)
+        {
+            // Only the arrival script looks at the address, and only for its two fixed flags.
+            Assert.DoesNotContain("location.search", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("location.hash", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("history.", body, StringComparison.Ordinal);
+        }
+
         Assert.DoesNotContain("location.href", body, StringComparison.Ordinal);
         Assert.DoesNotContain("window.open", body, StringComparison.Ordinal);
         Assert.DoesNotContain("__ADMIN_AUTH_TEST__", body, StringComparison.Ordinal);
@@ -681,8 +910,15 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         Assert.Single(Regex.Matches(script, @"fetch\("));
         Assert.Contains("return fetch(path, options).then(", script, StringComparison.Ordinal);
         Assert.Contains("options.credentials = \"same-origin\";", script, StringComparison.Ordinal);
-        Assert.Contains("options.mode = \"same-origin\";", script, StringComparison.Ordinal);
         Assert.Contains("options.redirect = \"error\";", script, StringComparison.Ordinal);
+
+        // No request mode is set. With mode "same-origin" under the pages' no-referrer policy,
+        // Firefox and Safari send "Origin: null" on a POST and the server's origin check refuses it.
+        // The pages stay on this site through their own policy (connect-src 'self') and constant paths.
+        Assert.DoesNotContain("options.mode", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("mode:", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("no-cors", script, StringComparison.Ordinal);
+        Assert.Equal("no-referrer", AdminSecurityHeadersMiddleware.ReferrerPolicy);
         Assert.Contains("options.cache = \"no-store\";", script, StringComparison.Ordinal);
         Assert.Contains("var TIMEOUT_MS = 15000;", script, StringComparison.Ordinal);
 
@@ -743,7 +979,10 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
         Assert.Equal("/admin/api/auth/sign-in/recovery", AdminAuthEndpoints.SignInRecoveryPath);
         Assert.Contains("body: function (value) { return { code: value }; }", script, StringComparison.Ordinal);
         Assert.Contains("body: function (value) { return { recoveryCode: value }; }", script, StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(script, @"AdminRequest\.post\("));
+        // Two requests can be sent: the code, and the one that gives the pending sign-in up.
+        Assert.Equal(2, Regex.Matches(script, @"AdminRequest\.post\(").Count);
+        Assert.Contains("AdminRequest.post(step.api, step.body(value))", script, StringComparison.Ordinal);
+        Assert.Contains("AdminRequest.post(SIGN_OUT, {}).then(leave, leave);", script, StringComparison.Ordinal);
         Assert.DoesNotContain("fetch(", script, StringComparison.Ordinal);
         Assert.Equal("code", AdminSignInPages.CodeStep);
         Assert.Equal("recovery", AdminSignInPages.RecoveryStep);
@@ -768,9 +1007,19 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
             StringComparison.Ordinal);
         Assert.Single(Regex.Matches(script, @"AdminRequest\.get\("));
 
-        // Three places leave the page: to the path a verified reply names, to /admin/ when the
-        // server says this browser is signed in after all, and back to step 1. Nowhere else.
-        Assert.Equal(3, Regex.Matches(script, @"location\.replace\(").Count);
+        // "Back to sign in" has the server expire the pending sign-in's cookie, then puts step 1 in
+        // this page's place, so the Back button does not lead here again. It goes whatever the answer.
+        Assert.Contains("var SIGN_OUT = \"/admin/api/auth/sign-out\";", script, StringComparison.Ordinal);
+        Assert.Equal("/admin/api/auth/sign-out", AdminAuthEndpoints.SignOutPath);
+        Assert.Contains("var SIGN_IN = \"/admin/sign-in\";", script, StringComparison.Ordinal);
+        Assert.Contains("var leave = function () { location.replace(SIGN_IN); };", script, StringComparison.Ordinal);
+        Assert.Contains("var back = AdminDom.el(\"back-link\");", script, StringComparison.Ordinal);
+        Assert.Contains("back.addEventListener(\"click\", function (event) {", script, StringComparison.Ordinal);
+
+        // Four places leave the page: to the path a verified reply names, to /admin/ when the server
+        // says this browser is signed in after all, to step 1 when no pending sign-in is left, and
+        // to step 1 by "Back to sign in". Nowhere else.
+        Assert.Equal(4, Regex.Matches(script, @"location\.replace\(").Count);
         Assert.DoesNotContain("location.assign", script, StringComparison.Ordinal);
         Assert.DoesNotContain("location =", script, StringComparison.Ordinal);
 
@@ -937,9 +1186,16 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
     /// raw value for the cookie. Earlier tests in this collection may have left
     /// this address throttled, which would turn the page request into a 429.
     /// </summary>
-    private static async Task<string> CreatePendingSignInAsync(IsolatedWebApplicationFactory factory, bool consumed = false)
+    private static async Task<string> CreatePendingSignInAsync(
+        IsolatedWebApplicationFactory factory,
+        bool consumed = false,
+        bool clearCounters = true)
     {
-        await ClearSignInCountersAsync(factory);
+        if (clearCounters)
+        {
+            await ClearSignInCountersAsync(factory);
+        }
+
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         var raw = AdminPendingToken.Create();

@@ -1,3 +1,4 @@
+using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Admin;
 
 namespace Dealoware.Api.Admin;
@@ -15,11 +16,23 @@ namespace Dealoware.Api.Admin;
 /// <para>
 /// Only S-A1 carries the security check, so only its policy names Cloudflare.
 /// The session gate serves S-A2 and S-A3 only while a pending sign-in exists;
-/// without one it answers before these handlers run.
+/// without one it sends the browser to <see cref="SentBackLocation"/> before
+/// these handlers run.
 /// </para>
 /// </summary>
 public static class AdminSignInPages
 {
+    /// <summary>
+    /// The fixed flag that follows the sign-in address when the browser is
+    /// sent back to step 1 because no pending sign-in was left. It says
+    /// nothing about the visitor. The page's first script takes it out of the
+    /// address bar, and S-A1 then opens with the server's sign-in sentence.
+    /// </summary>
+    public const string SentBackFlag = "again";
+
+    /// <summary>Step 1, with the note that it has to be done again. A constant: nothing of the request is in it.</summary>
+    public const string SentBackLocation = AdminSignedOutExemptions.SignIn + "#" + SentBackFlag;
+
     public const string SignInScriptPath = "/admin/auth/sign-in.js";
 
     /// <summary>One script for both second-step pages; the form says which step it is.</summary>
@@ -45,6 +58,8 @@ public static class AdminSignInPages
             BodyHtml = SignInBody(turnstile),
             Scripts =
             [
+                // First, so a flag leaves the address bar even if a later script fails to load.
+                AdminSignedOutPage.ArrivalScriptPath,
                 AdminSignedOutPage.DomScriptPath,
                 AdminSignedOutPage.PasswordScriptPath,
                 AdminSignedOutPage.TurnstileScriptPath,
@@ -112,6 +127,7 @@ public static class AdminSignInPages
             BodyHtml = SecondStepBody(page),
             Scripts =
             [
+                AdminSignedOutPage.ArrivalScriptPath,
                 AdminSignedOutPage.DomScriptPath,
                 AdminSignedOutPage.RequestScriptPath,
                 SecondStepScriptPath
@@ -124,6 +140,9 @@ public static class AdminSignInPages
     /// the script. The two "enter…" messages are the browser's own check
     /// (filled, and an email that looks like one); everything else is the
     /// server's answer, shown in the one alert above the form.
+    /// <c>data-sent-back</c> is the server's own sign-in sentence, for the
+    /// one case where no reply carries it: the browser was sent back to this
+    /// page because no pending sign-in was left.
     /// </summary>
     private static string SignInBody(TurnstileOptions turnstile)
     {
@@ -134,7 +153,8 @@ public static class AdminSignInPages
             $"<p class=\"lede\">{E(AdminSignInCopy.SignInLede)}</p>" +
             "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>" +
             $"<form id=\"sign-in-form\" method=\"post\" action=\"{AdminSignedOutExemptions.SignIn}\" novalidate" +
-            $" data-retry=\"{E(AdminSignInCopy.SubmitRetry)}\">" +
+            $" data-retry=\"{E(AdminSignInCopy.SubmitRetry)}\"" +
+            $" data-sent-back=\"{E(AdminAuthCopy.SignInFailure)}\">" +
             "<div class=\"field\">" +
             $"<label for=\"email\">{E(AdminSignInCopy.EmailLabel)}</label>" +
             "<input id=\"email\" name=\"email\" type=\"email\" autocomplete=\"username\" inputmode=\"email\"" +
@@ -167,6 +187,9 @@ public static class AdminSignInPages
     /// sign-in" (<see cref="AdminDeny.GenericError"/>). A 401 with that word
     /// means the first step has to be done again; a 401 with any other text
     /// is the server's own sentence and is shown as sent.
+    /// "Back to sign in" is a real link, so it works with JavaScript off.
+    /// With it on, the page script first asks the server to expire the
+    /// pending sign-in's cookie, then puts step 1 in this page's place.
     /// </summary>
     private static string SecondStepBody(SecondStepPage page)
     {

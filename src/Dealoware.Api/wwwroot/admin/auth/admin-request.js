@@ -5,9 +5,15 @@
  * page's anti-forgery token (the dw-csrf meta) in X-CSRF-TOKEN.
  * get(path) asks a path on this site for its JSON, sending nothing.
  *
- * Either way a redirect is never followed and another origin is never asked:
- * both fail the request. So does a reply that has not fully arrived after 15
- * seconds.
+ * Either way a redirect is never followed: it fails the request. So does a
+ * reply that has not fully arrived after 15 seconds. Another origin is never
+ * asked: the callers pass constant paths, and the page's own policy
+ * (connect-src 'self') refuses anything else.
+ *
+ * The request mode is left at its default on purpose. With mode
+ * "same-origin" under the pages' no-referrer policy, Firefox and Safari send
+ * "Origin: null" on a POST, as the Fetch standard says, and the server
+ * refuses a null origin. Chromium does not, so only the other two show it.
  *
  * Both resolve with { status, body } where body is the reply's JSON object,
  * or null when the reply is not one. They reject when there was no reply at
@@ -36,7 +42,6 @@
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, TIMEOUT_MS);
     options.credentials = "same-origin";
-    options.mode = "same-origin";
     options.redirect = "error";
     options.cache = "no-store";
     options.signal = controller.signal;

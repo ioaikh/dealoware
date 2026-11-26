@@ -13,6 +13,8 @@ namespace Dealoware.Api.Admin;
 /// requires the token. Rejects are a generic 403 (R17).
 /// Exempts only exact canonical path+method pairs for the session cookie.
 /// Missing, invalid, expired, TOTP-unverified, or non-CoreOwner session → generic 401.
+/// One answer differs: a GET of the code page or the recovery page with no
+/// pending sign-in is redirected to step 1 (a page for a browser, not a 401).
 /// </summary>
 public sealed class AdminSessionMiddleware
 {
@@ -77,6 +79,20 @@ public sealed class AdminSessionMiddleware
         if (context.Items.ContainsKey(AntiForgeryDeniedKey))
             return;
 
+        // The code page or the recovery page, opened with no pending sign-in
+        // (it ran out, was used, or there never was one): send the browser to
+        // step 1 rather than show it the gate's JSON. Nothing is exempted by
+        // this. No handler runs, no cookie is set or cleared, and the target
+        // is a constant. Only the GET of those two pages is answered this
+        // way: their POSTs, every /admin/api/ path and every other page keep
+        // the 401 below, and a throttled address has had its 429 above.
+        if (IsSecondStepPageGet(context))
+        {
+            context.Response.StatusCode = StatusCodes.Status302Found;
+            context.Response.Headers.Location = AdminSignInPages.SentBackLocation;
+            return;
+        }
+
         if (!TryGetSessionId(context, out var sessionId))
         {
             await AdminDeny.WriteUnauthorizedAsync(context);
@@ -120,6 +136,17 @@ public sealed class AdminSessionMiddleware
 
         await _next(context);
     }
+
+    /// <summary>
+    /// GET of S-A2 or S-A3, by the same exact canonical path the exemption
+    /// rules use. A trailing slash, an extra segment or an encoded separator
+    /// is not one of the two pages.
+    /// </summary>
+    private static bool IsSecondStepPageGet(HttpContext context)
+        => HttpMethods.IsGet(context.Request.Method)
+           && AdminPathCanonicalizer.TryGetComparablePath(context, out var canonical)
+           && (string.Equals(canonical, AdminSignedOutExemptions.SignInCode, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(canonical, AdminSignedOutExemptions.SignInRecovery, StringComparison.OrdinalIgnoreCase));
 
     internal static async Task<bool> IsSignedOutExemptAsync(
         HttpContext context,

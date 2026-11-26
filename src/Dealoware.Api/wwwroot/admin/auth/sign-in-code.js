@@ -12,10 +12,17 @@
  *                                           otherwise to /admin/.
  *   401 with the session gate's own word -> there is no pending sign-in any
  *                                           more (it ran out, or was used):
- *                                           back to step 1.
+ *                                           back to step 1, which says so in
+ *                                           the server's sign-in sentence.
  *   401 {error}, 429 {error}             -> the alert, in the server's words.
  *                                           The field is cleared and keeps
  *                                           the cursor.
+ *   403                                  -> the server did not accept this
+ *                                           page's anti-forgery pair, usually
+ *                                           because another tab was given a
+ *                                           newer one. The page loads itself
+ *                                           anew, once, and then says the
+ *                                           request did not go through.
  *   any other refusal (4xx)              -> nothing was accepted: the retry
  *                                           sentence, and what was typed stays.
  *   anything else                        -> no clear answer: no reply, a
@@ -30,13 +37,21 @@
  *
  * The page never submits by itself, however complete the code looks.
  *
+ * "Back to sign in" gives the pending sign-in up before it leaves: it asks
+ * the server to expire the cookie (POST /admin/api/auth/sign-out), then goes
+ * to step 1 in place of this page, so the Back button does not lead here
+ * again. With JavaScript off it is an ordinary link.
+ *
  * Both pages are served only while a pending sign-in exists. Without one the
- * session gate answers the page request itself, so this script never runs.
+ * session gate sends the browser to step 1, so this script never runs.
  */
 (function () {
   "use strict";
 
   var SIGN_IN = "/admin/sign-in";
+  // Step 1 with the note that it has to be done again (see admin-arrival.js).
+  var SIGN_IN_AGAIN = "/admin/sign-in#again";
+  var SIGN_OUT = "/admin/api/auth/sign-out";
   var HOME = "/admin/";
   var ME = "/admin/api/me";
   var SIGNED_IN_AS = "CoreOwner";
@@ -69,22 +84,36 @@
     }
   };
 
-  var panel = AdminDom.el("second-step-panel");
-  var form = AdminDom.el("second-step-form");
-  var alertEl = AdminDom.el("form-alert");
-  var submit = AdminDom.el("second-step-submit");
-  if (!panel || !form || !alertEl || !submit) {
+  var panel = document.getElementById("second-step-panel");
+  var form = document.getElementById("second-step-form");
+  var alertEl = document.getElementById("form-alert");
+  if (!panel || !form || !alertEl) {
+    return;
+  }
+
+  // A script this page needs did not arrive. Nothing could be sent, so the
+  // page says so and shows no form.
+  if (typeof AdminArrival === "undefined" || typeof AdminDom === "undefined" || typeof AdminRequest === "undefined") {
+    form.hidden = true;
+    alertEl.textContent = form.getAttribute("data-retry") || "";
+    alertEl.hidden = false;
+    panel.hidden = false;
     return;
   }
 
   var step = form.getAttribute("data-step") === "recovery" ? STEPS.recovery : STEPS.code;
   var field = AdminDom.el(step.field);
   var fieldError = AdminDom.el(step.field + "-error");
-  if (!field) {
+  var submit = AdminDom.el("second-step-submit");
+  var back = AdminDom.el("back-link");
+  if (!field || !submit) {
     return;
   }
 
   var busy = false;
+  // A page that has just reloaded itself over a 403 does not do it again
+  // until the server has accepted a request from it.
+  var mayReload = AdminArrival.flag() !== "fresh";
 
   function nextPath(value) {
     if (typeof value !== "string" || value.length > MAX_PATH_LENGTH || !PLAIN_ADMIN_PATH.test(value)) {
@@ -120,6 +149,10 @@
     AdminDom.show(alertEl, false);
   }
 
+  function retrySentence() {
+    return form.getAttribute("data-retry") || "";
+  }
+
   /** The server refused the code: its words in the alert, the field emptied. */
   function refused(message) {
     setBusy(false);
@@ -130,7 +163,7 @@
   /** Not signed in, as far as can be told. Say so plainly and keep what was typed. */
   function sayRetry() {
     setBusy(false);
-    showAlert(form.getAttribute("data-retry") || "");
+    showAlert(retrySentence());
   }
 
   /**
@@ -151,6 +184,11 @@
     setBusy(true);
     AdminRequest.post(step.api, step.body(value)).then(function (reply) {
       var body = reply.body || {};
+      if (reply.status === 403 && mayReload) {
+        AdminArrival.reload();
+        return;
+      }
+      if (reply.status !== 403) mayReload = true;
       if (reply.status === 200) {
         if (body.verified === true) location.replace(nextPath(body.next));
         else afterUnclearReply();
@@ -158,7 +196,7 @@
       }
       var error = AdminRequest.text(body.error);
       if (reply.status === 401 && error && error === form.getAttribute("data-no-sign-in")) {
-        location.replace(SIGN_IN);
+        location.replace(SIGN_IN_AGAIN);
         return;
       }
       if ((reply.status === 401 || reply.status === 429) && error) refused(error);
@@ -185,6 +223,41 @@
     if (field.hasAttribute("aria-invalid")) AdminDom.setInvalid(field, fieldError, "");
   });
 
+  // "Back to sign in": have the server expire the pending sign-in's cookie,
+  // then put step 1 in this page's place. Whatever the answer, or with none,
+  // the browser still goes. A click that opens a new tab is left alone.
+  var leaving = false;
+  if (back) {
+    back.addEventListener("click", function (event) {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (leaving) return;
+      leaving = true;
+      setBusy(true);
+      var leave = function () { location.replace(SIGN_IN); };
+      AdminRequest.post(SIGN_OUT, {}).then(leave, leave);
+    });
+  }
+
+  // A page the browser keeps for its Back button must not keep the code with it.
+  window.addEventListener("pagehide", function () {
+    field.value = "";
+  });
+
+  // And when the Back or Forward button brings this page up again:
+  // a page the browser kept whole is asked for anew, because the server
+  // serves it only while the pending sign-in lasts; and on a page loaded
+  // anew, what the browser put back into the field (Safari does) is removed.
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) {
+      location.reload();
+      return;
+    }
+    var visits = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation") : [];
+    if (visits.length > 0 && visits[0].type === "back_forward") field.value = "";
+  });
+
   AdminDom.show(panel, true);
-  field.focus();
+  if (AdminArrival.flag() === "fresh") showAlert(retrySentence());
+  else field.focus();
 })();
