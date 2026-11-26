@@ -47,6 +47,14 @@ public static class AdminPasswordResetCopy
 
     public const string ConfirmHeading = "Set a new password";
 
+    public const string ConfirmSubmit = "Change password";
+
+    /// <summary>
+    /// Shown when no usable answer came back and the link is still usable,
+    /// so nothing was changed: the first-time setup page's own sentence.
+    /// </summary>
+    public const string ConfirmRetry = AdminBootstrapCopy.SubmitRetry;
+
     public const string LinkExpiredPageTitle = "This link no longer works · Dealoware admin";
 
     public const string LinkExpiredHeading = "This link no longer works";

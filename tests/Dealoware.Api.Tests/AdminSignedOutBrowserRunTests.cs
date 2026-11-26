@@ -21,7 +21,7 @@ public class AdminSignedOutBrowserRunTests
 
     private static readonly string[] NeverInARunner =
     [
-        "sudo", "sysctl", "setcap", "/etc/hosts", "0.0.0.0", "host-resolver-rules"
+        "sudo", "sysctl", "/proc/sys", "setcap", "/etc/hosts", "0.0.0.0", "host-resolver-rules"
     ];
 
     [Fact]
@@ -103,8 +103,8 @@ public class AdminSignedOutBrowserRunTests
         Assert.Equal(3, ports.Values.Distinct().Count());
         Assert.All(ports.Values, port => Assert.True(port >= 1024, "a run must not bind a port below 1024"));
 
-        // No ports shared with the reset-confirm run or with another suite, so all can be started side by side.
-        var others = new List<string> { File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "reset-confirm", "run.sh")) };
+        // No ports shared with another suite, so all can be started side by side.
+        var others = new List<string>();
         others.AddRange(Suites.Where(s => s != suite).Select(s => File.ReadAllText(Path.Combine(RepoRoot(), "e2e", s, "run.sh"))));
         foreach (var port in ports.Values)
         {
@@ -136,11 +136,11 @@ public class AdminSignedOutBrowserRunTests
     [Fact]
     public void SharedPlaywrightConfiguration_KeepsTheLoopbackProxyGuard()
     {
-        // The proxy guard is the reset-confirm one: loopback only, a port from 1024 up.
+        // The proxy guard sits beside the configuration: loopback only, a port from 1024 up.
         var config = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "signed-out", "playwright.base.cjs"));
-        Assert.Contains("require(\"../reset-confirm/require-proxy.cjs\")", config, StringComparison.Ordinal);
-        Assert.Contains("guard(requireResetConfirmProxy, envPrefix + \"_PROXY\")", config, StringComparison.Ordinal);
-        Assert.Contains("guard(requireResetConfirmBaseUrl, envPrefix + \"_BASE_URL\")", config, StringComparison.Ordinal);
+        Assert.Contains("require(\"./require-proxy.cjs\")", config, StringComparison.Ordinal);
+        Assert.Contains("guard(requireLoopbackProxy, envPrefix + \"_PROXY\")", config, StringComparison.Ordinal);
+        Assert.Contains("guard(requireBaseUrl, envPrefix + \"_BASE_URL\")", config, StringComparison.Ordinal);
         // Declared once, then passed to the shared settings and to every browser project.
         Assert.Single(Regex.Matches(config, "const proxy = "));
         Assert.Equal(2, Regex.Matches(config, @"(?m)^\s+proxy,\r?$").Count);
@@ -182,7 +182,7 @@ public class AdminSignedOutBrowserRunTests
 
         var baseConfig = File.ReadAllText(Path.Combine(shared, "playwright.base.cjs"));
         Assert.Equal(
-            new[] { "../reset-confirm/require-proxy.cjs" },
+            new[] { "./require-proxy.cjs" },
             Regex.Matches(baseConfig, @"require\(""([^""]+)""\)").Select(m => m.Groups[1].Value).ToArray());
     }
 
@@ -240,14 +240,14 @@ public class AdminSignedOutBrowserRunTests
         var found = SuitesOnTheSharedRunner();
 
         // A spec in a folder the entry point does not find would never run in Admin UI CI.
-        // e2e/reset-confirm is the one known case: it has its own, older run script.
+        // There is no exception: the older confirm-page run (e2e/reset-confirm) is folded into e2e/reset.
         var withSpecs = Directory.GetDirectories(e2e)
             .Where(dir => Directory.GetFiles(dir, "*.spec.ts").Length > 0)
             .Select(dir => Path.GetFileName(dir))
             .ToArray();
         Assert.NotEmpty(withSpecs);
         Assert.All(withSpecs, folder => Assert.True(
-            found.Contains(folder) || folder == "reset-confirm",
+            found.Contains(folder),
             $"e2e/{folder} holds a spec that Admin UI CI does not run"));
 
         // The workflow installs the browsers once, from the Playwright that e2e/package.json pins,
@@ -343,7 +343,9 @@ public class AdminSignedOutBrowserRunTests
         }
 
         // The loopback proxy guard's own checks run before any browser does.
-        var guard = workflow.IndexOf("run: node e2e/reset-confirm/require-proxy.check.cjs\n", StringComparison.Ordinal);
+        var guard = workflow.IndexOf(
+            "run: |\n          node e2e/signed-out/require-proxy.check.cjs\n          node e2e/signed-out/playwright.base.check.cjs\n",
+            StringComparison.Ordinal);
         Assert.True(guard > 0 && guard < workflow.IndexOf("run: bash e2e/run-signed-out.sh", StringComparison.Ordinal));
     }
 

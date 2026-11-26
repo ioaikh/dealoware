@@ -21,12 +21,20 @@ if (page !== "reset") {
   throw new Error("page must be reset");
 }
 
+const path = require("path");
 const scriptSource = fs.readFileSync(jsPath, "utf8");
+// The page loads these first (AdminSignedOutPage.LinkScriptPath, DomScriptPath, PasswordScriptPath).
+const assetDir = path.join(__dirname, "..", "..", "src", "Dealoware.Api", "wwwroot", "admin", "auth");
+const helperSources = ["admin-link.js", "admin-dom.js", "admin-password.js"]
+  .map((file) => fs.readFileSync(path.join(assetDir, file), "utf8"));
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
 const headingText = "Set a new password";
 const expiredUrl = "/admin/link-expired?for=reset";
 const pathname = "/admin/reset/confirm";
 const retryCopy = "We couldn't check your link. Wait a moment and try again.";
+const formRetry = "We couldn't set your password. Wait a moment and try again.";
+const changed = "Your password has been changed. Sign in with your new password and authenticator code.";
+const origin = "https://admin.core.dealoware.com";
 
 function classifyContext() {
   const start = scriptSource.indexOf("function dwClassifyCheckResponse");
@@ -131,6 +139,9 @@ function makeEl(id, tag, opts) {
     removeAttribute(name) {
       delete this.attributes[name];
     },
+    hasAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name);
+    },
     focus() {
       documentRef.activeElement = this;
     },
@@ -204,24 +215,42 @@ function boot(options) {
     textContent: "Try again",
     parentNode: main
   });
-  const form = makeEl("reset-form", "form", { hidden: true, parentNode: main });
-  const token = makeEl("token", "input", { value: "" });
-  const newPassword = makeEl("newPassword", "input", { value: "" });
-  const totp = makeEl("totp", "input", { value: "" });
-  const recovery = makeEl("recoveryCode", "input", { value: "" });
+  const form = makeEl("reset-form", "form", {
+    hidden: true,
+    parentNode: main,
+    attrs: { "data-retry": formRetry, "data-changed": changed }
+  });
+  const formAlert = makeEl("form-alert", "div", { hidden: true, attrs: { role: "alert", tabindex: "-1" }, parentNode: form });
+  const newPassword = makeEl("new-password", "input", {
+    value: "",
+    attrs: {
+      "data-min-length": "15",
+      "data-max-length": "128",
+      "data-too-short": "Use at least 15 characters.",
+      "data-too-long": "Use at most 128 characters."
+    }
+  });
+  const newPasswordError = makeEl("new-password-error", "span");
+  const confirmPassword = makeEl("confirm-password", "input", { attrs: { "data-mismatch": "These passwords don't match." } });
+  const confirmPasswordError = makeEl("confirm-password-error", "span");
+  const codeBlock = makeEl("code-field", "div");
+  const totp = makeEl("code", "input", { attrs: { "data-required": "Enter the 6-digit code." } });
+  const codeError = makeEl("code-error", "span");
+  const recoveryBlock = makeEl("recovery-code-field", "div", { hidden: true });
+  const recovery = makeEl("recovery-code", "input", { attrs: { "data-required": "Enter a recovery code." } });
+  const recoveryError = makeEl("recovery-code-error", "span");
+  const submit = makeEl("reset-submit", "button");
+  const factorSwitch = makeEl("factor-switch", "button", {
+    textContent: "Use a recovery code instead",
+    attrs: { "data-to-recovery": "Use a recovery code instead", "data-to-code": "Use an authenticator code instead" }
+  });
   const csrf = makeEl("dw-csrf", "meta", { attrs: { name: "dw-csrf", content: "csrf-test" } });
-  const byId = {
-    "reset-main": main,
-    "reset-heading": heading,
-    "reset-status": statusEl,
-    "reset-alert": alertEl,
-    "reset-retry": retryBtn,
-    "reset-form": form,
-    token,
-    newPassword,
-    totp,
-    recoveryCode: recovery
-  };
+  const byId = {};
+  for (const el of [main, heading, statusEl, alertEl, retryBtn, form, formAlert, newPassword, newPasswordError,
+    confirmPassword, confirmPasswordError, codeBlock, totp, codeError, recoveryBlock, recovery, recoveryError,
+    submit, factorSwitch]) {
+    byId[el.id] = el;
+  }
 
   documentRef = {
     activeElement: { tagName: "BODY" },
@@ -237,14 +266,13 @@ function boot(options) {
   alertEl.parentNode = main;
   retryBtn.parentNode = main;
   form.parentNode = main;
-  newPassword.parentNode = form;
-  newPassword.closest = () => newPassword;
 
   const ctx = {
     document: documentRef,
     location: {
       hash: options.hash === undefined ? "#token=live-token" : options.hash,
       pathname,
+      origin,
       replace(url) { replaced.push(url); }
     },
     history: { replaceState() { ctx.location.hash = ""; } },
@@ -256,6 +284,8 @@ function boot(options) {
       return abortable(result, signal);
     },
     AbortController,
+    URL,
+    addEventListener() {},
     setTimeout(fn, ms) {
       const id = nextTimer++;
       timeouts.set(id, { fn, ms });
@@ -272,6 +302,9 @@ function boot(options) {
   ctx.globalThis = ctx;
   ctx.window = ctx;
   vm.createContext(ctx);
+  for (const helper of options.helpers === undefined ? helperSources : options.helpers) {
+    vm.runInContext(helper, ctx);
+  }
   vm.runInContext(scriptSource, ctx);
 
   function fireTimeouts() {
@@ -298,9 +331,18 @@ function boot(options) {
     retryBtn,
     form,
     main,
+    formAlert,
     newPassword,
+    newPasswordError,
+    confirmPassword,
+    confirmPasswordError,
     totp,
+    codeError,
+    codeBlock,
     recovery,
+    recoveryBlock,
+    factorSwitch,
+    submit,
     setFetch(impl) { fetchImpl = impl; }
   };
 }
@@ -557,52 +599,183 @@ const retryReplies = {
       .catch((err) => results.push("FAIL rule C: " + err.stack));
 
     if (page === "reset") {
-      await (async () => {
-        let confirms = 0;
+      // The form, filled in correctly, after the link check answered "usable".
+      async function filledForm(confirmReply, checkReplies) {
+        const confirms = [];
+        let checks = 0;
+        checkReplies = checkReplies || [];
         const session = boot({
-          fetchImpl(url) {
-            if (String(url).includes("/check")) return jsonResponse(200, "{\"valid\":true}");
-            confirms += 1;
-            return Promise.reject(new Error("network"));
+          fetchImpl(url, init) {
+            if (String(url).endsWith("/check")) {
+              checks += 1;
+              const next = checkReplies[checks - 2];
+              if (checks === 1 || next === undefined) return jsonResponse(200, "{\"valid\":true}");
+              return next();
+            }
+            confirms.push(JSON.parse(init.body));
+            return confirmReply(confirms.length, init);
           }
         });
         await session.flush();
+        assert.strictEqual(session.form.hidden, false);
         session.newPassword.value = "radio station later!";
-        session.totp.value = "123456";
-        session.form.dispatch("submit");
-        await session.flush();
-        assert.strictEqual(session.retryBtn.hidden, false);
-        assert.strictEqual(documentRef.activeElement, session.retryBtn);
-        session.retryBtn.dispatch("click");
-        await session.flush();
-        assert.strictEqual(session.retryBtn.hidden, false);
-        assert.notStrictEqual(documentRef.activeElement, null);
-        assert.ok(documentRef.activeElement === session.retryBtn || documentRef.activeElement === session.alertEl);
-        assert.strictEqual(documentRef.activeElement.hidden, false);
-        assert.ok(confirms >= 2);
-      })().then(() => results.push("PASS N1 submit retry keeps focus on a visible control"))
-        .catch((err) => results.push("FAIL N1: " + err.stack));
+        session.confirmPassword.value = "radio station later!";
+        session.totp.value = "123 456";
+        session.confirms = confirms;
+        session.checks = () => checks;
+        return session;
+      }
 
-      await (async () => {
-        const session = boot({
-          fetchImpl(url) {
-            if (String(url).includes("/check")) return jsonResponse(200, "{\"valid\":true}");
-            return jsonResponse(401, "{\"error\":\"We couldn't sign you in. Check your details and try again later. You can also reset your password.\"}");
-          }
-        });
-        await session.flush();
-        session.newPassword.value = "radio station later!";
-        session.totp.value = "123456";
+      async function submitAndSettle(session) {
         session.form.dispatch("submit");
         await session.flush();
-        assert.strictEqual(session.alertEl.getAttribute("role"), "alert");
-        assert.strictEqual(documentRef.activeElement, session.alertEl);
-        assert.strictEqual(
-          session.alertEl.textContent,
-          "We couldn't sign you in. Check your details and try again later. You can also reset your password."
-        );
-      })().then(() => results.push("PASS N2 sign-in failure is one role=alert with focus"))
-        .catch((err) => results.push("FAIL N2: " + err.stack));
+        await session.flush();
+      }
+
+      async function namedCase(name, fn) {
+        await fn().then(() => results.push("PASS " + name))
+          .catch((err) => results.push("FAIL " + name + ": " + err.stack));
+      }
+
+      await namedCase("success only on the exact reply: 200 with the server's sentence goes to sign-in#changed", async () => {
+        const session = await filledForm(() => jsonResponse(200, JSON.stringify({ message: changed })));
+        await submitAndSettle(session);
+        assert.deepStrictEqual(session.replaced, ["/admin/sign-in#changed"]);
+        // Only the contract fields: the one second factor on screen, spaces dropped from the code.
+        assert.deepStrictEqual(
+          JSON.parse(JSON.stringify(session.confirms)),
+          [{ token: "live-token", newPassword: "radio station later!", totp: "123456" }]);
+        assert.strictEqual(session.checks(), 1);
+        // The submission follows redirects (to see the link-expired page); the check never does. No mode.
+        assert.strictEqual(session.fetchCalls[1].init.redirect, undefined);
+        assert.strictEqual(session.fetchCalls[1].init.mode, undefined);
+        assert.strictEqual(session.fetchCalls[1].init.headers["X-CSRF-TOKEN"], "csrf-test");
+      });
+
+      const notTheReply = {
+        "200 {}": () => jsonResponse(200, "{}"),
+        "200 another message": () => jsonResponse(200, JSON.stringify({ message: "Done." })),
+        "200 message not a string": () => jsonResponse(200, JSON.stringify({ message: true })),
+        "200 not JSON": () => jsonResponse(200, "<html>"),
+        "204": () => jsonResponse(204, ""),
+        "redirect followed elsewhere": () => jsonResponse(200, JSON.stringify({ message: changed }), { redirected: true, url: origin + "/admin/sign-in" }),
+        "500": () => jsonResponse(500, "error"),
+        "no reply": () => Promise.reject(new Error("network"))
+      };
+      for (const [label, reply] of Object.entries(notTheReply)) {
+        await namedCase("no clear answer (" + label + "): the link is checked again; usable, so the retry sentence and the form stays", async () => {
+          const session = await filledForm(() => reply());
+          await submitAndSettle(session);
+          assert.deepStrictEqual(session.replaced, []);
+          assert.strictEqual(session.checks(), 2);
+          assert.strictEqual(session.formAlert.hidden, false);
+          assert.strictEqual(session.formAlert.textContent, formRetry);
+          assert.strictEqual(documentRef.activeElement, session.formAlert);
+          assert.strictEqual(session.form.hidden, false);
+          assert.strictEqual(session.retryBtn.hidden, true);
+          assert.strictEqual(session.newPassword.value, "radio station later!");
+          assert.strictEqual(session.confirmPassword.value, "radio station later!");
+          assert.strictEqual(session.totp.value, "123 456");
+          assert.strictEqual(session.submit.disabled, false);
+        });
+      }
+
+      await namedCase("no clear answer and the link is spent: the change may have happened, so sign-in without the flag", async () => {
+        const session = await filledForm(() => jsonResponse(500, "error"), [() => jsonResponse(200, "{\"valid\":false}")]);
+        await submitAndSettle(session);
+        assert.deepStrictEqual(session.replaced, ["/admin/sign-in"]);
+      });
+
+      await namedCase("time-out, a link that cannot be checked, then the spent link: sign-in, not the link-expired page", async () => {
+        const session = await filledForm(
+          (n) => (n === 1
+            ? new Promise(() => {})
+            : jsonResponse(200, "", { redirected: true, url: origin + "/admin/link-expired?for=reset" })),
+          [() => jsonResponse(500, "error")]);
+        session.form.dispatch("submit");
+        await session.flush();
+        session.fireTimeouts();
+        await session.flush();
+        await session.flush();
+        assert.strictEqual(session.formAlert.textContent, formRetry);
+        assert.deepStrictEqual(session.replaced, []);
+        await submitAndSettle(session);
+        assert.deepStrictEqual(session.replaced, ["/admin/sign-in"]);
+        assert.strictEqual(session.confirms.length, 2);
+      });
+
+      await namedCase("a redirect to the link-expired page goes there", async () => {
+        const session = await filledForm(() => jsonResponse(200, "", { redirected: true, url: origin + "/admin/link-expired?for=reset" }));
+        await submitAndSettle(session);
+        assert.deepStrictEqual(session.replaced, [expiredUrl]);
+        assert.strictEqual(session.checks(), 1);
+      });
+
+      await namedCase("N2 a refused code shows the server's sentence as sent in one role=alert, clears the code, keeps the passwords", async () => {
+        const said = "Any sentence the server sends.";
+        const session = await filledForm(() => jsonResponse(401, JSON.stringify({ error: said })));
+        await submitAndSettle(session);
+        assert.strictEqual(session.formAlert.getAttribute("role"), "alert");
+        assert.strictEqual(session.formAlert.textContent, said);
+        assert.strictEqual(documentRef.activeElement, session.formAlert);
+        assert.strictEqual(session.totp.value, "");
+        assert.strictEqual(session.newPassword.value, "radio station later!");
+        assert.strictEqual(session.confirmPassword.value, "radio station later!");
+        assert.strictEqual(session.alertEl.hidden, true);
+        assert.strictEqual(session.checks(), 1);
+      });
+
+      await namedCase("a password rule refusal (400): the named reason under New password, both fields kept, focus there", async () => {
+        const reason = "This password is too common. Choose another.";
+        const session = await filledForm(() => jsonResponse(400, JSON.stringify({ error: reason, reason: "common_or_context" })));
+        await submitAndSettle(session);
+        assert.strictEqual(session.newPasswordError.textContent, reason);
+        assert.strictEqual(session.newPassword.getAttribute("aria-invalid"), "true");
+        assert.strictEqual(documentRef.activeElement, session.newPassword);
+        assert.strictEqual(session.newPassword.value, "radio station later!");
+        assert.strictEqual(session.confirmPassword.value, "radio station later!");
+        assert.strictEqual(session.totp.value, "123 456");
+        assert.strictEqual(session.formAlert.hidden, true);
+        assert.strictEqual(session.checks(), 1);
+      });
+
+      await namedCase("the switch sends the recovery code alone, and the authenticator field is emptied", async () => {
+        const session = await filledForm(() => jsonResponse(200, JSON.stringify({ message: changed })));
+        session.factorSwitch.dispatch("click");
+        assert.strictEqual(session.codeBlock.hidden, true);
+        assert.strictEqual(session.recoveryBlock.hidden, false);
+        assert.strictEqual(session.totp.value, "");
+        assert.strictEqual(session.factorSwitch.textContent, "Use an authenticator code instead");
+        assert.strictEqual(documentRef.activeElement, session.recovery);
+        session.recovery.value = "  abcd-efgh-jkmn ";
+        await submitAndSettle(session);
+        assert.deepStrictEqual(
+          JSON.parse(JSON.stringify(session.confirms)),
+          [{ token: "live-token", newPassword: "radio station later!", recoveryCode: "abcd-efgh-jkmn" }]);
+      });
+
+      await namedCase("the browser checks length, match and the code before sending anything", async () => {
+        const session = await filledForm(() => jsonResponse(200, JSON.stringify({ message: changed })));
+        session.newPassword.value = "x".repeat(14);
+        session.confirmPassword.value = "y";
+        session.totp.value = "12345";
+        await submitAndSettle(session);
+        assert.strictEqual(session.newPasswordError.textContent, "Use at least 15 characters.");
+        assert.strictEqual(session.confirmPasswordError.textContent, "These passwords don't match.");
+        assert.strictEqual(session.codeError.textContent, "Enter the 6-digit code.");
+        assert.strictEqual(documentRef.activeElement, session.newPassword);
+        assert.strictEqual(session.confirms.length, 0);
+      });
+
+      await namedCase("without its helper scripts the page takes the token out of the address bar and shows no form", async () => {
+        const session = boot({ helpers: [], fetchImpl() { return jsonResponse(200, "{\"valid\":true}"); } });
+        await session.flush();
+        assert.strictEqual(session.ctx.location.hash, "");
+        assert.strictEqual(session.fetchCalls.length, 0);
+        assert.strictEqual(session.form.hidden, true);
+        assert.strictEqual(session.alertEl.hidden, false);
+        assert.strictEqual(session.alertEl.textContent, retryCopy);
+      });
     }
 
     await (async () => {

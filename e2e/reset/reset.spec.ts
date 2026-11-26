@@ -27,9 +27,12 @@ import { answerCloudflare, widgetSays, widgetState, type WidgetSetup } from '../
  * address's budget unspent. So the tests do not depend on their order.
  *
  * What a reset link, a wrong code and a throttled address get from the
- * server is proven by the .NET tests, and S-A10's own states by
- * e2e/reset-confirm. This file proves what only a browser can: that the
- * pages work, in three engines, under their policy.
+ * server is proven by the .NET tests, and what the S-A10 script does with
+ * each kind of reply also by tests/Dealoware.Api.Tests/reset-confirm-harness.js.
+ * This file proves what only a browser can: that the pages work, in three
+ * engines, under their policy. It holds what the older e2e/reset-confirm
+ * suite proved about S-A10 (the link check, Try again, the time-outs and
+ * where the cursor goes), now in all three engines.
  */
 
 const ORIGIN = 'https://admin.core.dealoware.com';
@@ -510,56 +513,652 @@ test('S-A5 on the shared page shell: the reset wording with its way to a new lin
   await expectNoSeriousAxeFindings(page, 'link_expired_setup');
 });
 
-test('a reset from the link to sign-in: S-A10 on the shared page shell, a wrong code, the right one, and S-A1 says the password was changed', async ({ page }) => {
-  const token = crypto.randomBytes(32).toString('base64url');
-  const newPassword = crypto.randomBytes(12).toString('hex');
-  seedReset([token]);
-  await standInForCloudflare(page);
+/* ---- S-A10 /admin/reset/confirm ---- */
 
+const CHECK_API = '/admin/api/auth/reset/confirm/check';
+const CONFIRM_API = '/admin/api/auth/reset/confirm';
+const CONFIRM_TITLE = 'Set a new password · Dealoware admin';
+const CONFIRM_HEADING = 'Set a new password';
+const CHECK_RETRY = 'We couldn\'t check your link. Wait a moment and try again.';
+const CONFIRM_RETRY = 'We couldn\'t set your password. Wait a moment and try again.';
+const HELPER = 'Use 15 to 128 characters. Avoid common or account-related words.';
+const TOO_SHORT = 'Use at least 15 characters.';
+const TOO_LONG = 'Use at most 128 characters.';
+const TOO_COMMON = 'This password is too common. Choose another.';
+const SAME_AS_CURRENT = 'Choose a password that is different from your current one.';
+const MISMATCH = 'These passwords don\'t match.';
+const CODE_REQUIRED = 'Enter the 6-digit code.';
+const RECOVERY_REQUIRED = 'Enter a recovery code.';
+const USE_RECOVERY = 'Use a recovery code instead';
+const USE_AUTHENTICATOR = 'Use an authenticator code instead';
+const USABLE = { status: 200, json: { valid: true } };
+
+/** How a test answers one link check or one submission. */
+type ConfirmAnswer =
+  | Answer
+  | 'hang' // no reply until the page gives up
+  | 'lost'; // the server gets it and answers, the browser never sees the answer
+
+function newResetToken(): string {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+/** A new password made up for the test: hex only, so NFKC leaves it as it is. */
+function newPassword(): string {
+  return crypto.randomBytes(12).toString('hex');
+}
+
+/** Decides what each link check and each submission gets, and keeps what was submitted. */
+async function answerConfirm(
+  page: Page,
+  answers: { check?: (n: number) => ConfirmAnswer | Promise<ConfirmAnswer>; submit?: (n: number) => ConfirmAnswer | Promise<ConfirmAnswer> } = {},
+): Promise<{ checks: number; submits: Record<string, unknown>[] }> {
+  const seen = { checks: 0, submits: [] as Record<string, unknown>[] };
+  const answer = async (route: import('@playwright/test').Route, reply: ConfirmAnswer): Promise<void> => {
+    if (reply === 'real') await route.continue();
+    else if (reply === 'abort') await route.abort('connectionfailed');
+    else if (reply === 'hang') await new Promise(() => { /* the page's own 15 s limit ends it */ });
+    else if (reply === 'lost') {
+      await route.fetch();
+      await route.abort('connectionfailed');
+    } else if (reply.json !== undefined) {
+      await route.fulfill({ status: reply.status, contentType: 'application/json', body: JSON.stringify(reply.json) });
+    } else await route.fulfill({ status: reply.status, contentType: 'text/plain', body: reply.text ?? '' });
+  };
+  await page.route((url) => url.pathname === CHECK_API, async (route) => {
+    seen.checks += 1;
+    await answer(route, answers.check ? await answers.check(seen.checks) : 'real');
+  });
+  await page.route((url) => url.pathname === CONFIRM_API, async (route) => {
+    seen.submits.push((route.request().postDataJSON() ?? {}) as Record<string, unknown>);
+    await answer(route, answers.submit ? await answers.submit(seen.submits.length) : 'real');
+  });
+  return seen;
+}
+
+function changeButton(page: Page): Locator {
+  return page.getByRole('button', { name: 'Change password', exact: true });
+}
+
+/** Opens S-A10 from a link and waits for the form. */
+async function openConfirm(page: Page, token: string): Promise<void> {
   await page.goto(`${CONFIRM}#token=${token}`);
   await expect(page.locator('#reset-form')).toBeVisible();
-  expect(new URL(page.url()).hash).toBe('');
-  await expect(page).toHaveTitle('Set a new password · Dealoware admin');
-  await expect(page.locator('h1')).toHaveCount(1);
-  await expect(page.locator('h1')).toHaveText('Set a new password');
-  await expect(page.locator('#newPassword')).toBeFocused();
-  const colours = await page.evaluate(() => ({
-    card: getComputedStyle(document.querySelector('.auth-card')!).backgroundColor,
-    button: getComputedStyle(document.querySelector('#reset-form button[type="submit"]')!).backgroundColor,
-  }));
-  expect(colours).toEqual({ card: 'rgb(255, 255, 255)', button: 'rgb(11, 79, 138)' });
-  await expectNoHorizontalScroll(page);
-  await expectNoSeriousAxeFindings(page, 'reset_confirm');
-  await shot(page, 'reset_confirm');
+}
 
-  // A wrong code: the server's one sentence, the new password kept.
-  await page.locator('#newPassword').fill(newPassword);
-  await page.locator('#totp').fill(wrongAuthenticatorCode(owner.secret!));
-  await page.getByRole('button', { name: 'Change password', exact: true }).click();
-  const alert = page.locator('#reset-alert');
-  await expect(alert).toHaveText(SIGN_IN_GENERIC);
+async function fillPasswords(page: Page, password: string, confirm = password): Promise<void> {
+  await page.locator('#new-password').fill(password);
+  await page.locator('#confirm-password').fill(confirm);
+}
+
+/** The link-check message: shown, not a live region, before "Try again", which points at it. */
+async function expectCheckMessage(page: Page): Promise<void> {
+  const message = page.locator('#reset-alert');
+  const retry = page.locator('#reset-retry');
+  await expect(message).toBeVisible();
+  await expect(message).toHaveText(CHECK_RETRY);
+  await expect(message).toHaveAttribute('tabindex', '-1');
+  await expect(message).not.toHaveAttribute('role');
+  await expect(message).not.toHaveAttribute('aria-live');
+  await expect(retry).toBeVisible();
+  await expect(retry).toHaveText('Try again');
+  await expect(retry).not.toHaveAttribute('aria-disabled');
+  await expect(retry).toHaveAttribute('aria-describedby', 'reset-alert');
+  expect(await page.evaluate(() => {
+    const before = document.getElementById('reset-alert')!.compareDocumentPosition(document.getElementById('reset-retry')!);
+    let node = document.getElementById('reset-alert')!.parentElement;
+    let live = false;
+    while (node) {
+      const role = node.getAttribute('role');
+      if (node.getAttribute('aria-live') || role === 'alert' || role === 'status') live = true;
+      node = node.parentElement;
+    }
+    return { follows: (before & Node.DOCUMENT_POSITION_FOLLOWING) !== 0, live };
+  })).toEqual({ follows: true, live: false });
+  await expect(page.locator('#reset-status')).toBeHidden();
+  await expect(page.locator('#reset-status')).toHaveText('');
+  await expect(page.locator('#reset-form')).toBeHidden();
+  expect(new URL(page.url()).pathname).toBe(CONFIRM);
+}
+
+/** A first failure puts the cursor on "Try again"; a repeat failure on the message, in view, with its ring. */
+async function expectCheckFailure(page: Page, repeat: boolean): Promise<void> {
+  await expectCheckMessage(page);
+  if (!repeat) {
+    await expect(page.locator('#reset-retry')).toBeFocused();
+    return;
+  }
+  const message = page.locator('#reset-alert');
+  await expect(message).toBeFocused();
+  const ring = await message.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    return {
+      style: style.outlineStyle,
+      width: style.outlineWidth,
+      offset: style.outlineOffset,
+      inView: box.top >= 0 && box.left >= 0 && box.bottom <= innerHeight && box.right <= innerWidth,
+    };
+  });
+  expect(ring).toEqual({ style: 'solid', width: '2px', offset: '2px', inView: true });
+}
+
+/** "Try again" while the link is checked again: busy, still focused, the message stays, nothing live. */
+async function expectRetryBusy(page: Page): Promise<void> {
+  const retry = page.locator('#reset-retry');
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeFocused();
+  await expect(retry).toHaveAttribute('aria-disabled', 'true');
+  await expect(retry).not.toHaveAttribute('disabled');
+  await expect(retry).toHaveText('Checking…');
+  await expect(page.locator('#reset-status')).toBeHidden();
+  await expect(page.locator('#reset-alert')).toBeVisible();
+  await expect(page.locator('#reset-alert')).not.toHaveAttribute('role');
+}
+
+/** The form's one alert: the text, announced, with the focus on it, and the page still S-A10 with its form. */
+async function expectFormAlert(page: Page, text: string): Promise<void> {
+  const alert = page.locator('#form-alert');
+  await expect(alert).toBeVisible();
+  await expect(alert).toHaveText(text);
   await expect(alert).toHaveAttribute('role', 'alert');
   await expect(alert).toBeFocused();
-  await expect(page.locator('#newPassword')).toHaveValue(newPassword);
-  await expectNoSeriousAxeFindings(page, 'reset_confirm_refused');
+  await expect(page.locator('[role="alert"]:visible')).toHaveCount(1);
+  await expect(page.locator('#reset-form')).toBeVisible();
+  await expect(page.locator('#reset-form')).not.toHaveAttribute('aria-busy');
+  await expect(changeButton(page)).toBeEnabled();
+  expect(new URL(page.url()).pathname).toBe(CONFIRM);
+}
 
-  // The right code: on to sign-in, which says so in the server's words, in a status line, not an alert.
-  await page.locator('#totp').fill(authenticatorCode(owner.secret!));
-  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+/** S-A1 after a reset: the server's sentence in a status line when `changed`, nothing when it is not known. */
+async function expectSignIn(page: Page, changed: boolean): Promise<void> {
   await expect(page).toHaveURL(ORIGIN + SIGN_IN);
   await expect(page.locator('#sign-in-form')).toBeVisible();
   const status = page.locator('#form-status');
-  await expect(status).toBeVisible();
-  await expect(status).toHaveText(PASSWORD_CHANGED);
-  await expect(status).toHaveAttribute('role', 'status');
+  if (changed) {
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText(PASSWORD_CHANGED);
+    await expect(status).toHaveAttribute('role', 'status');
+  } else {
+    await expect(status).toBeHidden();
+  }
   await expect(page.locator('#form-alert')).toBeHidden();
+}
+
+test('S-A10 on the shared page shell: one nonce policy without Cloudflare, the token out of the address bar, the cursor in New password', async ({ page }) => {
+  const token = newResetToken();
+  seedReset([token]);
+  const response = await page.goto(`${CONFIRM}#token=${token}`);
+  expect(response!.status()).toBe(200);
+  const html = await response!.text();
+  const csp = (await response!.headersArray()).filter((h) => h.name.toLowerCase() === 'content-security-policy');
+  expect(csp).toHaveLength(1);
+  const nonce = html.match(/<script src="\/admin\/auth\/admin-link\.js" nonce="([^"]+)"><\/script>/)![1];
+  expect(csp[0].value).toBe(
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; `
+    + 'frame-ancestors \'none\'; base-uri \'none\'; form-action \'self\'; object-src \'none\'');
+  expect(response!.headers()['cache-control']).toBe('no-store');
+  expect(html).not.toContain(token);
+
+  await expect(page.locator('#reset-form')).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+  await expect(page).toHaveTitle(CONFIRM_TITLE);
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('h1')).toHaveText(CONFIRM_HEADING);
+  await expect(page.locator('#new-password')).toBeFocused();
+  await expect(page.locator('#reset-main')).not.toHaveAttribute('aria-busy');
+  await expect(page.locator('#form-alert')).toBeHidden();
+  await expect(page.locator('#password-helper')).toHaveText(HELPER);
+  await expect(page.locator('#new-password')).toHaveAttribute('aria-describedby', 'password-helper new-password-error');
+  // The authenticator code on screen, the recovery code not; both as UXR-A04 sets them.
+  await expect(page.getByRole('textbox', { name: 'Authenticator code', exact: true })).toHaveAttribute('inputmode', 'numeric');
+  await expect(page.locator('#code')).toHaveAttribute('autocomplete', 'one-time-code');
+  await expect(page.locator('#recovery-code')).toBeHidden();
+  await expect(page.getByRole('button', { name: USE_RECOVERY, exact: true })).toBeVisible();
+  const colours = await page.evaluate(() => ({
+    card: getComputedStyle(document.querySelector('.auth-card')!).backgroundColor,
+    button: getComputedStyle(document.getElementById('reset-submit')!).backgroundColor,
+  }));
+  expect(colours).toEqual({ card: 'rgb(255, 255, 255)', button: 'rgb(11, 79, 138)' });
+  expect(await page.evaluate(() => window.localStorage.length + window.sessionStorage.length)).toBe(0);
+  await expectNoHorizontalScroll(page);
+  await expectNoSeriousAxeFindings(page, 'reset_confirm');
+  await shot(page, 'reset_confirm');
+});
+
+test('S-A10 with no token in the link goes to S-A5 and asks nothing; a reload has no token either', async ({ page }) => {
+  const seen = await answerConfirm(page);
+  await page.goto(CONFIRM);
+  await expect(page).toHaveURL(`${ORIGIN}${EXPIRED}?for=reset`);
+  await expect(page.locator('#link-expired-body')).toHaveText(EXPIRED_RESET);
+  expect(seen.checks).toBe(0);
+
+  // The token lives in the page's memory only: a reload lands on S-A5, and the link itself still works.
+  const token = newResetToken();
+  seedReset([token]);
+  await openConfirm(page, token);
+  await page.reload();
+  await expect(page).toHaveURL(`${ORIGIN}${EXPIRED}?for=reset`);
+  await openConfirm(page, token);
+});
+
+test('S-A10 when the link cannot be checked (429, 500, a reply that is not exactly valid): Try again, never the form, never S-A5', async ({ page }) => {
+  const replies: Answer[] = [
+    { status: 429, json: { message: SIGN_IN_GENERIC } },
+    { status: 500, text: 'error' },
+    { status: 200, json: { valid: true, extra: 1 } },
+    'abort',
+  ];
+  let reply: Answer = replies[0];
+  await answerConfirm(page, { check: () => reply });
+  for (reply of replies) {
+    await page.goto(`${CONFIRM}#token=${newResetToken()}`);
+    await expectCheckFailure(page, false);
+  }
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_check_retry');
+  await shot(page, 'reset_confirm_check_retry');
+});
+
+test('S-A10 link check that times out after 15 seconds: Try again; again: the message takes the focus', async ({ page }) => {
+  await page.clock.install();
+  await answerConfirm(page, { check: () => 'hang' });
+  await page.goto(`${CONFIRM}#token=${newResetToken()}`);
+  await expect(page.locator('#reset-status')).toHaveText('Checking your link…');
+  await expect(page.locator('#reset-status')).toHaveAttribute('role', 'status');
+  await page.clock.fastForward(15000);
+  await expectCheckFailure(page, false);
+
+  await page.locator('#reset-retry').click();
+  await expectRetryBusy(page);
+  await page.clock.fastForward(15000);
+  await expectCheckFailure(page, true);
+});
+
+test('S-A10 Try again: busy as Checking… while the check runs, extra presses send nothing, then the form', async ({ page }) => {
+  let release: () => void = () => {};
+  const held = new Promise<ConfirmAnswer>((resolve) => { release = () => resolve(USABLE); });
+  const seen = await answerConfirm(page, { check: (n) => (n === 1 ? { status: 500, text: 'error' } : held) });
+  const token = newResetToken();
+  await page.goto(`${CONFIRM}#token=${token}`);
+  await expectCheckFailure(page, false);
+
+  const retry = page.locator('#reset-retry');
+  await retry.click();
+  await expectRetryBusy(page);
+  await retry.click({ force: true });
+  await retry.press('Enter');
+  expect(seen.checks).toBe(2);
+  release();
+  await expect(page.locator('#reset-form')).toBeVisible();
+  await expect(page.locator('#new-password')).toBeFocused();
+  await expect(retry).toBeHidden();
+  expect(seen.checks).toBe(2);
+});
+
+test('S-A10 a repeated check failure restores Try again and puts the cursor on the message, every time', async ({ page }) => {
+  // The old suite looked for the busy state after a reply that came at once, so it was sometimes gone
+  // before it was looked at. Each retry is held here until the busy state has been seen.
+  const gates: (() => void)[] = [];
+  const seen = await answerConfirm(page, {
+    check: (n) => (n === 1
+      ? { status: 500, text: 'error' }
+      : new Promise<ConfirmAnswer>((resolve) => { gates.push(() => resolve({ status: 500, text: 'error' })); })),
+  });
+  await page.goto(`${CONFIRM}#token=${newResetToken()}`);
+  await expectCheckFailure(page, false);
+  for (const attempt of [2, 3]) {
+    await page.locator('#reset-retry').click();
+    await expectRetryBusy(page);
+    await expect.poll(() => gates.length).toBe(attempt - 1);
+    gates[attempt - 2]();
+    await expectCheckFailure(page, true);
+    expect(seen.checks).toBe(attempt);
+  }
+});
+
+test('S-A10 password rules: the helper, length counted after NFKC on leaving the field and on submit, the mismatch, the code, all before anything is sent', async ({ page }) => {
+  const token = newResetToken();
+  seedReset([token]);
+  const seen = await answerConfirm(page, { submit: () => ({ status: 400, json: { error: TOO_COMMON, reason: 'common_or_context' } }) });
+  await openConfirm(page, token);
+  const field = page.locator('#new-password');
+  const confirm = page.locator('#confirm-password');
+
+  // Too short, on leaving the field: the server's own sentence.
+  await field.fill('x'.repeat(14));
+  await field.press('Tab');
+  await expect(page.locator('#new-password-error')).toHaveText(TOO_SHORT);
+  await expect(field).toHaveAttribute('aria-invalid', 'true');
+  await field.fill('x'.repeat(15));
+  await expect(page.locator('#new-password-error')).toHaveText('');
+
+  // On submit: every field's message at once, the cursor on the first.
+  await fillPasswords(page, 'x'.repeat(14), 'y'.repeat(14));
+  await changeButton(page).click();
+  await expect(page.locator('#new-password-error')).toHaveText(TOO_SHORT);
+  await expect(page.locator('#confirm-password-error')).toHaveText(MISMATCH);
+  await expect(page.locator('#code-error')).toHaveText(CODE_REQUIRED);
+  await expect(page.locator('#code')).toHaveAttribute('aria-invalid', 'true');
+  await expect(field).toBeFocused();
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_errors');
+  await shot(page, 'reset_confirm_errors');
+
+  // A good length but no match: the cursor on Confirm password.
+  await fillPasswords(page, 'x'.repeat(15), 'x'.repeat(16));
+  await page.locator('#code').fill('12345');
+  await changeButton(page).click();
+  await expect(confirm).toBeFocused();
+  await expect(page.locator('#confirm-password-error')).toHaveText(MISMATCH);
+  await expect(page.locator('#code-error')).toHaveText(CODE_REQUIRED);
+
+  // 128 is the limit, 129 is over it.
+  await fillPasswords(page, 'x'.repeat(129));
+  await changeButton(page).click();
+  await expect(page.locator('#new-password-error')).toHaveText(TOO_LONG);
+  // 14 astral characters are 28 UTF-16 units and still too short; a ligature NFKC opens into three letters makes 13 + 3.
+  await fillPasswords(page, '\u{1F600}'.repeat(14));
+  await changeButton(page).click();
+  await expect(page.locator('#new-password-error')).toHaveText(TOO_SHORT);
+  expect(seen.submits).toHaveLength(0);
+
+  // Spaces in the code are dropped.
+  await page.locator('#code').fill('123 456');
+  for (const password of ['x'.repeat(128), `${'z'.repeat(13)}ﬃ`]) {
+    await fillPasswords(page, password);
+    await changeButton(page).click();
+    await expect(page.locator('#new-password-error')).toHaveText(TOO_COMMON);
+  }
+  expect(seen.submits).toEqual([
+    { token, newPassword: 'x'.repeat(128), totp: '123456' },
+    { token, newPassword: `${'z'.repeat(13)}ﬃ`, totp: '123456' },
+  ]);
+});
+
+test('S-A10 a password the server refuses (common or account word, the current one): its named reason under New password, both fields kept, the link still usable', async ({ page }) => {
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  await answerConfirm(page);
+  await openConfirm(page, token);
+  const field = page.locator('#new-password');
+
+  for (const [refused, reason] of [[`my dealoware ${password}`, TOO_COMMON], [owner.password, SAME_AS_CURRENT]]) {
+    await fillPasswords(page, refused);
+    await page.locator('#code').fill(authenticatorCode(owner.secret!));
+    const [reply] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === CONFIRM_API),
+      changeButton(page).click(),
+    ]);
+    expect(reply.status()).toBe(400);
+    await expect(page.locator('#new-password-error')).toHaveText(reason);
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue(refused);
+    await expect(page.locator('#confirm-password')).toHaveValue(refused);
+    await expect(page.locator('#form-alert')).toBeHidden();
+  }
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_refused_password');
+
+  // The refusals did not spend the link: the same page finishes the reset.
+  await fillPasswords(page, password);
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  await changeButton(page).click();
+  await expectSignIn(page, true);
+});
+
+test('S-A10 show toggles keep one label: pressed means shown, each field on its own; Confirm password is never sent', async ({ page }) => {
+  const token = newResetToken();
+  seedReset([token]);
+  await openConfirm(page, token);
+  const password = newPassword();
+  for (const [field, label] of [['new-password', 'New password'], ['confirm-password', 'Confirm password']]) {
+    const input = page.locator(`#${field}`);
+    const toggle = page.locator(`#${field}-toggle`);
+    await input.fill(password);
+    await expect(page.getByRole('button', { name: `Show ${label}`, exact: true, pressed: false })).toHaveCount(1);
+    await toggle.click();
+    await expect(input).toHaveAttribute('type', 'text');
+    await expect(toggle).toHaveText('Show');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await toggle.click();
+    await expect(input).toHaveAttribute('type', 'password');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(page.locator('#confirm-password')).not.toHaveAttribute('name');
+});
+
+test('a reset from the link to sign-in: a wrong code shows the server\'s sentence and keeps the passwords, the right one goes to sign-in, which says the password was changed', async ({ page }) => {
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  const seen = await answerConfirm(page);
+  await openConfirm(page, token);
+
+  await fillPasswords(page, password);
+  await page.locator('#code').fill(wrongAuthenticatorCode(owner.secret!));
+  await changeButton(page).click();
+  await expectFormAlert(page, SIGN_IN_GENERIC);
+  await expect(page.locator('#code')).toHaveValue('');
+  await expect(page.locator('#new-password')).toHaveValue(password);
+  await expect(page.locator('#confirm-password')).toHaveValue(password);
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_refused');
+  await shot(page, 'reset_confirm_refused');
+
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  await changeButton(page).click();
+  await expectSignIn(page, true);
   await expect(page.locator('#email')).toBeFocused();
   await expectNoSeriousAxeFindings(page, 'sign-in_password_changed');
   await shot(page, 'sign-in_password_changed');
+  // Two submissions, each with the contract fields only; the link was checked once.
+  expect(seen.submits.map((sent) => Object.keys(sent).sort())).toEqual([
+    ['newPassword', 'token', 'totp'],
+    ['newPassword', 'token', 'totp'],
+  ]);
+  expect(seen.checks).toBe(1);
 
   // The link is spent: opened again, it ends on S-A5.
   await page.goto(`${CONFIRM}#token=${token}`);
   await expect(page).toHaveURL(`${ORIGIN}${EXPIRED}?for=reset`);
+});
+
+test('S-A10 with a recovery code (TD-ADM-UI-auth-12): the switch swaps the field, the code works once, and a second reset with it is refused', async ({ page }) => {
+  const first = newResetToken();
+  const second = newResetToken();
+  const password = newPassword();
+  seedReset([first, second]);
+  const seen = await answerConfirm(page);
+  await openConfirm(page, first);
+
+  // The switch: the authenticator field goes (emptied), the recovery field takes its place and the cursor.
+  await page.locator('#code').fill('123456');
+  await page.getByRole('button', { name: USE_RECOVERY, exact: true }).click();
+  await expect(page.locator('#code')).toBeHidden();
+  const recovery = page.getByRole('textbox', { name: 'Recovery code', exact: true });
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toBeFocused();
+  await expect(recovery).toHaveAttribute('autocomplete', 'one-time-code');
+  await expect(recovery).not.toHaveAttribute('inputmode');
+  await expect(page.getByRole('button', { name: USE_AUTHENTICATOR, exact: true })).toBeVisible();
+
+  // And back, and over again: each way the field left behind is emptied.
+  await recovery.fill('ABCD');
+  await page.getByRole('button', { name: USE_AUTHENTICATOR, exact: true }).click();
+  await expect(page.locator('#code')).toBeFocused();
+  await expect(page.locator('#code')).toHaveValue('');
+  await page.getByRole('button', { name: USE_RECOVERY, exact: true }).click();
+  await expect(recovery).toHaveValue('');
+
+  // An empty recovery code is caught in the page.
+  await fillPasswords(page, password);
+  await changeButton(page).click();
+  await expect(page.locator('#recovery-code-error')).toHaveText(RECOVERY_REQUIRED);
+  await expect(recovery).toBeFocused();
+  expect(seen.submits).toHaveLength(0);
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_recovery');
+  await shot(page, 'reset_confirm_recovery');
+
+  // Typed in lower case with spaces: the server ignores both. Only the recovery code is sent.
+  const code = owner.recoveryCodes[0];
+  const typed = ` ${code.toLowerCase().replace(/-/g, ' ')} `;
+  await recovery.fill(typed);
+  await changeButton(page).click();
+  await expectSignIn(page, true);
+  expect(seen.submits).toEqual([{ token: first, newPassword: password, recoveryCode: typed.trim() }]);
+
+  // The same code on a new reset: the server's one sentence, the code cleared, the passwords kept.
+  await openConfirm(page, second);
+  await page.getByRole('button', { name: USE_RECOVERY, exact: true }).click();
+  const another = newPassword();
+  await fillPasswords(page, another);
+  await recovery.fill(code);
+  await changeButton(page).click();
+  await expectFormAlert(page, SIGN_IN_GENERIC);
+  await expect(recovery).toHaveValue('');
+  await expect(page.locator('#new-password')).toHaveValue(another);
+
+  // That refusal changed nothing and left the link usable: an unused code still finishes it.
+  await recovery.fill(owner.recoveryCodes[1]);
+  await changeButton(page).click();
+  await expectSignIn(page, true);
+});
+
+test('S-A10 refusals stay put with the server\'s words: 429 as sent, an unknown refusal the retry sentence; the link is not checked again', async ({ page }) => {
+  const message = 'Slow down. Wait a moment and try again.';
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  const seen = await answerConfirm(page, {
+    submit: (n) => [
+      { status: 429, json: { message } },
+      { status: 403, json: { error: 'Forbidden' } },
+      { status: 400, text: 'Bad Request' },
+    ][n - 1] as ConfirmAnswer,
+  });
+  await openConfirm(page, token);
+  await fillPasswords(page, password);
+  await page.locator('#code').fill('123456');
+  for (const expected of [message, CONFIRM_RETRY, CONFIRM_RETRY]) {
+    await changeButton(page).click();
+    await expectFormAlert(page, expected);
+    await expect(page.locator('#new-password')).toHaveValue(password);
+    await expect(page.locator('#confirm-password')).toHaveValue(password);
+    await expect(page.locator('#code')).toHaveValue('123456');
+  }
+  // Each press sent the same values again, and a refusal is a clear answer: one check, at the start.
+  expect(seen.submits).toEqual(Array(3).fill({ token, newPassword: password, totp: '123456' }));
+  expect(seen.checks).toBe(1);
+});
+
+test('S-A10 moves on only for the server\'s exact reply; with no clear answer (lost, 500, a 200 without the sentence, a time-out) it checks the link and, still usable, keeps the form', async ({ page }) => {
+  await page.clock.install();
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  const seen = await answerConfirm(page, {
+    submit: (n) => [
+      'abort',
+      { status: 500, text: 'Internal Server Error' },
+      { status: 200, json: {} },
+      { status: 200, json: { message: 'Done.' } },
+      'hang',
+    ][n - 1] as ConfirmAnswer,
+  });
+  await openConfirm(page, token);
+  await fillPasswords(page, password);
+  await page.locator('#code').fill('123456');
+
+  for (const attempt of [1, 2, 3, 4, 5]) {
+    await changeButton(page).click();
+    if (attempt === 5) {
+      await expect(page.locator('#reset-form')).toHaveAttribute('aria-busy', 'true');
+      await expect(changeButton(page)).toBeDisabled();
+      // A second press while busy sends nothing.
+      await page.locator('#code').press('Enter');
+      await page.clock.fastForward(15000);
+    }
+    await expectFormAlert(page, CONFIRM_RETRY);
+    await expect(page.locator('#new-password')).toHaveValue(password);
+    await expect(page.locator('#confirm-password')).toHaveValue(password);
+    await expect(page.locator('#code')).toHaveValue('123456');
+    // The first check opened the form; each unclear reply was followed by one more, to the real server.
+    expect({ checks: seen.checks, submits: seen.submits.length }).toEqual({ checks: 1 + attempt, submits: attempt });
+  }
+  await expectNoSeriousAxeFindings(page, 'reset_confirm_unclear');
+});
+
+test('S-A10 when the server changed the password but its reply was lost: the link is spent, so sign-in, without saying it was changed', async ({ page }) => {
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  // The real server takes the submission and changes the password; the browser never gets the answer.
+  const seen = await answerConfirm(page, { submit: (n) => (n === 1 ? 'lost' : 'real') });
+  await openConfirm(page, token);
+  await fillPasswords(page, password);
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  await changeButton(page).click();
+  await expectSignIn(page, false);
+  expect({ checks: seen.checks, submits: seen.submits.length }).toEqual({ checks: 2, submits: 1 });
+
+  // The change did happen: the link is spent.
+  await page.goto(`${CONFIRM}#token=${token}`);
+  await expect(page).toHaveURL(`${ORIGIN}${EXPIRED}?for=reset`);
+});
+
+test('S-A10 when the reply is lost and the link cannot be checked either: a second try that finds the link spent goes to sign-in, not S-A5', async ({ page }) => {
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  const seen = await answerConfirm(page, {
+    check: (n) => (n === 2 ? { status: 500, text: 'error' } : 'real'),
+    submit: (n) => (n === 1 ? 'lost' : 'real'),
+  });
+  await openConfirm(page, token);
+  await fillPasswords(page, password);
+  await page.locator('#code').fill(authenticatorCode(owner.secret!));
+  await changeButton(page).click();
+  await expectFormAlert(page, CONFIRM_RETRY);
+
+  // The owner presses again: the server sends the spent link to S-A5, the page goes to sign-in instead.
+  await changeButton(page).click();
+  await expectSignIn(page, false);
+  expect({ checks: seen.checks, submits: seen.submits.length }).toEqual({ checks: 2, submits: 2 });
+});
+
+test('S-A10 by keyboard only, at 320 px, with a visible focus at every stop', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  const token = newResetToken();
+  const password = newPassword();
+  seedReset([token]);
+  await openConfirm(page, token);
+  await expectNoHorizontalScroll(page);
+  await shot(page, 'reset_confirm_320');
+
+  await expect(page.locator('#new-password')).toBeFocused();
+  await page.keyboard.type(password);
+  const stops: string[] = [];
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press('Tab');
+    const stop = await focusStop(page);
+    stops.push(stop);
+    const ring = await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle);
+    expect(ring).toBe('solid');
+    if (stop === 'confirm-password') await page.keyboard.type(password);
+    if (stop === 'code') await page.keyboard.type(authenticatorCode(owner.secret!));
+  }
+  expect(stops).toEqual(['new-password-toggle', 'confirm-password', 'confirm-password-toggle', 'code', 'reset-submit', 'factor-switch']);
+
+  // The switch works from the keyboard, and back.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#recovery-code')).toBeFocused();
+  await expectNoHorizontalScroll(page);
+  await shot(page, 'reset_confirm_recovery_320');
+  await page.locator('#factor-switch').focus();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#code')).toBeFocused();
+  await page.keyboard.type(authenticatorCode(owner.secret!));
+  await page.keyboard.press('Enter');
+  await expectSignIn(page, true);
 });
 
 test('S-A11: sign-in opened after a session ended says so once, and the flag carries nothing', async ({ page }) => {
@@ -610,6 +1209,14 @@ test.describe('JavaScript off', () => {
     await expect(page.locator('#reset-sent-expiry')).toHaveText(SENT_EXPIRY);
     await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
     await expect(page).toHaveURL(ORIGIN + SIGN_IN);
+
+    // S-A10 without JavaScript: the heading and one sentence, nothing to fill in.
+    await page.goto(`${CONFIRM}#token=${crypto.randomBytes(32).toString('base64url')}`);
+    await expect(page.locator('#reset-form')).toBeHidden();
+    await expect(page.locator('#reset-status')).toBeHidden();
+    const confirmShown = (await page.locator('main').innerText()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    expect(confirmShown).toEqual(['Set a new password', NOSCRIPT]);
+    await shot(page, 'reset_confirm_js_off');
 
     await page.goto(`${EXPIRED}?for=reset`);
     await expect(page.locator('h1')).toHaveText(EXPIRED_HEADING);

@@ -16,7 +16,8 @@ namespace Dealoware.Api.Tests;
 /// The default host has no Turnstile site key, which is the fail-closed case;
 /// <see cref="TurnstileSiteKeyWebApplicationFactory"/> is the configured case.
 /// What the reset routes answer is covered by <see cref="AdminPasswordResetTests"/>;
-/// what the pages do in a browser, by e2e/reset and e2e/reset-confirm.
+/// what the pages do in a browser, by e2e/reset; what the S-A10 script does with
+/// each reply, also by tests/Dealoware.Api.Tests/reset-confirm-harness.js.
 /// </summary>
 [Collection("WebAppTests")]
 public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebApplicationFactory>
@@ -60,7 +61,14 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
             "/admin/auth/admin-request.js",
             "/admin/auth/reset.js"
         ],
-        Confirm => ["/admin/auth/reset-confirm.js"],
+        // First: it takes the link token out of the address bar before anything else can fail.
+        Confirm =>
+        [
+            "/admin/auth/admin-link.js",
+            "/admin/auth/admin-dom.js",
+            "/admin/auth/admin-password.js",
+            "/admin/auth/reset-confirm.js"
+        ],
         _ => ["/admin/auth/admin-heading.js"]
     };
 
@@ -316,6 +324,7 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
 
     [Theory]
     [InlineData("reset.js")]
+    [InlineData("reset-confirm.js")]
     [InlineData("admin-heading.js")]
     public async Task PageScripts_AreServedSignedOut_AndKeepToTheRules(string file)
     {
@@ -383,6 +392,92 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
         Assert.True(guardAt > 0);
         Assert.True(guardAt < script.IndexOf("AdminDom.", StringComparison.Ordinal));
         Assert.True(guardAt < script.IndexOf("AdminArrival.flag()", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ConfirmPage_HasTheSetupPagesPasswordFields_OneSecondFactorAtATime_AndTheSuccessSentence()
+    {
+        using var response = await GetAsync(_configured, Confirm);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        // The success sentence the page waits for is the server's own, carried on the form.
+        Assert.Contains(
+            "<form method=\"post\" action=\"/admin/reset/confirm\" id=\"reset-form\" hidden novalidate"
+            + $" data-retry=\"{AdminBootstrapCopy.SubmitRetry}\""
+            + $" data-changed=\"{AdminPasswordResetCopy.CompleteSucceeded}\">"
+            + $"<p class=\"lede\">{AdminPasswordResetCopy.ConfirmLede}</p>"
+            + "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>",
+            html,
+            StringComparison.Ordinal);
+        Assert.Equal(AdminBootstrapCopy.SubmitRetry, AdminPasswordResetCopy.ConfirmRetry);
+
+        // New password and Confirm password are the first-time setup page's, byte for byte:
+        // labels, helper, the server's length limits and messages, the show toggles, the mismatch text.
+        using var setup = await GetAsync(_configured, AdminSignedOutExemptions.Bootstrap);
+        var setupHtml = WebUtility.HtmlDecode(await setup.Content.ReadAsStringAsync());
+        var setupFields = Regex.Match(setupHtml, "<div class=\"field\"><label id=\"new-password-label\"[\\s\\S]*?confirm-password-error\" class=\"field-error\" aria-live=\"polite\"></span></div>");
+        Assert.True(setupFields.Success);
+        Assert.Contains(setupFields.Value, html, StringComparison.Ordinal);
+        Assert.Contains($"<span id=\"password-helper\" class=\"helper\">{AdminSignedOutCopy.PasswordHelper}</span>", html, StringComparison.Ordinal);
+        Assert.Contains($" data-too-short=\"{AdminPasswordRules.TooShortMessage}\"", html, StringComparison.Ordinal);
+        Assert.Contains($" data-too-long=\"{AdminPasswordRules.TooLongMessage}\"", html, StringComparison.Ordinal);
+        Assert.Contains($" data-mismatch=\"{AdminSignedOutCopy.PasswordMismatch}\"", html, StringComparison.Ordinal);
+        Assert.Contains("aria-controls=\"new-password\" aria-labelledby=\"new-password-toggle new-password-label\"", html, StringComparison.Ordinal);
+        Assert.Contains("aria-controls=\"confirm-password\" aria-labelledby=\"confirm-password-toggle confirm-password-label\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"confirm", html, StringComparison.Ordinal);
+
+        // The second factor: the authenticator code on screen, the recovery code hidden, both with the
+        // sign-in pages' labels and messages (UXR-A04: one-time-code; numeric keypad for the code only).
+        Assert.Contains(
+            "<div class=\"field\" id=\"code-field\">"
+            + $"<label for=\"code\">{AdminSignInCopy.CodeLabel}</label>"
+            + "<input id=\"code\" name=\"totp\" type=\"text\" inputmode=\"numeric\" autocomplete=\"one-time-code\""
+            + " autocapitalize=\"none\" spellcheck=\"false\" required aria-describedby=\"code-error\""
+            + $" data-required=\"{AdminSignInCopy.CodeRequired}\">",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<div class=\"field\" id=\"recovery-code-field\" hidden>"
+            + $"<label for=\"recovery-code\">{AdminSignInCopy.RecoveryLabel}</label>"
+            + "<input id=\"recovery-code\" name=\"recoveryCode\" type=\"text\" autocomplete=\"one-time-code\""
+            + " autocapitalize=\"none\" spellcheck=\"false\" required aria-describedby=\"recovery-code-error\""
+            + $" data-required=\"{AdminSignInCopy.RecoveryRequired}\">",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"<button type=\"submit\" id=\"reset-submit\">{AdminPasswordResetCopy.ConfirmSubmit}</button>"
+            + "<div class=\"links\"><button type=\"button\" id=\"factor-switch\" class=\"secondary\" aria-controls=\"code-field recovery-code-field\""
+            + $" data-to-recovery=\"{AdminSignInCopy.UseRecoveryCode}\" data-to-code=\"{AdminSignInCopy.UseAuthenticatorCode}\">"
+            + $"{AdminSignInCopy.UseRecoveryCode}</button></div></form></div>",
+            html,
+            StringComparison.Ordinal);
+
+        // No security check on this page (decided: the link and the second factor are what it asks for),
+        // and the token is never in the page.
+        Assert.DoesNotContain("security-check", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"token\"", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfirmScript_MovesOnOnlyForTheServersExactSuccessReply()
+    {
+        // The server's success reply: 200 with exactly this sentence as "message".
+        var endpoints = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Dealoware.Api", "Admin", "AdminPasswordResetEndpoints.cs"));
+        Assert.Contains("return Results.Json(new { message = AdminPasswordResetCopy.CompleteSucceeded });", endpoints, StringComparison.Ordinal);
+
+        var script = File.ReadAllText(AssetPath("reset-confirm.js")).Replace("\r\n", "\n");
+        Assert.Single(Regex.Matches(script, @"location\.replace\(SIGN_IN\)"));
+        Assert.Contains(
+            "if (r.status === 200) {\n        var message = text(data.message);\n"
+            + "        if (message && message === form.getAttribute(\"data-changed\")) location.replace(SIGN_IN);\n"
+            + "        else afterUnclearReply();",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("r.ok", script, StringComparison.Ordinal);
+        // One script, one way of asking: the token from admin-link.js, the anti-forgery token as X-CSRF-TOKEN.
+        Assert.Contains("var token = AdminLink.takeToken();", script, StringComparison.Ordinal);
+        Assert.Contains("\"X-CSRF-TOKEN\": csrf", script, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(script, @"\bfetch\("));
     }
 
     [Fact]
