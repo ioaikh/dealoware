@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Signed-in console shell Playwright run over HTTPS: S-B1 Stats at /admin/,
-# the nav and the pages it leads to, S-D3, sign-out, and the session gate's
-# way from a signed-in page to sign-in and back, on Chromium, Firefox and
-# WebKit. Admin UI CI runs it with the other suites, through
+# Signed-in console Playwright run over HTTPS: S-B1 Stats at /admin/, the
+# nav and the pages it leads to, S-D3, sign-out, the session gate's way from
+# a signed-in page to sign-in and back (console.spec.ts), and the four lists
+# and their detail pages (lists.spec.ts), on Chromium, Firefox and WebKit. Admin UI CI runs it with the other suites, through
 # e2e/run-signed-out.sh.
 #
 #   ./e2e/console/run.sh
@@ -26,7 +26,10 @@ source "$(dirname "$0")/../signed-out/harness.sh"
 
 start_app_behind_proxy
 
-# Nothing is seeded here. Before every test the spec seeds the owner with a
+# Nothing is seeded here. The list spec writes its made-up participants,
+# artifacts, negotiations and offers into the run's database itself
+# (entities.ts and seed_entities.py, which refuse any other database).
+# Before every test the spec seeds the owner with a
 # password and an enrolled authenticator through the sign-in suite's own
 # seeding (e2e/sign-in/owner.ts and seed_owner.py), and signs in through the
 # real pages. That module reads its settings under the sign-in suite's

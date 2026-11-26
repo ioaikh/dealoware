@@ -278,7 +278,8 @@ test('every nav entry opens its page in one step, with its title, one h1 and ari
     await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: entry.label, exact: true }).click();
     await expect(page).toHaveURL(ORIGIN + entry.path);
     await expectShell(page, entry.title, entry.heading, entry.path);
-    if (entry.path !== HOME) await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
+    // The lists are built (lists.spec.ts); Security settings is the page a later piece fills.
+    if (entry.path === '/admin/settings/security') await expect(page.getByText(NOT_BUILT, { exact: true })).toBeVisible();
     await expectNoSeriousAxeFindings(page, `page_${entry.label.toLowerCase().replace(/ /g, '-')}`);
   }
 

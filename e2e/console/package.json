@@ -1,7 +1,7 @@
 {
   "name": "dealoware-admin-e2e-console",
   "version": "1.0.0",
-  "description": "Browser tests for the signed-in Core admin console shell (S-B1 Stats, the nav, S-D3, sign-out, the session gate's way to sign-in and back). Start them with ./run.sh.",
+  "description": "Browser tests for the signed-in Core admin console (S-B1 Stats, the nav, S-D3, sign-out, the session gate's way to sign-in and back, the four lists and their detail pages). Start them with ./run.sh.",
   "private": true,
   "scripts": {
     "test": "./run.sh"
