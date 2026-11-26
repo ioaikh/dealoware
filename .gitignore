@@ -73,3 +73,6 @@ e2e/enrol/test-results/
 # Password-reset pages Playwright, the same way (see e2e/reset/run.sh)
 !e2e/reset/package-lock.json
 e2e/reset/test-results/
+# Signed-in console shell Playwright, the same way (see e2e/console/run.sh)
+!e2e/console/package-lock.json
+e2e/console/test-results/

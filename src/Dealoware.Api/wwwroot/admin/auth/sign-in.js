@@ -30,9 +30,9 @@
  *
  * When the browser was sent back here because no pending sign-in was left
  * (see admin-arrival.js), the page opens with the server's sign-in sentence.
- * When it was sent here because a session ended, or because a reset has just
- * changed the password, the page opens with that one sentence in the status
- * line above the form. The sentences are in the page; the address carries
+ * When it was sent here because a session ended, because the owner signed
+ * out, or because a reset has just changed the password, the page opens with
+ * that one sentence in the status line above the form. The sentences are in the page; the address carries
  * only which one.
  */
 (function () {
@@ -218,7 +218,9 @@
   if (arrival === "again") showAlert(form.getAttribute("data-sent-back") || "");
   else if (arrival === "fresh") showAlert(retrySentence());
   else {
-    if (arrival === "ended" || arrival === "changed") showStatus(statusEl && statusEl.getAttribute("data-" + arrival));
+    if (arrival === "ended" || arrival === "changed" || arrival === "signed-out") {
+      showStatus(statusEl && statusEl.getAttribute("data-" + arrival));
+    }
     if (email.value) password.focus();
     else email.focus();
   }

@@ -303,7 +303,7 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
 
     [Theory]
     [InlineData("GET", "/admin/reset/sent/", HttpStatusCode.Unauthorized)]
-    [InlineData("GET", "/admin/reset/sent/again", HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/admin/reset/sent/again", HttpStatusCode.Found)]
     [InlineData("GET", "/admin/reset%2fsent", HttpStatusCode.Unauthorized)]
     [InlineData("GET", "/admin/reset/sent;x=1", HttpStatusCode.Unauthorized)]
     [InlineData("POST", "/admin/reset/sent", HttpStatusCode.Forbidden)]
@@ -321,6 +321,15 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("page-heading", body, StringComparison.Ordinal);
         Assert.DoesNotContain(AdminPasswordResetCopy.RequestAccepted, WebUtility.HtmlDecode(body), StringComparison.Ordinal);
+        if (expected == HttpStatusCode.Found)
+        {
+            // An extra segment is a signed-in page path: without a session it goes to sign-in,
+            // and as no sign-in returns there, the only cookie touched is the kept page, removed.
+            Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(response.Headers.GetValues("Location")));
+            Assert.All(SetCookies(response), c => Assert.StartsWith(AdminReturnCookie.Name + "=;", c, StringComparison.Ordinal));
+            return;
+        }
+
         Assert.Empty(SetCookies(response));
     }
 
@@ -483,11 +492,13 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
     }
 
     [Fact]
-    public async Task SignIn_HoldsTheTwoArrivalSentences_AndShowsOneOnlyForItsFlag()
+    public async Task SignIn_HoldsTheThreeArrivalSentences_AndShowsOneOnlyForItsFlag()
     {
-        // S-A11 and "password changed": one fixed word after the sign-in address, nothing about the visitor.
+        // S-A11, "password changed" and "signed out": one fixed word after the sign-in address,
+        // nothing about the visitor.
         Assert.Equal("/admin/sign-in#ended", AdminSignInPages.SessionEndedLocation);
         Assert.Equal("/admin/sign-in#changed", AdminSignInPages.PasswordChangedLocation);
+        Assert.Equal("/admin/sign-in#signed-out", AdminSignInPages.SignedOutLocation);
 
         using var response = await GetAsync(_configured, AdminSignedOutExemptions.SignIn);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
@@ -497,15 +508,18 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
             $"<p class=\"lede\">{AdminSignInCopy.SignInLede}</p>"
             + "<p id=\"form-status\" class=\"status\" role=\"status\" hidden"
             + $" data-ended=\"{AdminSignInCopy.SessionEnded}\""
-            + $" data-changed=\"{AdminPasswordResetCopy.CompleteSucceeded}\"></p>"
+            + $" data-changed=\"{AdminPasswordResetCopy.CompleteSucceeded}\""
+            + $" data-signed-out=\"{AdminSignInCopy.SignedOut}\"></p>"
             + "<div id=\"form-alert\" class=\"alert\" role=\"alert\" tabindex=\"-1\" hidden></div>",
             html,
             StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, Regex.Escape(AdminSignInCopy.SessionEnded)));
         Assert.Single(Regex.Matches(html, Regex.Escape(AdminPasswordResetCopy.CompleteSucceeded)));
+        Assert.Single(Regex.Matches(html, Regex.Escape(AdminSignInCopy.SignedOut)));
+        Assert.Equal("You've been signed out.", AdminSignInCopy.SignedOut);
 
-        // Neither sentence says or implies that a lock ended, or gives a time.
-        foreach (var sentence in new[] { AdminSignInCopy.SessionEnded, AdminPasswordResetCopy.CompleteSucceeded })
+        // None of the sentences says or implies that a lock ended, or gives a time.
+        foreach (var sentence in new[] { AdminSignInCopy.SessionEnded, AdminPasswordResetCopy.CompleteSucceeded, AdminSignInCopy.SignedOut })
         {
             foreach (var banned in new[] { "lock", "minute", "hour", "attempt", "expired after" })
             {
@@ -515,9 +529,10 @@ public class AdminPasswordResetPageTests : IClassFixture<TurnstileSiteKeyWebAppl
 
         var page = File.ReadAllText(AssetPath("sign-in.js"));
         Assert.Contains(
-            "if (arrival === \"ended\" || arrival === \"changed\") showStatus(statusEl && statusEl.getAttribute(\"data-\" + arrival));",
+            "if (arrival === \"ended\" || arrival === \"changed\" || arrival === \"signed-out\") {",
             page,
             StringComparison.Ordinal);
+        Assert.Contains("showStatus(statusEl && statusEl.getAttribute(\"data-\" + arrival));", page, StringComparison.Ordinal);
         // A new try clears it, so it never stands next to the answer to that try.
         Assert.Matches(@"hideAlert\(\);\s+hideStatus\(\);\s+var emailMessage = checkEmail\(\);", page);
 

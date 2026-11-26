@@ -5,6 +5,12 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Route-prefix note r3 §5 / §10 C6 return-path allowlist. Failures become /admin/.
+/// <para>
+/// TD-ADM-177: the path is decoded once and must then be one of the
+/// allowlisted page paths exactly. A list path may carry its query: only the
+/// known list keys come back, each checked again and re-encoded by
+/// <see cref="AdminReturnQuery"/>; unknown keys and bad values are dropped.
+/// </para>
 /// </summary>
 public static class AdminReturnPath
 {
@@ -45,10 +51,18 @@ public static class AdminReturnPath
         if (candidate.Length > MaxLength)
             return false;
 
-        string decoded;
+        // The query is split off before anything is decoded, so an encoded "?"
+        // stays part of the path (and fails the allowlist there).
+        var queryIndex = candidate.IndexOf('?', StringComparison.Ordinal);
+        var rawPath = queryIndex >= 0 ? candidate[..queryIndex] : candidate;
+        var rawQuery = queryIndex >= 0 ? candidate[(queryIndex + 1)..] : string.Empty;
+        if (rawQuery.Contains('#', StringComparison.Ordinal))
+            return false;
+
+        string pathPart;
         try
         {
-            decoded = Uri.UnescapeDataString(candidate.Replace("+", "%2B", StringComparison.Ordinal));
+            pathPart = Uri.UnescapeDataString(rawPath.Replace("+", "%2B", StringComparison.Ordinal));
         }
         catch (UriFormatException)
         {
@@ -59,21 +73,13 @@ public static class AdminReturnPath
             return false;
         }
 
-        if (decoded.Contains("%2f", StringComparison.OrdinalIgnoreCase)
-            || decoded.Contains("%5c", StringComparison.OrdinalIgnoreCase)
-            || decoded.Contains("%2e%2e", StringComparison.OrdinalIgnoreCase)
-            || decoded.Contains("%25", StringComparison.OrdinalIgnoreCase))
+        if (pathPart.Contains("%2f", StringComparison.OrdinalIgnoreCase)
+            || pathPart.Contains("%5c", StringComparison.OrdinalIgnoreCase)
+            || pathPart.Contains("%2e%2e", StringComparison.OrdinalIgnoreCase)
+            || pathPart.Contains("%25", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
-
-        var queryIndex = decoded.IndexOf('?', StringComparison.Ordinal);
-        var pathPart = queryIndex >= 0 ? decoded[..queryIndex] : decoded;
-        var queryPart = queryIndex >= 0 ? decoded[queryIndex..] : string.Empty;
-
-        // Spec has not locked query keys. Unknown keys fail closed to Stats.
-        if (queryPart.Length > 0)
-            return false;
 
         if (pathPart.Length == 0 || pathPart[0] != '/')
             return false;
@@ -89,7 +95,11 @@ public static class AdminReturnPath
         if (!IsAllowed(pathPart))
             return false;
 
-        path = pathPart;
+        var kept = pathPart + AdminReturnQuery.Filter(pathPart, rawQuery);
+        if (kept.Length > MaxLength)
+            return false;
+
+        path = kept;
         return true;
     }
 

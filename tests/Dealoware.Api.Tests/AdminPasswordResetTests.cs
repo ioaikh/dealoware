@@ -818,15 +818,16 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
         using var missingAfConfirm = await SendAsync(HttpMethod.Post, "/admin/api/auth/reset/confirm");
         using var missingAfPage = await SendAsync(HttpMethod.Post, "/admin/reset");
 
-        var extraGetBody = await extraPage.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Forbidden, extraApi.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, extraPage.StatusCode);
+        // An extra page segment is a signed-in page path: the gate sends the browser to sign-in.
+        Assert.Equal(HttpStatusCode.Found, extraPage.StatusCode);
+        Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(extraPage.Headers.GetValues("Location")));
+        Assert.Equal(string.Empty, await extraPage.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Forbidden, extraConfirm.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrongMethodApi.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, wrongMethodPage.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, missingAfConfirm.StatusCode);
-        Assert.Equal(extraGetBody, await wrongMethodApi.Content.ReadAsStringAsync());
-        Assert.Contains("\"error\":\"Unauthorized\"", extraGetBody);
+        Assert.Contains("\"error\":\"Unauthorized\"", await wrongMethodApi.Content.ReadAsStringAsync());
         await AssertGenericForbiddenAsync(extraApi);
         await AssertGenericForbiddenAsync(missingAfConfirm);
         await AssertHtmlForbiddenAsync(wrongMethodPage);
@@ -861,13 +862,15 @@ public class AdminPasswordResetTests : IClassFixture<PasswordResetWebApplication
 
         Assert.Equal(HttpStatusCode.Unauthorized, trailing.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, extraEncoded.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, extraSegment.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, slashSlash.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, matrix.StatusCode);
         var body = await trailing.Content.ReadAsStringAsync();
         Assert.Equal(body, await extraEncoded.Content.ReadAsStringAsync());
-        Assert.Equal(body, await extraSegment.Content.ReadAsStringAsync());
         Assert.Contains("\"error\":\"Unauthorized\"", body);
+        // A canonical extra segment is a signed-in page path: not the reset page, and without a
+        // session the gate sends the browser to sign-in rather than answering with JSON.
+        Assert.Equal(HttpStatusCode.Found, extraSegment.StatusCode);
+        Assert.Equal(AdminSignInPages.SessionEndedLocation, Assert.Single(extraSegment.Headers.GetValues("Location")));
     }
 
     [Fact]
