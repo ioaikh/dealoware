@@ -81,6 +81,8 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         Assert.Equal(
             new[]
             {
+                // First: it takes the link token out of the address bar before anything else can fail.
+                "/admin/auth/admin-link.js",
                 "/admin/auth/admin-dom.js",
                 "/admin/auth/admin-password.js",
                 "/admin/auth/admin-turnstile.js",
@@ -112,8 +114,15 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
 
         Assert.True(noscriptAt > 0, "the noscript sentence must be in the page");
         Assert.Single(Regex.Matches(html, "<noscript>"));
-        // Everything except the heading and that sentence sits in the panel the script un-hides.
-        Assert.True(panelAt > noscriptAt, "the hidden panel follows the noscript sentence");
+        // Everything after that sentence is hidden until the script shows it: the three
+        // link-check elements, then the panel that holds the lede and the form.
+        var afterNoscript = WebUtility.HtmlDecode(html[(noscriptAt + noscript.Length)..panelAt]);
+        Assert.Equal(
+            $"<p id=\"link-status\" role=\"status\" hidden data-checking=\"{AdminPasswordResetCopy.CheckingLink}\"></p>"
+            + $"<p id=\"link-alert\" hidden tabindex=\"-1\" data-retry=\"{AdminPasswordResetCopy.CheckRetry}\"></p>"
+            + $"<button type=\"button\" id=\"link-retry\" class=\"secondary\" hidden data-busy=\"{AdminSignedOutCopy.Checking}\">"
+            + $"{AdminPasswordResetCopy.TryAgain}</button>",
+            afterNoscript);
         Assert.True(ledeAt > panelAt && formAt > panelAt, "the lede and the form are inside the hidden panel");
         Assert.EndsWith("</form></div>", html[..mainEndAt], StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, "<form "));
@@ -278,18 +287,18 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
 
         // Trimmed, and rendered once.
         Assert.Contains(
-            $"<div class=\"turnstile\" id=\"turnstile\" data-sitekey=\"{TurnstileSiteKeyWebApplicationFactory.SiteKey}\""
+            $"<div class=\"security-check\" id=\"security-check\" data-sitekey=\"{TurnstileSiteKeyWebApplicationFactory.SiteKey}\""
             + $" data-action=\"{TurnstileSiteKeyWebApplicationFactory.Action}\"",
             html,
             StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, Regex.Escape(TurnstileSiteKeyWebApplicationFactory.SiteKey)));
         Assert.Contains(
-            "<p id=\"turnstile-status\" class=\"turnstile-status\" role=\"status\" tabindex=\"-1\"></p>",
+            "<p id=\"security-check-status\" class=\"security-check-status\" role=\"status\" tabindex=\"-1\"></p>",
             html,
             StringComparison.Ordinal);
-        Assert.Contains("<div id=\"turnstile-widget\"></div>", html, StringComparison.Ordinal);
+        Assert.Contains("<div id=\"security-check-widget\"></div>", html, StringComparison.Ordinal);
         Assert.Contains(
-            $"<button type=\"button\" id=\"turnstile-retry\" class=\"secondary\" hidden>{AdminSignedOutCopy.TurnstileRetry}</button>",
+            $"<button type=\"button\" id=\"security-check-retry\" class=\"secondary\" hidden>{AdminSignedOutCopy.TurnstileRetry}</button>",
             html,
             StringComparison.Ordinal);
         AssertSubmitDisabledAfterTheWidget(html);
@@ -305,11 +314,11 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         Assert.DoesNotContain("data-action", html, StringComparison.Ordinal);
         Assert.Equal("The security check is unavailable.", AdminSignedOutCopy.TurnstileNotConfigured);
         Assert.Contains(
-            "<p id=\"turnstile-status\" class=\"turnstile-status\" role=\"status\" tabindex=\"-1\">"
+            "<p id=\"security-check-status\" class=\"security-check-status\" role=\"status\" tabindex=\"-1\">"
             + AdminSignedOutCopy.TurnstileNotConfigured + "</p>",
             html,
             StringComparison.Ordinal);
-        Assert.Contains(" id=\"turnstile-retry\" class=\"secondary\" hidden>", html, StringComparison.Ordinal);
+        Assert.Contains(" id=\"security-check-retry\" class=\"secondary\" hidden>", html, StringComparison.Ordinal);
         Assert.DoesNotContain(Cloudflare, html, StringComparison.OrdinalIgnoreCase);
         AssertSubmitDisabledAfterTheWidget(html);
     }
@@ -339,9 +348,46 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         });
 
         Assert.DoesNotContain("<script", block, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("id=\"turnstile\"", block, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("data-sitekey=\"key&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;\"", block, StringComparison.Ordinal);
         Assert.Contains("data-action=\"act&quot;&#x27;&lt;&amp;\"", block, StringComparison.Ordinal);
         Assert.Equal("a&#x27;b · c…", AdminSignedOutPage.Encode("a'b · c…"));
+    }
+
+    [Fact]
+    public async Task NoElementIdOrControlName_IsAGlobalThePageScriptsRead()
+    {
+        // An element id (and some element names) is also a property of window. One spelled
+        // like a global a script reads would stand in for it: id="turnstile" would sit where
+        // Cloudflare installs window.turnstile, and its script could then refuse to install.
+        var globals = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "turnstile", "AdminLink", "AdminDom", "AdminPassword", "AdminTurnstile",
+            "window", "document", "location", "history", "fetch", "URL", "JSON", "Object", "Array",
+            "AbortController", "setTimeout", "clearTimeout", "parseInt", "isNaN", "decodeURIComponent"
+        };
+
+        // Every name the scripts reach through their window parameter is on that list.
+        var reached = new[] { "admin-link.js", "admin-dom.js", "admin-password.js", "admin-turnstile.js", "bootstrap.js" }
+            .SelectMany(file => Regex.Matches(File.ReadAllText(AssetPath(file)), @"\bglobal\.([A-Za-z_$][\w$]*)"))
+            .Select(m => m.Groups[1].Value)
+            .Distinct()
+            .ToList();
+        Assert.Contains("turnstile", reached);
+        Assert.All(reached, name => Assert.Contains(name, globals));
+
+        foreach (var factory in new[] { _configured, _unconfigured })
+        {
+            using var response = await GetAsync(factory, AdminBootstrapEndpoints.PagePath);
+            var html = await response.Content.ReadAsStringAsync();
+            var names = Regex.Matches(html, "\\s(?:id|name)=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
+
+            Assert.Contains("security-check", names);
+            Assert.Contains("newPassword", names);
+            Assert.All(names, name => Assert.DoesNotContain(name, globals));
+            Assert.DoesNotContain("id=\"turnstile\"", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("name=\"turnstile\"", html, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
@@ -416,16 +462,28 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         Assert.True(
             html.IndexOf("id=\"form-alert\"", StringComparison.Ordinal) < html.IndexOf("<form ", StringComparison.Ordinal),
             "the alert region sits above the form");
+        // The toggle is "Show", named after its field, and aria-pressed alone says whether
+        // the password is shown: there is no second label for the script to switch to.
         foreach (var field in new[] { "new-password", "confirm-password" })
         {
             Assert.Contains(
                 $"<button type=\"button\" id=\"{field}-toggle\" class=\"secondary toggle\" aria-pressed=\"false\""
-                + $" aria-controls=\"{field}\" aria-labelledby=\"{field}-toggle {field}-label\""
-                + $" data-show=\"{AdminSignedOutCopy.ShowPassword}\" data-hide=\"{AdminSignedOutCopy.HidePassword}\">"
+                + $" aria-controls=\"{field}\" aria-labelledby=\"{field}-toggle {field}-label\">"
                 + $"{AdminSignedOutCopy.ShowPassword}</button>",
                 html,
                 StringComparison.Ordinal);
         }
+
+        Assert.Equal("Show", AdminSignedOutCopy.ShowPassword);
+        Assert.DoesNotContain("Hide", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-hide", html, StringComparison.Ordinal);
+        var toggleScript = File.ReadAllText(AssetPath("admin-password.js"));
+        var bind = toggleScript[toggleScript.IndexOf("function bindToggle", StringComparison.Ordinal)..];
+        bind = bind[..bind.IndexOf("global.AdminPassword", StringComparison.Ordinal)];
+        Assert.Contains("button.setAttribute(\"aria-pressed\", reveal ? \"true\" : \"false\");", bind, StringComparison.Ordinal);
+        Assert.DoesNotContain("setText", bind, StringComparison.Ordinal);
+        Assert.DoesNotContain("textContent", bind, StringComparison.Ordinal);
+        Assert.DoesNotContain("aria-label", bind, StringComparison.Ordinal);
 
         Assert.Contains(
             $"<form id=\"bootstrap-form\" method=\"post\" action=\"{AdminBootstrapEndpoints.PagePath}\" novalidate",
@@ -458,6 +516,7 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
 
     [Theory]
     [InlineData("/admin/auth/signed-out.css", "text/css")]
+    [InlineData("/admin/auth/admin-link.js", "text/javascript")]
     [InlineData("/admin/auth/admin-dom.js", "text/javascript")]
     [InlineData("/admin/auth/admin-password.js", "text/javascript")]
     [InlineData("/admin/auth/admin-turnstile.js", "text/javascript")]
@@ -486,7 +545,9 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
                      AdminSignedOutCopy.TurnstileExpired, AdminSignedOutCopy.TurnstileNotConfigured,
                      AdminSignedOutCopy.PasswordMismatch, AdminBootstrapCopy.SubmitRetry,
                      AdminPasswordRules.TooShortMessage, AdminPasswordRules.TooLongMessage,
-                     AdminAuthCopy.VerificationFailed, AdminPasswordResetCopy.SignInGeneric
+                     AdminAuthCopy.VerificationFailed, AdminPasswordResetCopy.SignInGeneric,
+                     AdminPasswordResetCopy.CheckingLink, AdminPasswordResetCopy.CheckRetry,
+                     AdminSignedOutCopy.Checking
                  })
         {
             Assert.DoesNotContain(copy, body, StringComparison.Ordinal);
@@ -510,10 +571,11 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
     }
 
     [Fact]
-    public void PageScript_HandlesTheLinkTokenLikeTheResetPage_AndSendsOnlyTheContractFields()
+    public void LinkScript_TakesTheTokenOutOfTheAddressBar_LikeTheResetPage_BeforeAnythingElse()
     {
-        var script = File.ReadAllText(AssetPath("bootstrap.js"));
+        var link = File.ReadAllText(AssetPath("admin-link.js"));
         var reset = File.ReadAllText(AssetPath("reset-confirm.js"));
+        var page = File.ReadAllText(AssetPath("bootstrap.js"));
 
         // The same three steps, in the same words, as reset-confirm.js.
         foreach (var line in new[]
@@ -525,13 +587,38 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
                  })
         {
             Assert.Contains(line, reset, StringComparison.Ordinal);
-            Assert.Contains(line, script, StringComparison.Ordinal);
+            Assert.Contains(line, link, StringComparison.Ordinal);
         }
 
+        // It is the first script of the page and needs nothing from the others,
+        // so the address bar is cleared even when a later script fails to load.
+        Assert.Equal("/admin/auth/admin-link.js", AdminSignedOutPage.LinkScriptPath);
+        var firstStatement = link[link.IndexOf("\"use strict\";", StringComparison.Ordinal)..];
         Assert.True(
-            script.IndexOf("history.replaceState", StringComparison.Ordinal)
-            < script.IndexOf("fetch(", StringComparison.Ordinal),
-            "the address bar is cleared before any request");
+            firstStatement.IndexOf("history.replaceState", StringComparison.Ordinal)
+            < firstStatement.IndexOf("global.AdminLink", StringComparison.Ordinal),
+            "the address bar is cleared before the script does anything else");
+        foreach (var other in new[] { "AdminDom", "AdminPassword", "AdminTurnstile", "fetch(", "document." })
+        {
+            Assert.DoesNotContain(other, link, StringComparison.Ordinal);
+        }
+
+        // The token is handed over once and then gone from the link script.
+        Assert.Contains("var value = token;", link, StringComparison.Ordinal);
+        Assert.Contains("token = \"\";", link, StringComparison.Ordinal);
+        Assert.Contains("var token = AdminLink.takeToken();", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("location.hash", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("history.replaceState", page, StringComparison.Ordinal);
+        Assert.True(
+            page.IndexOf("AdminLink.takeToken()", StringComparison.Ordinal) < page.IndexOf("fetch(", StringComparison.Ordinal),
+            "the token is taken before any request");
+    }
+
+    [Fact]
+    public void PageScript_SendsOnlyTheContractFields_AndTrustsOnlyTheExactReplies()
+    {
+        var script = File.ReadAllText(AssetPath("bootstrap.js"));
+
         Assert.Contains("var API = \"/admin/api/auth/bootstrap\";", script, StringComparison.Ordinal);
         Assert.Contains("var EXPIRED = \"/admin/link-expired?for=setup\";", script, StringComparison.Ordinal);
         Assert.Contains("var SIGN_IN = \"/admin/sign-in\";", script, StringComparison.Ordinal);
@@ -541,11 +628,23 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
         Assert.Contains("\"X-CSRF-TOKEN\": csrf", script, StringComparison.Ordinal);
         Assert.Contains("meta[name=\"dw-csrf\"]", script, StringComparison.Ordinal);
 
-        var body = Regex.Match(script, @"JSON\.stringify\(\{(?<fields>[^}]*)\}\)").Groups["fields"].Value;
-        var fields = Regex.Matches(body, @"(\w+)\s*:").Select(m => m.Groups[1].Value).ToArray();
-        Assert.Equal(new[] { "token", "newPassword", "turnstileToken" }, fields);
-        Assert.Single(Regex.Matches(script, @"JSON\.stringify\("));
+        // One request function; two callers: the link check and the submission.
         Assert.Single(Regex.Matches(script, @"fetch\("));
+        Assert.Single(Regex.Matches(script, @"JSON\.stringify\("));
+        var bodies = Regex.Matches(script, @"\bpost\(\{(?<fields>[^}]*)\}\)")
+            .Select(m => string.Join(",", Regex.Matches(m.Groups["fields"].Value, @"(\w+)\s*:").Select(f => f.Groups[1].Value)))
+            .ToArray();
+        Assert.Equal(new[] { "token,check", "token,newPassword,turnstileToken" }, bodies);
+        Assert.Contains("post({ token: token, check: true })", script, StringComparison.Ordinal);
+
+        // The form is shown only for exactly {"valid": true}; sign-in only for passwordSet === true.
+        Assert.Contains("Object.keys(body).length === 1 && body.valid === true", script, StringComparison.Ordinal);
+        Assert.Contains("if (body.passwordSet === true) location.replace(SIGN_IN);", script, StringComparison.Ordinal);
+        Assert.Equal(2, Regex.Matches(script, @"location\.replace\(SIGN_IN\)").Count);
+        // The form appears in one place only, after the check has said "usable".
+        Assert.Single(Regex.Matches(script, @"AdminDom\.show\(panel, true\)"));
+        Assert.Single(Regex.Matches(script, Regex.Escape("if (outcome === \"usable\") showForm();")));
+        Assert.Single(Regex.Matches(script, @"\bshowForm\(\);"));
     }
 
     [Fact]
@@ -558,7 +657,7 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
             widget,
             StringComparison.Ordinal);
         Assert.Single(Regex.Matches(widget, Regex.Escape(Cloudflare)));
-        foreach (var other in new[] { "admin-dom.js", "admin-password.js", "bootstrap.js", "signed-out.css" })
+        foreach (var other in new[] { "admin-link.js", "admin-dom.js", "admin-password.js", "bootstrap.js", "signed-out.css" })
         {
             Assert.DoesNotContain(Cloudflare, File.ReadAllText(AssetPath(other)), StringComparison.OrdinalIgnoreCase);
         }
@@ -606,14 +705,14 @@ public class AdminBootstrapPageTests : IClassFixture<TurnstileSiteKeyWebApplicat
 
     private static void AssertSubmitDisabledAfterTheWidget(string html)
     {
-        var submit = $"<button type=\"submit\" id=\"bootstrap-submit\" disabled aria-describedby=\"turnstile-status\">{AdminBootstrapCopy.Submit}</button>";
+        var submit = $"<button type=\"submit\" id=\"bootstrap-submit\" disabled aria-describedby=\"security-check-status\">{AdminBootstrapCopy.Submit}</button>";
         var submitAt = html.IndexOf(submit, StringComparison.Ordinal);
         Assert.True(submitAt > 0, "the submit button is disabled in the markup");
         Assert.Single(Regex.Matches(html, "type=\"submit\""));
         Assert.True(
-            html.IndexOf("id=\"turnstile-widget\"", StringComparison.Ordinal) < submitAt
+            html.IndexOf("id=\"security-check-widget\"", StringComparison.Ordinal) < submitAt
             && html.IndexOf("id=\"confirm-password\"", StringComparison.Ordinal)
-            < html.IndexOf("id=\"turnstile-widget\"", StringComparison.Ordinal),
+            < html.IndexOf("id=\"security-check-widget\"", StringComparison.Ordinal),
             "the security check sits after the fields and directly above the submit button");
     }
 

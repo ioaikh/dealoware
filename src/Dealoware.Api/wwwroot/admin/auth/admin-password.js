@@ -36,7 +36,11 @@
     return "";
   }
 
-  /** Show/Hide for one password field. The button carries both labels. */
+  /**
+   * The show toggle for one password field. Its label and name never change:
+   * aria-pressed alone says whether the password is shown, so a screen reader
+   * hears "Show New password, pressed", never "Hide, pressed".
+   */
   function bindToggle(inputId, buttonId) {
     var input = AdminDom.el(inputId);
     var button = AdminDom.el(buttonId);
@@ -45,10 +49,6 @@
       var reveal = input.getAttribute("type") === "password";
       input.setAttribute("type", reveal ? "text" : "password");
       button.setAttribute("aria-pressed", reveal ? "true" : "false");
-      AdminDom.setText(
-        button,
-        button.getAttribute(reveal ? "data-hide" : "data-show") || ""
-      );
     });
   }
 

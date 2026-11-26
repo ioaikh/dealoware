@@ -269,6 +269,14 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// Said once at start-up: without the public site key the admin forms cannot be submitted.
+if (TurnstileOptionsValidator.SiteKeyWarning(
+        app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<TurnstileOptions>>().Value,
+        app.Environment.EnvironmentName) is { } siteKeyWarning)
+{
+    app.Logger.LogWarning("{Warning}", siteKeyWarning);
+}
+
 // First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
 app.UseForwardedHeaders();
 

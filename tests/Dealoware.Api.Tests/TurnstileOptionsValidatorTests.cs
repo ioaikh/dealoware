@@ -100,6 +100,71 @@ public class TurnstileOptionsValidatorTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("Production", null)]
+    [InlineData("Production", "")]
+    [InlineData("Staging", "   ")]
+    [InlineData(null, null)]
+    public void SiteKeyWarning_OutsideDevelopment_WithNoSiteKey_NamesTheSettingToFix(string? environment, string? siteKey)
+    {
+        var warning = TurnstileOptionsValidator.SiteKeyWarning(new TurnstileOptions { SiteKey = siteKey }, environment);
+
+        Assert.Equal(TurnstileOptionsValidator.SiteKeyMissingWarning, warning);
+        Assert.Contains("Admin__Turnstile__SiteKey", warning, StringComparison.Ordinal);
+        Assert.Contains("setup and sign-in pages cannot be submitted", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", warning, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(TurnstileOptions.SecretEnvironmentVariable, warning, StringComparison.Ordinal);
+        Assert.Equal(TurnstileOptionsValidator.SiteKeyMissingWarning, TurnstileOptionsValidator.SiteKeyWarning(null, environment));
+    }
+
+    [Theory]
+    [InlineData("Production", "any-public-key")]
+    [InlineData("Staging", "any-public-key")]
+    [InlineData("Development", null)]
+    [InlineData("Development", "any-public-key")]
+    public void SiteKeyWarning_WithASiteKey_OrInDevelopment_SaysNothing(string environment, string? siteKey)
+    {
+        Assert.Null(TurnstileOptionsValidator.SiteKeyWarning(new TurnstileOptions { SiteKey = siteKey }, environment));
+    }
+
+    [Fact]
+    public async Task Host_Production_NoSiteKey_StartsAndWarnsOnce_WithoutTheSecret()
+    {
+        var secret = "test-secret-" + Guid.NewGuid().ToString("N");
+        using var factory = new TurnstileConfigWebApplicationFactory("Production", builder =>
+            builder.UseSetting(TurnstileOptions.SecretEnvironmentVariable, secret));
+        using var client = factory.CreateClient();
+
+        // The app still starts: the pages fail closed on their own.
+        var response = await client.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await client.GetAsync("/health");
+
+        var warnings = factory.LogCollector.Lines
+            .Where(line => line.Contains(TurnstileOptionsValidator.SiteKeyMissingWarning, StringComparison.Ordinal))
+            .ToList();
+        var warning = Assert.Single(warnings);
+        Assert.Contains("|Warning|", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, string.Join("\n", factory.LogCollector.Lines), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Production", "any-public-key")]
+    [InlineData("Development", "")]
+    public async Task Host_WithASiteKey_OrInDevelopment_DoesNotWarn(string environment, string siteKey)
+    {
+        using var factory = new TurnstileConfigWebApplicationFactory(environment, builder =>
+            builder.UseSetting("Admin:Turnstile:SiteKey", siteKey));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain(
+            factory.LogCollector.Lines,
+            line => line.Contains("Admin__Turnstile__SiteKey", StringComparison.Ordinal));
+    }
+
     private static List<string> ExceptionMessages(Exception ex)
     {
         var messages = new List<string>();

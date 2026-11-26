@@ -49,6 +49,12 @@ public static class AdminSignedOutPage
     public const string ContentType = "text/html; charset=utf-8";
     public const string CsrfMetaName = "dw-csrf";
     public const string StylesheetPath = "/admin/auth/signed-out.css";
+
+    /// <summary>
+    /// For a page opened from an emailed link. List it FIRST: it takes the
+    /// token out of the address bar before any other script can fail to load.
+    /// </summary>
+    public const string LinkScriptPath = "/admin/auth/admin-link.js";
     public const string DomScriptPath = "/admin/auth/admin-dom.js";
     public const string PasswordScriptPath = "/admin/auth/admin-password.js";
     public const string TurnstileScriptPath = "/admin/auth/admin-turnstile.js";
@@ -128,6 +134,12 @@ public static class AdminSignedOutPage
     /// secret is never read here. With no site key the block says the check
     /// is unavailable and carries no key, so the script can never enable the
     /// form's submit button.
+    /// The ids start with "security-check" on purpose. An element id becomes a
+    /// property of <c>window</c>, and <c>id="turnstile"</c> would stand where
+    /// Cloudflare's script installs <c>window.turnstile</c>: its "already
+    /// loaded" guard could then skip the install and the form could never be
+    /// submitted. No id or control name on a signed-out page may be the name
+    /// of a global its scripts read.
     /// </summary>
     public static string TurnstileBlock(TurnstileOptions options)
     {
@@ -136,7 +148,7 @@ public static class AdminSignedOutPage
         var siteKey = options.ConfiguredSiteKey();
         var action = options.ConfiguredAction();
         var html = new StringBuilder(512);
-        html.Append("<div class=\"turnstile\" id=\"turnstile\"");
+        html.Append("<div class=\"security-check\" id=\"security-check\"");
         if (siteKey is not null)
         {
             html.Append($" data-sitekey=\"{Encode(siteKey)}\"");
@@ -151,12 +163,12 @@ public static class AdminSignedOutPage
         html.Append($" data-expired=\"{Encode(AdminSignedOutCopy.TurnstileExpired)}\"");
         html.Append($" data-unavailable=\"{Encode(AdminSignedOutCopy.TurnstileUnavailable)}\"");
         html.Append($" data-unconfigured=\"{Encode(AdminSignedOutCopy.TurnstileNotConfigured)}\">");
-        html.Append("<p id=\"turnstile-status\" class=\"turnstile-status\" role=\"status\" tabindex=\"-1\">");
+        html.Append("<p id=\"security-check-status\" class=\"security-check-status\" role=\"status\" tabindex=\"-1\">");
         html.Append(siteKey is null ? Encode(AdminSignedOutCopy.TurnstileNotConfigured) : string.Empty);
         html.Append("</p>");
-        html.Append("<div id=\"turnstile-widget\"></div>");
+        html.Append("<div id=\"security-check-widget\"></div>");
         html.Append(
-            $"<button type=\"button\" id=\"turnstile-retry\" class=\"secondary\" hidden>{Encode(AdminSignedOutCopy.TurnstileRetry)}</button>");
+            $"<button type=\"button\" id=\"security-check-retry\" class=\"secondary\" hidden>{Encode(AdminSignedOutCopy.TurnstileRetry)}</button>");
         html.Append("</div>");
         return html.ToString();
     }

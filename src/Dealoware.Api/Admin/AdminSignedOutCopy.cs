@@ -2,7 +2,7 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Copy shared by the signed-out admin pages: the security check (Turnstile)
-/// states, the password helper and the Show/Hide toggle. No duration, attempt
+/// states, the password helper and the show toggle. No duration, attempt
 /// count or lock wording. Rule messages themselves come from the server
 /// (<see cref="Dealoware.Domain.Admin.AdminPasswordRules"/>).
 /// </summary>
@@ -28,7 +28,13 @@ public static class AdminSignedOutCopy
 
     public const string PasswordMismatch = "These passwords don't match.";
 
+    /// <summary>
+    /// The toggle's one label. It does not change when pressed: the button is
+    /// named after its field ("Show New password") and aria-pressed says
+    /// whether the password is shown.
+    /// </summary>
     public const string ShowPassword = "Show";
 
-    public const string HidePassword = "Hide";
+    /// <summary>"Try again" while a link check is running again (the reset page's wording).</summary>
+    public const string Checking = "Checking…";
 }

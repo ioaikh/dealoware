@@ -7,12 +7,17 @@
  * send a request the server has not been asked to verify.
  *
  * The page supplies the block (see AdminSignedOutPage.TurnstileBlock):
- *   #turnstile          data-sitekey, optional data-action, and the status
- *                       text for each state as data-loading / data-failed /
- *                       data-expired / data-unavailable / data-unconfigured
- *   #turnstile-status   where that text is shown (role="status")
- *   #turnstile-widget   where Cloudflare draws the widget
- *   #turnstile-retry    the Retry button
+ *   #security-check          data-sitekey, optional data-action, and the
+ *                            status text for each state as data-loading /
+ *                            data-failed / data-expired / data-unavailable /
+ *                            data-unconfigured
+ *   #security-check-status   where that text is shown (role="status")
+ *   #security-check-widget   where Cloudflare draws the widget
+ *   #security-check-retry    the Retry button
+ *
+ * None of those ids may be "turnstile". An element id is also a property of
+ * window, so that id would sit where Cloudflare's script installs
+ * window.turnstile and could stop it installing.
  *
  * With no data-sitekey the state is "unconfigured" for good: Cloudflare's
  * script is not loaded and there is nothing to retry.
@@ -147,10 +152,10 @@
 
   function mount(options) {
     onChange = (options && options.onChange) || null;
-    root = AdminDom.el("turnstile");
-    statusEl = AdminDom.el("turnstile-status");
-    hostEl = AdminDom.el("turnstile-widget");
-    retryBtn = AdminDom.el("turnstile-retry");
+    root = AdminDom.el("security-check");
+    statusEl = AdminDom.el("security-check-status");
+    hostEl = AdminDom.el("security-check-widget");
+    retryBtn = AdminDom.el("security-check-retry");
     siteKey = (root && root.getAttribute("data-sitekey")) || "";
     action = (root && root.getAttribute("data-action")) || "";
 

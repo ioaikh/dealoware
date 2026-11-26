@@ -131,6 +131,7 @@ button,
 }
 
 button:disabled,
+button[aria-disabled="true"],
 .btn[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
@@ -142,8 +143,10 @@ button.secondary,
   color: var(--accent);
 }
 
+/* A pressed toggle keeps its label and fills in, so "on" is not told by words alone. */
 button.secondary[aria-pressed="true"] {
-  background: var(--banner);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .toggle {
@@ -205,28 +208,28 @@ a {
   text-decoration-thickness: 0.1em;
 }
 
-.turnstile {
+.security-check {
   margin: 0 0 1rem;
   min-height: 4.5rem;
   max-width: 100%;
 }
 
-.turnstile-status {
+.security-check-status {
   color: var(--muted);
   margin: 0 0 0.5rem;
 }
 
 /* Kept in the page while empty so the status region is announced when it fills. */
-.turnstile-status:empty {
+.security-check-status:empty {
   margin: 0;
 }
 
-#turnstile-widget,
-#turnstile-widget iframe {
+#security-check-widget,
+#security-check-widget iframe {
   max-width: 100%;
 }
 
-#turnstile-widget:not(:empty) {
+#security-check-widget:not(:empty) {
   margin: 0 0 0.5rem;
 }
 
