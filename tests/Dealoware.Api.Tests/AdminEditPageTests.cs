@@ -361,7 +361,7 @@ public class AdminEditPageTests
     }
 
     [Fact]
-    public async Task EveryValue_IsEncoded_AndNothingSecretIsInThePage()
+    public async Task EveryValue_IsEncoded_AndNoCredentialIsInThePage()
     {
         var prefix = $"ep6-{Guid.NewGuid():N}";
         const string hostile = "<script>alert(1)</script>\"'&<img src=x>";

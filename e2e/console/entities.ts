@@ -30,9 +30,10 @@ export type Seeded = {
 
 type Table = 'Participants' | 'Artifacts' | 'Negotiations' | 'Offers';
 
-export function seedEntities(options: { empty?: Table[] } = {}): Seeded {
+/** `edit`: also the rows edit.spec.ts changes (seed_entities.py, EDIT ROWS). */
+export function seedEntities(options: { empty?: Table[]; edit?: boolean } = {}): Seeded {
   if (!DB || !PYTHON) throw new Error('SIGN_IN_E2E_DB and SIGN_IN_E2E_PYTHON are not set: start the suite with e2e/console/run.sh');
-  const run = runEntitySeedScript({ db: DB, empty: options.empty ?? [] });
+  const run = runEntitySeedScript({ db: DB, empty: options.empty ?? [], ...(options.edit ? { edit: true } : {}) });
   if (run.status !== 0) throw new Error(`seeding the entities failed: ${run.stderr}`);
   return JSON.parse(run.stdout) as Seeded;
 }
