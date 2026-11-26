@@ -61,6 +61,9 @@ node_modules/
 package-lock.json
 # Allow e2e lockfile for pinned Playwright dependencies
 !e2e/package-lock.json
+# Setup-page Playwright has its own pinned lockfile (see e2e/bootstrap/run.sh)
+!e2e/bootstrap/package-lock.json
+e2e/bootstrap/test-results/
 
 # Confirm-page Playwright (local run; certs are mktemp, never committed)
 e2e/reset-confirm/test-results/
