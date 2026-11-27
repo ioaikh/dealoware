@@ -9,14 +9,12 @@ namespace Dealoware.Api.Tests;
 
 /// <summary>
 /// The denial test host: a CoreOwner set through test config, the test-only
-/// exception probe switched on (it is compiled into Debug builds only), and
-/// its own PostgreSQL database when DB_HOST is set.
+/// exception probe switched on (it is compiled into Debug builds only). The
+/// denial checks need no PostgreSQL: they run on SQLite only.
 /// </summary>
 public sealed class DenialWebApplicationFactory : IsolatedWebApplicationFactory
 {
     public const string OwnerEmail = "owner@example.test";
-
-    protected override string? PostgresDatabaseName => "dealoware_ci_denial";
 
     /// <summary>An engine access token, issued once for this host (registration is rate limited).</summary>
     public string? EngineToken { get; set; }
@@ -148,6 +146,104 @@ public partial class AdminRouteDenialTests : IClassFixture<DenialWebApplicationF
         Assert.Empty(allowList);
     }
 
+    // The static folders of the table are the app's only static-file mounts: no third one can serve files under /admin.
+    [Fact]
+    public void TdAdm003_TheTwoStaticFolders_AreTheOnlyStaticFileMounts()
+    {
+        var api = Path.Combine(RepoRoot(), "src", "Dealoware.Api");
+        var sources = Directory.EnumerateFiles(api, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                        && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToDictionary(f => Path.GetRelativePath(api, f), File.ReadAllText);
+
+        int Count(string call) => sources.Values.Sum(text => System.Text.RegularExpressions.Regex.Matches(text, call).Count);
+
+        // Every way ASP.NET Core serves files from disk, counted across the whole API project.
+        Assert.Equal(0, Count(@"\bMapStaticAssets\s*\("));
+        Assert.Equal(0, Count(@"\bUseFileServer\s*\("));
+        Assert.Equal(0, Count(@"\bUseDirectoryBrowser\s*\("));
+        Assert.Equal(0, Count(@"\bMapFallbackToFile\s*\("));
+        Assert.Equal(0, Count(@"\bResults\.File\s*\(|\bTypedResults\.(Physical)?File\s*\(|\bResults\.PhysicalFile\s*\("));
+        Assert.Equal(2, Count(@"\bUseStaticFiles\s*\("));
+        Assert.Equal(1, Count(@"\bPhysicalFileProvider\s*\("));
+
+        var program = sources["Program.cs"].Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(program, @"\bUseStaticFiles\s*\(").Count);
+
+        // One: wwwroot, before the gate, only outside /admin or under /admin/auth (the signed-out folder).
+        var signedOut = AdminRouteTable.StaticFolders.Single(f => f.Class == AdminRouteClass.SignedOut);
+        Assert.Equal(AdminSignedOutExemptions.AuthStaticPrefix, signedOut.UrlPrefix);
+        Assert.Equal(Path.Combine("wwwroot", "admin", "auth"), signedOut.Folder);
+        Assert.Contains(
+            "app.UseWhen(\n"
+            + "    context => !context.Request.Path.StartsWithSegments(AdminHostMiddleware.AdminPathPrefix)\n"
+            + "               || context.Request.Path.StartsWithSegments(AdminSignedOutExemptions.AuthStaticPrefix),\n"
+            + "    branch =>\n"
+            + "    {\n"
+            + "        branch.UseDefaultFiles();\n"
+            + "        branch.UseStaticFiles();\n"
+            + "    });",
+            program,
+            StringComparison.Ordinal);
+        // wwwroot/admin holds the signed-out folder and nothing else.
+        var webAdmin = Path.Combine(api, "wwwroot", "admin");
+        Assert.Equal(["auth"], Directory.GetDirectories(webAdmin).Select(Path.GetFileName));
+        Assert.Empty(Directory.GetFiles(webAdmin));
+
+        // Two: the signed-in folder, after the gate.
+        var signedIn = AdminRouteTable.StaticFolders.Single(f => f.Class == AdminRouteClass.SignedIn);
+        Assert.Equal(AdminSignedInPage.AssetPrefix, signedIn.UrlPrefix);
+        Assert.Equal(AdminSignedInPage.AssetFolder, signedIn.Folder);
+        Assert.Contains(
+            "app.UseStaticFiles(new StaticFileOptions\n"
+            + "{\n"
+            + "    RequestPath = AdminSignedInPage.AssetPrefix,\n"
+            + "    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(\n"
+            + "        Path.Combine(app.Environment.ContentRootPath, AdminSignedInPage.AssetFolder))\n"
+            + "});",
+            program,
+            StringComparison.Ordinal);
+        var gate = program.IndexOf("app.UseMiddleware<AdminSessionMiddleware>();", StringComparison.Ordinal);
+        Assert.True(gate > 0
+                    && program.IndexOf("app.UseWhen(", StringComparison.Ordinal) < gate
+                    && program.IndexOf("RequestPath = AdminSignedInPage.AssetPrefix", StringComparison.Ordinal) > gate);
+    }
+
+    // Live: no file the app has on disk is served under /admin without a session, but those of the signed-out folder.
+    [Fact]
+    public async Task TdAdm003_NoOtherFileOnDisk_IsServedUnderAdmin_WithoutASession()
+    {
+        var api = Path.Combine(RepoRoot(), "src", "Dealoware.Api");
+        var webRoot = Path.Combine(api, "wwwroot");
+        var signedOutFolder = Path.Combine(api, AdminRouteTable.StaticFolders.Single(f => f.Class == AdminRouteClass.SignedOut).Folder);
+
+        // Every file of the web root and of the content root's own folders, asked for under /admin by its
+        // path from either root: a file served there without a session would be a mount no row lists.
+        var asked = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(webRoot, "*", SearchOption.AllDirectories))
+        {
+            if (file.StartsWith(signedOutFolder + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                continue;
+            asked.Add("/admin/" + Path.GetRelativePath(webRoot, file).Replace('\\', '/'));
+        }
+
+        foreach (var file in Directory.EnumerateFiles(api, "*", SearchOption.TopDirectoryOnly)
+                     .Concat(Directory.EnumerateFiles(Path.Combine(api, AdminSignedInPage.AssetFolder))))
+        {
+            asked.Add("/admin/" + Path.GetRelativePath(api, file).Replace('\\', '/'));
+        }
+
+        Assert.NotEmpty(asked);
+        foreach (var path in asked)
+        {
+            var reply = await SendAsync("GET", path);
+            // The gate's two refusals: a page path goes to sign-in, anything else is the 401. Never the file.
+            var refused = (reply.Status == 401 && reply.Body == UnauthorizedBody)
+                          || (reply.Status == 302 && reply.Location == AdminSignInPages.SessionEndedLocation && reply.Body.Length == 0);
+            Assert.True(refused, $"GET {path} without a session: {reply}");
+        }
+    }
+
     // The browser walk opens every signed-in page of the table, signed out, and nothing else (TD-ADM-131).
     [Fact]
     public void TdAdm131_TheSignedOutBrowserWalk_OpensEverySignedInPageOfTheTable()
@@ -178,7 +274,7 @@ public partial class AdminRouteDenialTests : IClassFixture<DenialWebApplicationF
         var list = new List<MappedEndpoint>();
         foreach (var endpoint in source.Endpoints.OfType<RouteEndpoint>())
         {
-            var pattern = endpoint.RoutePattern.RawText ?? string.Empty;
+            var pattern = "/" + (endpoint.RoutePattern.RawText ?? string.Empty).TrimStart('/');
             var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
             if (methods is null || methods.Count == 0)
             {
@@ -193,8 +289,11 @@ public partial class AdminRouteDenialTests : IClassFixture<DenialWebApplicationF
     }
 
     private static bool IsAdminPattern(string pattern)
-        => pattern.Equals("/admin", StringComparison.OrdinalIgnoreCase)
-           || pattern.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase);
+    {
+        var path = "/" + pattern.TrimStart('/');
+        return path.Equals("/admin", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool MappedInThisBuild(AdminRoute row) => !row.DebugBuildOnly || DebugBuild;
 }

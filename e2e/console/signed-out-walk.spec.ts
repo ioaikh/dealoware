@@ -153,7 +153,7 @@ test.afterEach(() => {
   expect(pageErrors()).toEqual([]);
 });
 
-test('every signed-in page, opened signed out, lands on sign-in with the session-ended sentence; no reply on the way carries record data', async ({ page }) => {
+test('TD-ADM-131, TD-ADM-UI-na-X01 step 3: every signed-in page, opened signed out, lands on sign-in with the session-ended sentence; no reply on the way carries record data', async ({ page }) => {
   test.setTimeout(90_000);
   const addresses = [...SIGNED_IN_PAGES.map((p) => p.replace('{id:guid}', liveId(p))), '/admin/no-such-page'];
 
@@ -175,7 +175,7 @@ test('every signed-in page, opened signed out, lands on sign-in with the session
   }
 });
 
-test('after sign-out, Back and reload ask anew and show no record data', async ({ page }) => {
+test('TD-ADM-173: after sign-out, Back and reload ask anew and show no record data', async ({ page }) => {
   await signIn(page);
   const person = `/admin/participants/${seeded.participants['Alex Rivera'].id}`;
   const thing = `/admin/artifacts/${seeded.artifacts['Red bicycle']}`;
@@ -204,7 +204,7 @@ test('after sign-out, Back and reload ask anew and show no record data', async (
   expectNoRecordData(await page.content(), 'reload');
 });
 
-test('signed in: an unknown address, an id no record has, and a deleted record\'s id are S-D3, with nothing of a record', async ({ page }) => {
+test('TD-ADM-UI-na-X01 step 2, TD-ADM-179: signed in, an unknown address, an id no record has, and a deleted record\'s id are S-D3, with nothing of a record', async ({ page }) => {
   await signIn(page);
   const deleted: Record<string, string> = {
     participants: seeded.participants['Robin Hart'].id,
@@ -230,7 +230,7 @@ test('signed in: an unknown address, an id no record has, and a deleted record\'
   }
 });
 
-test('a session that ends while a list is open: the record link goes to sign-in with no record data, and signing in opens that record', async ({ page }) => {
+test('TD-ADM-UI-na-B13 steps 1 and 2: a session that ends while a list is open: the record link goes to sign-in with no record data, and signing in opens that record', async ({ page }) => {
   await signIn(page);
   await page.goto('/admin/participants?q=Alex%20Rivera');
   const record = `/admin/participants/${seeded.participants['Alex Rivera'].id}`;

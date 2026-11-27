@@ -32,7 +32,8 @@ public partial class AdminRouteDenialTests
 
         foreach (var state in BadSessions)
         {
-            foreach (var method in row.Methods)
+            // Its own methods, and OPTIONS, which no route maps: the gate answers before routing.
+            foreach (var method in row.Methods.Append("OPTIONS"))
             {
                 var ask = await BadSessionAsync(state, new Ask { Body = IsChange(method) ? "{}" : null });
                 var reply = await SendAsync(method, seed.PathOf(row), ask);
@@ -101,6 +102,13 @@ public partial class AdminRouteDenialTests
         }
 
         Assert.Equal(tables, await EntityTablesAsync());
+
+        // The cookie these states are made of is the real one: a usable pending token opens step 2.
+        if (row.Pattern == AdminSignedOutExemptions.SignInCode)
+        {
+            var usable = await SendAsync("GET", row.Pattern, new Ask { Cookie = await NewPendingAsync("usable") });
+            Assert.True(usable.Status == 200, $"GET {row.Pattern} with a usable pending token: {usable}");
+        }
     }
 
     // ---- Signed out: answers without a session, and is on the exemption list ----
@@ -336,8 +344,11 @@ public partial class AdminRouteDenialTests
             var deleted = await SendAsync(method, row.PathFor(seed.DeletedId(row)), ask);
             var what = $"{method} {row.Pattern}";
 
-            // Read, edit and the delete intent find no record: 404. The delete itself stops earlier, at its
-            // confirm token, which no record that is not there can have: the token refusal, the same for both.
+            // Read, edit and the delete intent find no record: 404. The delete itself never reaches the
+            // record: it stops earlier, at its confirm token, which only an intent for a record that is
+            // there can give. So the DELETE's answer (the token refusal, 409) cannot tell missing from
+            // deleted either. A record "hidden" by the policy is not a third case here: the policy gives
+            // the Core owner every record of the four types, and hides fields, never whether a record exists.
             Assert.True(missing.Status == (method == "DELETE" ? 409 : 404), $"{what}, missing: {missing}");
             Assert.True(missing.Status == deleted.Status, $"{what}: missing {missing} / deleted {deleted}");
             Assert.Equal(WithoutPerReplyValues(missing.Body), WithoutPerReplyValues(deleted.Body));
@@ -364,7 +375,7 @@ public partial class AdminRouteDenialTests
 
     [Theory]
     [MemberData(nameof(WriteRows))]
-    public async Task TdAdm005_TdAdm141_AWriteWithBadOrForbiddenValues_RepeatsNoneOfThem_AndChangesNoRecord(string key)
+    public async Task TdAdm005_TdAdm141_AWriteWithBadOrForbiddenValues_IsRefusedOrIgnored_RepeatsNoneOfThem_AndChangesNoRecord(string key)
     {
         var row = Row(key);
         var seed = await SeedAsync();
@@ -410,11 +421,39 @@ public partial class AdminRouteDenialTests
             Assert.DoesNotContain(seed.Party.ContactEmail!, reply.Body, StringComparison.OrdinalIgnoreCase);
             if (reply.Status == 400)
                 AssertNoRecordData(reply, seed, what);
-            if (method == "PATCH")
-                Assert.True(reply.Status == 400, $"{what}: {reply}");
+            Assert.True(reply.Status == ExpectedWriteStatus(method, row.Pattern), $"{what}: {reply}");
         }
 
         Assert.Equal(tables, await EntityTablesAsync());
+    }
+
+    /// <summary>
+    /// What each write answers to that body. A route that reads a body refuses
+    /// it; only a route that reads no body at all may succeed, because the
+    /// values were never looked at. A new write route needs its line here.
+    /// </summary>
+    private static int ExpectedWriteStatus(string method, string pattern)
+    {
+        if (method == "PATCH")
+            return 400; // the generic refusal: a field the owner may not write, or a value that breaks its rule
+        if (method == "DELETE")
+            return 428; // no confirm token: refused before anything is read
+        if (pattern.EndsWith("/delete-intent", StringComparison.Ordinal))
+            return pattern.StartsWith("/admin/api/artifacts/", StringComparison.Ordinal)
+                ? 409  // reads no body; the seeded artifact has a negotiation, so its delete is blocked
+                : 200; // reads no body: asks for a confirm token, changes no record
+        return pattern switch
+        {
+            AdminSecuritySettingsEndpoints.PasswordPath => 400,
+            AdminSecuritySettingsEndpoints.StepUpPath => 400,
+            AdminSecuritySettingsEndpoints.RecoveryCodesPath => 400,
+            AdminSecuritySettingsEndpoints.AuthenticatorPath => 400,
+            AdminSecuritySettingsEndpoints.AuthenticatorConfirmPath => 403, // no step-up done: "step-up required"
+            AdminSessionEndpoints.StaySignedInPath => 200,                  // reads no body
+            AdminRecoveryNotice.DismissPath => 200,                         // reads no body
+            AdminCsrfProbeEndpoint.Path => 200,                             // test only; reads no body
+            _ => throw new InvalidOperationException($"{method} {pattern}: a write route with no expected answer; add one.")
+        };
     }
 
     // ---- The two addresses: admin routes only on the admin address, engine routes only on the engine's (TD-ADM-001) ----

@@ -30,7 +30,7 @@ public partial class AdminRouteDenialTests
     private const string ForbiddenPage =
         """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Forbidden</p></body></html>""";
 
-    private static readonly string[] EveryMethod = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"];
+    private static readonly string[] EveryMethod = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
     private static readonly string[] ChangeMethods = ["POST", "PUT", "PATCH", "DELETE"];
 
     private static bool IsChange(string method) => ChangeMethods.Contains(method);
