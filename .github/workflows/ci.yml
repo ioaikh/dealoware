@@ -183,3 +183,41 @@ jobs:
       - name: Container log on failure
         if: failure()
         run: docker logs engine || true
+
+  # T09 spec §2.3: the previous release must keep working on this commit's schema. Until there
+  # is a test copy, this rehearsal stands in for it. Skipped, with a note, while no release-*
+  # tag exists: before the first release there is no previous release.
+  upgrade-rehearsal:
+    name: Upgrade rehearsal from the last release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find the last release tag
+        id: last
+        run: |
+          set -euo pipefail
+          tag="$(git tag --list 'release-*' --merged HEAD | grep -E '^release-[0-9]+$' | sort -t- -k2,2n | tail -n 1 || true)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then
+            echo "No release-* tag yet: there is no previous release to rehearse an upgrade from. Skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Rehearsing the upgrade from $tag." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Setup .NET
+        if: steps.last.outputs.tag != ''
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Rehearse the upgrade on PostgreSQL 16
+        if: steps.last.outputs.tag != ''
+        env:
+          PREV_TAG: ${{ steps.last.outputs.tag }}
+        run: bash scripts/upgrade-rehearsal/run.sh "$PREV_TAG"
