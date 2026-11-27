@@ -86,7 +86,7 @@ public partial class AdminOfferHistoryTests : IClassFixture<OfferHistoryWebAppli
         Assert.True(reply.Status == 200, $"{action}: {reply.Status} {reply.Body}");
         var after = await OffersAsync();
         AssertHistoryKept(before, after, action);
-        AssertDidWhatItSays(action, seed, before, after);
+        AssertOnlyItsOffersChanged(action, seed, before, after);
     }
 
     // ---- the refused versions ----
@@ -190,7 +190,9 @@ public partial class AdminOfferHistoryTests : IClassFixture<OfferHistoryWebAppli
             var before = await OffersAsync();
             var reply = await ActAsync(action, seed, session);
             Assert.True(reply.Status == 200, $"{action}: {reply.Status} {reply.Body}");
-            AssertHistoryKept(before, await OffersAsync(), action);
+            var after = await OffersAsync();
+            AssertHistoryKept(before, after, action);
+            AssertOnlyItsOffersChanged(action, seed, before, after);
         }
 
         // And from the very start: every row of the seed is there, as sent, deleted or not.
@@ -303,42 +305,54 @@ public partial class AdminOfferHistoryTests : IClassFixture<OfferHistoryWebAppli
         }
     }
 
-    /// <summary>That the action did act: the history check alone would also pass for an action that did nothing.</summary>
-    private static void AssertDidWhatItSays(string action, Seed seed, IReadOnlyDictionary<Guid, OfferRow> before, IReadOnlyDictionary<Guid, OfferRow> after)
+    /// <summary>
+    /// That the action changed exactly the offers it names, and no other: the
+    /// history check alone would also pass for an action that did nothing, or
+    /// one that also cancelled or deleted offers it had no business with. The
+    /// seed holds other open offers in the same negotiation and in others, so
+    /// a change too wide shows here.
+    /// </summary>
+    private static void AssertOnlyItsOffersChanged(string action, Seed seed, IReadOnlyDictionary<Guid, OfferRow> before, IReadOnlyDictionary<Guid, OfferRow> after)
     {
-        switch (action)
+        HashSet<Guid> Where(Func<OfferRow, bool> match) => before.Where(kv => match(kv.Value)).Select(kv => kv.Key).ToHashSet();
+        HashSet<Guid> OpenIn(Guid negotiation) => Where(o => o.NegotiationId == negotiation && o.DeletedAt is null && o.Status == nameof(OfferStatus.Open));
+        HashSet<Guid> LiveIn(Guid negotiation) => Where(o => o.NegotiationId == negotiation && o.DeletedAt is null);
+        HashSet<Guid> Just(Guid id) => Where(o => false).Append(id).ToHashSet();
+
+        var (expected, deletes) = action switch
         {
-            case "close-negotiation":
-            case "expire-negotiation":
+            "close-negotiation" => (OpenIn(seed.ToClose.Id), false),
+            "expire-negotiation" => (OpenIn(seed.ToExpire.Id), false),
+            "cancel-offer" => (Just(seed.Open1.Id), false),
+            "delete-offer" => (Just(seed.Open2.Id), true),
+            "delete-open-negotiation" => (LiveIn(seed.Open.Id), true),
+            "delete-closed-negotiation" => (LiveIn(seed.Closed.Id), true),
+            "delete-participant" => (LiveIn(seed.WithPartyC.Id), true),
+            "delete-artifact" => (LiveIn(seed.OtherArtifactNegotiation.Id), true),
+            // The edits of a participant, an artifact and an end time change no offer at all.
+            _ => (new HashSet<Guid>(), false)
+        };
+
+        var changed = before.Keys
+            .Where(id => before[id].Status != after[id].Status || before[id].DeletedAt != after[id].DeletedAt)
+            .ToHashSet();
+        Assert.True(
+            expected.SetEquals(changed),
+            $"{action}: expected these offers to change: [{string.Join(", ", expected.Order())}]; changed: [{string.Join(", ", changed.Order())}]");
+
+        if (action.StartsWith("delete-", StringComparison.Ordinal) || action is "close-negotiation" or "expire-negotiation" or "cancel-offer")
+            Assert.NotEmpty(expected);
+        foreach (var id in expected)
+        {
+            if (deletes)
             {
-                var negotiation = action == "close-negotiation" ? seed.ToClose : seed.ToExpire;
-                var offers = after.Values.Where(o => o.NegotiationId == negotiation.Id).ToList();
-                Assert.NotEmpty(offers);
-                Assert.All(offers, o => Assert.Equal(nameof(OfferStatus.Cancelled), o.Status));
-                break;
+                Assert.NotNull(after[id].DeletedAt);
             }
-            case "cancel-offer":
-                Assert.Equal(nameof(OfferStatus.Cancelled), after[seed.Open1.Id].Status);
-                break;
-            case "delete-offer":
-                Assert.NotNull(after[seed.Open2.Id].DeletedAt);
-                break;
-            case "delete-open-negotiation":
-                Assert.All(after.Values.Where(o => o.NegotiationId == seed.Open.Id), o => Assert.NotNull(o.DeletedAt));
-                break;
-            case "delete-closed-negotiation":
-                Assert.All(after.Values.Where(o => o.NegotiationId == seed.Closed.Id), o => Assert.NotNull(o.DeletedAt));
-                break;
-            case "delete-participant":
-                Assert.All(after.Values.Where(o => o.NegotiationId == seed.WithPartyC.Id), o => Assert.NotNull(o.DeletedAt));
-                break;
-            case "delete-artifact":
-                Assert.All(after.Values.Where(o => o.NegotiationId == seed.OtherArtifactNegotiation.Id), o => Assert.NotNull(o.DeletedAt));
-                break;
-            default:
-                // The edits change no offer at all.
-                Assert.Equal(before.Values.Select(o => o.ToString()), after.Values.Select(o => o.ToString()));
-                break;
+            else
+            {
+                Assert.Equal(nameof(OfferStatus.Cancelled), after[id].Status);
+                Assert.Equal(before[id].DeletedAt, after[id].DeletedAt);
+            }
         }
     }
 
@@ -408,6 +422,8 @@ public partial class AdminOfferHistoryTests : IClassFixture<OfferHistoryWebAppli
         // Every status on one open negotiation, and one offer already deleted.
         var open1 = NewOffer(open, a, b, 100.10m);
         var open2 = NewOffer(open, b, a, 200.20m);
+        // Open offers the actions on open1 and open2 must leave alone: one beside them, more in other negotiations.
+        var open3 = NewOffer(open, a, b, 250.25m);
         var accepted = NewOffer(open, b, a, 300.30m);
         accepted.Accept(a.Sub);
         var declined = NewOffer(open, a, b, 40m);
@@ -429,7 +445,7 @@ public partial class AdminOfferHistoryTests : IClassFixture<OfferHistoryWebAppli
         var otherOffers = new[] { NewOffer(otherNegotiation, b, a, 7.07m) };
         closed.Close();
 
-        var all = new List<Offer> { open1, open2, accepted, declined, withdrawn, superseded, cancelled, deleted };
+        var all = new List<Offer> { open1, open2, open3, accepted, declined, withdrawn, superseded, cancelled, deleted };
         all.AddRange(closing);
         all.AddRange(expiring);
         all.AddRange(closedOffers);
