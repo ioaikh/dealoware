@@ -361,6 +361,9 @@ public static partial class ReleaseMigrationRules
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // A migration's text is UTF-8 (comments carry dashes and quotes); the console's
+                // own code page would change those characters and make a file look changed.
+                StandardOutputEncoding = new System.Text.UTF8Encoding(false),
                 UseShellExecute = false,
                 WorkingDirectory = repoRoot
             };
