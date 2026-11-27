@@ -79,7 +79,7 @@ The six admin drafts of 6 October are closed, each with a comment naming the pul
 | #42 audit log viewer | #70 |
 | #43 delete with confirmation | #75, #78 |
 
-Eight pull requests are still open besides this one (#81). None changes the admin console itself: three are older work for later steps, and five are Dependabot updates to the test tool in the admin test folders. **They wait for the owner's decision; none was closed here.**
+Eight pull requests are still open besides this one (#81). None changes the admin console itself: two are older work for later steps, and six are Dependabot updates to the browser test tool, five of them in the admin test folders. **They wait for the owner's decision; none was closed here.**
 
 | Pull request | What it is | Recommendation |
 |--------------|-----------|----------------|
