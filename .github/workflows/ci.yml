@@ -53,6 +53,39 @@ jobs:
             **/TestResults/**/Sequence_*.xml
           retention-days: 30
 
+  # T09 spec §2.2: between two releases the database only gains. Reads every migration added
+  # since the last release-* tag, so it needs the full history and the tags. Without a tag
+  # there is no previous release, and it says so and passes.
+  database-changes:
+    name: Database changes since the last release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Check the migrations since the last release
+        env:
+          DEALOWARE_RELEASE_MIGRATION_CHECK: required
+        run: >
+          dotnet test --no-build --configuration Release
+          --filter "FullyQualifiedName~ReleaseMigrationRulesTests"
+          --logger "console;verbosity=detailed"
+
   postgres-sec:
     name: PostgreSQL Sec Tests
     runs-on: ubuntu-latest
