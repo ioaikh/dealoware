@@ -37,11 +37,12 @@ Tests only. No product code changed, and no denial check found a hole.
    | Every engine route | On the engine's address, with and without the admin session cookie | The same answer | 002 |
    | The test-only routes | In Production | Not mapped; 404 with a good session | 001 |
 
-3. **The signed-out browser walk** (`e2e/console/signed-out-walk.spec.ts`), four tests.
+3. **The signed-out browser walk** (`e2e/console/signed-out-walk.spec.ts`), five tests.
    - **TD-ADM-131, UI-na-X01 step 3.** Every signed-in page of the table, and an unknown page, opened signed out, lands on sign-in with the session-ended sentence. Every reply on the way (the redirect, the page, its scripts) and the page at the end are searched for record data; none has any. A .NET test holds the walk's page list to the table both ways, so a new page must be walked.
    - **TD-ADM-173.** After sign-out, Back twice and reload: each record page is asked for anew, sent to sign-in, and shows no record data. Nothing comes from a cache.
    - **UI-na-X01 step 2, TD-ADM-179.** Signed in, an unknown page, an unknown id of each type, an unknown audit entry and a deleted record of each type are S-D3 (404) with no record data.
    - **UI-na-B13 steps 1 and 2.** A session that ends while a list is open: the record link goes to sign-in with no record data, and signing in opens that record.
+   - **UI-na-B13 step 3.** A session that ends while an edit is open (the edit page from pull request #74): Save gets the gate's 401 and goes to sign-in with the session-ended sentence. No reply carries record data, and nothing is saved. Signing in lands on Stats, not on the record: see finding N1.
 4. **The offer-history test** (`AdminOfferHistoryTests`, TD-ADM-178).
    - **The data.** Offers in every status (Open, Accepted, Declined, Withdrawn, Superseded, Cancelled), one already deleted, several open offers beside the ones the actions touch.
    - **The actions.** Edit a participant, an artifact and an end time; close, expire, cancel; delete an offer, an open and a closed negotiation, a participant and an artifact, each with its cascade. Each on fresh records, and all in turn on one set.
@@ -68,13 +69,14 @@ One reviewer read the committed code up to 34f9de8. The reviewer did not write i
 | L5 | Low | The write test checked a status for PATCH only. | Every write route now has its expected answer; a new write route without one fails. |
 | L6 | Low | The denial host named a PostgreSQL database it never used. | Dropped. The denial checks run on SQLite. |
 | L7 | Low | The source check's reach. | Noted under Limits. |
+| N1 | Low, for the owner | Found by the B13 step 3 walk after #74 merged. When the session ends during an edit save, signing in lands on Stats, not on the record that was open. The test design asks for the same record. The edit script's 401 is an API reply, and the gate keeps a page to return to only for a page GET. Not a security gap: no record data is shown and nothing is saved. | Not changed: fixing it changes built behaviour. Open for the owner. The walk checks what holds and does not assert the landing page. |
 
 ## Tests
 
-- **`AdminRouteDenialTests`** on Windows with SQLite: 221 tests in a Debug build, 219 in Release (the Debug-only probe row), all passed.
+- **`AdminRouteDenialTests`** on Windows with SQLite: 221 tests in a Debug build, 219 in Release (the Debug-only probe row), all passed. Run again after `main` with #74 and #78 was merged in: still 221, all passed, with the new `console-edit.js` and `console-delete.js` in the signed-in file checks. The two pull requests add no route.
 - **`AdminOfferHistoryTests`** on Windows with SQLite: 26 tests, all passed.
 - **Mutation check:** with the offer cancel widened to the other open offers of its negotiation, the single-action and the all-in-turn tests failed.
-- **The browser walk** on Chromium through the local runner: 4 tests passed. The whole console suite on Chromium: 67 passed.
+- **The browser walk** on Chromium through the local runner: 4 tests passed; after the merge, with step 3 added, 5 passed. The whole console suite on Chromium: 67 passed.
 - **Full suite on Windows** (Debug, SQLite): 2,389 tests, 2,373 passed, 10 skipped, 6 failed. Five are the known Windows failures on `main`: `AdminTotpTests.SecSc6_NewServiceInstanceKeepsFactorLock` and four `PostmanCollectionHygieneTests.RunNewmanScript_*`. The sixth, `AdminAuditPostgresAppendOnlyTests.SecR2_AdminAuditPostgres_InsertWorks_UpdateDeleteTruncateRaise`, needs `DB_HOST` and fails on any machine without PostgreSQL; see Limits.
 - **Tests already on `main` that must stay green** (TD-ADM-006, 007, 011, 021, 041, 054, 150): passed in the full run.
 - **CI:** the PostgreSQL job runs `AdminOfferHistoryTests`; GitHub runs the walk on Chromium, Firefox and WebKit. The pull request's five required checks on its last commit are the final record.
@@ -83,6 +85,6 @@ One reviewer read the committed code up to 34f9de8. The reviewer did not write i
 
 1. The source check covers only the `Admin` folders under `src/`. Shared services an admin route calls are covered at run time by the behaviour tests, not by the scan.
 2. The offer history is protected by the admin code and these tests, not by a database rule. The rule that makes it unalterable for everyone is a later task.
-3. TD-ADM-UI-na-B13 steps 3 and 4 are not walked: step 3 needs the edit page (pull request #74), and step 4 needs S-D4, which is not built.
-4. Pull requests #74 and #78 add no route, only signed-in files; the walk and the file checks read the folder from disk, so those files are covered when they land. A route either adds must get a row, or the build fails.
+3. TD-ADM-UI-na-B13 step 4 is not walked: it needs S-D4 ("You can't do that."), which is not built. Whether to build it is a question for the owner (T08 architecture step, question 2; recommended: do not build it). Step 3 lands on Stats after sign-in, not on the record (finding N1).
+4. Pull requests #74 (the edit page) and #78 (the delete dialog, `AdminDeletePage`) are merged in and covered: they add no route, and their signed-in files are in the file checks, which read the folder from disk.
 5. `AdminAuditPostgresAppendOnlyTests.SecR2_AdminAuditPostgres_InsertWorks_UpdateDeleteTruncateRaise` fails on any machine without `DB_HOST`. It is not touched here and runs in the PostgreSQL job.
