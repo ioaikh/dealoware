@@ -55,10 +55,35 @@ public class TracingExportTests
         });
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/health");
+        // The server span ends after the client already has the answer (the host stops it once the
+        // pipeline has returned). So the test waits for THIS request's span to stop (matched by its
+        // trace ID), and only then flushes: a flush before that would find nothing to send. This
+        // listener is added after the host started, so the SDK's own listener (which queues the span
+        // for export) is called before it on the same Stop.
+        var traceId = ActivityTraceId.CreateRandom();
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Microsoft.AspNetCore",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == traceId && activity.Kind == ActivityKind.Server)
+                {
+                    stopped.TrySetResult();
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health");
+        request.Headers.TryAddWithoutValidation("traceparent", $"00-{traceId.ToHexString()}-00f067aa0ba902b7-01");
+        var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
+        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
         var provider = factory.Services.GetRequiredService<TracerProvider>();
-        Assert.True(provider.ForceFlush(10_000), "the exporter did not flush");
+        Assert.True(provider.ForceFlush(30_000), "the exporter did not flush");
 
         var post = Assert.Single(receiver.Requests, r => r.Path == "/v1/traces");
         Assert.Equal("POST", post.Method);
