@@ -190,7 +190,18 @@ Every edit, close, expiry and cancel is written to the audit log with the values
 
 ## 12. Limits the owner accepted
 
-These are the limits listed in the review records of the merged pieces, T02 to T07, one line each. The pieces merged with these limits stated. The two delete records also record the owner's own acceptance, on 26 Nov 2026. Limits a later piece removed are listed at the end of this section.
+These are the limits listed in the review records of the merged pieces, T02 to T07, one line each. This section is the one list of them. Limits a later piece removed are listed at the end of this section.
+
+What the owner accepted, piece by piece:
+
+| Piece | Acceptance |
+|-------|------------|
+| T02, first-time setup | No separate acceptance is recorded. The limits its record lists (under "First-time setup" below) merged as written. |
+| T03, sign-in screens | The owner accepted the open limits on 26 Nov 2026. |
+| T04, lists, detail, totals, security settings, session warnings | The owner accepted the open limits and approved the new wording on 26 Nov 2026, including the session-warning sentences and the security settings page wording. |
+| T05, editing | The owner accepted the six open limits and approved the new wording, including the edit page's words, on 26 Nov 2026. |
+| T06, deleting | The owner accepted the six open limits and approved the new wording, including "This confirmation is no longer valid.", on 26 Nov 2026. |
+| T07, audit log viewer | The owner accepted the open limits on 26 Nov 2026. The audit log's words "Success", "Failure", "Denied" and "Reason" have no recorded approval yet and wait for the owner. |
 
 ### First-time setup
 

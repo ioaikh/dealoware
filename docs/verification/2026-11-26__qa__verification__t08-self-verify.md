@@ -7,7 +7,7 @@
 | Branch | `claude/t08-hand-off` |
 | Hand-off document | [The owner's guide to the admin console](../product/2026-11-26__product__guide__core-admin-console.md) |
 | Date | 2026-11-26 |
-| Result | **Met, with the gaps stated below.** Three items wait for the owner: the October pull requests, the S-D4 page, and a few recorded acceptances. |
+| Result | **Met, with the gaps stated below.** Three items wait for the owner: the October pull requests, the S-D4 page, and the audit log's four new words. |
 
 ## How this was checked
 
@@ -31,7 +31,7 @@ The agent teams named in the October gates (Code QA, Security, UI/UX) are not ru
 | 8 | No MotorMarket or DC4; no Cognito; no paid LLM provisioned | Met | No such name in `src/`; no admin piece adds a provider. |
 | 9 | Security points 1–14 evidence ready for the Security confirm | Met differently | Each record's adversarial review covers the security points of its piece. No Security confirm file was issued in the October form, because no Security team is running. |
 | 10 | UI Definition of Done (UX1-A11): UI cases mapped to UX1-A01–A10 through UXR IDs, and green | Partly met | The test design's TD-ADM-UI cases named in each record are green in CI on Chromium, Firefox and WebKit (`.github/workflows/admin-ui-ci.yml`). The mapping to UXR IDs could not be checked: the UX addendum that holds UXR-A01 to A45 is not in this repository, as the setup-page record notes. |
-| 11 | Steps 14 and 15 checklists complete; UI approval recorded at review | Met differently | Step 14: the six `a7-step-14-*` records. Step 15: [t07-audit-viewer](2026-11-26__qa__verification__t07-audit-viewer.md). Approval in the form above. The owner approved the T04 wording and the T06 wording on 26 Nov 2026 (records t04-lists-and-detail, t04-security-settings-page, t06-delete-dialog). |
+| 11 | Steps 14 and 15 checklists complete; UI approval recorded at review | Met differently | Step 14: the six `a7-step-14-*` records. Step 15: [t07-audit-viewer](2026-11-26__qa__verification__t07-audit-viewer.md). Approval in the form above. The owner's acceptances of each piece's limits and wording are listed below. |
 
 ## Process cases checked by hand
 
@@ -43,6 +43,19 @@ The agent teams named in the October gates (Code QA, Security, UI/UX) are not ru
 | TD-ADM-160 | The inbound bot connector is not in this delivery | Met | No admin piece adds or changes a connector. `src/Dealoware.Api/Endpoints/InboundConnectorEndpoints.cs` was last changed in `1c9d10b` (4 Oct), before the admin track. |
 | TD-ADM-161 | Every must-cover area has at least one P0 automated case | Met | Sign-in (§8): `AdminBootstrapTests`, `AdminTotpTests`, `AdminPasswordResetTests`, `TdAdm040AuthLockoutSessionTests`, `AdminSessionTimerTests`. Confirm before delete (§9): `AdminDeleteApiTests.TdAdm090_*`, `AdminDeletePageTests`, `e2e/console/delete.spec.ts`. Audit (§10): `AdminAuditApiTests`, `AdminAuditPairingTests.TdAdm102_*`, `AdminAuditViewerApiTests`, `AdminAuditPageTests`. Soft delete and cascades (§11): `AdminDeleteApiTests.TdAdm091_*` to `TdAdm095_*`. Lists and search (§4.5, §4.6): `AdminReadApiTests.TD_ADM_060_*`, `AdminListPagingInterceptorTests.TD_ADM_065_*`, `AdminListPageTests`, `e2e/console/lists.spec.ts`. |
 | TD-ADM-162 | Everything on the Spec §12 IN list is delivered | Met, with one narrowing | Host: line 1. List, view, edit and delete for the four types with name search, all statuses, sort, filter and server paging: line 4. Stats: `AdminConsoleShellTests.Stats_ShowsTheFiveTotalsOfTheReadApi_AsText_WithTheTimeInEt` and `Stats_CountsChange_WithTheData_AndLeaveSoftDeletedRowsOut`. One owner and the field policy: line 1. Sign-in §8: line 2. Confirm before delete: TD-ADM-161. Audit log, read-only: `AdminAuditViewerApiTests.TdAdm101_NoMethodChangesAnEntry_EveryOtherMethodIs405_AndTheEntryStaysAsItWas`. Soft delete, cascades and the toggle: TD-ADM-161 and `AdminAuditApiTests.TdAdm064_IncludeDeletedToggle_IsNotAudited`. Mail interface: line 3. **Narrowing:** on an offer the owner can only cancel; amount, currency and terms are read-only (the owner's decision of 26 Nov 2026). That every refused route leaves the offer history unchanged is the offer-history test of pull request #80, not yet on `main`. |
+
+## The owner's acceptances
+
+Guide §12 is the one list of the limits. What the owner accepted, piece by piece:
+
+| Piece | Acceptance |
+|-------|------------|
+| T02, first-time setup | No separate acceptance is recorded. The limits its record lists (setup leads to sign-in, not straight to authenticator setup; a refused password takes a slot of the shared setup and reset budget; the password-rules note is not in the repository; and "do not run `bootstrap-link` yet", since removed by the setup page) merged as written. |
+| T03, sign-in screens | The open limits accepted on 26 Nov 2026. |
+| T04, lists, detail, totals, security settings, session warnings | The open limits accepted and the new wording approved on 26 Nov 2026, including the session-warning sentences and the security settings page wording. |
+| T05, editing | The six open limits accepted and the new wording approved on 26 Nov 2026, including the edit page's words. |
+| T06, deleting | The six open limits accepted and the new wording approved on 26 Nov 2026, including "This confirmation is no longer valid." |
+| T07, audit log viewer | The open limits accepted on 26 Nov 2026. The words "Success", "Failure", "Denied" and "Reason" have no recorded approval yet: waiting for the owner (question 3 below). |
 
 ### Checks run for this record
 
@@ -78,10 +91,10 @@ Three older pull requests are still open and are not admin console work. **They 
 
 1. **The three open pull requests above.** Recommended: close #40; keep #48 and #49 for later steps.
 2. **The "You can't do that." page (S-D4) was never built.** Neither the Spec nor the Story says when it shows, and no signed-in page answers 403 today. A refused change already shows its sentence inside the page ("You can't do that. Nothing was changed."), which the test design allows (TD-ADM-UI-na-B13). **Recommended: do not build it.**
-3. **Acceptance on record.** The review records list each piece's limits, and guide §12 gathers them. Only the delete records state the owner's acceptance in words; the other pieces merged with their limits stated. Recommended: accept guide §12 as the one list.
-4. **Wording with no approval on record.** The two session-warning sentences (record t04-session-warnings, "waiting for the owner's wording"), the edit page's new wording (t05-edit-page) and the audit log's "Success", "Failure", "Denied" and "Reason" (t07-audit-viewer). Recommended: approve them as they are on `main`.
+3. **The audit log's four new words**, "Success", "Failure", "Denied" and "Reason" (record t07-audit-viewer), have no recorded approval. Recommended: approve them as they are on `main`.
 
 ## What this record does not cover
 
 - The denial checks, the signed-out browser walk and the offer-history test: pull request #80 (T08a).
 - Anything about turning the console on: guide §13 lists what must be done once before it goes live.
+- The index: the guide is not yet listed in `docs/INDEX.md`. The owner adds it there, or it is added once the owner's own pending change to that file is in.
