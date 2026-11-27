@@ -10,6 +10,8 @@ namespace Dealoware.Infrastructure.Persistence;
 /// H3: the two database logins on PostgreSQL, set up in code instead of by hand.
 /// <list type="bullet">
 ///   <item><see cref="ApplyAsync"/> (<c>dbroles</c>, as the master): H3 design §7 steps 1 to 5.</item>
+///   <item><see cref="RequireMigrateLoginAsync"/> (<c>migrate</c>, before the migrations): refuses
+///     the master, a superuser or the owner of the database.</item>
 ///   <item><see cref="ApplyAppGrantsAsync"/> (<c>migrate</c>, as the owner of the tables, after
 ///     every migration): §7 step 6b.</item>
 ///   <item><see cref="VerifyAsync"/> (<c>dbroles --verify</c>, as <see cref="AppRole"/>):
@@ -65,9 +67,30 @@ public static partial class DatabaseRoles
         if (!await steps.RunAsync("PostgreSQL 16 or later", () => RequireServerVersionAsync(master, ct)))
             return steps.Finish(false);
 
-        await using var tx = await master.BeginTransactionAsync(ct).ConfigureAwait(false);
+        var tx = await BeginAsync(steps, master, ct).ConfigureAwait(false);
+        if (tx is null)
+            return steps.Finish(false);
 
-        var ok =
+        try
+        {
+            return steps.Finish(await ApplyStepsAsync(steps, master, tx, appPassword, migratePassword, ct)
+                .ConfigureAwait(false));
+        }
+        finally
+        {
+            await DisposeQuietlyAsync(tx).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<bool> ApplyStepsAsync(
+        DatabaseStepWriter steps,
+        NpgsqlConnection master,
+        NpgsqlTransaction tx,
+        string appPassword,
+        string migratePassword,
+        CancellationToken ct)
+    {
+        return
             await steps.RunAsync($"create the logins {MigrateRole} and {AppRole} if missing", async () =>
             {
                 foreach (var role in new[] { MigrateRole, AppRole })
@@ -133,8 +156,6 @@ public static partial class DatabaseRoles
                 }
             })
             && await steps.RunAsync("commit", () => tx.CommitAsync(ct));
-
-        return steps.Finish(ok);
     }
 
     /// <summary>
@@ -158,9 +179,24 @@ public static partial class DatabaseRoles
         if (!await steps.RunAsync("connect", () => OpenAsync(owner, ct)))
             return steps.Finish(false);
 
-        await using var tx = await owner.BeginTransactionAsync(ct).ConfigureAwait(false);
+        var tx = await BeginAsync(steps, owner, ct).ConfigureAwait(false);
+        if (tx is null)
+            return steps.Finish(false);
 
-        var ok =
+        try
+        {
+            return steps.Finish(await ApplyAppGrantsStepsAsync(steps, owner, tx, ct).ConfigureAwait(false));
+        }
+        finally
+        {
+            await DisposeQuietlyAsync(tx).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<bool> ApplyAppGrantsStepsAsync(
+        DatabaseStepWriter steps, NpgsqlConnection owner, NpgsqlTransaction tx, CancellationToken ct)
+    {
+        return
             await steps.RunAsync($"the login {AppRole} exists", async () =>
             {
                 var exists = await ScalarAsync<bool>(owner, tx,
@@ -192,8 +228,6 @@ public static partial class DatabaseRoles
                 ExecAsync(owner, tx,
                     $"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {Schema} TO {Q(AppRole)}", ct))
             && await steps.RunAsync("commit", () => tx.CommitAsync(ct));
-
-        return steps.Finish(ok);
     }
 
     /// <summary>
@@ -232,12 +266,40 @@ public static partial class DatabaseRoles
         if (!ok)
             return steps.Finish(false);
 
-        await using var tx = await app.BeginTransactionAsync(ct).ConfigureAwait(false);
-        var options = new DbContextOptionsBuilder<DealowareDbContext>().UseNpgsql(app).Options;
-        await using var db = new DealowareDbContext(options);
-        await db.Database.UseTransactionAsync(tx, ct).ConfigureAwait(false);
+        // The transaction and the EF context start inside a step, so a dropped connection here
+        // prints a step name and "failed", never the driver's message.
+        NpgsqlTransaction? begun = null;
+        DealowareDbContext? context = null;
+        try
+        {
+            if (!await steps.RunAsync("begin a transaction", async () =>
+                {
+                    begun = await app.BeginTransactionAsync(ct).ConfigureAwait(false);
+                    context = new DealowareDbContext(
+                        new DbContextOptionsBuilder<DealowareDbContext>().UseNpgsql(app).Options);
+                    await context.Database.UseTransactionAsync(begun, ct).ConfigureAwait(false);
+                }))
+            {
+                return steps.Finish(false);
+            }
 
-        ok =
+            return steps.Finish(await VerifyStepsAsync(steps, app, begun!, context!, ct).ConfigureAwait(false));
+        }
+        finally
+        {
+            await DisposeQuietlyAsync(context).ConfigureAwait(false);
+            await DisposeQuietlyAsync(begun).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<bool> VerifyStepsAsync(
+        DatabaseStepWriter steps,
+        NpgsqlConnection app,
+        NpgsqlTransaction tx,
+        DealowareDbContext db,
+        CancellationToken ct)
+    {
+        return
             await steps.RunAsync("CREATE TABLE is refused", () => RequireRefusedAsync(app, tx,
                 $"CREATE TABLE {Schema}.{VerifyProbe} (id integer)", ct))
             && await steps.RunAsync($"adding a row to {DatabaseTableGrants.HistoryTable} is refused", () =>
@@ -275,8 +337,131 @@ public static partial class DatabaseRoles
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             })
             && await steps.RunAsync("roll everything back", () => tx.RollbackAsync(ct));
+    }
 
-        return steps.Finish(ok);
+    /// <summary>
+    /// Read-only catalog query for <see cref="RequireMigrateLoginAsync"/>. <c>pg_has_role(...,
+    /// 'MEMBER')</c> counts inherited and SET-only membership; <c>rds_superuser</c> is gated on
+    /// the role existing, so a server that is not RDS answers false rather than an error.
+    /// </summary>
+    public const string MigrateLoginFactsSql =
+        """
+        SELECT
+          r.rolsuper,
+          r.rolcreaterole,
+          r.rolcreatedb,
+          r.rolbypassrls,
+          EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_roles s
+            WHERE s.rolname = 'rds_superuser'
+              AND pg_catalog.pg_has_role(current_user, s.oid, 'MEMBER')
+          ) AS is_rds_superuser,
+          EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_database d
+            WHERE d.datname = current_database()
+              AND pg_catalog.pg_has_role(current_user, d.datdba, 'MEMBER')
+          ) AS owns_database
+        FROM pg_catalog.pg_roles r
+        WHERE r.rolname = current_user
+        """;
+
+    /// <summary>
+    /// The facts that make a login wrong for <c>migrate</c>: the master (on RDS it has
+    /// CREATEROLE, CREATEDB and <c>rds_superuser</c>, and owns the database), a superuser, or
+    /// any login that owns the database. Unlike the API's check, owning the tables is expected:
+    /// <see cref="MigrateRole"/> owns them.
+    /// </summary>
+    public sealed record MigrateLoginFacts(
+        bool RolSuper,
+        bool RolCreateRole,
+        bool RolCreateDb,
+        bool RolBypassRls,
+        bool IsRdsSuperuserMember,
+        bool OwnsDatabase);
+
+    /// <summary>Pure decision: any fact set means <c>migrate</c> must not run on this login.</summary>
+    public static bool IsRefusedForMigrate(MigrateLoginFacts facts)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        return facts.RolSuper
+               || facts.RolCreateRole
+               || facts.RolCreateDb
+               || facts.RolBypassRls
+               || facts.IsRdsSuperuserMember
+               || facts.OwnsDatabase;
+    }
+
+    /// <summary>
+    /// <c>migrate</c>, before any migration: refuses the master, a superuser or the owner of
+    /// the database, as the API refuses a privileged login at start. Run as the master,
+    /// <c>migrate</c> would make the master own every new table. Prints step names only.
+    /// </summary>
+    /// <returns>True when the login may run the migrations (nothing printed after the step).</returns>
+    public static async Task<bool> RequireMigrateLoginAsync(
+        NpgsqlConnection connection,
+        TextWriter output,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(output);
+        var steps = new DatabaseStepWriter(output, "migrate");
+        var ct = cancellationToken;
+
+        var ok =
+            await steps.RunAsync("connect", () => OpenAsync(connection, ct))
+            && await steps.RunAsync("the login is not a superuser, the master or the owner of the database", async () =>
+            {
+                var facts = await LoadMigrateLoginFactsAsync(connection, ct).ConfigureAwait(false);
+                if (IsRefusedForMigrate(facts))
+                    throw new DatabaseStepException($"refused: migrate runs as {MigrateRole} only, never as the master");
+            });
+
+        return ok || steps.Finish(false);
+    }
+
+    private static async Task<MigrateLoginFacts> LoadMigrateLoginFactsAsync(NpgsqlConnection connection, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(MigrateLoginFactsSql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await reader.ReadAsync(ct).ConfigureAwait(false) || Enumerable.Range(0, 6).Any(reader.IsDBNull))
+            throw new DatabaseStepException("the login could not be checked");
+        return new MigrateLoginFacts(
+            reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2),
+            reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5));
+    }
+
+    /// <summary>
+    /// Starts the transaction inside a step: <c>BeginTransactionAsync</c> can throw (a broken or
+    /// busy connection), and an exception that escaped here would be printed by .NET in full,
+    /// with the driver's message.
+    /// </summary>
+    /// <returns>The transaction, or null when the step failed (already printed).</returns>
+    private static async Task<NpgsqlTransaction?> BeginAsync(
+        DatabaseStepWriter steps, NpgsqlConnection connection, CancellationToken ct)
+    {
+        NpgsqlTransaction? tx = null;
+        var ok = await steps.RunAsync("begin a transaction", async () =>
+        {
+            tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        return ok ? tx : null;
+    }
+
+    /// <summary>Disposes without letting a driver exception, and its message, escape.</summary>
+    private static async Task DisposeQuietlyAsync(IAsyncDisposable? disposable)
+    {
+        if (disposable is null)
+            return;
+        try
+        {
+            await disposable.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // A broken connection cannot roll back; the server ends the transaction itself.
+        }
     }
 
     private static async Task OpenAsync(NpgsqlConnection connection, CancellationToken ct)

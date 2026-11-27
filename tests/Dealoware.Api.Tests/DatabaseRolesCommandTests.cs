@@ -172,6 +172,70 @@ public class DatabaseRolesCommandTests
         Assert.Contains("return 1;", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DatabaseMigrateCommand_ChecksTheLoginBeforeTheMigrations_AndStopsOnRefusal()
+    {
+        var source = ReadRepoFile("src/Dealoware.Api/DatabaseMigrateCommand.cs");
+        var check = source.IndexOf("await DatabaseRoles.RequireMigrateLoginAsync(", StringComparison.Ordinal);
+        var migrations = source.IndexOf("await DatabaseSchemaBootstrap.ApplyMigrationsAsync(", StringComparison.Ordinal);
+        var stop = source.IndexOf("return 1;", check, StringComparison.Ordinal);
+
+        Assert.True(check >= 0 && migrations > check, "migrate must check its login before any migration.");
+        Assert.True(stop > check && stop < migrations, "a refused login must stop migrate before the migrations.");
+        Assert.Contains("ShouldCheckLogin(db.Database.IsNpgsql()", source, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true, "Production", null, true)]
+    [InlineData(true, null, null, true)]
+    [InlineData(true, "Staging", "Production", true)]
+    [InlineData(true, "Development", null, false)]
+    [InlineData(true, null, "Development", false)]
+    [InlineData(false, "Production", null, false)]
+    public void MigrateLoginCheck_RunsOnPostgresOutsideDevelopment(bool postgres, string? aspnet, string? dotnet, bool expected)
+    {
+        var env = new Dictionary<string, string?> { ["ASPNETCORE_ENVIRONMENT"] = aspnet, ["DOTNET_ENVIRONMENT"] = dotnet };
+        Assert.Equal(expected, DatabaseMigrateCommand.ShouldCheckLogin(postgres, n => env.GetValueOrDefault(n)));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(false, true, false, false, false, false)]
+    [InlineData(false, false, true, false, false, false)]
+    [InlineData(false, false, false, true, false, false)]
+    [InlineData(false, false, false, false, true, false)]
+    [InlineData(false, false, false, false, false, true)]
+    public void MigrateLogin_AnyMasterLikeFact_IsRefused(bool super, bool createRole, bool createDb, bool bypassRls, bool rds, bool ownsDb)
+    {
+        Assert.True(DatabaseRoles.IsRefusedForMigrate(
+            new DatabaseRoles.MigrateLoginFacts(super, createRole, createDb, bypassRls, rds, ownsDb)));
+    }
+
+    [Fact]
+    public void MigrateLogin_PlainLoginThatOwnsTheTables_IsAllowed()
+    {
+        Assert.False(DatabaseRoles.IsRefusedForMigrate(
+            new DatabaseRoles.MigrateLoginFacts(false, false, false, false, false, false)));
+        Assert.Contains("pg_catalog.pg_has_role(current_user, d.datdba, 'MEMBER')", DatabaseRoles.MigrateLoginFactsSql,
+            StringComparison.Ordinal);
+        Assert.Contains("'rds_superuser'", DatabaseRoles.MigrateLoginFactsSql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MigrateLoginCheck_UnreachableDatabase_FailsWithStepNamesOnly()
+    {
+        using var output = new StringWriter();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        await using var connection = new Npgsql.NpgsqlConnection(new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = MarkerHost, Database = "dealoware", Username = "dealoware", Password = MasterPassword, Timeout = 5,
+        }.ConnectionString);
+
+        Assert.False(await DatabaseRoles.RequireMigrateLoginAsync(connection, output, timeout.Token));
+        Assert.Contains("migrate: connect: failed (", output.ToString(), StringComparison.Ordinal);
+        AssertNothingSensitive(output.ToString());
+    }
+
     private static Dictionary<string, string?> ProductionEnvironment()
         => new(StringComparer.Ordinal)
         {

@@ -172,6 +172,118 @@ public class DatabaseRolesPostgresTests
         Assert.Contains($"the login is {DatabaseRoles.AppRole}: failed", output.ToString(), StringComparison.Ordinal);
     }
 
+    [PostgresOnlyFact]
+    public async Task MigrateLoginCheck_RefusesTheMasterAndASuperuser_AndAllowsDealowareMigrate()
+    {
+        var setup = await NewDatabaseAsync();
+        Assert.True((await ApplyAsync(setup)).Ok);
+
+        // The master (CREATEROLE, CREATEDB, owner of the database, as on RDS): refused.
+        using (var output = new StringWriter())
+        {
+            await using var master = new NpgsqlConnection(setup.ConnectionString(Master, setup.MasterPassword));
+            Assert.False(await DatabaseRoles.RequireMigrateLoginAsync(master, output));
+            Assert.Contains("the login is not a superuser, the master or the owner of the database: failed (refused:",
+                output.ToString(), StringComparison.Ordinal);
+            setup.AssertNothingSensitive(output.ToString());
+        }
+
+        // The server's superuser: refused.
+        using (var output = new StringWriter())
+        {
+            await using var super = await OpenSuperAsync(Database);
+            Assert.False(await DatabaseRoles.RequireMigrateLoginAsync(super, output));
+            Assert.Contains(": failed (refused:", output.ToString(), StringComparison.Ordinal);
+        }
+
+        // dealoware_migrate: allowed, and nothing is printed after the step (migrate goes on).
+        using (var output = new StringWriter())
+        {
+            await using var migrate = new NpgsqlConnection(
+                setup.ConnectionString(DatabaseRoles.MigrateRole, setup.MigratePassword));
+            Assert.True(await DatabaseRoles.RequireMigrateLoginAsync(migrate, output), output.ToString());
+            var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.Equal(
+                ["migrate: connect: ok", "migrate: the login is not a superuser, the master or the owner of the database: ok"],
+                lines);
+        }
+    }
+
+    [PostgresOnlyFact]
+    public async Task TransactionStartFailure_PrintsAStepNameOnly_AndReturnsFalse()
+    {
+        // BeginTransactionAsync throws on a connection that is already in a transaction. Before
+        // the fix that exception escaped, and .NET printed the driver's message and stack.
+        var setup = await NewDatabaseAsync();
+        Assert.True((await ApplyAsync(setup)).Ok);
+        Assert.True((await MigrateAsync(setup)).Ok);
+
+        var runs = new (string Prefix, string User, string Password, Func<NpgsqlConnection, TextWriter, Task<bool>> Run)[]
+        {
+            ("dbroles", Master, setup.MasterPassword,
+                (c, o) => DatabaseRoles.ApplyAsync(c, setup.AppPassword, setup.MigratePassword, o)),
+            ("migrate", DatabaseRoles.MigrateRole, setup.MigratePassword,
+                (c, o) => DatabaseRoles.ApplyAppGrantsAsync(c, o)),
+            ("dbroles --verify", DatabaseRoles.AppRole, setup.AppPassword,
+                (c, o) => DatabaseRoles.VerifyAsync(c, o)),
+        };
+
+        foreach (var (prefix, user, password, run) in runs)
+        {
+            using var output = new StringWriter();
+            await using var connection = new NpgsqlConnection(setup.ConnectionString(user, password));
+            await connection.OpenAsync();
+            await using var held = await connection.BeginTransactionAsync();
+
+            var ok = await run(connection, output);
+
+            Assert.False(ok, prefix);
+            Assert.Contains($"{prefix}: begin a transaction: failed (InvalidOperationException)", output.ToString(),
+                StringComparison.Ordinal);
+            Assert.EndsWith($"{prefix}: stopped at the first failure; nothing after it ran", output.ToString().TrimEnd(),
+                StringComparison.Ordinal);
+            setup.AssertNothingSensitive(output.ToString());
+        }
+    }
+
+    [PostgresOnlyFact]
+    public async Task DroppedConnection_AtTransactionStart_PrintsNoHostPasswordOrConnectionString()
+    {
+        // The server ends the session after the connection was opened. Npgsql sends BEGIN with
+        // the next command, so the failure shows in that step; nothing escapes.
+        var setup = await NewDatabaseAsync();
+        Assert.True((await ApplyAsync(setup)).Ok);
+        Assert.True((await MigrateAsync(setup)).Ok);
+
+        var runs = new (string Prefix, string User, string Password, Func<NpgsqlConnection, TextWriter, Task<bool>> Run)[]
+        {
+            ("migrate", DatabaseRoles.MigrateRole, setup.MigratePassword,
+                (c, o) => DatabaseRoles.ApplyAppGrantsAsync(c, o)),
+            ("dbroles", Master, setup.MasterPassword,
+                (c, o) => DatabaseRoles.ApplyAsync(c, setup.AppPassword, setup.MigratePassword, o)),
+        };
+
+        foreach (var (prefix, user, password, run) in runs)
+        {
+            using var output = new StringWriter();
+            await using var connection = new NpgsqlConnection(setup.ConnectionString(user, password));
+            await connection.OpenAsync();
+            await using (var super = await OpenSuperAsync(Database))
+            {
+                await using var kill = new NpgsqlCommand("SELECT pg_terminate_backend(@pid)", super);
+                kill.Parameters.AddWithValue("pid", connection.ProcessID);
+                Assert.True((bool)(await kill.ExecuteScalarAsync())!);
+            }
+
+            var ex = await Record.ExceptionAsync(async () => Assert.False(await run(connection, output), prefix));
+
+            Assert.Null(ex);
+            Assert.Contains(": failed (", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains($"{prefix}: stopped at the first failure", output.ToString(), StringComparison.Ordinal);
+            setup.AssertNothingSensitive(output.ToString());
+        }
+    }
+
     private sealed record Setup(string Host, string Port, string MasterPassword, string AppPassword, string MigratePassword)
     {
         public string ConnectionString(string user, string password)
