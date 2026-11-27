@@ -169,6 +169,20 @@ p, .lede {
   margin: 0;
 }
 
+/*
+ * A list says its count here a moment after load: the banner's height (one
+ * line, its padding and its border) and its margin are kept from the start,
+ * so nothing below moves when the count arrives. Empty, it is blank space,
+ * with no border to draw (not even a forced-colours one). Only with scripts
+ * on: with JavaScript off no count ever comes, so no space is kept.
+ */
+@media (scripting: enabled) {
+  .live.live-reserved {
+    min-height: calc(1.5rem + 1.5rem + 2px);
+    margin: 0 0 1rem;
+  }
+}
+
 .live:not(:empty) {
   border: 1px solid var(--accent);
   background: var(--banner);

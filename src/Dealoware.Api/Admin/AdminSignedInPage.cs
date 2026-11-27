@@ -46,6 +46,14 @@ public sealed record AdminSignedInPageContent
 
     /// <summary>HTTP status of the page. 200 except for S-D3.</summary>
     public int StatusCode { get; init; } = StatusCodes.Status200OK;
+
+    /// <summary>
+    /// The live region keeps its banner's space from the start (class
+    /// <see cref="AdminSignedInPage.LiveReservedClass"/>), so a count said
+    /// into it a moment after load moves nothing below it. For a list that
+    /// says its number of results; a page with only occasional messages leaves it off.
+    /// </summary>
+    public bool ReservesLiveRegion { get; init; }
 }
 
 /// <summary>
@@ -83,6 +91,9 @@ public static class AdminSignedInPage
     public const string ShellScriptPath = AssetPrefix + "/console.js";
 
     public const string LiveRegionId = "console-status";
+
+    /// <summary>The live region's class on a page that keeps its space (<see cref="AdminSignedInPageContent.ReservesLiveRegion"/>).</summary>
+    public const string LiveReservedClass = "live-reserved";
 
     public const string Stats = AdminReturnPath.Stats;
     public const string Participants = "/admin/participants";
@@ -159,7 +170,8 @@ public static class AdminSignedInPage
         html.Append("</ul></nav></header>");
         html.Append("<main id=\"main\" class=\"console-main\" tabindex=\"-1\">");
         html.Append($"<h1 id=\"page-heading\">{E(page.Heading)}</h1>");
-        html.Append($"<p id=\"{LiveRegionId}\" class=\"live\" role=\"status\" aria-live=\"polite\"></p>");
+        var liveClass = page.ReservesLiveRegion ? "live " + LiveReservedClass : "live";
+        html.Append($"<p id=\"{LiveRegionId}\" class=\"{liveClass}\" role=\"status\" aria-live=\"polite\"></p>");
         // UXR-A40: the recovery-code banner, while this session's is still to be shown.
         html.Append(AdminRecoveryNotice.Markup(http));
         html.Append(page.BodyHtml);
