@@ -14,10 +14,19 @@ COPY src/Dealoware.Infrastructure/Dealoware.Infrastructure.csproj src/Dealoware.
 RUN dotnet restore src/Dealoware.Api/Dealoware.Api.csproj
 
 COPY src/ src/
-RUN dotnet publish src/Dealoware.Api/Dealoware.Api.csproj -c Release -o /app/publish --no-restore
+# The commit this image is built from (docker build --build-arg GIT_SHA=<full commit hash>).
+# It is built into the app (ReleaseVersion): both health answers give its first 7
+# characters. A build without it answers "dev". Declared after the restore, so a new
+# commit does not throw away the restore layer.
+ARG GIT_SHA=dev
+RUN echo "$GIT_SHA" | grep -Eq '^(dev|[0-9a-f]{7,40})$' \
+ || { echo "GIT_SHA must be dev or a lower-case hex commit hash" >&2; exit 1; }
+RUN dotnet publish src/Dealoware.Api/Dealoware.Api.csproj -c Release -o /app/publish --no-restore "-p:DealowareGitSha=$GIT_SHA"
 
 # aspnet 10.0-noble = runtime 10.0.12 (≥10.0.9 PASS)
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble@sha256:0fa044f682cb7d93a5a90401a00c626c66f7b00b86922be9441f869eae039f80 AS runtime
+ARG GIT_SHA=dev
+LABEL org.opencontainers.image.revision=$GIT_SHA
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
