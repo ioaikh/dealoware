@@ -115,8 +115,9 @@ async function open(page: Page, address: string): Promise<void> {
 /**
  * After a move, before the pointer acts on the new page: the page has said its count in the
  * live region. console-list.js does that 100 ms after the page loads, and it is the last
- * thing the page does as it loads. The count's banner pushes everything below it down, so a
- * click made before then can press on one control and be let go over another: no click.
+ * thing the page does as it loads, so only then is the page whole for the pointer. (The
+ * banner's space is kept from the start, so the count moves nothing below it: see the test
+ * "the count said after a move moves nothing".)
  */
 async function settled(page: Page): Promise<void> {
   await expect(page.locator('#console-status')).toHaveText(/^[\d,]+ results$/);
@@ -489,6 +490,45 @@ test('search: a label that says what it matches, one request after a pause, Ente
   await expect(page).toHaveURL(ORIGIN + '/admin/negotiations');
   expect(await totalOf(page)).toBe(all);
   await expect(page.locator('#q')).toBeFocused();
+});
+
+test('the count said after a move moves nothing: the filters and the first row stay put, at full width and at 320 px', async ({ page }) => {
+  await signIn(page);
+  // A page with only occasional messages keeps no empty box for them.
+  await open(page, '/admin/');
+  expect((await page.locator('#console-status').boundingBox())?.height).toBe(0);
+
+  // The page's clock holds still, so the count (said 100 ms after load) waits until it is let go.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  // Each a new address, so each is a whole page load (the same address with a new mark is not).
+  for (const [width, limit] of [[1280, 100], [320, 200]]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, `/admin/participants?limit=${limit}#focus=limit`);
+    await expect(page.locator('#limit')).toBeFocused();
+    const live = page.locator('#console-status');
+    await expect(live).toHaveText('');
+    const before = {
+      live: await live.boundingBox(),
+      form: await page.locator('#list-form').boundingBox(),
+      row: await rows(page).first().boundingBox(),
+    };
+
+    await page.clock.runFor(150);
+    await settled(page);
+    await expect(page.locator('[aria-live]')).toHaveCount(1);
+    const after = {
+      live: await live.boundingBox(),
+      form: await page.locator('#list-form').boundingBox(),
+      row: await rows(page).first().boundingBox(),
+    };
+    expect(after.form?.y).toBe(before.form?.y);
+    expect(after.row?.y).toBe(before.row?.y);
+    // The space kept is the banner's own: the same height empty and full.
+    expect(after.live?.height).toBe(before.live?.height);
+    expect(after.live?.height).toBeGreaterThan(0);
+  }
+  await page.clock.resume();
 });
 
 test('Show deleted: off on every list, kept on reload; a deleted row shows Deleted beside its status with the time; its detail needs the toggle', async ({ page }) => {

@@ -275,7 +275,9 @@ public static class AdminAuditPages
             Section = AdminConsoleSection.AuditLog,
             BodyHtml = ListBody(state, rows, total, records),
             Scripts = [ScriptPath],
-            StatusCode = rows is null ? StatusCodes.Status500InternalServerError : StatusCodes.Status200OK
+            StatusCode = rows is null ? StatusCodes.Status500InternalServerError : StatusCodes.Status200OK,
+            // The count console-audit.js says after a move: its space is kept, so nothing jumps.
+            ReservesLiveRegion = rows is not null
         });
     }
 

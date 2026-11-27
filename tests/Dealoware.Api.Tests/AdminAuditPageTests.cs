@@ -253,6 +253,8 @@ public partial class AdminAuditPageTests
             rows.Select(r => Guid.Parse(Regex.Match(r, "href=\"/admin/audit/([0-9a-f-]{36})").Groups[1].Value)).ToArray());
         Assert.Equal("Showing 1\u20136 of 6", Range(html));
         Assert.Contains("data-announce=\"6 results\"", html, StringComparison.Ordinal);
+        // The live region keeps the space of that count from the start, so nothing jumps when it is said.
+        Assert.Contains("<p id=\"console-status\" class=\"live live-reserved\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
 
         var cells = Cells(rows[5]);
         Assert.Equal(6, cells.Length);
@@ -959,6 +961,8 @@ public partial class AdminAuditPageTests
         Assert.DoesNotContain("Exception", html, StringComparison.Ordinal);
         Assert.DoesNotContain("SELECT", html, StringComparison.Ordinal);
         Assert.DoesNotContain("data-announce", html, StringComparison.Ordinal);
+        // No count is said, so no space is kept for one.
+        Assert.Contains("<p id=\"console-status\" class=\"live\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
 
         // Retry, once the store answers again.
         factory.Fault.FailWhen = null;
