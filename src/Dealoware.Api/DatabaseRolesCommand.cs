@@ -92,12 +92,14 @@ public static class DatabaseRolesCommand
 
         if (verify)
         {
+            // DB_USERNAME / DB_PASSWORD are not used: --verify logs in as dealoware_app only.
             connection.Username = DatabaseRoles.AppRole;
             connection.Password = appPassword;
-            await using var app = new NpgsqlConnection(connection.ConnectionString);
-            return await DatabaseRoles.VerifyAsync(app, output, cancellationToken).ConfigureAwait(false)
-                ? ExitOk
-                : ExitFailed;
+            return await RunSafelyAsync(output, prefix, async () =>
+            {
+                await using var app = new NpgsqlConnection(connection.ConnectionString);
+                return await DatabaseRoles.VerifyAsync(app, output, cancellationToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
 
         var migratePassword = getEnv(MigratePasswordVariable);
@@ -124,11 +126,30 @@ public static class DatabaseRolesCommand
             return Refuse(output, prefix, "DB_USERNAME must be the master login, not one of the two it creates");
         }
 
-        await using var master = new NpgsqlConnection(connection.ConnectionString);
-        return await DatabaseRoles.ApplyAsync(master, appPassword!, migratePassword!, output, cancellationToken)
-            .ConfigureAwait(false)
-            ? ExitOk
-            : ExitFailed;
+        return await RunSafelyAsync(output, prefix, async () =>
+        {
+            await using var master = new NpgsqlConnection(connection.ConnectionString);
+            return await DatabaseRoles.ApplyAsync(master, appPassword!, migratePassword!, output, cancellationToken)
+                .ConfigureAwait(false);
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The last net: an exception that escapes the steps (closing the connection, say) is
+    /// printed as a type or an error code, never with the driver's message, and exits 1.
+    /// </summary>
+    private static async Task<int> RunSafelyAsync(TextWriter output, string prefix, Func<Task<bool>> run)
+    {
+        try
+        {
+            return await run().ConfigureAwait(false) ? ExitOk : ExitFailed;
+        }
+        catch (Exception ex)
+        {
+            await output.WriteLineAsync($"{prefix}: failed ({DatabaseStepWriter.Describe(ex)})").ConfigureAwait(false);
+            await output.FlushAsync().ConfigureAwait(false);
+            return ExitFailed;
+        }
     }
 
     private static bool IsDevelopment(Func<string, string?> getEnv)
