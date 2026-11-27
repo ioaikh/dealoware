@@ -201,7 +201,7 @@ public class RequestIdAndLogTests : IClassFixture<LogCaptureWebApplicationFactor
 /// </summary>
 public class LogPrivacyTests : IClassFixture<LogCaptureWebApplicationFactory>
 {
-    private const string ProbeEmail = "privacy-probe@example.invalid";
+    private const string ProbeEmail = "alerts@example.invalid";
     private const string ProbePassword = "Pw-probe-7f3c9e1d-NOT-REAL";
     private const string ProbeToken = "eyJwcm9iZSI6dHJ1ZX0.probe-token-5b2d.NOT-REAL";
     private const string ProbeApiKey = "dk_probe_apikey_91c4_NOT_REAL";
@@ -282,9 +282,9 @@ public class LogRedactionTests
 {
     [Theory]
     [InlineData("Request starting HTTP/1.1 GET http://localhost/a/b?x=1&y=2 - -", "Request starting HTTP/1.1 GET http://localhost/a/b?<query> - -")]
-    [InlineData("GET /auth/register?email=a%40b.example done", "GET /auth/register?<query> done")]
-    [InlineData("for someone@example.invalid today", "for <email> today")]
-    [InlineData("encoded someone%40example.invalid", "encoded <email>")]
+    [InlineData("GET /auth/register?email=alerts%40example.invalid done", "GET /auth/register?<query> done")]
+    [InlineData("for alerts@example.invalid today", "for <email> today")]
+    [InlineData("encoded alerts%40example.invalid", "encoded <email>")]
     [InlineData("Is it up? yes", "Is it up? yes")]
     [InlineData("Readiness check failed: TimeoutException", "Readiness check failed: TimeoutException")]
     public void Redact_RemovesQueryStringsAndEmailShapedText(string message, string expected)
