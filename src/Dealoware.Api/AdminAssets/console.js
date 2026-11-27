@@ -143,7 +143,12 @@
       else afterUnclearReply(reply.status === 403);
     }, function () {
       signOutSettled();
-      if (leaving) return;
+      // A page on its way out asks nothing more. If it stays after all (the owner stopped the
+      // move), saying "try again" sends nothing and gives the button back.
+      if (leaving) {
+        sayRetry();
+        return;
+      }
       afterUnclearReply(false);
     });
   });

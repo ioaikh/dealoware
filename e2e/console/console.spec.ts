@@ -533,7 +533,7 @@ test('Sign out overtaken by the session timer: its move to sign-in cancels the s
   // answers 401 and the timer loads the page anew, while the sign-out's own reply is still on its
   // way. That reload cancels the sign-out. Its caller must not take the cancel for "no reply" and
   // ask /admin/api/me from the page that is going: WebKit refuses such a request and reports it
-  // as a page error, which afterEach would catch; the other engines would send it.
+  // as a page error, which afterEach catches on WebKit; `asked` covers an engine that would send it.
   await signIn(page);
   let signedOut: () => void = () => {};
   const serverSignedOut = new Promise<void>((resolve) => { signedOut = resolve; });
