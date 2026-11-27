@@ -867,6 +867,8 @@ test.describe('JavaScript off', () => {
 
     await page.goto('/admin/offers');
     await expect(rows(page)).toHaveCount(50);
+    // No count ever comes with JavaScript off, so no space is kept for it.
+    expect((await page.locator('#console-status').boundingBox())?.height ?? 0).toBe(0);
     await page.getByLabel('Declined', { exact: true }).check();
     await page.getByLabel('Accepted', { exact: true }).check();
     await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
