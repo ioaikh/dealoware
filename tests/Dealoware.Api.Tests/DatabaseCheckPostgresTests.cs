@@ -34,6 +34,10 @@ public class DatabaseCheckPostgresTests
     private const string MarkerSub = "marker-sub-4f9a";
     private const string MarkerIpHmac = "marker-ip-hmac-c0ffee";
     private const string MarkerAmount = "98765.4321";
+    private static readonly Guid Artifact = Guid.Parse("a1a1a1a1-0000-4000-8000-000000000001");
+    private static readonly Guid ArtifactLater = Guid.Parse("a1a1a1a1-0000-4000-8000-000000000002");
+    private static readonly Guid Orphan = Guid.Parse("0e0e0e0e-0000-4000-8000-000000000003");
+    private static readonly string[] Children = ["ArtifactValues", "SubjectEntities", "EntityProperties", "TimePeriods"];
 
     [PostgresOnlyFact]
     public async Task DbCheck_AWriteInsideItsTransaction_IsRefused()
@@ -80,6 +84,7 @@ public class DatabaseCheckPostgresTests
         await ExecAsync(DatabaseA,
             $"INSERT INTO \"Participants\" (\"Id\", \"Sub\", \"CreatedAt\", \"IsActive\") " +
             $"VALUES ('{ParticipantLater}', 'later-sub', '2026-12-01T10:05:00Z', true)");
+        await AddArtifactAsync(DatabaseA, ArtifactLater, "2026-12-01T10:06:00Z", withValue: true);
 
         var a = await CheckAsync(DatabaseA);
         var b = await CheckAsync(DatabaseB);
@@ -92,8 +97,16 @@ public class DatabaseCheckPostgresTests
         Assert.Equal(2, participants.Known.Count);
         Assert.Equal(1, a.Tables.Single(t => t.Table == "AdminAuditLog").Rows);
         Assert.Empty(a.Tables.Single(t => t.Table == "Offers").Known);
-        // numeric is hashed as stored, the same on both sides.
-        Assert.Single(a.Tables.Single(t => t.Table == "ArtifactValues").Known);
+        // numeric is hashed as stored, the same on both sides. The artifact's children are cut
+        // through it: the later artifact's children are not counted; the value with no artifact
+        // is counted apart.
+        var values = a.Tables.Single(t => t.Table == "ArtifactValues");
+        Assert.Single(values.Known);
+        Assert.Equal(1, values.Rows);
+        Assert.Equal(1, values.UncutRows);
+        foreach (var child in Children)
+            Assert.Equal(1, a.Tables.Single(t => t.Table == child).Rows);
+        Assert.Null(a.Tables.Single(t => t.Table == "AdminCredentials").Rows);
         Assert.True(a.Tables.Single(t => t.Table == "AdminSessions").HardDeletes);
 
         // The same database read twice gives the same output too.
@@ -152,6 +165,39 @@ public class DatabaseCheckPostgresTests
     }
 
     [PostgresOnlyFact]
+    public async Task DbCheck_TheArtifactsChildren_AreCutThroughTheirArtifact()
+    {
+        await NewDatabasesAsync();
+        // A (live): an artifact created after the cutoff, with children, and the old artifact
+        // edited after the cutoff. Neither changes the counts up to the cutoff.
+        await AddArtifactAsync(DatabaseA, ArtifactLater, "2026-12-01T10:06:00Z", withValue: true);
+        await ExecAsync(DatabaseA, $"UPDATE \"Artifacts\" SET \"UpdatedAt\" = '2026-12-01T10:08:00Z', \"Version\" = 1 WHERE \"Id\" = '{Artifact}'");
+
+        var a = await CheckAsync(DatabaseA);
+        var b = await CheckAsync(DatabaseB);
+        foreach (var child in Children)
+        {
+            var ta = a.Tables.Single(t => t.Table == child);
+            var tb = b.Tables.Single(t => t.Table == child);
+            Assert.Equal("Artifacts.CreatedAt", ta.CreatedColumn);
+            Assert.Equal(1, ta.Rows);
+            Assert.Equal(ta.Rows, tb.Rows);
+            Assert.Equal(ta.UncutRows, tb.UncutRows);
+            // The old artifact changed on A after the cutoff: its children leave A's known records.
+            Assert.Empty(ta.Known);
+            Assert.Single(tb.Known);
+        }
+
+        // B (a bad copy): the children are missing. Each count up to the cutoff now differs.
+        foreach (var child in new[] { "EntityProperties", "SubjectEntities", "TimePeriods" })
+            await ExecAsync(DatabaseB, $"DELETE FROM \"{child}\"");
+        await ExecAsync(DatabaseB, "DELETE FROM \"ArtifactValues\" WHERE \"ArtifactId\" IS NOT NULL");
+        b = await CheckAsync(DatabaseB);
+        foreach (var child in Children)
+            Assert.Equal(0, b.Tables.Single(t => t.Table == child).Rows);
+    }
+
+    [PostgresOnlyFact]
     public async Task DbCheck_AHardDeleteOnTheLiveDatabase_LowersOnlyThatTablesCount()
     {
         await NewDatabasesAsync();
@@ -179,6 +225,7 @@ public class DatabaseCheckPostgresTests
         foreach (var value in new[]
                  {
                      ParticipantOld.ToString(), ParticipantNewest.ToString(), AuditEntry.ToString(), Session.ToString(), Amount.ToString(),
+                     Artifact.ToString(), Orphan.ToString(), "marker-intent", "marker-facts",
                      ParticipantOld.ToString("N"), ParticipantNewest.ToString("N"), AuditEntry.ToString("N"),
                      MarkerEmail, MarkerName, MarkerSub, MarkerIpHmac, MarkerAmount, "marker", "2026-11-",
                  })
@@ -193,11 +240,18 @@ public class DatabaseCheckPostgresTests
         Assert.Equal("2026-12-01T10:00:00.0000000Z", doc.RootElement.GetProperty("cutoff").GetString());
         foreach (var table in doc.RootElement.GetProperty("tables").EnumerateArray())
         {
-            Assert.Equal(["table", "createdColumn", "changedColumns", "hardDeletes", "rows", "known"], table.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(["table", "createdColumn", "changedColumns", "hardDeletes", "rows", "uncutRows", "known"], table.EnumerateObject().Select(p => p.Name));
             var name = table.GetProperty("table").GetString()!;
             Assert.True(DatabaseCheck.CreatedColumns.ContainsKey(name));
             foreach (var column in table.GetProperty("changedColumns").EnumerateArray())
-                Assert.Contains(column.GetString()!, DatabaseCheck.ChangedColumns[name]);
+            {
+                // Its own change columns, or (through a parent cut) the artifact's.
+                var c = column.GetString()!;
+                if (c.StartsWith(DatabaseCheck.ParentTable + ".", StringComparison.Ordinal))
+                    Assert.Contains(c[(DatabaseCheck.ParentTable.Length + 1)..], DatabaseCheck.ChangedColumns[DatabaseCheck.ParentTable]);
+                else
+                    Assert.Contains(c, DatabaseCheck.ChangedColumns[name]);
+            }
             foreach (var known in table.GetProperty("known").EnumerateArray())
             {
                 Assert.Equal(["keySha256", "rowSha256"], known.EnumerateObject().Select(p => p.Name));
@@ -247,11 +301,41 @@ public class DatabaseCheckPostgresTests
             await ExecAsync(database,
                 "INSERT INTO \"AdminSessions\" (\"Id\", \"Email\", \"CreatedAt\", \"LastActivityAt\", \"AbsoluteExpiresAt\", \"TotpVerified\", \"IpHmac\") VALUES " +
                 $"('{Session}', '{MarkerEmail}', '2026-11-30T09:40:00Z', '2026-11-30T09:45:00Z', '2026-11-30T21:40:00Z', true, '{MarkerIpHmac}')");
+            await AddArtifactAsync(database, Artifact, "2026-11-30T09:00:00Z", withValue: false);
             await ExecAsync(database,
                 "INSERT INTO \"ArtifactValues\" (\"Id\", \"Amount\", \"Currency\", \"ArtifactId\") VALUES " +
-                $"('{Amount}', {MarkerAmount}, 'EUR', NULL)");
+                $"('{Amount}', {MarkerAmount}, 'EUR', '{Artifact}'), ('{Orphan}', 1.5, 'USD', NULL)");
         }
     }
+
+    /// <summary>An artifact with one subject entity (with one property) and one time period.</summary>
+    private static async Task AddArtifactAsync(string database, Guid id, string createdAt, bool withValue)
+    {
+        var n = id.ToString("N")[^4..];
+        await ExecAsync(database,
+            "INSERT INTO \"Artifacts\" (\"Id\", \"OwnerParticipantId\", \"Intent\", \"CreatedAt\", \"Locations\") VALUES " +
+            $"('{id}', 'owner-{n}', 'marker-intent', '{createdAt}', '[]')");
+        var entity = Derived(id, 1);
+        await ExecAsync(database,
+            "INSERT INTO \"SubjectEntities\" (\"Id\", \"Name\", \"Description\", \"ArtifactId\", \"Facts\") VALUES " +
+            $"('{entity}', 'entity-{n}', 'd', '{id}', 'marker-facts')");
+        await ExecAsync(database,
+            "INSERT INTO \"EntityProperties\" (\"Id\", \"Name\", \"Type\", \"Value\", \"SubjectEntityId\") VALUES " +
+            $"('{Derived(id, 2)}', 'p', 'string', 'v', '{entity}')");
+        await ExecAsync(database,
+            "INSERT INTO \"TimePeriods\" (\"Id\", \"Start\", \"End\", \"ArtifactId\") VALUES " +
+            $"('{Derived(id, 3)}', '2027-01-01T00:00:00Z', '2027-02-01T00:00:00Z', '{id}')");
+        if (withValue)
+        {
+            await ExecAsync(database,
+                "INSERT INTO \"ArtifactValues\" (\"Id\", \"Amount\", \"Currency\", \"ArtifactId\") VALUES " +
+                $"('{Derived(id, 4)}', 10, 'EUR', '{id}')");
+        }
+    }
+
+    /// <summary>The same child ID in both databases, from the artifact's ID.</summary>
+    private static Guid Derived(Guid id, int n)
+        => new(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes($"{id}/{n}")));
 
     private static NpgsqlConnection Open(string database)
         => new(new NpgsqlConnectionStringBuilder

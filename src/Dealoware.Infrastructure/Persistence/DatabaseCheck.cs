@@ -15,7 +15,8 @@ namespace Dealoware.Infrastructure.Persistence;
 /// cutoff) and against a copy restored to the cutoff.
 /// <list type="bullet">
 ///   <item>For each table of the model, the number of rows created at or before the cutoff
-///     (<see cref="CreatedColumns"/>; a table with no creation time counts all its rows), and
+///     (<see cref="CreatedColumns"/>, or through the artifact a row belongs to, <see cref="ParentCuts"/>),
+///     the rows no cut reaches (a table with no creation time: all of them), and
 ///     whether the engine hard-deletes rows from it (<see cref="HardDeleteTables"/>).</item>
 ///   <item>The newest migration's ID.</item>
 ///   <item>The known records: up to <see cref="KnownRecords"/> of the newest rows created at or
@@ -111,7 +112,7 @@ public static class DatabaseCheck
     /// The tables the engine hard-deletes rows from (expired or used tokens, sessions, recovery
     /// codes, failure events). Their count on the live database may be lower than on a copy
     /// restored to an earlier moment. <c>DatabaseCheckCommandTests</c> scans the source for
-    /// deletes and fails when one hits a table not listed here.
+    /// deletes, and the cascades they set off in the model, and fails when they and this list differ.
     /// </summary>
     public static readonly IReadOnlyList<string> HardDeleteTables =
     [
@@ -120,10 +121,81 @@ public static class DatabaseCheck
         "AdminRecoveryCodes",
         "AdminSessionRecoveryNotices",
         "AdminSessions",
+        "AdminSessionStepUps", // by cascade, with its session
         "RevokedTokens",
     ];
 
+    /// <summary>
+    /// Tables with no creation time of their own, cut at the cutoff through the artifact they
+    /// belong to: their rows are written only when the artifact is created, so the artifact's
+    /// <c>CreatedAt</c> is theirs, and the artifact's change times (an admin edit stamps them)
+    /// count as theirs too. Each step is the foreign-key column and the table it points at,
+    /// ending at <see cref="ParentTable"/>. A row with no parent cannot be cut; it is counted
+    /// apart (<see cref="DatabaseCheckTable.UncutRows"/>). <c>DatabaseCheckCommandTests</c>
+    /// checks each step against the model's foreign keys.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (string Column, string Table)[]> ParentCuts =
+        new SortedDictionary<string, (string Column, string Table)[]>(StringComparer.Ordinal)
+        {
+            ["ArtifactValues"] = [("ArtifactId", "Artifacts")],
+            ["EntityProperties"] = [("SubjectEntityId", "SubjectEntities"), ("ArtifactId", "Artifacts")],
+            ["SubjectEntities"] = [("ArtifactId", "Artifacts")],
+            ["TimePeriods"] = [("ArtifactId", "Artifacts")],
+        };
+
+    /// <summary>The table every <see cref="ParentCuts"/> path ends at.</summary>
+    public const string ParentTable = "Artifacts";
+
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
+
+    /// <summary>How one table is cut at the cutoff, as SQL over the alias <c>t</c> (and <c>p</c>).</summary>
+    private sealed record Cut(string? CreatedSql, string Joins, IReadOnlyList<string> ChangedSql, string? Label,
+        IReadOnlyList<string> ChangedLabels, string? OrphanSql);
+
+    private static Cut CutOf(string table)
+    {
+        string[] Own(string name) => ChangedColumns.TryGetValue(name, out var c) ? c : [];
+        void Plain(string name)
+        {
+            if (!Identifier.IsMatch(name))
+                throw new DatabaseStepException("a table or column name in the check's lists is not a plain name");
+        }
+
+        Plain(table);
+        foreach (var c in Own(table)) Plain(c);
+        var ownSql = Own(table).Select(c => $"t.{Quote(c)}").ToList();
+
+        if (CreatedColumns.TryGetValue(table, out var created) && created is not null)
+        {
+            Plain(created);
+            return new Cut($"t.{Quote(created)}", string.Empty, ownSql, created, Own(table), null);
+        }
+
+        if (ParentCuts.TryGetValue(table, out var path))
+        {
+            // t -> j1 -> ... -> p (the artifact), all LEFT JOINs so a row with no parent is kept.
+            var joins = new StringBuilder();
+            var from = "t";
+            for (var i = 0; i < path.Length; i++)
+            {
+                Plain(path[i].Column); Plain(path[i].Table);
+                var alias = i == path.Length - 1 ? "p" : $"j{i + 1}";
+                joins.Append($" LEFT JOIN public.{Quote(path[i].Table)} {alias} ON {alias}.\"Id\" = {from}.{Quote(path[i].Column)}");
+                from = alias;
+            }
+
+            if (path[^1].Table != ParentTable || CreatedColumns[ParentTable] is not { } parentCreated)
+                throw new DatabaseStepException($"the parent cut of {table} does not end at {ParentTable}");
+            var parentChanged = Own(ParentTable);
+            return new Cut($"p.{Quote(parentCreated)}", joins.ToString(),
+                ownSql.Concat(parentChanged.Select(c => $"p.{Quote(c)}")).ToList(),
+                $"{ParentTable}.{parentCreated}",
+                Own(table).Concat(parentChanged.Select(c => $"{ParentTable}.{c}")).ToList(),
+                "p.\"Id\" IS NULL");
+        }
+
+        return new Cut(null, string.Empty, ownSql, null, Own(table), null);
+    }
 
     /// <summary>
     /// Opens the connection if needed and starts the check's transaction: repeatable read (one
@@ -189,36 +261,36 @@ public static class DatabaseCheck
         }
 
         var tables = new List<DatabaseCheckTable>();
-        foreach (var (table, created) in CreatedColumns)
+        foreach (var table in CreatedColumns.Keys)
         {
-            var changed = ChangedColumns.TryGetValue(table, out var c) ? c : [];
-            if (!Identifier.IsMatch(table) || (created is not null && !Identifier.IsMatch(created)) || !changed.All(Identifier.IsMatch))
-                throw new DatabaseStepException("a table or column name in the check's lists is not a plain name");
-
+            var cut = CutOf(table);
             var keys = await PrimaryKeyAsync(connection, tx, table, cancellationToken).ConfigureAwait(false);
-            var createdBy = created is null ? null : $"t.{Quote(created)} <= @cutoff";
+            var from = $"public.{Quote(table)} t{cut.Joins}";
+            var createdBy = cut.CreatedSql is null ? null : $"{cut.CreatedSql} <= @cutoff";
 
-            long rows;
-            await using (var count = new NpgsqlCommand(
-                             $"SELECT count(*) FROM public.{Quote(table)} t{(createdBy is null ? "" : " WHERE " + createdBy)}",
-                             connection, tx))
-            {
-                count.Parameters.AddWithValue("cutoff", at);
-                rows = (long)(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
-            }
+            // rows: cut at the cutoff (null when the table cannot be cut). uncut: the rows no cut
+            // reaches (a table with no creation time: all; a parent cut: the rows with no parent).
+            long? rows = null;
+            long uncut = 0;
+            if (createdBy is not null)
+                rows = await CountAsync(connection, tx, $"SELECT count(*) FROM {from} WHERE {createdBy}", at, cancellationToken).ConfigureAwait(false);
+            if (cut.CreatedSql is null)
+                uncut = await CountAsync(connection, tx, $"SELECT count(*) FROM {from}", at, cancellationToken).ConfigureAwait(false);
+            else if (cut.OrphanSql is not null)
+                uncut = await CountAsync(connection, tx, $"SELECT count(*) FROM {from} WHERE {cut.OrphanSql}", at, cancellationToken).ConfigureAwait(false);
 
             var known = new List<DatabaseCheckRecord>();
-            if (rows > 0)
+            if ((rows ?? uncut) > 0)
             {
-                var filters = changed.Select(col => $"(t.{Quote(col)} IS NULL OR t.{Quote(col)} <= @cutoff)").ToList();
+                var filters = cut.ChangedSql.Select(col => $"({col} IS NULL OR {col} <= @cutoff)").ToList();
                 if (createdBy is not null)
                     filters.Insert(0, createdBy);
                 var where = filters.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", filters);
                 var keyList = string.Join(", ", keys.Select(k => "t." + Quote(k)));
-                var order = (created is null ? string.Empty : $"t.{Quote(created)} DESC, ") +
+                var order = (cut.CreatedSql is null ? string.Empty : $"{cut.CreatedSql} DESC, ") +
                             string.Join(", ", keys.Select(k => $"t.{Quote(k)} DESC"));
                 await using var read = new NpgsqlCommand(
-                    $"SELECT ROW({keyList})::text, t::text FROM public.{Quote(table)} t{where} ORDER BY {order} LIMIT {KnownRecords}",
+                    $"SELECT ROW({keyList})::text, t::text FROM {from}{where} ORDER BY {order} LIMIT {KnownRecords}",
                     connection, tx);
                 read.Parameters.AddWithValue("cutoff", at);
                 await using var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -226,11 +298,19 @@ public static class DatabaseCheck
                     known.Add(new DatabaseCheckRecord(Sha256(reader.GetString(0)), Sha256(reader.GetString(1))));
             }
 
-            tables.Add(new DatabaseCheckTable(table, created, changed, HardDeleteTables.Contains(table), rows, known));
+            tables.Add(new DatabaseCheckTable(table, cut.Label, cut.ChangedLabels, HardDeleteTables.Contains(table), rows, uncut, known));
         }
 
         await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
         return new DatabaseCheckResult(at, migration, tables);
+    }
+
+    private static async Task<long> CountAsync(
+        NpgsqlConnection connection, NpgsqlTransaction tx, string sql, DateTimeOffset cutoff, CancellationToken cancellationToken)
+    {
+        await using var count = new NpgsqlCommand(sql, connection, tx);
+        count.Parameters.AddWithValue("cutoff", cutoff);
+        return (long)(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
     }
 
     private static async Task<IReadOnlyList<string>> PrimaryKeyAsync(
@@ -263,19 +343,25 @@ public static class DatabaseCheck
 /// <summary>A known record: hashes only, never a value.</summary>
 public sealed record DatabaseCheckRecord(string KeySha256, string RowSha256);
 
-/// <summary>One table: its rows up to the cutoff, and its known records (newest first).</summary>
+/// <summary>
+/// One table: <see cref="Rows"/>, the rows up to the cutoff (null when the table cannot be cut:
+/// no creation time of its own or through a parent); <see cref="UncutRows"/>, the rows no cut
+/// reaches (all of them for such a table, the rows with no parent for a parent cut, else 0);
+/// and its known records (newest first).
+/// </summary>
 public sealed record DatabaseCheckTable(
     string Table,
     string? CreatedColumn,
     IReadOnlyList<string> ChangedColumns,
     bool HardDeletes,
-    long Rows,
+    long? Rows,
+    long UncutRows,
     IReadOnlyList<DatabaseCheckRecord> Known)
 {
     public bool Equals(DatabaseCheckTable? other)
         => other is not null && Table == other.Table && CreatedColumn == other.CreatedColumn &&
            ChangedColumns.SequenceEqual(other.ChangedColumns) && HardDeletes == other.HardDeletes &&
-           Rows == other.Rows && Known.SequenceEqual(other.Known);
+           Rows == other.Rows && UncutRows == other.UncutRows && Known.SequenceEqual(other.Known);
 
     public override int GetHashCode() => HashCode.Combine(Table, Rows, Known.Count);
 }
@@ -303,7 +389,11 @@ public sealed record DatabaseCheckResult(DateTimeOffset Cutoff, string? Migratio
                     json.WriteStringValue(c);
                 json.WriteEndArray();
                 json.WriteBoolean("hardDeletes", t.HardDeletes);
-                json.WriteNumber("rows", t.Rows);
+                if (t.Rows is { } rows)
+                    json.WriteNumber("rows", rows);
+                else
+                    json.WriteNull("rows");
+                json.WriteNumber("uncutRows", t.UncutRows);
                 json.WriteStartArray("known");
                 foreach (var k in t.Known)
                 {

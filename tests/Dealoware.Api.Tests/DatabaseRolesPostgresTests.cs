@@ -153,7 +153,7 @@ public class DatabaseRolesPostgresTests
 
         Assert.Equal(DatabaseCheck.CreatedColumns.Count, result.Tables.Count);
         Assert.NotNull(result.Migration);
-        Assert.All(result.Tables, t => Assert.Equal(0, t.Rows));
+        Assert.All(result.Tables, t => Assert.True(t.Rows is null or 0 && t.UncutRows == 0, t.Table));
         setup.AssertNothingSensitive(result.ToJson());
     }
 

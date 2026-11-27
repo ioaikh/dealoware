@@ -136,6 +136,28 @@ public class DatabaseCheckCommandTests
             }
         }
 
+        // A table with no creation time is cut through its artifact, or is one of the few that
+        // cannot be cut (their counts get the weaker check). A new table forces a choice here.
+        var uncuttable = DatabaseCheck.CreatedColumns.Where(kv => kv.Value is null && !DatabaseCheck.ParentCuts.ContainsKey(kv.Key))
+            .Select(kv => kv.Key).ToList();
+        Assert.Equal(["AdminAuthLockouts", "AdminCredentials", "AdminResetIpCounters", "AdminSessionStepUps"], uncuttable);
+
+        // Each parent-cut step is a foreign key of the model, from that column to that table.
+        foreach (var (table, path) in DatabaseCheck.ParentCuts)
+        {
+            Assert.Null(DatabaseCheck.CreatedColumns[table]);
+            Assert.Equal(DatabaseCheck.ParentTable, path[^1].Table);
+            var from = table;
+            foreach (var (column, to) in path)
+            {
+                var fk = tables[from].SelectMany(t => t.GetForeignKeys())
+                    .FirstOrDefault(f => f.Properties.Count == 1 && f.Properties[0].GetColumnName() == column
+                                         && f.PrincipalEntityType.GetTableName() == to);
+                Assert.True(fk is not null, $"{from}.{column} is not a foreign key to {to} in the model");
+                from = to;
+            }
+        }
+
         // Each table with an UpdatedAt or DeletedAt column lists them as changed columns.
         foreach (var (table, types) in tables)
         {
@@ -184,6 +206,21 @@ public class DatabaseCheckCommandTests
         }
 
         Assert.NotEmpty(found);
+        // A delete also removes the rows of tables whose foreign key to it cascades.
+        for (var grew = true; grew;)
+        {
+            grew = false;
+            foreach (var type in model.GetEntityTypes().Where(t => t.GetTableName() is not null))
+            {
+                if (!found.Contains(type.GetTableName()!) &&
+                    type.GetForeignKeys().Any(f => f.DeleteBehavior == DeleteBehavior.Cascade && found.Contains(f.PrincipalEntityType.GetTableName()!)))
+                {
+                    found.Add(type.GetTableName()!);
+                    grew = true;
+                }
+            }
+        }
+
         var notListed = found.Except(DatabaseCheck.HardDeleteTables).ToList();
         Assert.True(notListed.Count == 0, "Rows are deleted from these tables; add them to DatabaseCheck.HardDeleteTables: " + string.Join(", ", notListed));
         var notFound = DatabaseCheck.HardDeleteTables.Except(found).ToList();
@@ -197,8 +234,9 @@ public class DatabaseCheckCommandTests
             new DateTimeOffset(2026, 12, 1, 5, 0, 0, TimeSpan.FromHours(-5)),
             "20261126000600_AdminDeleteConfirmTokens",
             [
-                new DatabaseCheckTable("AdminCredentials", null, ["PasswordUpdatedAt"], false, 0, []),
-                new DatabaseCheckTable("Participants", "CreatedAt", ["UpdatedAt", "DeletedAt"], false, 2,
+                new DatabaseCheckTable("AdminCredentials", null, ["PasswordUpdatedAt"], false, null, 1, []),
+                new DatabaseCheckTable("ArtifactValues", "Artifacts.CreatedAt", ["Artifacts.UpdatedAt", "Artifacts.DeletedAt"], false, 3, 1, []),
+                new DatabaseCheckTable("Participants", "CreatedAt", ["UpdatedAt", "DeletedAt"], false, 2, 0,
                     [new DatabaseCheckRecord(new string('a', 64), new string('b', 64))]),
             ]);
 
@@ -207,12 +245,13 @@ public class DatabaseCheckCommandTests
         Assert.DoesNotContain('\n', json);
         Assert.Equal(
             "{\"check\":\"dbcheck\",\"cutoff\":\"2026-12-01T10:00:00.0000000Z\",\"migration\":\"20261126000600_AdminDeleteConfirmTokens\"," +
-            "\"tables\":[{\"table\":\"AdminCredentials\",\"createdColumn\":null,\"changedColumns\":[\"PasswordUpdatedAt\"],\"hardDeletes\":false,\"rows\":0,\"known\":[]}," +
-            "{\"table\":\"Participants\",\"createdColumn\":\"CreatedAt\",\"changedColumns\":[\"UpdatedAt\",\"DeletedAt\"],\"hardDeletes\":false,\"rows\":2," +
+            "\"tables\":[{\"table\":\"AdminCredentials\",\"createdColumn\":null,\"changedColumns\":[\"PasswordUpdatedAt\"],\"hardDeletes\":false,\"rows\":null,\"uncutRows\":1,\"known\":[]}," +
+            "{\"table\":\"ArtifactValues\",\"createdColumn\":\"Artifacts.CreatedAt\",\"changedColumns\":[\"Artifacts.UpdatedAt\",\"Artifacts.DeletedAt\"],\"hardDeletes\":false,\"rows\":3,\"uncutRows\":1,\"known\":[]}," +
+            "{\"table\":\"Participants\",\"createdColumn\":\"CreatedAt\",\"changedColumns\":[\"UpdatedAt\",\"DeletedAt\"],\"hardDeletes\":false,\"rows\":2,\"uncutRows\":0," +
             "\"known\":[{\"keySha256\":\"" + new string('a', 64) + "\",\"rowSha256\":\"" + new string('b', 64) + "\"}]}]}",
             json);
         using var parsed = JsonDocument.Parse(json);
-        Assert.Equal(2, parsed.RootElement.GetProperty("tables").GetArrayLength());
+        Assert.Equal(3, parsed.RootElement.GetProperty("tables").GetArrayLength());
     }
 
     private static string RepoRoot()
