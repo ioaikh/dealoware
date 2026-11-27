@@ -662,25 +662,55 @@ test('history in edit mode: a reload starts in view mode, loads once and Back le
   await expect(name).toBeFocused();
   await expect(name).toHaveValue('Alex R.');
 
-  // A reload in edit mode: the page starts in view mode on a plain entry and loads once. Back then
-  // leaves within two steps (the record's own entry is still behind this one) and stays left.
+  // A reload in edit mode: the page starts in view mode on a plain entry, loads once and adds no
+  // history entry. Back then leaves within two steps (the record's own entry is still behind this
+  // one) and stays left. The reload is the page's own (location.reload), as F5 is: Playwright's
+  // page.reload() in Firefox loads the address as a new history entry, even on a page with no
+  // script, so it would add a Back that no owner meets.
+  // This is edit mode's own entry (Keep editing stepped forward onto it, which takes a moment), so
+  // the reload below lands on it and the page's handling of that runs.
+  await expect.poll(() => page.evaluate(() => history.state)).toEqual({ dwEdit: true });
+  const entries = await page.evaluate(() => history.length);
   loads = 0;
-  await page.reload();
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.evaluate(() => { setTimeout(() => location.reload(), 0); }),
+  ]);
   await expectStyled(page);
+  expect(await page.evaluate(() => history.length)).toBe(entries);
   await expect(editButton(page)).toBeVisible();
   await expect(name).toBeHidden();
   expect(await page.evaluate(() => history.state)).toBeNull();
   await page.waitForTimeout(500);
   expect(loads).toBe(1);
   expect(here(page)).toBe(address);
+  // Each Back is the page's own history.back(). A step may land on the record's own entry without
+  // loading a page (Chromium) or by loading one (Firefox), so a step counts as done once the
+  // document is a new one, a popstate came, or the address changed; never by waiting for a load.
+  const steps: string[] = [];
   let backs = 0;
   while (here(page) !== '/admin/' && backs < 3) {
-    await page.goBack();
-    await page.waitForLoadState('load');
+    const from = here(page);
+    await page.evaluate(() => {
+      const w = window as unknown as { dwStep?: string };
+      w.dwStep = 'waiting';
+      window.addEventListener('popstate', () => { w.dwStep = 'popped'; }, { once: true });
+      history.back();
+    });
+    await expect.poll(async () => {
+      if (here(page) !== from) return true;
+      try {
+        return await page.evaluate(() => (window as unknown as { dwStep?: string }).dwStep !== 'waiting');
+      } catch {
+        return false;
+      }
+    }).toBe(true);
+    await page.waitForLoadState('domcontentloaded');
     backs += 1;
+    steps.push(`${backs}: ${here(page)} length ${await page.evaluate(() => history.length)}`);
   }
-  expect(here(page)).toBe('/admin/');
-  expect(backs).toBeLessThanOrEqual(2);
+  expect(here(page), steps.join('; ')).toBe('/admin/');
+  expect(backs, steps.join('; ')).toBeLessThanOrEqual(2);
   await page.waitForTimeout(500);
   await expect(page).toHaveURL(ORIGIN + '/admin/');
 
