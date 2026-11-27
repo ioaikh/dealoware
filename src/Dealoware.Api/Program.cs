@@ -20,6 +20,14 @@ if (DatabaseMigrateCommand.IsMigrateArgs(args))
     return;
 }
 
+// One-shot dbroles (H3): as the master, creates the API and migrate logins and their rights;
+// with --verify, checks the API login as itself. Does not start the web host. Refused in Development.
+if (DatabaseRolesCommand.IsDbRolesArgs(args))
+{
+    Environment.ExitCode = await DatabaseRolesCommand.RunAsync(args);
+    return;
+}
+
 // One-shot bootstrap-link: same image/binary, separate process. Does not start the web host.
 // The only production trigger for the Core admin first-time setup link.
 if (AdminBootstrapLinkCommand.IsBootstrapLinkArgs(args))

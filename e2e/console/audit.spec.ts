@@ -135,8 +135,8 @@ async function open(page: Page, address: string): Promise<void> {
 /**
  * After a move, before the pointer acts on the new page: the page has said its count in the
  * live region. console-audit.js does that 100 ms after the page loads, and it is the last
- * thing the page does as it loads. The count's banner pushes everything below it down, so a
- * click made before then can press on one control and be let go over another: no click.
+ * thing the page does as it loads, so only then is the page whole for the pointer. (The
+ * banner's space is kept from the start, so the count moves nothing below it.)
  */
 async function settled(page: Page): Promise<void> {
   await expect(page.locator('#console-status')).toHaveText(/^[\d,]+ results$/);

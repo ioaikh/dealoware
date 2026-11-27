@@ -116,8 +116,10 @@ public partial class AdminConsoleShellTests
             html.IndexOf("id=\"sign-out-form\"", StringComparison.Ordinal)
             > html.IndexOf("href=\"/admin/settings/security\"", StringComparison.Ordinal));
 
-        // One polite live region in the page, empty until a script fills it.
-        Assert.Contains("<p id=\"console-status\" class=\"live\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
+        // One polite live region in the page, empty until a script fills it. A list keeps the space
+        // of the count it says after a move, so nothing jumps; any other page has no empty box.
+        var liveClass = isList ? "live live-reserved" : "live";
+        Assert.Contains($"<p id=\"console-status\" class=\"{liveClass}\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
         Assert.Single(Regex.Matches(html, "aria-live="));
         Assert.Single(Regex.Matches(html, "role=\"(status|alert)\""));
 

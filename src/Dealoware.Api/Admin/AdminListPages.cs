@@ -480,7 +480,9 @@ public static class AdminListPages
             BodyHtml = ListBody(list, state, result, chips),
             // The delete script first: it reads what a delete just did before the list script tidies the address.
             Scripts = [AdminSignedOutPage.DomScriptPath, AdminDeletePage.ScriptPath, ScriptPath],
-            StatusCode = result is null ? StatusCodes.Status500InternalServerError : StatusCodes.Status200OK
+            StatusCode = result is null ? StatusCodes.Status500InternalServerError : StatusCodes.Status200OK,
+            // The count console-list.js says after a move: its space is kept, so nothing jumps.
+            ReservesLiveRegion = result is not null
         });
     }
 

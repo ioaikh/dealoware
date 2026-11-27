@@ -478,6 +478,8 @@ public partial class AdminListPageTests
         (_, html) = await PageAsync($"/admin/participants?q={prefix}-", session);
         Assert.Equal("Showing 1\u201350 of 120", Range(html));
         Assert.Contains("data-announce=\"120 results\"", html, StringComparison.Ordinal);
+        // The live region keeps the space of that count from the start, so nothing jumps when it is said.
+        Assert.Contains("<p id=\"console-status\" class=\"live live-reserved\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -837,6 +839,8 @@ public partial class AdminListPageTests
         Assert.DoesNotContain("Exception", html, StringComparison.Ordinal);
         Assert.DoesNotContain("SELECT", html, StringComparison.Ordinal);
         Assert.DoesNotContain("data-announce", html, StringComparison.Ordinal);
+        // No count is said, so no space is kept for one.
+        Assert.Contains("<p id=\"console-status\" class=\"live\" role=\"status\" aria-live=\"polite\"></p>", html, StringComparison.Ordinal);
 
         // Retry, once the store answers again.
         factory.Fault.FailWhen = null;

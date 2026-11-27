@@ -134,11 +134,11 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run Sec* parallel tests, one full second-factor sign-in, reset IP bursts, the S-A12 settings class, the admin edit and delete classes, the offer-history class, and the health answers
+      - name: Run Sec* parallel tests, one full second-factor sign-in, reset IP bursts, the S-A12 settings class, the admin edit and delete classes, the offer-history class, the health answers, and the database logins class
         run: >
           dotnet test --no-build --configuration Release --verbosity normal
           --logger "trx;LogFileName=postgres-sec-results.trx"
-          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm|FullyQualifiedName~C2_PostgresParallelWrongCodes|FullyQualifiedName~B2_PostgresFactorLock|FullyQualifiedName~G1_PostgresUnknownEmail|FullyQualifiedName~AdminSecuritySettingsTests|FullyQualifiedName~AdminEditApiTests|FullyQualifiedName~AdminDeleteApiTests|FullyQualifiedName~AdminOfferHistoryTests|FullyQualifiedName~HealthEndpointTests"
+          --filter "FullyQualifiedName~SecR|FullyQualifiedName~SecSc|FullyQualifiedName~SecN8|FullyQualifiedName~TdAdm020_TotpRequiredOnEveryPostEnrollmentLogin|FullyQualifiedName~AdminAuditPostgres|FullyQualifiedName~SC6_R3_ParallelBurst|FullyQualifiedName~SC6_B2_ParallelBadTokenBurst|FullyQualifiedName~SC6_R5_ExpiredRowParallelBurst|FullyQualifiedName~SC6_R5_DelayedReset|FullyQualifiedName~SC6_R10_PostgresParallelConfirm|FullyQualifiedName~C2_PostgresParallelWrongCodes|FullyQualifiedName~B2_PostgresFactorLock|FullyQualifiedName~G1_PostgresUnknownEmail|FullyQualifiedName~AdminSecuritySettingsTests|FullyQualifiedName~AdminEditApiTests|FullyQualifiedName~AdminDeleteApiTests|FullyQualifiedName~AdminOfferHistoryTests|FullyQualifiedName~HealthEndpointTests|FullyQualifiedName~DatabaseRolesPostgresTests"
           --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: Upload PostgreSQL test results
@@ -252,3 +252,69 @@ jobs:
         env:
           PREV_TAG: ${{ steps.last.outputs.tag }}
         run: bash scripts/upgrade-rehearsal/run.sh "$PREV_TAG"
+
+  # T58a (specification §3.4): H3 on a new, empty database, in the order a fresh deployment
+  # runs it, over TLS VerifyFull as in production: dbroles twice, migrate, dbroles --verify,
+  # the API on dealoware_app (/health 200), and a refused start on the master login.
+  # Certificates and passwords are throwaway values made in the job; none is printed.
+  new-database-rehearsal:
+    name: New database rehearsal
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Start PostgreSQL 16 with TLS
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-client; }
+          tls="$RUNNER_TEMP/pg-tls"
+          mkdir -p "$tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=rehearsal-ca" \
+            -keyout "$tls/ca.key" -out "$tls/ca.pem" 2>/dev/null
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=localhost" \
+            -keyout "$tls/server.key" -out "$tls/server.csr" 2>/dev/null
+          printf 'subjectAltName=DNS:localhost\n' > "$tls/san.ext"
+          openssl x509 -req -in "$tls/server.csr" -CA "$tls/ca.pem" -CAkey "$tls/ca.key" -CAcreateserial \
+            -days 1 -extfile "$tls/san.ext" -out "$tls/server.crt" 2>/dev/null
+          rm -f "$tls/ca.key" "$tls/server.csr"
+          # The server runs as uid 999 in the image and refuses a key others can read.
+          sudo chown 999:999 "$tls/server.key" "$tls/server.crt"
+          sudo chmod 600 "$tls/server.key"
+          superpw="$(openssl rand -hex 24)"
+          echo "::add-mask::$superpw"
+          echo "REHEARSAL_PG_SUPERPASSWORD=$superpw" >> "$GITHUB_ENV"
+          echo "REHEARSAL_CA=$tls/ca.pem" >> "$GITHUB_ENV"
+          docker run -d --name rehearsal-pg -p 5432:5432 -e POSTGRES_PASSWORD="$superpw" \
+            -v "$tls/server.crt:/tls/server.crt:ro" -v "$tls/server.key:/tls/server.key:ro" \
+            postgres:16 -c ssl=on -c ssl_cert_file=/tls/server.crt -c ssl_key_file=/tls/server.key >/dev/null
+          for _ in $(seq 1 60); do
+            docker exec rehearsal-pg pg_isready -q -U postgres -h 127.0.0.1 && break
+            sleep 1
+          done
+          docker exec rehearsal-pg pg_isready -U postgres -h 127.0.0.1
+          docker exec rehearsal-pg postgres --version
+
+      - name: Rehearse dbroles, migrate, dbroles --verify and the API start
+        env:
+          REHEARSAL_PG_HOST: localhost
+          REHEARSAL_PG_PORT: '5432'
+        run: bash scripts/new-database-rehearsal.sh
+
+      - name: PostgreSQL log
+        if: failure()
+        run: docker logs rehearsal-pg 2>&1 | tail -n 100
