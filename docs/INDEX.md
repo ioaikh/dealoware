@@ -45,6 +45,7 @@ Root stubs (redirect only): [PRODUCT-BRIEF.md](PRODUCT-BRIEF.md) → product/; [
 - [CEO-ORIGINAL-BRIEF.md](product/CEO-ORIGINAL-BRIEF.md) — **original** (verbatim CEO; already mirrored to GitHub `docs/product/`)
 - [PRODUCT-BRIEF.md](product/PRODUCT-BRIEF.md) — **processed summary** (Product-owned refresh; GitHub `docs/product/PRODUCT-BRIEF.md`; must stay distinct from original)
 - [2026-10-05__product__note__core-admin-dashboard-scope.md](product/2026-10-05__product__note__core-admin-dashboard-scope.md) — Core admin dashboard goals + AC at admin.core.dealoware.com. Soft HOLD build. PoC $0.
+- [2026-11-26__product__guide__core-admin-console.md](product/2026-11-26__product__guide__core-admin-console.md) — The owner's guide to the Core admin console: setup, sign-in, sessions, security settings, lists, editing, deleting, the audit log, what it never does, the accepted limits of T02–T07, and what to do once before it goes live.
 - [2026-09-20__product__note__participant-data-isolation-mvp.md](product/2026-09-20__product__note__participant-data-isolation-mvp.md)
 - [2026-09-20__product__guide__poc-negotiation-scenarios.md](product/2026-09-20__product__guide__poc-negotiation-scenarios.md)
 - [Dealoware-PoC-Negotiations.postman_collection.json](../postman/Dealoware-PoC-Negotiations.postman_collection.json) — Core API negotiations collection aligned to main d33a6d9c
