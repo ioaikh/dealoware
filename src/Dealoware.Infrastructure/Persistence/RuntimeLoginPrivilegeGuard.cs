@@ -197,11 +197,21 @@ public static class RuntimeLoginPrivilegeGuard
     private static bool IsDevelopment(string? environmentName)
         => string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task<RuntimeLoginPrivilegeFacts> QueryFactsAsync(
+    private static Task<RuntimeLoginPrivilegeFacts> QueryFactsAsync(
         DealowareDbContext db,
         CancellationToken cancellationToken)
+        => LoadFactsAsync(db.Database.GetDbConnection(), cancellationToken);
+
+    /// <summary>
+    /// Runs <see cref="PrivilegeFactsSql"/> on <paramref name="connection"/> (opened and
+    /// closed here if it is not open yet). Used by the API at start and by
+    /// <c>dbroles --verify</c>, so both judge the login with the same query.
+    /// </summary>
+    public static async Task<RuntimeLoginPrivilegeFacts> LoadFactsAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken = default)
     {
-        var connection = db.Database.GetDbConnection();
+        ArgumentNullException.ThrowIfNull(connection);
         var shouldClose = connection.State != ConnectionState.Open;
         if (shouldClose)
         {

@@ -1,5 +1,6 @@
 using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -13,6 +14,12 @@ namespace Dealoware.Api;
 /// CREATE / INSERT <c>__EFMigrationsHistory</c> (baseline stamp + later
 /// migrations). The long-lived API (<c>dealoware_app</c>) is DML-only and
 /// SELECT-only on the history table and must not run this path.
+/// <para>
+/// After the migrations, on PostgreSQL, it applies H3 design §7 step 6b as the owner of
+/// the tables (<see cref="DatabaseRoles.ApplyAppGrantsAsync"/>): the exact rights of
+/// <c>dealoware_app</c> on every table, from <see cref="DatabaseTableGrants"/>. It exits 1
+/// if that fails, for example when <c>dbroles</c> has not created the logins yet.
+/// </para>
 /// </summary>
 public static class DatabaseMigrateCommand
 {
@@ -39,6 +46,14 @@ public static class DatabaseMigrateCommand
         await DatabaseSchemaBootstrap.ApplyMigrationsAsync(db).ConfigureAwait(false);
 
         Console.WriteLine("Database migrations applied.");
+
+        if (db.Database.IsNpgsql()
+            && !await DatabaseRoles.ApplyAppGrantsAsync(
+                (Npgsql.NpgsqlConnection)db.Database.GetDbConnection(), Console.Out).ConfigureAwait(false))
+        {
+            return 1;
+        }
+
         return 0;
     }
 }
