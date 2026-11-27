@@ -7,7 +7,7 @@
 | Rules | Story A7 Step 9 (UXR-B14 to B17); test design TD-ADM-UI-na-B10 (narrowed), na-expire, na-B11, na-B12, -axe and -kbd; the edit API's replies (`AdminEditEndpoints`, review record `2026-11-26__qa__verification__t05-edit-api.md`) |
 | Reference | Draft pull request #41. Its page shell and test harness are not used. |
 | Date | 2026-11-26 |
-| Result | Pending: PASS once CI is green on the final head |
+| Result | PASS: the five required checks are green on f23a78b, and the independent review says merge |
 
 ## What the page does
 
@@ -78,7 +78,7 @@ The reviewer found:
 ## Tests
 
 - **.NET page tests.** `AdminEditPageTests`: 7 of 7. They cover the controls per type and state, everything starting hidden, the page's token being the one the edit API takes, soft-deleted records, encoding, nothing sensitive in the page, and the script's house rules.
-- **Final head.** Run on Chromium here only; the result stays pending until CI is green on all three engines.
+- **Final head (f23a78b) on GitHub.** All five required checks pass: Build & Test, PostgreSQL Sec Tests, and the browser tests on Chromium, Firefox and WebKit.
 - **Full suite on Windows.** 2,078 tests: 2,067 passed, 6 skipped, 5 failed. The same five fail on untouched `main` on this machine. The six skipped are the PostgreSQL-only tests and one older placeholder.
 - **Browser tests.** `e2e/console/edit.spec.ts`: 13 tests, all passing on Chromium here. GitHub runs them on Chromium, Firefox and WebKit on Linux. They cover:
   - each type's edit;
