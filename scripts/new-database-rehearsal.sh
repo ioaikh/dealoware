@@ -68,7 +68,7 @@ MIGRATE_PW="$(openssl rand -hex 24)"
 super_psql() {
   # Options first, the connection last (some psql builds stop reading options at the first argument).
   PGPASSWORD="$PG_SUPERPASSWORD" psql -X -q -v ON_ERROR_STOP=1 "$@" \
-    "host=$PG_HOST port=$PG_PORT user=$PG_SUPERUSER dbname=postgres sslmode=verify-full sslrootcert=$CA"
+    "host=$PG_HOST port=$PG_PORT user=$PG_SUPERUSER dbname=${SUPER_DB:-postgres} sslmode=verify-full sslrootcert=$CA"
 }
 
 # Runs the API binary as a one-shot command, with the settings the stack gives it.
@@ -111,8 +111,16 @@ stop_api() {
 }
 
 step "1. A new, empty database, owned by a master login without superuser (as on RDS)"
-super_psql -c "DROP DATABASE IF EXISTS $DB_NAME WITH (FORCE)" \
-           -c "DROP ROLE IF EXISTS dealoware_app" \
+super_psql -c "DROP DATABASE IF EXISTS $DB_NAME WITH (FORCE)"
+# The logins are server-wide: one that still holds rights in another database (an earlier
+# run, the engine's PostgreSQL tests) cannot be dropped. Clear them there first, one role at a
+# time (a default ACL of dealoware_migrate granting to dealoware_app depends on both).
+for db in $(super_psql -At -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"); do
+  for role in $(super_psql -At -c "SELECT rolname FROM pg_roles WHERE rolname IN ('dealoware_migrate', 'dealoware_app', '$MASTER', 'dealoware_t58a_master') ORDER BY rolname DESC"); do
+    SUPER_DB="$db" super_psql -c "DROP OWNED BY $role"
+  done
+done
+super_psql -c "DROP ROLE IF EXISTS dealoware_app" \
            -c "DROP ROLE IF EXISTS dealoware_migrate" \
            -c "DROP ROLE IF EXISTS $MASTER"
 # The master password goes through psql's variable quoting, not into the command text.
