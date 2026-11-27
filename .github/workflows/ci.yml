@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # A manual run can rehearse the upgrade from any commit as if it were a release (T09a or
+  # later), so the rehearsal can be exercised before release-1.
+  workflow_dispatch:
+    inputs:
+      previous_ref:
+        description: 'Commit (full hash) to rehearse the upgrade from, as if it were a release. Empty: the last release-* tag.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -215,8 +223,16 @@ jobs:
 
       - name: Find the last release tag
         id: last
+        env:
+          PREVIOUS_REF: ${{ github.event.inputs.previous_ref }}
         run: |
           set -euo pipefail
+          if [ -n "${PREVIOUS_REF:-}" ]; then
+            if ! echo "$PREVIOUS_REF" | grep -Eq '^[0-9a-f]{40}$'; then echo "previous_ref must be a full commit hash" >&2; exit 1; fi
+            echo "tag=$PREVIOUS_REF" >> "$GITHUB_OUTPUT"
+            echo "Manual run: rehearsing the upgrade from $PREVIOUS_REF as if it were a release." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           tag="$(git tag --list 'release-*' --merged HEAD | grep -E '^release-[0-9]+$' | sort -t- -k2,2n | tail -n 1 || true)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if [ -z "$tag" ]; then

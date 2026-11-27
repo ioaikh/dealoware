@@ -2,7 +2,10 @@
 # Upgrade rehearsal (T09 spec §2.3), run by CI on PostgreSQL 16. It stands in for a test copy
 # until there is one: the previous release must keep working on the schema of this commit.
 #
-#   scripts/upgrade-rehearsal/run.sh <previous release tag>
+#   scripts/upgrade-rehearsal/run.sh <previous release tag, or any commit to treat as one>
+#
+# A commit that is not a release can stand in for one (CI's manual run, "previous_ref"), so the
+# rehearsal can be exercised before release-1. It must have /health/ready (T09a or later).
 #
 # 1. Build the previous release (the tag) and this commit.
 # 2. Run the previous release's migrations.
@@ -10,14 +13,17 @@
 # 4. Run this commit's migrations.
 # 5. Start the previous release again on the result.
 # 6. /health/ready must answer 200, and each seeded record must read back unchanged.
+# 7. The previous release writes one record of each kind on the new schema, and reads it back.
 #
 # The database is a throwaway PostgreSQL container with TLS, so both releases run as in
 # production: Production environment, SSL Mode=VerifyFull, migrations under one login and
 # the API under a least-privilege login. Every key is made up for this run.
 set -euo pipefail
 
-prev_tag="${1:?usage: run.sh <previous release tag>}"
-case "$prev_tag" in release-[0-9]*) ;; *) echo "not a release tag: $prev_tag" >&2; exit 2 ;; esac
+prev_tag="${1:?usage: run.sh <previous release tag or commit>}"
+if ! git rev-parse --verify --quiet "$prev_tag^{commit}" >/dev/null; then
+  echo "not a tag or commit here: $prev_tag" >&2; exit 2
+fi
 
 repo="$(git rev-parse --show-toplevel)"
 here="$repo/scripts/upgrade-rehearsal"
@@ -32,6 +38,7 @@ cleanup() {
   if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
   docker rm -f "$pg_name" >/dev/null 2>&1 || true
   git -C "$repo" worktree remove --force "$work/prev-src" >/dev/null 2>&1 || true
+  git -C "$repo" worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -141,8 +148,12 @@ if ! ready_is_200; then
   echo "FAIL: $prev_tag does not answer /health/ready 200 on this commit's schema"; cat "$work/prev-2.log"; exit 1
 fi
 node "$here/records.mjs" read "http://127.0.0.1:$api_port" "$work/state.json" "$work/after.json"
-stop_api
 if ! diff -u "$work/before.json" "$work/after.json"; then
   echo "FAIL: a record read by $prev_tag changed after this commit's migrations"; exit 1
 fi
-say "PASS: $prev_tag runs on this commit's schema; every seeded record reads back unchanged"
+say "$prev_tag writes on the new schema"
+if ! node "$here/records.mjs" write "http://127.0.0.1:$api_port" "$work/state.json"; then
+  echo "FAIL: $prev_tag cannot write on this commit's schema"; cat "$work/prev-2.log"; exit 1
+fi
+stop_api
+say "PASS: $prev_tag runs on this commit's schema; every seeded record reads back unchanged, and it writes every kind"
