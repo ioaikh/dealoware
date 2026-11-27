@@ -36,3 +36,13 @@ CI: the PostgreSQL job's filter now runs `DatabaseCheckPostgresTests` as well; t
 - **The known record's ID is printed as a hash.** Spec 5.2 says "its ID and a SHA-256 of its stored columns" and "it prints no column value". An ID is a column value (for `AdminCredentials` the key is an email address), so the output carries a SHA-256 of the primary key instead. The comparison works the same way.
 - **Tables without a creation time are counted whole.** Their count cannot be cut at the cutoff, so the restore test notes a difference there rather than failing on it; their known records are still compared.
 - **Change times, not a perfect diff.** A row changed without a change time (a counter, say) still shows as a difference if it is among the known records. The restore-test runbook asks for no admin activity during the test.
+
+## Re-review fix (`7422c8f`)
+
+The re-review found that the four tables with no creation time of their own (`ArtifactValues`, `SubjectEntities`, `TimePeriods`, `EntityProperties`: the core negotiation data) could lose every row on the copy and still pass, since their counts were only notes. Now:
+
+- They are cut through their artifact: `ArtifactId` to `Artifacts`, and `EntityProperties` through `SubjectEntityId` to `SubjectEntities` and on to `Artifacts` (`DatabaseCheck.ParentCuts`). Their rows are written only when the artifact is created (checked in the domain code: an admin edit renames a subject entity but stamps the artifact's `UpdatedAt`), so the artifact's `CreatedAt` is their creation time and the artifact's change times are theirs. A row with no artifact is counted apart as `uncutRows`.
+- `rows` is null for the four tables that still cannot be cut (`AdminAuthLockouts`, `AdminCredentials`, `AdminResetIpCounters`, `AdminSessionStepUps`); their count is `uncutRows`. A test pins that list, and checks each parent-cut step against the model's foreign keys.
+- The hard-delete scan now follows cascading foreign keys: it found `AdminSessionStepUps` (deleted with its session), now in the list.
+
+Tests: `DatabaseCheckPostgresTests` 7 (new: the children are cut through their artifact, a later artifact and an edit after the cutoff change nothing, and a copy without the children counts 0); `DatabaseCheckCommandTests` 23; with `DatabaseRolesPostgresTests` and the table-grant tests, 43 passed on a throwaway PostgreSQL 16.
