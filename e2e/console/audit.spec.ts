@@ -132,6 +132,16 @@ async function open(page: Page, address: string): Promise<void> {
   await expectStyled(page);
 }
 
+/**
+ * After a move, before the pointer acts on the new page: the page has said its count in the
+ * live region. console-audit.js does that 100 ms after the page loads, and it is the last
+ * thing the page does as it loads. The count's banner pushes everything below it down, so a
+ * click made before then can press on one control and be let go over another: no click.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect(page.locator('#console-status')).toHaveText(/^[\d,]+ results$/);
+}
+
 /** Where the page is, as path and query. */
 function here(page: Page): string {
   const url = new URL(page.url());
@@ -314,6 +324,7 @@ test('filters ask the server: a range of days, several actions, an entity type; 
   await expect(rows(page)).toHaveCount(2);
   // The actor of a failed sign-in is the address that was typed, shown as text.
   expect(await column(page, 'Actor')).toEqual([audit.typed, audit.typed]);
+  await settled(page);
   await page.getByLabel('entity_edit', { exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=login_failure%2Centity_edit&${MARCH}`);
   await expect(page.getByLabel('entity_edit', { exact: true })).toBeChecked();
@@ -331,6 +342,7 @@ test('filters ask the server: a range of days, several actions, an entity type; 
   // Chips: one per filter; removing one drops only that one.
   const chips = page.locator('#chips .chip span');
   await expect(chips).toHaveText(['Action: login_failure, entity_edit', 'Entity type: Participant', 'From: Mar 1, 2025', 'To: Mar 31, 2025']);
+  await settled(page);
   await page.getByRole('link', { name: 'Remove Entity type filter', exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=login_failure%2Centity_edit&${MARCH}`);
   await expect(chips).toHaveText(['Action: login_failure, entity_edit', 'From: Mar 1, 2025', 'To: Mar 31, 2025']);
@@ -399,11 +411,13 @@ test('paging: 50, 100 or 200 a page with the range, Previous, Next and Page N; a
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?${BULK_DAY}&limit=100`);
   await expect(page.locator('#limit')).toBeFocused();
   await expect(rows(page)).toHaveCount(100);
+  await settled(page);
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
   // The address without the focus mark: the new page's script has run, so its controls answer.
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?${BULK_DAY}&offset=100&limit=100`);
   await expect(page.locator('#list-range')).toHaveText('Showing 101–130 of 130');
   await expect(page.getByRole('link', { name: 'Next', exact: true })).toHaveCount(0);
+  await settled(page);
   // Clicked, not check()ed: the box moves the page (see the filters test).
   await page.getByLabel('sign_out', { exact: true }).click();
   await expect(page).toHaveURL(`${ORIGIN}${AUDIT}?action=sign_out&${BULK_DAY}&limit=100`);

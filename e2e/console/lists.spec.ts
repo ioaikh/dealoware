@@ -112,6 +112,16 @@ async function open(page: Page, address: string): Promise<void> {
   await expectStyled(page);
 }
 
+/**
+ * After a move, before the pointer acts on the new page: the page has said its count in the
+ * live region. console-list.js does that 100 ms after the page loads, and it is the last
+ * thing the page does as it loads. The count's banner pushes everything below it down, so a
+ * click made before then can press on one control and be let go over another: no click.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect(page.locator('#console-status')).toHaveText(/^[\d,]+ results$/);
+}
+
 /** Where the page is, as path and query. */
 function here(page: Page): string {
   const url = new URL(page.url());
@@ -243,6 +253,7 @@ test('a heading sorts on the server: one request, the order turns, aria-sort mov
   await expect(page.locator('#sort-amount .visually-hidden')).toHaveText(' (sorted descending)');
 
   // The same heading again: the other way.
+  await settled(page);
   await page.locator('#sort-amount').click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=amount&dir=asc');
   amounts = (await column(page, 'Amount')).map(amountOf);
@@ -270,6 +281,7 @@ test('Participants filter by status; the Artifacts owner picker asks for one pag
   const badges = await page.locator('#list-table tbody .badge').allTextContents();
   expect(new Set(badges)).toEqual(new Set(['Suspended']));
   expect(await totalOf(page)).toBe(21);
+  await settled(page);
   await page.getByLabel('Active', { exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/participants?status=Active%2CSuspended');
   await expect(page.getByLabel('Active', { exact: true })).toBeChecked();
@@ -341,13 +353,18 @@ test('Offers: amount min and max, an exact negotiation id, the artifact picker; 
   }
 
   // An exact negotiation id; part of one is not a filter.
+  await settled(page);
   await page.getByLabel('Negotiation ID', { exact: true }).fill(seeded.negotiations.desk);
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`negotiationId=${seeded.negotiations.desk}`));
   expect(new Set(await column(page, 'Negotiation ID'))).toEqual(new Set([seeded.negotiations.desk]));
+  // The address names the id before the page's script has run: Enter typed sooner is the form's
+  // own GET, as with JavaScript off, and its page says no count.
+  await settled(page);
   await page.getByLabel('Negotiation ID', { exact: true }).fill(seeded.negotiations.desk.slice(0, 8));
   await page.getByLabel('Negotiation ID', { exact: true }).press('Enter');
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?amountMin=100&amountMax=200');
+  await settled(page);
 
   // The artifact picker.
   const artifact = page.getByRole('combobox', { name: 'Artifact' });
@@ -360,9 +377,11 @@ test('Offers: amount min and max, an exact negotiation id, the artifact picker; 
   // Chips: one per filter; removing one drops only that one.
   const chips = page.locator('#chips .chip span');
   await expect(chips).toHaveText(['Artifact: Red bicycle', 'Amount min: 100', 'Amount max: 200']);
+  await settled(page);
   await page.getByRole('link', { name: 'Remove Amount max filter', exact: true }).click();
-  await expect(chips).toHaveText(['Artifact: Red bicycle', 'Amount min: 100']);
   await expect(page).toHaveURL(ORIGIN + `/admin/offers?artifact=${seeded.artifacts['Red bicycle']}&amountMin=100`);
+  await expect(chips).toHaveText(['Artifact: Red bicycle', 'Amount min: 100']);
+  await settled(page);
 
   await page.getByRole('link', { name: 'Clear all filters', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers');
@@ -377,6 +396,7 @@ test('paging: 50, 100 or 200 a page; the range and Previous, Next and Page N; an
   await page.locator('#limit').selectOption('100');
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?limit=100');
   await expect(page.locator('#limit')).toBeFocused();
+  await settled(page);
   await page.getByRole('link', { name: 'Next', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?offset=100&limit=100');
   await expect(page.locator('#list-range')).toHaveText('Showing 101–200 of 1,234');
@@ -393,10 +413,13 @@ test('paging: 50, 100 or 200 a page; the range and Previous, Next and Page N; an
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?limit=100&status=Accepted');
   await expect(page.getByLabel('Accepted', { exact: true })).toBeChecked();
   // Page 2 moves the page: the next step waits for the new address, or it acts on the page being left.
+  await settled(page);
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?offset=100&limit=100&status=Accepted');
+  await settled(page);
   await page.locator('#sort-created').click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&limit=100&status=Accepted');
+  await settled(page);
   await page.getByRole('link', { name: 'Page 2', exact: true }).click();
   await expect(page).toHaveURL(ORIGIN + '/admin/offers?sort=created&offset=100&limit=100&status=Accepted');
   await page.locator('#q').fill('bicycle');
@@ -486,6 +509,7 @@ test('Show deleted: off on every list, kept on reload; a deleted row shows Delet
   await page.locator('#q').press('Enter');
   const row = rows(page).filter({ has: page.locator(`a[href^="/admin/offers/${seeded.offers.deleted}"]`) });
   await expect(row).toHaveCount(1);
+  await settled(page);
   await expect(row.locator('.badges .badge')).toHaveText(['Open', 'Deleted']);
   await expect(row.locator('.badges time')).toHaveText(/^Nov 19, 2026, \d{1,2}:\d{2} (AM|PM) ET$/);
   await expectStyled(page);
