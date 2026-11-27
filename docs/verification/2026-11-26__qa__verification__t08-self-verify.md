@@ -13,7 +13,7 @@
 
 Each line was walked against the code, the tests and the merged review records on `main`. Where a line names a test, the test is on `main`. Where it names a record, the record is under `docs/verification/`. No code was changed for this record.
 
-The denial checks of T08a (one route table, a denial test over every admin route, a signed-out browser walk, and the offer-history test) are in pull request #80, still a draft when this was written. Lines that lean on them say so.
+The denial checks of T08a (one route table, a denial test over every admin route, a signed-out browser walk, and the offer-history test) are merged as pull request #80, with their own record, [t08-denial-checks](2026-11-26__qa__verification__t08-denial-checks.md). Lines that lean on them say so.
 
 The agent teams named in the October gates (Code QA, Security, UI/UX) are not running. Since T02, each piece was instead reviewed by a separate agent who did not write it, adversarially and with security first, then re-reviewed after fixes, with browser tests in Chromium, Firefox and WebKit standing in for the UI/UX gate. Each record says so under "How this was reviewed". The lines below that name an October gate say how it was met in that form.
 
@@ -42,7 +42,7 @@ The agent teams named in the October gates (Code QA, Security, UI/UX) are not ru
 | TD-ADM-122 | Traceability: the Spec's sha256 matches, and the Security records are cited | Met | The Spec on `main` is byte-identical to the cited v2.2: its committed blob hashes to `25f26477…` (a checkout with Windows line endings hashes differently; the stored file does not). The Dev Plan's blob hashes to `b3788114…` and the test design's to `7bb1dd3b…`, as the Step 13 Story cites. The Security confirm files are on `main`: the Spec confirm (PASS 15/15), the SA confirm (14/14), and the Dev Plan checklist and confirm. |
 | TD-ADM-160 | The inbound bot connector is not in this delivery | Met | No admin piece adds or changes a connector. `src/Dealoware.Api/Endpoints/InboundConnectorEndpoints.cs` was last changed in `1c9d10b` (4 Oct), before the admin track. |
 | TD-ADM-161 | Every must-cover area has at least one P0 automated case | Met | Sign-in (§8): `AdminBootstrapTests`, `AdminTotpTests`, `AdminPasswordResetTests`, `TdAdm040AuthLockoutSessionTests`, `AdminSessionTimerTests`. Confirm before delete (§9): `AdminDeleteApiTests.TdAdm090_*`, `AdminDeletePageTests`, `e2e/console/delete.spec.ts`. Audit (§10): `AdminAuditApiTests`, `AdminAuditPairingTests.TdAdm102_*`, `AdminAuditViewerApiTests`, `AdminAuditPageTests`. Soft delete and cascades (§11): `AdminDeleteApiTests.TdAdm091_*` to `TdAdm095_*`. Lists and search (§4.5, §4.6): `AdminReadApiTests.TD_ADM_060_*`, `AdminListPagingInterceptorTests.TD_ADM_065_*`, `AdminListPageTests`, `e2e/console/lists.spec.ts`. |
-| TD-ADM-162 | Everything on the Spec §12 IN list is delivered | Met, with one narrowing | Host: line 1. List, view, edit and delete for the four types with name search, all statuses, sort, filter and server paging: line 4. Stats: `AdminConsoleShellTests.Stats_ShowsTheFiveTotalsOfTheReadApi_AsText_WithTheTimeInEt` and `Stats_CountsChange_WithTheData_AndLeaveSoftDeletedRowsOut`. One owner and the field policy: line 1. Sign-in §8: line 2. Confirm before delete: TD-ADM-161. Audit log, read-only: `AdminAuditViewerApiTests.TdAdm101_NoMethodChangesAnEntry_EveryOtherMethodIs405_AndTheEntryStaysAsItWas`. Soft delete, cascades and the toggle: TD-ADM-161 and `AdminAuditApiTests.TdAdm064_IncludeDeletedToggle_IsNotAudited`. Mail interface: line 3. **Narrowing:** on an offer the owner can only cancel; amount, currency and terms are read-only (the owner's decision of 26 Nov 2026). That every refused route leaves the offer history unchanged is the offer-history test of pull request #80, not yet on `main`. |
+| TD-ADM-162 | Everything on the Spec §12 IN list is delivered | Met, with one narrowing | Host: line 1. List, view, edit and delete for the four types with name search, all statuses, sort, filter and server paging: line 4. Stats: `AdminConsoleShellTests.Stats_ShowsTheFiveTotalsOfTheReadApi_AsText_WithTheTimeInEt` and `Stats_CountsChange_WithTheData_AndLeaveSoftDeletedRowsOut`. One owner and the field policy: line 1. Sign-in §8: line 2. Confirm before delete: TD-ADM-161. Audit log, read-only: `AdminAuditViewerApiTests.TdAdm101_NoMethodChangesAnEntry_EveryOtherMethodIs405_AndTheEntryStaysAsItWas`. Soft delete, cascades and the toggle: TD-ADM-161 and `AdminAuditApiTests.TdAdm064_IncludeDeletedToggle_IsNotAudited`. Mail interface: line 3. **Narrowing:** on an offer the owner can only cancel; amount, currency and terms are read-only (the owner's decision of 26 Nov 2026). That every refused route leaves the offer history unchanged is the offer-history test of pull request #80, merged ([t08-denial-checks](2026-11-26__qa__verification__t08-denial-checks.md)). |
 
 ## The owner's acceptances
 
@@ -79,7 +79,7 @@ The six admin drafts of 6 October are closed, each with a comment naming the pul
 | #42 audit log viewer | #70 |
 | #43 delete with confirmation | #75, #78 |
 
-Eight pull requests are still open that are not admin console work, besides T08a (#80) and this one (#81). **They wait for the owner's decision; none was closed here.**
+Eight pull requests are still open besides this one (#81). None changes the admin console itself: three are older work for later steps, and five are Dependabot updates to the test tool in the admin test folders. **They wait for the owner's decision; none was closed here.**
 
 | Pull request | What it is | Recommendation |
 |--------------|-----------|----------------|
@@ -123,6 +123,6 @@ The guide is written for the owner in plain words. The exact terms behind it:
 
 ## What this record does not cover
 
-- The denial checks, the signed-out browser walk and the offer-history test: pull request #80 (T08a).
+- The denial checks, the signed-out browser walk and the offer-history test in detail: they have their own record, [t08-denial-checks](2026-11-26__qa__verification__t08-denial-checks.md) (pull request #80, merged).
 - Anything about turning the console on: guide §13 lists what must be done once before it goes live.
 - The index: the guide is not yet listed in `docs/INDEX.md`. The owner adds it there, or it is added once the owner's own pending change to that file is in.
