@@ -11,14 +11,18 @@ namespace Dealoware.Infrastructure.Persistence;
 /// <summary>
 /// The read-only check behind <c>dbcheck</c>: what a database holds up to a moment (the
 /// cutoff), in a form that can be compared between two databases without printing any data.
-/// Used by the restore test, which runs it against the live database and against a copy
-/// restored to the same moment.
+/// Used by the restore test, which runs it against the live database (some minutes after the
+/// cutoff) and against a copy restored to the cutoff.
 /// <list type="bullet">
 ///   <item>For each table of the model, the number of rows created at or before the cutoff
-///     (<see cref="CreatedColumns"/>; a table with no creation time counts all its rows).</item>
+///     (<see cref="CreatedColumns"/>; a table with no creation time counts all its rows), and
+///     whether the engine hard-deletes rows from it (<see cref="HardDeleteTables"/>).</item>
 ///   <item>The newest migration's ID.</item>
-///   <item>For the newest row at or before the cutoff in each table that has one (the "known
-///     record"): a SHA-256 of its primary key and a SHA-256 of all its stored columns.</item>
+///   <item>The known records: up to <see cref="KnownRecords"/> of the newest rows created at or
+///     before the cutoff that have not changed since it (<see cref="ChangedColumns"/>), each as
+///     a SHA-256 of its primary key and a SHA-256 of all its stored columns. A row changed on
+///     the live database after the cutoff is left out there, so it cannot make two equal
+///     backups look different; the restore test compares the records both sides hold.</item>
 /// </list>
 /// Everything runs in one read-only, repeatable-read transaction (<see cref="BeginReadOnlyAsync"/>),
 /// which is rolled back. PostgreSQL only. No column value leaves this class: only counts,
@@ -28,10 +32,13 @@ public static class DatabaseCheck
 {
     public const string ApplicationName = "dealoware-dbcheck";
 
+    /// <summary>The most known records given per table.</summary>
+    public const int KnownRecords = 5;
+
     /// <summary>
     /// Each table of the model and the column that holds the time its row was created, or
     /// <c>null</c> when the table has none (its rows are then all counted). Every table of the
-    /// model must be listed: <c>DatabaseCheckTests</c> fails when one is missing.
+    /// model must be listed: <c>DatabaseCheckCommandTests</c> fails when one is missing.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string?> CreatedColumns =
         new SortedDictionary<string, string?>(StringComparer.Ordinal)
@@ -68,6 +75,53 @@ public static class DatabaseCheck
             ["AdminSessions"] = "CreatedAt",
             ["AdminSessionStepUps"] = null,
         };
+
+    /// <summary>
+    /// The columns that are set to the current time when a row changes. A row is "unchanged
+    /// since the cutoff" when each of them is null or at or before it. Tables not listed have
+    /// no such column: their rows are written once (or the change leaves no time behind).
+    /// <c>DatabaseCheckCommandTests</c> checks that each is a time column of the model.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> ChangedColumns =
+        new SortedDictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["ApiKeyCredentials"] = ["RevokedAt"],
+            ["Artifacts"] = ["UpdatedAt", "DeletedAt"],
+            ["Negotiations"] = ["UpdatedAt", "DeletedAt"],
+            ["Offers"] = ["UpdatedAt", "DeletedAt"],
+            ["ParticipantBudgets"] = ["UpdatedAt"],
+            ["Participants"] = ["UpdatedAt", "DeletedAt"],
+            ["Strategies"] = ["UpdatedAt"],
+
+            ["AdminAuthLockouts"] = ["StartedAt"],
+            ["AdminAuthTokens"] = ["ConsumedAt"],
+            ["AdminBootstrapTokens"] = ["ConsumedAt"],
+            ["AdminCoreOwnerAccounts"] = ["FactorAttemptWindowStartedAt", "FactorLockedUntil", "TotpEnrolledAt"],
+            ["AdminCredentials"] = ["PasswordUpdatedAt"],
+            ["AdminDeleteConfirmTokens"] = ["ConsumedAt"],
+            ["AdminPasswordResetTokens"] = ["ConsumedAt"],
+            ["AdminPendingAuths"] = ["ConsumedAt"],
+            ["AdminRecoveryCodes"] = ["UsedAt"],
+            ["AdminResetIpCounters"] = ["WindowStartedAt", "LockedUntil"],
+            ["AdminSessions"] = ["LastActivityAt"],
+            ["AdminSessionStepUps"] = ["SteppedUpAt", "CodesIssuedAt"],
+        };
+
+    /// <summary>
+    /// The tables the engine hard-deletes rows from (expired or used tokens, sessions, recovery
+    /// codes, failure events). Their count on the live database may be lower than on a copy
+    /// restored to an earlier moment. <c>DatabaseCheckCommandTests</c> scans the source for
+    /// deletes and fails when one hits a table not listed here.
+    /// </summary>
+    public static readonly IReadOnlyList<string> HardDeleteTables =
+    [
+        "AdminAuthFailureEvents",
+        "AdminDeleteConfirmTokens",
+        "AdminRecoveryCodes",
+        "AdminSessionRecoveryNotices",
+        "AdminSessions",
+        "RevokedTokens",
+    ];
 
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
 
@@ -137,38 +191,42 @@ public static class DatabaseCheck
         var tables = new List<DatabaseCheckTable>();
         foreach (var (table, created) in CreatedColumns)
         {
-            if (!Identifier.IsMatch(table) || (created is not null && !Identifier.IsMatch(created)))
-                throw new DatabaseStepException("a table or column name in the check's list is not a plain name");
+            var changed = ChangedColumns.TryGetValue(table, out var c) ? c : [];
+            if (!Identifier.IsMatch(table) || (created is not null && !Identifier.IsMatch(created)) || !changed.All(Identifier.IsMatch))
+                throw new DatabaseStepException("a table or column name in the check's lists is not a plain name");
 
             var keys = await PrimaryKeyAsync(connection, tx, table, cancellationToken).ConfigureAwait(false);
-            var where = created is null ? string.Empty : $" WHERE t.{Quote(created)} <= @cutoff";
+            var createdBy = created is null ? null : $"t.{Quote(created)} <= @cutoff";
 
             long rows;
-            await using (var count = new NpgsqlCommand($"SELECT count(*) FROM public.{Quote(table)} t{where}", connection, tx))
+            await using (var count = new NpgsqlCommand(
+                             $"SELECT count(*) FROM public.{Quote(table)} t{(createdBy is null ? "" : " WHERE " + createdBy)}",
+                             connection, tx))
             {
-                if (created is not null)
-                    count.Parameters.AddWithValue("cutoff", at);
+                count.Parameters.AddWithValue("cutoff", at);
                 rows = (long)(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
             }
 
-            DatabaseCheckRecord? newest = null;
+            var known = new List<DatabaseCheckRecord>();
             if (rows > 0)
             {
+                var filters = changed.Select(col => $"(t.{Quote(col)} IS NULL OR t.{Quote(col)} <= @cutoff)").ToList();
+                if (createdBy is not null)
+                    filters.Insert(0, createdBy);
+                var where = filters.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", filters);
                 var keyList = string.Join(", ", keys.Select(k => "t." + Quote(k)));
-                var order = created is null
-                    ? string.Join(", ", keys.Select(k => $"t.{Quote(k)} DESC"))
-                    : $"t.{Quote(created)} DESC, " + string.Join(", ", keys.Select(k => $"t.{Quote(k)} DESC"));
+                var order = (created is null ? string.Empty : $"t.{Quote(created)} DESC, ") +
+                            string.Join(", ", keys.Select(k => $"t.{Quote(k)} DESC"));
                 await using var read = new NpgsqlCommand(
-                    $"SELECT ROW({keyList})::text, t::text FROM public.{Quote(table)} t{where} ORDER BY {order} LIMIT 1",
+                    $"SELECT ROW({keyList})::text, t::text FROM public.{Quote(table)} t{where} ORDER BY {order} LIMIT {KnownRecords}",
                     connection, tx);
-                if (created is not null)
-                    read.Parameters.AddWithValue("cutoff", at);
+                read.Parameters.AddWithValue("cutoff", at);
                 await using var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-                if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    newest = new DatabaseCheckRecord(Sha256(reader.GetString(0)), Sha256(reader.GetString(1)));
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    known.Add(new DatabaseCheckRecord(Sha256(reader.GetString(0)), Sha256(reader.GetString(1))));
             }
 
-            tables.Add(new DatabaseCheckTable(table, created, rows, newest));
+            tables.Add(new DatabaseCheckTable(table, created, changed, HardDeleteTables.Contains(table), rows, known));
         }
 
         await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
@@ -202,11 +260,25 @@ public static class DatabaseCheck
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 }
 
-/// <summary>The known record of a table: hashes only, never a value.</summary>
+/// <summary>A known record: hashes only, never a value.</summary>
 public sealed record DatabaseCheckRecord(string KeySha256, string RowSha256);
 
-/// <summary>One table: its rows up to the cutoff, and its known record.</summary>
-public sealed record DatabaseCheckTable(string Table, string? CreatedColumn, long Rows, DatabaseCheckRecord? Newest);
+/// <summary>One table: its rows up to the cutoff, and its known records (newest first).</summary>
+public sealed record DatabaseCheckTable(
+    string Table,
+    string? CreatedColumn,
+    IReadOnlyList<string> ChangedColumns,
+    bool HardDeletes,
+    long Rows,
+    IReadOnlyList<DatabaseCheckRecord> Known)
+{
+    public bool Equals(DatabaseCheckTable? other)
+        => other is not null && Table == other.Table && CreatedColumn == other.CreatedColumn &&
+           ChangedColumns.SequenceEqual(other.ChangedColumns) && HardDeletes == other.HardDeletes &&
+           Rows == other.Rows && Known.SequenceEqual(other.Known);
+
+    public override int GetHashCode() => HashCode.Combine(Table, Rows, Known.Count);
+}
 
 /// <summary>What <c>dbcheck</c> prints, as one JSON line (<see cref="ToJson"/>).</summary>
 public sealed record DatabaseCheckResult(DateTimeOffset Cutoff, string? Migration, IReadOnlyList<DatabaseCheckTable> Tables)
@@ -226,19 +298,22 @@ public sealed record DatabaseCheckResult(DateTimeOffset Cutoff, string? Migratio
                 json.WriteStartObject();
                 json.WriteString("table", t.Table);
                 json.WriteString("createdColumn", t.CreatedColumn);
+                json.WriteStartArray("changedColumns");
+                foreach (var c in t.ChangedColumns)
+                    json.WriteStringValue(c);
+                json.WriteEndArray();
+                json.WriteBoolean("hardDeletes", t.HardDeletes);
                 json.WriteNumber("rows", t.Rows);
-                if (t.Newest is null)
+                json.WriteStartArray("known");
+                foreach (var k in t.Known)
                 {
-                    json.WriteNull("newest");
-                }
-                else
-                {
-                    json.WriteStartObject("newest");
-                    json.WriteString("keySha256", t.Newest.KeySha256);
-                    json.WriteString("rowSha256", t.Newest.RowSha256);
+                    json.WriteStartObject();
+                    json.WriteString("keySha256", k.KeySha256);
+                    json.WriteString("rowSha256", k.RowSha256);
                     json.WriteEndObject();
                 }
 
+                json.WriteEndArray();
                 json.WriteEndObject();
             }
 

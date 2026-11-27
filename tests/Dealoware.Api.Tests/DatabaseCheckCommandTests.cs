@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Dealoware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -119,6 +120,74 @@ public class DatabaseCheckCommandTests
             Assert.True(property is not null, $"{table}.{column} is not a column of the model");
             Assert.True(property!.ClrType == typeof(DateTimeOffset), $"{table}.{column} must be a non-null DateTimeOffset");
         }
+
+        foreach (var (table, columns) in DatabaseCheck.ChangedColumns)
+        {
+            Assert.True(tables.ContainsKey(table), $"DatabaseCheck.ChangedColumns names {table}, which is not in the model");
+            Assert.NotEmpty(columns);
+            foreach (var column in columns)
+            {
+                var property = tables[table]
+                    .SelectMany(t => t.GetProperties())
+                    .FirstOrDefault(p => string.Equals(p.GetColumnName(), column, StringComparison.Ordinal));
+                Assert.True(property is not null, $"{table}.{column} is not a column of the model");
+                Assert.True(property!.ClrType == typeof(DateTimeOffset) || property.ClrType == typeof(DateTimeOffset?),
+                    $"{table}.{column} must be a DateTimeOffset");
+            }
+        }
+
+        // Each table with an UpdatedAt or DeletedAt column lists them as changed columns.
+        foreach (var (table, types) in tables)
+        {
+            foreach (var column in types.SelectMany(t => t.GetProperties()).Select(p => p.GetColumnName())
+                         .Where(c => c is "UpdatedAt" or "DeletedAt"))
+            {
+                Assert.True(DatabaseCheck.ChangedColumns.TryGetValue(table, out var listed) && listed.Contains(column),
+                    $"{table}.{column} must be in DatabaseCheck.ChangedColumns");
+            }
+        }
+    }
+
+    [Fact]
+    public void EveryTableTheEngineDeletesRowsFrom_IsInTheHardDeleteList()
+    {
+        // A tripwire on the source: each statement that deletes rows (ExecuteDelete, Remove,
+        // RemoveRange) is matched to the DbSets it names. A new delete on another table fails
+        // here until that table is added to DatabaseCheck.HardDeleteTables (the restore test
+        // allows its count to drop on the live database).
+        using var db = new DealowareDbContext(
+            new DbContextOptionsBuilder<DealowareDbContext>().UseNpgsql("Host=unused").Options);
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var tableOfSet = typeof(DealowareDbContext).GetProperties()
+            .Where(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(DbSet<>))
+            .ToDictionary(p => p.Name, p => model.FindEntityType(p.PropertyType.GetGenericArguments()[0])!.GetTableName()!,
+                StringComparer.Ordinal);
+
+        var deleting = new Regex(@"ExecuteDelete(Async)?\s*\(|\.Remove\s*\(|\.RemoveRange\s*\(", RegexOptions.CultureInvariant);
+        var memberName = new Regex(@"\.(\w+)\b", RegexOptions.CultureInvariant);
+        var found = new SortedSet<string>(StringComparer.Ordinal);
+        var src = Path.Combine(RepoRoot(), "src");
+        foreach (var file in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories)
+                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                 && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                 // dbroles --verify adds and removes a probe row in a transaction it rolls back.
+                                 && Path.GetFileName(f) != "DatabaseRoles.cs"))
+        {
+            foreach (var statement in File.ReadAllText(file).Split(';').Where(s => deleting.IsMatch(s)))
+            {
+                foreach (Match m in memberName.Matches(statement))
+                {
+                    if (tableOfSet.TryGetValue(m.Groups[1].Value, out var table))
+                        found.Add(table);
+                }
+            }
+        }
+
+        Assert.NotEmpty(found);
+        var notListed = found.Except(DatabaseCheck.HardDeleteTables).ToList();
+        Assert.True(notListed.Count == 0, "Rows are deleted from these tables; add them to DatabaseCheck.HardDeleteTables: " + string.Join(", ", notListed));
+        var notFound = DatabaseCheck.HardDeleteTables.Except(found).ToList();
+        Assert.True(notFound.Count == 0, "Listed in DatabaseCheck.HardDeleteTables, but no delete was found in the source: " + string.Join(", ", notFound));
     }
 
     [Fact]
@@ -128,8 +197,9 @@ public class DatabaseCheckCommandTests
             new DateTimeOffset(2026, 12, 1, 5, 0, 0, TimeSpan.FromHours(-5)),
             "20261126000600_AdminDeleteConfirmTokens",
             [
-                new DatabaseCheckTable("AdminCredentials", null, 0, null),
-                new DatabaseCheckTable("Participants", "CreatedAt", 2, new DatabaseCheckRecord(new string('a', 64), new string('b', 64))),
+                new DatabaseCheckTable("AdminCredentials", null, ["PasswordUpdatedAt"], false, 0, []),
+                new DatabaseCheckTable("Participants", "CreatedAt", ["UpdatedAt", "DeletedAt"], false, 2,
+                    [new DatabaseCheckRecord(new string('a', 64), new string('b', 64))]),
             ]);
 
         var json = result.ToJson();
@@ -137,12 +207,25 @@ public class DatabaseCheckCommandTests
         Assert.DoesNotContain('\n', json);
         Assert.Equal(
             "{\"check\":\"dbcheck\",\"cutoff\":\"2026-12-01T10:00:00.0000000Z\",\"migration\":\"20261126000600_AdminDeleteConfirmTokens\"," +
-            "\"tables\":[{\"table\":\"AdminCredentials\",\"createdColumn\":null,\"rows\":0,\"newest\":null}," +
-            "{\"table\":\"Participants\",\"createdColumn\":\"CreatedAt\",\"rows\":2,\"newest\":{\"keySha256\":\"" + new string('a', 64) +
-            "\",\"rowSha256\":\"" + new string('b', 64) + "\"}}]}",
+            "\"tables\":[{\"table\":\"AdminCredentials\",\"createdColumn\":null,\"changedColumns\":[\"PasswordUpdatedAt\"],\"hardDeletes\":false,\"rows\":0,\"known\":[]}," +
+            "{\"table\":\"Participants\",\"createdColumn\":\"CreatedAt\",\"changedColumns\":[\"UpdatedAt\",\"DeletedAt\"],\"hardDeletes\":false,\"rows\":2," +
+            "\"known\":[{\"keySha256\":\"" + new string('a', 64) + "\",\"rowSha256\":\"" + new string('b', 64) + "\"}]}]}",
             json);
         using var parsed = JsonDocument.Parse(json);
         Assert.Equal(2, parsed.RootElement.GetProperty("tables").GetArrayLength());
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Dealoware.sln")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Could not find Dealoware.sln");
     }
 
     private static Func<string, string?> Env(params (string Name, string Value)[] values)
