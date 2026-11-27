@@ -168,21 +168,36 @@ jobs:
         run: |
           set -euo pipefail
           test "$(docker inspect dealoware-engine:ci --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GIT_SHA"
-          docker run --detach --name engine --env ASPNETCORE_ENVIRONMENT=Development --publish 127.0.0.1:8080:8080 dealoware-engine:ci
+          # Development on the image's own SQLite file: no database server is needed for the
+          # health answers. Even Development refuses to start without the three admin keys,
+          # so each run makes up throwaway ones (test-only, never real values).
+          # The image listens on 8080 (ASPNETCORE_URLS=http://+:8080 in the Dockerfile).
+          docker run --detach --name engine             --env ASPNETCORE_ENVIRONMENT=Development             --env DEALOWARE_ADMIN_RECOVERY_HMAC_KEY="$(openssl rand -base64 32)"             --env DEALOWARE_ADMIN_TOTP_KEY="$(openssl rand -base64 32)"             --env DEALOWARE_ADMIN_IP_HMAC_KEY="$(openssl rand -base64 32)"             --publish 127.0.0.1:8080:8080 dealoware-engine:ci
+          ok=""
           for i in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8080/health > health.json; then break; fi
+            if curl --silent --fail http://127.0.0.1:8080/health > health.json; then ok=yes; break; fi
+            if [ "$(docker inspect engine --format '{{ .State.Running }}')" != "true" ]; then break; fi
             sleep 2
           done
+          if [ -z "$ok" ]; then
+            echo "The container did not answer /health."
+            docker inspect engine --format 'state={{ .State.Status }} exit={{ .State.ExitCode }} error={{ .State.Error }}'
+            docker logs engine 2>&1 | tail -n 100
+            exit 1
+          fi
           cat health.json; echo
           expected="${GIT_SHA:0:7}"
           test "$(jq -r .version health.json)" = "$expected"
           test "$(jq -r .status health.json)" = "ok"
           curl --silent --fail http://127.0.0.1:8080/health/ready | tee ready.json; echo
           test "$(jq -r .version ready.json)" = "$expected"
+          test "$(jq -r .status ready.json)" = "ok"
 
-      - name: Container log on failure
+      - name: Container state and log on failure
         if: failure()
-        run: docker logs engine || true
+        run: |
+          docker inspect engine --format 'state={{ .State.Status }} exit={{ .State.ExitCode }} error={{ .State.Error }}' || true
+          docker logs engine 2>&1 | tail -n 100 || true
 
   # T09 spec §2.3: the previous release must keep working on this commit's schema. Until there
   # is a test copy, this rehearsal stands in for it. Skipped, with a note, while no release-*
