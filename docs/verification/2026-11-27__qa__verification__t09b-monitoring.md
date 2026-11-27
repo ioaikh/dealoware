@@ -6,7 +6,7 @@
 | Branch | `claude/t09b-monitoring`, from `main` at `ac883aa` |
 | The other part | The alerts, alarms, health check, budget and the release and smoke-test checks are in the private infrastructure repository, with its own record. The tracing spike's full answer, which names the hosting, is written there. |
 | Date | 2026-11-27 |
-| Result | **Built and tested.** Independent review: fix first; the two engine items are fixed with tests (below), re-review pending. |
+| Result | **Built and tested.** Independent review: fix first; the two engine items are fixed with tests. Re-review: fix first on one item, fixed with tests (below); re-review pending. |
 
 ## What was built
 
@@ -51,6 +51,14 @@ The review found no risk to the live stack. Its two engine items are fixed; each
 | 3 | The formatter's comment said exception messages are never written, but EF Core's error events put a whole exception's text, with the database's words (which can quote a value), inside their message. | For `Microsoft.EntityFrameworkCore*` categories the message is cut at its first line break; the comment now says exactly what is and is not written. Tests: `EfCoreMessageTests` (two EF categories cut, another category kept whole). | `8627b42` |
 
 Tests after the fixes: the new and related tests (request ID, logs, privacy, redaction, EF Core, tracing, admin security headers, admin host start-up, health) 81 passed; the full suite 2533 passed, 19 skipped, 6 failed: the same six as before (the five known ones and the one that needs PostgreSQL).
+
+## Re-review: fix first, one item
+
+| Finding | Fix | Commit |
+|---------|-----|--------|
+| The middleware's catch took every exception outside Development. A body over the limit read inside an endpoint went from 413 to a 500 with an Error line, and a client that gave up while an endpoint awaited `RequestAborted` went from nothing logged to an Error line. Any client could so raise the server-error and log-error alarms. | A `BadHttpRequestException` is answered with its own status code (413, 400), no body and the request ID, logged at Debug only. Kestrel's own answer would have dropped the header, which a test showed. An `OperationCanceledException` while `RequestAborted` is cancelled goes on to the server, which logs nothing for it, as before. Only other exceptions become the bare 500 with an Error line. Tests (`RequestIdNotAFaultTests`): a body over Kestrel's limit is 413 with the header; an over-limit read inside an endpoint, on a real Kestrel server, is 413 with the header and no line from the middleware; a request the client gave up on writes no Error or Critical line. The last two fail on the previous code. 10 runs in a row pass. | `e4a4453` |
+
+Tests after this fix: the related tests (request ID, faults, logs, privacy, tracing, auth endpoints, rate limits) 43 passed; the full suite 2536 passed, 19 skipped, 6 failed: the same six as before (the five known ones and the one that needs PostgreSQL).
 
 ## What is not done here
 
