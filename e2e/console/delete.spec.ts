@@ -850,10 +850,15 @@ test('answers to the DELETE: Blocked shows the negotiations, 404 goes to the lis
   await expect(live(page)).toHaveText(NOT_FOUND);
   await page.unrouteAll({ behavior: 'wait' });
 
-  // 403 on a page the owner loaded anew: it does not load itself again; nothing was deleted, with Retry.
-  await page.reload();
-  await expectStyled(page);
+  // 403: still signed in, the page loads itself anew once and says to try again. A second 403 on the page it
+  // loaded does not load it again: nothing was deleted, with Retry. (The page that loaded itself is the one
+  // every engine reports as reloaded; Firefox reports a test runner's reload after replaceState as a plain
+  // navigation, so the owner's own reload is not what this step uses.)
   await answerDeletes(page, 403, { error: 'Forbidden' });
+  await openDelete(page, rowsOf(page).first().getByRole('button', { name: 'Delete Seed participant 060', exact: true }));
+  await reloadedBy(page, () => dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click());
+  expect(here(page)).toBe(listed);
+  await expect(live(page)).toHaveText(RETRY);
   await openDelete(page, rowsOf(page).first().getByRole('button', { name: 'Delete Seed participant 060', exact: true }));
   await dialog(page).getByRole('button', { name: 'Delete participant', exact: true }).click();
   await expect(page.locator('#delete-dialog-alert')).toHaveText(NOTHING_DELETED);
