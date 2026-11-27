@@ -6,7 +6,7 @@
 | Branch | `claude/t09a-release-pipeline`, from `main` at `f4c85dd`; pull request #84 (draft) |
 | The other part | The deployment side (the migration step, the release and smoke-test scripts, their offline tests and the release log) is in the private infrastructure repository, with its own record |
 | Date | 2026-11-27 |
-| Result | **Built and tested.** Independent review: merge after fixes; every item fixed, re-review pending. The rehearsal found a defect outside T09a (below). |
+| Result | **Built and tested.** Independent review: merge after fixes; every item fixed, re-review pending. The rehearsal found a defect outside T09a, since fixed by T58a; the rehearsal now passes end to end (below). |
 
 ## What was built
 
@@ -59,6 +59,14 @@ Then it found a real defect, **not in T09a's code**:
 - **On a fresh PostgreSQL database made by `migrate`, the API cannot register a participant** (HTTP 500: `column "IsActive" is of type integer but expression is of type boolean`). The baseline migration's model file, `20261005000000_Baseline.Designer.cs`, was scaffolded against SQLite and carries SQLite store types (6 columns `INTEGER`, 71 `TEXT`), and EF uses them for PostgreSQL too. The tests do not see it: they make their PostgreSQL schema with `EnsureCreated`, not with the migrations. A database made before the migrations and then stamped does not see it either. A first release onto an empty database would.
 - With those store types removed from the baseline model, in a scratch copy only, the rehearsal passed every step: migrations, the data set, the new migrations, `/health/ready` 200, every record read back byte for byte, and one write of each kind read back.
 - The fix (remove the SQLite store types from the baseline's model file, and run a migration test on PostgreSQL in CI) is outside T09a and changes the database layer. It waits for a decision.
+
+## After T58a was merged into this branch (`021d15c`)
+
+- T58a brought the fix for the baseline migration's database types (approved by the owner), the `dbroles` command, and a sixth CI job, "New database rehearsal". `ci.yml` keeps all six jobs; the PostgreSQL job's filter runs both `HealthEndpointTests` and `DatabaseRolesPostgresTests`.
+- The upgrade rehearsal now sets the database up the T58a way (`b05993f`): the database belongs to a master login that is not a superuser, the release's own `dbroles` makes the two limited logins, migrations run as `dealoware_migrate` and the API as `dealoware_app`, with the engine's own grants.
+- **The rehearsal passed end to end** on Windows with Docker (PostgreSQL 16, TLS, Production, `VerifyFull`), from `021d15c` as the previous release to this branch: `dbroles`, the previous release's migrations (every grant step `ok`), the fixed data set, this commit's migrations, `/health/ready` 200, every record read back byte for byte, and one write of each kind read back. The defect it found earlier is gone with the real fix, not the scratch one.
+- `ReleaseMigrationRulesTests` on the merged branch: 38 passed; the check says there is no release tag yet.
+- The release script on the infrastructure side now requires the six jobs by name.
 
 ## Not done
 
