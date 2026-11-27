@@ -39,7 +39,8 @@ if (AdminBootstrapLinkCommand.IsBootstrapLinkArgs(args))
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Logs as one JSON object per line, each with the request ID (T09 spec §4.1).
+// Logs as one JSON object per line, each with the request ID; traces off unless
+// OTEL_TRACES_EXPORTER=otlp (T09 spec §4.1, §4.2). See ObservabilityExtensions.
 builder.AddDealowareObservability();
 
 builder.WebHost.ConfigureKestrel(options =>
