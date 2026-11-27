@@ -424,8 +424,9 @@ test('paging: 50, 100 or 200 a page; the range and Previous, Next and Page N; an
 
   await rows(page).first().locator('a.id').first().click();
   await expect(page.locator('h1')).toHaveText('Offer details');
+  // "Back to list" moves the page: wait for the address, do not read it once.
   await page.getByRole('link', { name: 'Back to list', exact: true }).click();
-  expect(here(page)).toBe(state);
+  await expect.poll(() => here(page)).toBe(state);
   await page.goto('/admin/offers');
   await page.goBack();
   await expectStyled(page);
@@ -581,7 +582,7 @@ test('detail pages: each record as text, free text kept as written, Back to list
   await expect(page.locator('.details')).toContainText('alex.rivera.contact@example.test');
   await expectNoSeriousAxeFindings(page, 'detail_participant');
   await page.getByRole('link', { name: 'Back to list', exact: true }).click();
-  expect(here(page)).toBe('/admin/participants?q=Alex%20Rivera');
+  await expect.poll(() => here(page)).toBe('/admin/participants?q=Alex%20Rivera');
 
   await open(page, `/admin/artifacts/${seeded.artifacts['Red bicycle']}`);
   await expect(page.locator('h1')).toHaveText('Artifact details');
