@@ -8,7 +8,7 @@
 | Server | The delete API of T06a (`AdminDeleteEndpoints`), unchanged |
 | Reference | Draft pull request #43, used as a checklist only. None of its code is used. |
 | Date | 2026-11-26 |
-| Result | **MERGE after the fixes listed below**, pending CI on the last commit |
+| Result | **PASS.** The review says MERGE after its second and third passes; the five required checks are the final record on the last commit. The owner accepted the six limits and approved the wording on 26 Nov 2026. |
 
 ## What was built
 
@@ -26,6 +26,10 @@
 ## How this was reviewed
 
 An independent reviewer read the committed code (cf16084, 22cbb2d). The builder and the reviewer were separate Claude Code agents. The review said MERGE AFTER FIXES.
+
+A second pass read the fixes (22cbb2d..1f9a7b6) and accepted each, including the two items kept on purpose (rows 9 and 10). It found two Low points, both fixed in d4242d5: one test's comment named a path the test does not take, and the no-clear-answer sentence said "Reload" while the focus was on Retry. It now reads "We couldn't confirm the delete. Try again to see whether it went through."
+
+A third pass read 21f0c95, a Firefox fix. Firefox reported Playwright's own `page.reload()` as a plain navigation, so on the first 403 the page rightly loaded itself anew once. The step now lets that first 403 reload the page, then checks that a second 403 on that page shows "Nothing was deleted." with Retry and does not reload. The rule "a page loads itself anew at most once" is still tested. The review said MERGE once WebKit, whose runner had failed to install the browser, ran green.
 
 ## Findings and what was done
 
@@ -56,7 +60,12 @@ An independent reviewer read the committed code (cf16084, 22cbb2d). The builder 
 - **.NET**, the `AdminConsole*`, `AdminEdit*` and `AdminDelete*` classes after the fixes: 346 tests, 337 passed, 9 skipped (PostgreSQL-only), 0 failed.
 - **e2e on Chromium** after the fixes: `delete.spec.ts` and `edit.spec.ts`, 27 passed. Before the fixes, the whole console suite on Chromium: 83 passed, so Delete on the list and detail pages broke none of the list, audit, shell, security-settings or session-timer specs.
 - **Firefox and WebKit** run on GitHub only (Admin UI CI). The pull request's required checks on its last commit are the final record.
-- **Commits**: cf16084 (the dialog), 22cbb2d (its browser tests), 1e6474a and 500f78c (page tests and pinned script lists), df1f9f1 (the review's fixes), and this record.
+- **Commits**: cf16084 (the dialog), 22cbb2d (its browser tests), 1e6474a and 500f78c (page tests and pinned script lists), df1f9f1 (the review's fixes), 1f9a7b6 (this record), d4242d5 (the second pass's two points), 21f0c95 (the Firefox test fix), and the final update of this record.
+- **On GitHub**, before the final update: on 334db3b, Build & Test, PostgreSQL Sec Tests, Chromium and Firefox passed; WebKit stopped before any test, because the runner could not install the browser.
+
+## The owner's decisions
+
+On 26 Nov 2026 Ivan accepted the six limits below (with T06a's) and approved the new wording, including "This confirmation is no longer valid." in place of the test design's "This confirmation expired."
 
 ## New wording, for the owner's approval
 
