@@ -20,14 +20,17 @@ namespace Dealoware.Api.Tests;
 /// <item>drops a table, a column, a key, a constraint, an index, a sequence or a schema;</item>
 /// <item>renames a table or a column;</item>
 /// <item>changes a column's type;</item>
-/// <item>makes a column required without a default (also a new required column without a
-/// default on a table the previous release writes);</item>
-/// <item>narrows a column (a shorter length, a smaller precision or scale) or adds a check
-/// constraint to a table the previous release writes;</item>
-/// <item>runs raw SQL with <c>DROP</c>, <c>RENAME</c> or <c>ALTER ... TYPE</c>.</item>
+/// <item>makes an existing column required, with or without a default (and adds a new
+/// required column without a default to a table the previous release writes);</item>
+/// <item>narrows a column (a shorter length, a smaller precision or scale), or adds a check
+/// constraint, a unique index, a unique constraint or a foreign key to a table the previous
+/// release writes;</item>
+/// <item>runs raw SQL with <c>DROP</c>, <c>RENAME</c>, <c>ALTER ... TYPE</c>,
+/// <c>SET NOT NULL</c>, <c>ADD CONSTRAINT</c>, <c>TRUNCATE</c> or <c>DELETE</c>.</item>
 /// </list>
-/// A table created in the same release is the new code's alone, so changes to it are not
-/// counted. A migration whose name ends in <see cref="ContractSuffix"/> passes only if a
+/// A table created in this release, and not in the last release's model, is the new code's
+/// alone, so changes to it are not counted. A table dropped and made again under the same
+/// name is not new. A migration whose name ends in <see cref="ContractSuffix"/> passes only if a
 /// comment in it names the release in which the code stopped using what it removes
 /// (<see cref="ContractComment"/>), and that release is tagged. A migration that was in the
 /// last release must not change at all.
@@ -51,7 +54,7 @@ public static partial class ReleaseMigrationRules
     [GeneratedRegex(@"//\s*Code stopped using this in (release-\d+)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     public static partial Regex ContractComment();
 
-    [GeneratedRegex(@"\bDROP\b|\bRENAME\b|\bALTER\b[\s\S]*?\bTYPE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bDROP\b|\bRENAME\b|\bALTER\b[\s\S]*?\bTYPE\b|\bSET\s+NOT\s+NULL\b|\bADD\s+CONSTRAINT\b|\bTRUNCATE\b|\bDELETE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex RiskySql();
 
     /// <summary>A migration file name: <c>&lt;14-digit time&gt;_&lt;Name&gt;.cs</c>, or its Designer.</summary>
@@ -69,13 +72,31 @@ public static partial class ReleaseMigrationRules
     public static ReleaseMigration Read(string id, string source, Func<string, Migration> create)
         => new(id, source, Providers.Select(p => (IReadOnlyList<MigrationOperation>)create(p).UpOperations.ToList()).ToList());
 
-    /// <summary>The findings for this release's migrations. Empty means the release only adds.</summary>
-    public static IReadOnlyList<Finding> Check(IReadOnlyList<ReleaseMigration> added, IReadOnlySet<string> taggedReleases)
-    {
-        var newTables = added
+    /// <summary>The tables a set of migrations creates or renames into (by name, all providers).</summary>
+    public static IReadOnlySet<string> TablesCreatedBy(IEnumerable<ReleaseMigration> migrations)
+        => migrations
             .SelectMany(m => m.OperationsByProvider.SelectMany(ops => ops))
-            .OfType<CreateTableOperation>()
-            .Select(t => TableKey(t.Schema, t.Name))
+            .SelectMany(op => op switch
+            {
+                CreateTableOperation t => new[] { TableKey(t.Schema, t.Name) },
+                RenameTableOperation r => new[] { TableKey(r.NewSchema ?? r.Schema, r.NewName ?? r.Name) },
+                _ => Array.Empty<string>()
+            })
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The findings for this release's migrations. Empty means the release only adds.
+    /// <paramref name="releasedTables"/> are the tables of the last release's model (see
+    /// <see cref="TablesCreatedBy"/> over the released migrations): a table counts as new only
+    /// if it is not one of them, so a table dropped and made again is not new.
+    /// </summary>
+    public static IReadOnlyList<Finding> Check(
+        IReadOnlyList<ReleaseMigration> added,
+        IReadOnlySet<string> taggedReleases,
+        IReadOnlySet<string>? releasedTables = null)
+    {
+        var newTables = TablesCreatedBy(added)
+            .Where(t => releasedTables is null || !releasedTables.Contains(t))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var findings = new List<Finding>();
@@ -161,6 +182,18 @@ public static partial class ReleaseMigrationRules
             case AddCheckConstraintOperation k when !IsNew(k.Schema, k.Table):
                 yield return ("narrowed", $"check constraint {k.Name} added to {k.Table}");
                 yield break;
+
+            case CreateIndexOperation i when i.IsUnique && !IsNew(i.Schema, i.Table):
+                yield return ("narrowed", $"unique index {i.Name} added to {i.Table}");
+                yield break;
+
+            case AddUniqueConstraintOperation u when !IsNew(u.Schema, u.Table):
+                yield return ("narrowed", $"unique constraint {u.Name} added to {u.Table}");
+                yield break;
+
+            case AddForeignKeyOperation f when !IsNew(f.Schema, f.Table):
+                yield return ("narrowed", $"foreign key {f.Name} added to {f.Table}");
+                yield break;
         }
 
         if (op.GetType().Name.StartsWith("Drop", StringComparison.Ordinal) && !IsNew(SchemaOf(op), TableOf(op)))
@@ -181,9 +214,10 @@ public static partial class ReleaseMigrationRules
             yield return ("type change", $"column {column} changes type");
         }
 
-        if (old.IsNullable && !a.IsNullable && a.DefaultValue is null && a.DefaultValueSql is null)
+        // Even with a default: the previous release may still write NULL into it.
+        if (old.IsNullable && !a.IsNullable)
         {
-            yield return ("required without default", $"column {column} becomes required with no default");
+            yield return ("made required", $"column {column} becomes required");
         }
 
         if (a.MaxLength is { } len && (old.MaxLength is null || len < old.MaxLength))
@@ -236,6 +270,7 @@ public static partial class ReleaseMigrationRules
         string? LastRelease,
         IReadOnlySet<string> TaggedReleases,
         IReadOnlyList<string> AddedIds,
+        IReadOnlyList<string> ReleasedIds,
         IReadOnlyList<Finding> ReleasedChanged);
 
     /// <summary>
@@ -271,7 +306,7 @@ public static partial class ReleaseMigrationRules
         if (last is null)
         {
             // No release yet: no previous release has to keep working.
-            return (new History(null, tags, [], []), null);
+            return (new History(null, tags, [], [], []), null);
         }
 
         var atTagText = Git(repoRoot, "ls-tree", "-r", "--name-only", last, "--", MigrationsFolder + "/");
@@ -307,7 +342,11 @@ public static partial class ReleaseMigrationRules
             .Where(id => !atTag.Contains(id + ".cs"))
             .Order(StringComparer.Ordinal)
             .ToList();
-        return (new History(last, tags, added, changed), null);
+        var released = migrationIds
+            .Where(id => atTag.Contains(id + ".cs"))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        return (new History(last, tags, added, released, changed), null);
     }
 
     public static IReadOnlySet<string> MigrationFilesOnDisk(string repoRoot)

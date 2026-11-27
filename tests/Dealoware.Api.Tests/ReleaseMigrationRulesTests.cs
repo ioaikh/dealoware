@@ -59,7 +59,13 @@ public class ReleaseMigrationRulesTests
         var added = history.AddedIds
             .Select(id => ReleaseMigrationRules.Read(id, SourceOf(root, id), migrations[id]))
             .ToList();
-        var findings = history.ReleasedChanged.Concat(ReleaseMigrationRules.Check(added, history.TaggedReleases)).ToList();
+        // The last release's model: every table its migrations made. A table dropped and made
+        // again in this release is therefore not "new".
+        var releasedTables = ReleaseMigrationRules.TablesCreatedBy(history.ReleasedIds
+            .Select(id => ReleaseMigrationRules.Read(id, string.Empty, migrations[id])));
+        var findings = history.ReleasedChanged
+            .Concat(ReleaseMigrationRules.Check(added, history.TaggedReleases, releasedTables))
+            .ToList();
 
         _output.WriteLine($"Last release: {history.LastRelease}. Migrations added since: {(added.Count == 0 ? "none" : string.Join(", ", history.AddedIds))}.");
         Assert.True(
@@ -107,7 +113,15 @@ public class ReleaseMigrationRulesTests
     [InlineData(typeof(RenamesAColumn), "rename")]
     [InlineData(typeof(RenamesATable), "rename")]
     [InlineData(typeof(ChangesAType), "type change")]
-    [InlineData(typeof(MakesAColumnRequired), "required without default")]
+    [InlineData(typeof(MakesAColumnRequired), "made required")]
+    [InlineData(typeof(MakesAColumnRequiredWithADefault), "made required")]
+    [InlineData(typeof(AddsAUniqueIndexToAnOldTable), "narrowed")]
+    [InlineData(typeof(AddsAUniqueConstraintToAnOldTable), "narrowed")]
+    [InlineData(typeof(AddsAForeignKeyToAnOldTable), "narrowed")]
+    [InlineData(typeof(RawSqlSetNotNull), "raw SQL")]
+    [InlineData(typeof(RawSqlAddConstraint), "raw SQL")]
+    [InlineData(typeof(RawSqlTruncate), "raw SQL")]
+    [InlineData(typeof(RawSqlDelete), "raw SQL")]
     [InlineData(typeof(AddsARequiredColumnWithNoDefault), "required without default")]
     [InlineData(typeof(ShortensAColumn), "narrowed")]
     [InlineData(typeof(AddsACheckToAnOldTable), "narrowed")]
@@ -126,7 +140,6 @@ public class ReleaseMigrationRulesTests
     [InlineData(typeof(AddsANullableColumn))]
     [InlineData(typeof(AddsARequiredColumnWithADefault))]
     [InlineData(typeof(AddsAnIndex))]
-    [InlineData(typeof(MakesAColumnRequiredWithADefault))]
     [InlineData(typeof(LengthensAColumn))]
     [InlineData(typeof(RawSqlThatOnlyAdds))]
     public void AnAddition_Passes(Type migration)
@@ -142,6 +155,29 @@ public class ReleaseMigrationRulesTests
         // The previous release never saw it.
         var findings = ReleaseMigrationRules.Check(
             [Read("20990101000000_AddsATable", new AddsATable()), Read("20990101000001_ChangesTheNewTable", new ChangesTheNewTable())],
+            NoReleases);
+
+        Assert.Empty(findings);
+    }
+
+    [Fact]
+    public void ATableDroppedAndMadeAgain_IsNotNew_SoTheDropIsRefused()
+    {
+        // The last release's model has Offers. This release drops it and makes it again.
+        var released = ReleaseMigrationRules.TablesCreatedBy([Read("20990101000000_MakesOffers", new MakesOffers())]);
+        var findings = ReleaseMigrationRules.Check(
+            [Read("20990102000000_DropsOffers", new DropsOffers()), Read("20990102000001_MakesOffers", new MakesOffers())],
+            NoReleases,
+            released);
+
+        Assert.Contains(findings, f => f.Rule == "drop" && f.Detail.Contains("Offers"));
+    }
+
+    [Fact]
+    public void AUniqueIndexOrForeignKey_OnATableOfThisRelease_Passes()
+    {
+        var findings = ReleaseMigrationRules.Check(
+            [Read("20990101000000_AddsATable", new AddsATable()), Read("20990101000001_ConstrainsTheNewTable", new ConstrainsTheNewTable())],
             NoReleases);
 
         Assert.Empty(findings);
@@ -304,6 +340,71 @@ public class ReleaseMigrationRulesTests
     {
         protected override void Up(MigrationBuilder b)
             => b.AddCheckConstraint(name: "CK_Offers_Amount", table: "Offers", sql: "\"Amount\" > 0");
+    }
+
+    private sealed class AddsAUniqueIndexToAnOldTable : Migration
+    {
+        protected override void Up(MigrationBuilder b)
+            => b.CreateIndex(name: "IX_Offers_Terms", table: "Offers", column: "Terms", unique: true);
+    }
+
+    private sealed class AddsAUniqueConstraintToAnOldTable : Migration
+    {
+        protected override void Up(MigrationBuilder b)
+            => b.AddUniqueConstraint(name: "AK_Offers_Terms", table: "Offers", column: "Terms");
+    }
+
+    private sealed class AddsAForeignKeyToAnOldTable : Migration
+    {
+        protected override void Up(MigrationBuilder b)
+            => b.AddForeignKey(name: "FK_Offers_Strategies", table: "Offers", column: "StrategyId",
+                principalTable: "Strategies", principalColumn: "Id");
+    }
+
+    private sealed class RawSqlSetNotNull : Migration
+    {
+        protected override void Up(MigrationBuilder b) => b.Sql("ALTER TABLE \"Offers\" ALTER COLUMN \"Terms\" SET NOT NULL;");
+    }
+
+    private sealed class RawSqlAddConstraint : Migration
+    {
+        protected override void Up(MigrationBuilder b) => b.Sql("ALTER TABLE \"Offers\" ADD CONSTRAINT ck_amount CHECK (\"Amount\" > 0);");
+    }
+
+    private sealed class RawSqlTruncate : Migration
+    {
+        protected override void Up(MigrationBuilder b) => b.Sql("TRUNCATE \"AdminSessions\";");
+    }
+
+    private sealed class RawSqlDelete : Migration
+    {
+        protected override void Up(MigrationBuilder b) => b.Sql("delete from \"Offers\" where \"Amount\" = 0;");
+    }
+
+    private sealed class MakesOffers : Migration
+    {
+        protected override void Up(MigrationBuilder b)
+            => b.CreateTable(
+                name: "Offers",
+                columns: t => new { Id = t.Column<Guid>(nullable: false) },
+                constraints: t => t.PrimaryKey("PK_Offers", x => x.Id));
+    }
+
+    private sealed class DropsOffers : Migration
+    {
+        protected override void Up(MigrationBuilder b) => b.DropTable(name: "Offers");
+    }
+
+    private sealed class ConstrainsTheNewTable : Migration
+    {
+        protected override void Up(MigrationBuilder b)
+        {
+            b.CreateIndex(name: "IX_ReleaseNotes_Text", table: "ReleaseNotes", column: "Text", unique: true);
+            b.AddForeignKey(name: "FK_ReleaseNotes_Offers", table: "ReleaseNotes", column: "Id",
+                principalTable: "Offers", principalColumn: "Id");
+            b.AlterColumn<string>(name: "Text", table: "ReleaseNotes", maxLength: 100, nullable: false,
+                oldClrType: typeof(string), oldMaxLength: 200, oldNullable: true);
+        }
     }
 
     private sealed class AddsATable : Migration
