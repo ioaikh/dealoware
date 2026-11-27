@@ -13,6 +13,14 @@ namespace Dealoware.Api.Observability;
 /// middleware only makes sure an activity exists, and answers with its IDs. It runs first, so a
 /// request refused by a later gate still gets its ID.
 /// </para>
+/// <para>
+/// The header is set when the answer starts (<c>Response.OnStarting</c>), so it survives a later
+/// <c>Response.Clear()</c>, such as the admin host's own 500. Outside Development an exception that
+/// reaches this middleware (the engine host has no other handler; the admin host catches its own)
+/// becomes a bare 500 with no body, so the ID is still returned and nothing of the fault is shown.
+/// The exception is logged (its type and stack only: see <see cref="JsonLineConsoleFormatter"/>).
+/// In Development the developer exception page keeps it.
+/// </para>
 /// </summary>
 public sealed class RequestIdMiddleware
 {
@@ -24,7 +32,7 @@ public sealed class RequestIdMiddleware
 
     public RequestIdMiddleware(RequestDelegate next) => _next = next;
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, IHostEnvironment environment, ILogger<RequestIdMiddleware> logger)
     {
         Activity? own = null;
         if (Activity.Current is null)
@@ -44,9 +52,24 @@ public sealed class RequestIdMiddleware
 
         try
         {
-            var activity = Activity.Current!;
-            context.Response.Headers[HeaderName] = Format(activity);
-            await _next(context);
+            var value = Format(Activity.Current!);
+            context.Response.OnStarting(static state =>
+            {
+                var (http, header) = ((HttpContext, string))state;
+                http.Response.Headers[HeaderName] = header;
+                return Task.CompletedTask;
+            }, (context, value));
+
+            try
+            {
+                await _next(context);
+            }
+            catch (Exception ex) when (!environment.IsDevelopment() && !context.Response.HasStarted)
+            {
+                logger.LogError(ex, "Unhandled exception: answered 500 with no detail");
+                context.Response.Clear();
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            }
         }
         finally
         {
