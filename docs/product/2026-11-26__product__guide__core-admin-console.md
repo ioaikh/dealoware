@@ -7,7 +7,7 @@
 | **For** | The Core owner, the one person who signs in to the console |
 | **Describes** | What `main` does at the time of writing. Every on-screen sentence in quotes is copied from the code. |
 | **Sources** | The copy classes in `src/Dealoware.Api/Admin/` (`AdminConsoleCopy.cs`, `AdminEditCopy.cs`, `AdminDeleteCopy.cs` and the sign-in, setup, reset and security settings copy), and the review records `docs/verification/2026-11-26__qa__verification__*.md` |
-| **Self-verify record** | [2026-11-26__qa__verification__t08-self-verify.md](../verification/2026-11-26__qa__verification__t08-self-verify.md) |
+| **Self-verify record** | [2026-11-26__qa__verification__t08-self-verify.md](../verification/2026-11-26__qa__verification__t08-self-verify.md), which also gives the technical terms behind this guide |
 
 ## 1. What the console is for
 
@@ -18,9 +18,9 @@ The console lets the Core owner look after the data the negotiation engine holds
 - **Audit log**: a read-only record of every sign-in event and every change made in the console.
 - **Security settings**: the owner's own password, authenticator app and recovery codes.
 
-There is one owner and no other admin. The owner is the address configured as `CoreOwner:Email`. Nobody else can sign in, and there is no list of admin users to add to.
+There is one owner and no other admin. The owner is the one email address set in the server's configuration. Nobody else can sign in, and there is no list of admin users to add to.
 
-The console answers only on its own address, `admin.core.dealoware.com` (configured under `AdminHost`). On that address the engine's routes answer 404, and on the engine's address every `/admin` route answers 404.
+The console works only at its own address, `admin.core.dealoware.com`. Opened at the engine's address, the console's pages say they don't exist; and the engine's own pages don't exist at the console's address.
 
 All times in the console are Eastern Time (ET).
 
@@ -52,7 +52,7 @@ Sign-in has two steps.
 **The rules behind it** (Spec §8.6):
 
 - 5 failed password or code attempts for the account within 15 minutes lock sign-in for 30 minutes.
-- 20 failed attempts from one network within 15 minutes slow that network down for 30 minutes.
+- 20 failed attempts from one network within 15 minutes block sign-in from that network for 30 minutes.
 - Step 2 must be done within 5 minutes of step 1, with at most 5 wrong codes.
 
 The Security settings page shows when sign-in was locked (section 6).
@@ -76,10 +76,10 @@ A link that was used or is older than one hour shows "This link no longer works"
 - **A session ends after 30 minutes without use, and always 8 hours after sign-in.** Using the console renews the 30 minutes. Nothing renews the 8 hours.
 - **"Still there?"** opens 2 minutes before the idle end: "Your session will end within 2 minutes because there has been no activity." "Stay signed in" renews it; "Sign out" ends it.
 - **"Your session is ending"** opens 2 minutes before the 8-hour end: "Your session will end within 2 minutes because of the 8-hour limit, and it can't be extended. Anything you haven't saved will be lost." It has one button, "OK".
-- **When a session ends**, the page goes to sign-in with "Your session has ended. Sign in again to continue." After signing in, the console returns to the page that was open.
+- **When a session ends**, the page goes to sign-in with "Your session has ended. Sign in again to continue." If sign-in is finished within 10 minutes, the console returns to the page that was open; otherwise it opens on Stats.
 - **"Sign out"** is in the menu on every page. It ends the session, writes `sign_out` to the audit log, and shows "You've been signed out." Opening an address cannot sign anyone out; only the button can.
 - No timer keeps a session alive on its own. Only the owner's use or "Stay signed in" does.
-- Every signed-in page is sent with `Cache-Control: no-store`, so the browser does not keep a copy.
+- The browser is told not to keep a copy of any signed-in page.
 
 ## 6. Security settings
 
@@ -88,7 +88,7 @@ A link that was used or is older than one hour shows "This link no longer works"
 - **"Password"**: "Current password", "New password", "Confirm new password", and a code from the app or a recovery code, then "Change password". Success ends every session, this one included, and goes to sign-in.
 - **"Recovery codes"**: shows how many are left ("N codes left"). "Create new codes" first asks "Confirm it's you" ("Enter your current password and a code from your authenticator app."). "New codes replace all of your current codes. Your old codes stop working." The new codes are shown once.
 - **"Authenticator"**: "Set up again" is for a new phone. "Your current app keeps working until you confirm a code from the new one." It also asks "Confirm it's you" first. After the confirm: "Your authenticator app has been changed. Your old recovery codes no longer work." New codes are shown once.
-- **"Recent sign-in activity"**: "Your last 20 sign-in events. Times are Eastern Time (ET)." The "Network (hashed)" column shows a short keyed hash, never an address. If sign-in was locked in the last 24 hours, a lock notice says when, for example "Sign-in to this account was locked from {start} to {end}."
+- **"Recent sign-in activity"**: "Your last 20 sign-in events. Times are Eastern Time (ET)." The "Network (hashed)" column shows a short fingerprint of the network, never its address. If sign-in was locked in the last 24 hours, a lock notice says when, for example "Sign-in to this account was locked from {start} to {end}."
 
 "Confirm it's you" lasts 5 minutes for this session only. Creating codes and changing the authenticator end every other session. A wrong answer counts toward the same lock as sign-in, and the message never says which part was wrong: "We couldn't confirm it's you. Check your current password and code."
 
@@ -105,7 +105,7 @@ The first page, "Stats", shows five totals: "Participants", "Open negotiations",
 | Participants | Name, ID, Status, Created, Updated | "Search by display name or Core identifier" | Status (Active, Suspended), dates |
 | Artifacts | Name, Owner participant, Created, Updated | "Search by artifact name" | Owner participant, dates |
 | Negotiations | ID, Artifact, Participants, Status, Created, Updated | "Search by artifact or participant name" | Status (Open, Closed, Expired), Participant, Artifact, Negotiation ID, dates |
-| Offers | ID, Negotiation ID, Artifact, Offering participant, Amount, Status, Created, Updated | "Search by artifact, offering participant, or negotiation id" | Status (Open, Accepted, Declined, Superseded, Cancelled, Withdrawn), Participant, Artifact, Negotiation ID, "Amount min", "Amount max", dates |
+| Offers | ID, Negotiation ID, Artifact, Offering participant, Amount, Status, Created, Updated | "Search by artifact, offering participant, or negotiation id" | Status (Open, Accepted, Declined, "Superseded (countered)", Cancelled, Withdrawn), Participant, Artifact, Negotiation ID, "Amount min", "Amount max", dates |
 
 - Search ignores case and matches part of a name.
 - Press "Apply filters". Each filter in use shows as a chip; "Remove" drops one and "Clear all filters" drops all.
@@ -140,7 +140,7 @@ Press "Edit" on a detail page. Only these can change:
 
 **Cancelling an open offer:** "Cancel offer" asks "Cancel offer {ID}?" and says "Its amount, currency and terms stay as sent. Cancelled is final." The buttons are "Cancel offer" and "Keep offer".
 
-**When something changed meanwhile.** A party may act while the owner is editing. The party's action always wins. The console then says "This record changed after you opened it. Reload it and try again." and offers "Reload". Nothing of the owner's change is saved. A change the server refuses for another reason says "You can't do that. Nothing was changed."
+**When something changed meanwhile.** A party may act while the owner is editing. The party's action always wins. The console then says "This record changed after you opened it. Reload it and try again." and offers "Reload". Nothing of the owner's change is saved. A value that is not allowed gets its own sentence under the field, for example "Enter a valid end time.", and the summary "Your changes were not saved." Any other refused change says "You can't do that. Nothing was changed."
 
 Every edit, close, expiry and cancel is written to the audit log with the values before and after.
 
@@ -172,25 +172,25 @@ Every edit, close, expiry and cancel is written to the audit log with the values
 "Audit log" is in the menu. "Read-only record of admin authentication and entity changes. This log cannot be edited or deleted."
 
 - **The list** is newest first, with "Time (ET)", "Actor", "Action", "Entity type", "Entity ID" and "Outcome" ("Success", "Failure" or "Denied"). Filter by action (several at once), entity type and a date range ("From", "To"). Page size 50, 100 or 200.
-- **An entry** shows its fields, then "Before and after" side by side, with "Changed" beside each field that differs. "IP HMAC prefix" shows the first 12 characters of a keyed hash of the address; no address is ever shown or stored.
-- **What is recorded**: sign-ins and failed sign-ins, codes and recovery codes used, setup links, password resets and changes, authenticator changes, new recovery codes, sign-outs, and every edit, close, expiry, cancel and delete (one entry for each record a delete marks, all sharing one correlation id).
+- **An entry** shows its fields, then "Before and after" side by side, with "Changed" beside each field that differs. "IP HMAC prefix" shows a short fingerprint of the network the request came from. It is made with a secret key, so it cannot be turned back into the address. The audit log never stores the address itself.
+- **What is recorded**: sign-ins and failed sign-ins, codes and recovery codes used, setup links, password resets and changes, authenticator changes, new recovery codes, sign-outs, and every edit, close, expiry, cancel and delete (one entry for each record a delete marks, recorded together as one delete).
 - **Never recorded**: passwords, codes, keys, tokens or the plain network address.
 - For a failed identity check or password change, the reason is not shown. That keeps the log from telling someone holding a stolen session whether a guessed password was right. The stored entry keeps it.
-- Nothing in the console or its API can change or remove an entry: every change method answers 405.
+- Nothing in the console can change or remove an entry.
 
 ## 11. What the console never does
 
-- **It never changes what a party sent.** An offer's amount, currency and terms are never editable. The field policy gives the owner read-only access to them, and there is no edit path for them. On an offer, the console can only cancel an open one. It cannot set Accepted, Declined or Withdrawn.
+- **It never changes what a party sent.** An offer's amount, currency and terms are never editable. The rules the console runs on let the owner read them only, and there is no control to change them. On an offer, the console can only cancel an open one. It cannot set Accepted, Declined or Withdrawn.
 - **It never erases.** Delete is soft: a mark, not a removal. There is no hard delete and no way to edit or remove an audit entry.
 - **It never writes over a party's action.** If a party acted since the owner opened a record, the owner's change is refused and the party's result stands.
-- **It never lets anyone in without a full session.** Every signed-in page and request passes the same session check: a session that exists, used in the last 30 minutes, under 8 hours old, with both sign-in steps done, belonging to the configured owner. The only routes open without a session are the sign-in, first-time setup, authenticator setup, reset and sign-out routes and their scripts, each named on one exact list (`AdminSignedOutExemptions`). The authenticator and code pages also need a sign-in in progress. This hand-off adds nothing to that list.
-- **It never accepts a change from another site.** Every POST, PATCH and DELETE needs the console's own Origin and its anti-forgery token.
+- **It never lets anyone in without a full session.** Every signed-in page and request passes the same session check: a session that exists, used in the last 30 minutes, under 8 hours old, with both sign-in steps done, belonging to the configured owner. The only pages open without a session are those for signing in, first-time setup, authenticator setup, password reset, the "This link no longer works" page and signing out, with the files they need. They are on one fixed list. The authenticator and code pages also need a sign-in in progress. This hand-off adds nothing to that list.
+- **It never accepts a change sent from another website.** Every change must come from the console's own pages and carry a hidden check value that only those pages hold.
 - **It never shows the network address, a password, a code or a key** in a page, a log or the audit log.
 - It has no other admins, no single sign-on, no email codes as a second factor, and no security check other than Cloudflare Turnstile.
 
 ## 12. Limits the owner accepted
 
-These are the limits listed in the review records of the merged pieces, T02 to T07, one line each. This section is the one list of them. Limits a later piece removed are listed at the end of this section.
+These are the limits of the merged pieces, T02 to T07, one line each. Each comes from the "Limits" section of a review record, or from a review finding the record marks as Accepted, Open or Not changed. This section is the one list of them. Limits a later piece removed are listed at the end of this section.
 
 What the owner accepted, piece by piece:
 
@@ -226,7 +226,7 @@ What the owner accepted, piece by piece:
 ### Password reset
 
 - Reset needs the security check's site key and private key configured; start-up warns when either is missing.
-- An out-of-date anti-forgery token on submit shows the retry sentence; re-open the emailed link.
+- If the page's hidden check value is out of date when the form is sent, the retry sentence shows; re-open the emailed link.
 - The retry sentence may show when the change went through; the next press leads to sign-in, which says so.
 - If a page script fails to load, reloading cannot help; re-open the emailed link.
 - Checking the link again uses a slot of the reset budget.
@@ -240,14 +240,14 @@ What the owner accepted, piece by piece:
 - The real Cloudflare widget has never been loaded; every test uses a stand-in.
 - No phone has scanned the QR code.
 - No screen-reader pass has been done on any page.
-- WebKit tests use Playwright's build, not Safari on a Mac.
-- No real back/forward-cache test.
+- The Safari-type tests use a test build of Safari's engine, not Safari on a Mac.
+- How the browser restores a page from memory on Back and Forward has not been tested in a real setting.
 
 ### The console shell, session and sign-out
 
-- Browsers too old to send `Sec-Fetch-*` headers cannot sign out with JavaScript off; the request is refused.
-- The page "You can't do that." (S-D4) is not built, and `Clear-Site-Data` is not sent.
-- The anti-forgery token is not tied to the session nor renewed at sign-in; the Origin check and the header-only token still stop forgery.
+- Very old browsers cannot sign out with JavaScript turned off; the sign-out is refused, which is the safe way to fail.
+- There is no separate "You can't do that." page; a refused change shows its sentence inside the page. At sign-out the browser is not told to clear its stored data.
+- The hidden check value is not tied to the session and not renewed at sign-in; the other checks still stop changes sent from other websites.
 - The session-ended sentence is "Your session has ended. Sign in again to continue.", not the test design's "Your session ended. …".
 - "Stay signed in" after a new sign-in in another tab shows the retry sentence instead of reloading.
 - With several tabs open, each reloads to sign-in at the end; the page kept for afterwards is the last tab that reloaded.
@@ -258,13 +258,13 @@ What the owner accepted, piece by piece:
 - With "Show deleted" on, a deleted owner, party or artifact appears by name in rows and chips without the "Deleted" mark.
 - With it off, search can still match the name of a deleted record a row refers to.
 - A detail page's own list state is not kept across sign-in.
-- Links in table cells are under 24 px high, and the Offers table scrolls sideways at 1280 px.
-- The read API's default order, status parsing, list rows without emails and deleted-record detail changed; the console is its only caller.
+- Links in table cells are smaller than the usual minimum touch size, and the Offers table scrolls sideways on a laptop-width screen.
+- The data the console's pages read changed shape (default order, how statuses are read, no emails in list rows, how a deleted record's details are asked for); the console is the only thing that reads it.
 
 ### Security settings
 
-- A recovery-code sign-in through the older path, used only when no owner account row exists, shows no banner.
-- The lock notice and session-ended cases are tested in the browser with stood-in replies.
+- A recovery-code sign-in made before the owner's account record exists shows no banner.
+- On this page, the lock notice and the session-ended cases are tested with stood-in server replies.
 - If the reply to "Create new codes" or to an authenticator confirm is lost, the new codes are never seen; make new ones again.
 - The codes-left count in the banner is out of date on this page until the next page load.
 - No notice email is sent after a security change.
@@ -281,18 +281,18 @@ What the owner accepted, piece by piece:
 - A change that changes nothing is refused with "No changes." and writes nothing.
 - An artifact with several subject entities needs the entity named.
 - Changing only "Ends at" is refused if the negotiation's offers changed since it was opened.
-- The engine's new conflict answer also covers a clash that has nothing to do with the console.
+- When a party's request clashes with another save, the engine now answers that the record changed; this also covers clashes that have nothing to do with the console.
 - A party can place an offer at the instant a Close is saved, leaving an open offer in a closed negotiation.
 
 ### Deleting
 
 - A deleted participant's own artifacts stay live and searchable (Spec §11.2).
 - A new offer or negotiation saved at the same instant as a delete can stay live under a deleted parent; the engine never shows it or acts on it.
-- Delete requests refuse any query string.
+- A delete request with anything added to its address is refused.
 - The audit entries of a participant delete leave out the participant's emails.
-- Delete is its own action and does not ask the field policy for a write.
+- Delete is its own action, under its own rules, separate from the rules for editing fields.
 - A blocked artifact lists at most 100 negotiations; the count is always complete.
-- At 320 px, a row's Delete is reached by scrolling the table sideways.
+- On a narrow phone screen, a row's Delete is reached by scrolling the table sideways.
 - Typed confirmation is asked only for a participant with records going with it and for an open negotiation.
 - The delete dialog cannot be used without JavaScript.
 - A confirmation lasts five minutes; the dialog does not count down.
@@ -301,14 +301,15 @@ What the owner accepted, piece by piece:
 
 - Action names and entity types show as stored, for example `entity_edit`.
 - The list has no sort control and no actor filter.
-- An unknown action name in the API's filter is refused rather than matching nothing.
-- The correlation id is in the API but not on the page.
+- Filtering by an action name the log does not know is refused, rather than showing an empty list.
+- The reference that ties together the entries of one delete is not shown on the page.
 
 ### Removed by a later piece
 
 - "Do not run `bootstrap-link` yet" and "do not put the console in front of the owner yet": the setup, sign-in, authenticator, reset and console pages are now built.
 - "Audit log" missing from the menu: added with the audit log viewer.
-- Browser tests not in CI: every suite runs in Chromium, Firefox and WebKit on each pull request.
+- Browser tests not run on every change: every suite now runs in Chrome-type, Firefox and Safari-type browsers on each pull request.
+- The set-new-password page lacked its confirm field, show/hide, password rules, recovery-code switch and exact success check: finished in the next piece.
 - Unsaved-form warnings waiting for the edit pages: built with editing.
 - The page asked for not kept across sign-in: the console now returns to it.
 
@@ -317,7 +318,7 @@ What the owner accepted, piece by piece:
 The console is built, not live. Turning it on is a deployment and waits for the owner's OK. Before the first real use:
 
 1. Run the database migrations before starting the new version.
-2. Configure the security check's site key and private key, load the real widget once, and confirm that it appears and that the page's content policy does not block it.
+2. Configure the security check's two keys, load the real check once, and confirm that it appears and that the page's own security settings do not block it.
 3. Set up the mail sending identity, so setup and reset links arrive.
 4. Scan the QR code once with a real phone and sign in with its code.
 5. Do one screen-reader pass over the sign-in pages and the console.

@@ -27,7 +27,7 @@ The agent teams named in the October gates (Code QA, Security, UI/UX) are not ru
 | 4 | Lists, search, paging, stats, edit, delete, confirm, soft delete, cascades, audit per Spec | Met | Records [t04-lists-and-detail](2026-11-26__qa__verification__t04-lists-and-detail.md), [t04-console-shell](2026-11-26__qa__verification__t04-console-shell.md), [t05-edit-api](2026-11-26__qa__verification__t05-edit-api.md), [t05-edit-page](2026-11-26__qa__verification__t05-edit-page.md), [t06-delete-server](2026-11-26__qa__verification__t06-delete-server.md), [t06-delete-dialog](2026-11-26__qa__verification__t06-delete-dialog.md), [t07-audit-viewer](2026-11-26__qa__verification__t07-audit-viewer.md); `AdminReadApiTests`, `AdminListPageTests`, `AdminConsoleShellTests.Stats_*`, `AdminEditApiTests`, `AdminDeleteApiTests`, `AdminAudit*Tests` |
 | 5 | No password values; no AWS account IDs; no process-global flood limiter without approval | Met | `AdminMailInterfaceTests.TD_ADM_150_MailSources_OmitSecretsAndAwsAccountDetails`, `AdminOutPackTests.TdAdm150_IpHasherKeyNameOnly_NoHardCodedKeyInSource`, `AdminBootstrapTests.TD_ADM_150_NoTokenPasswordOrHashInLogsOrAudit`, `AdminOutPackTests.TdAdm054_NoProcessGlobalAuthFloodLimiterType`, `TdAdm040AuthLockoutSessionTests.TdAdm054_NoProcessGlobalAuthFloodLimiter` |
 | 6 | Deploy, harden and UI-lane gates respected | Met for deploy; met differently for the UI lane | No admin piece deployed anything; the console is built, not live, and turning it on waits for the owner's OK (guide §13). The UI-lane approval was met in the form described above (browser tests in three engines, axe scans, keyboard-only runs, screenshots); there was no UI/UX team to sign. |
-| 7 | Step 7 W1–W5 and Step 9 E1–E12 delivered per the coverage list; no Withdrawn writer; no migration beyond the cited `UpdatedAt` change | Met, narrowed by the owner | W1–W5: `OfferStatus.Withdrawn = 5`, the Offers status filter and badge. No route sets Withdrawn: `Offer.Withdraw` (maker-only) has no caller in `src/`, and the edit API refuses it (`AdminEditApiTests.TdAdm178_AnOutcomeTheOwnerMayNotSet_Refused`). E1–E12: built except E9–E11 (offer amount, currency, terms), which the owner removed on 26 Nov 2026 so an offer stays as sent ([t05-edit-api](2026-11-26__qa__verification__t05-edit-api.md), "Two decisions"). No migration was added for Withdrawn or for E1–E12. The other admin migrations add tables for sign-in, security settings (`20261126000400`), the recovery banner (`…500`) and delete confirmations (`…600`); the November ones are additive only and each is reviewed in its record. |
+| 7 | Step 7 W1–W5 and Step 9 E1–E12 delivered per the coverage list; no Withdrawn writer; no migration beyond the cited `UpdatedAt` change | Met, narrowed by the owner | W1–W5: `OfferStatus.Withdrawn = 5`, the Offers status filter and badge. No route sets Withdrawn: `Offer.Withdraw` (maker-only) has no caller in `src/`, and the edit API refuses it (`AdminEditApiTests.E12_TdAdm178_AnOutcomeTheOwnerMayNotSet_Refused`). E1–E12: built except E9–E11 (offer amount, currency, terms), which the owner removed on 26 Nov 2026 so an offer stays as sent ([t05-edit-api](2026-11-26__qa__verification__t05-edit-api.md), "Two decisions"). No migration was added for Withdrawn or for E1–E12. The other admin migrations add tables for sign-in, security settings (`20261126000400`), the recovery banner (`…500`) and delete confirmations (`…600`); the November ones are additive only and each is reviewed in its record. |
 | 8 | No MotorMarket or DC4; no Cognito; no paid LLM provisioned | Met | No such name in `src/`; no admin piece adds a provider. |
 | 9 | Security points 1–14 evidence ready for the Security confirm | Met differently | Each record's adversarial review covers the security points of its piece. No Security confirm file was issued in the October form, because no Security team is running. |
 | 10 | UI Definition of Done (UX1-A11): UI cases mapped to UX1-A01–A10 through UXR IDs, and green | Partly met | The test design's TD-ADM-UI cases named in each record are green in CI on Chromium, Firefox and WebKit (`.github/workflows/admin-ui-ci.yml`). The mapping to UXR IDs could not be checked: the UX addendum that holds UXR-A01 to A45 is not in this repository, as the setup-page record notes. |
@@ -62,7 +62,7 @@ Guide §12 is the one list of the limits. What the owner accepted, piece by piec
 On Windows, against `main` at `377296c`, with SQLite:
 
 - The OUT-list, policy, host and audit tests named above (`AdminOutPackTests`, `AdminSurfaceTests`, `CoreOwnerFieldPolicyTests`, `AdminHostOptionsValidatorTests` and every `TdAdm006`, `007`, `021`, `041`, `054`, `091`, `100`, `101`, `TD_ADM_006`, `110` and `150` case): 175 passed, none failed.
-- The must-cover and IN-list tests named above (Stats, `TdAdm040`, `064`, `090` to `095`, `102`, `178`, `TD_ADM_030`, `060`, `065`, `178`, `AdminSessionTimerTests` and the host start-up tests): 194 passed, 4 skipped, none failed. The four skipped need PostgreSQL; the PostgreSQL job runs them on every pull request.
+- The must-cover and IN-list tests named above (Stats, `TdAdm040`, `064`, `090` to `095`, `102`, `TD_ADM_030`, `060`, `065`, case 178 in both test-name spellings, `AdminSessionTimerTests` and the host start-up tests): 194 passed, 4 skipped, none failed. The four skipped need PostgreSQL; the PostgreSQL job runs them on every pull request.
 
 No repository check covers documents (there is no link checker or document test), so none was run. The links in this record and in the guide were checked by hand against the files on `main`.
 
@@ -79,19 +79,47 @@ The six admin drafts of 6 October are closed, each with a comment naming the pul
 | #42 audit log viewer | #70 |
 | #43 delete with confirmation | #75, #78 |
 
-Three older pull requests are still open and are not admin console work. **They wait for the owner's decision; none was closed here.**
+Eight pull requests are still open that are not admin console work, besides T08a (#80) and this one (#81). **They wait for the owner's decision; none was closed here.**
 
 | Pull request | What it is | Recommendation |
 |--------------|-----------|----------------|
-| #40 (6 Oct) | Dependabot: Playwright bump in the old `e2e/` folder | **Close.** It is seven weeks old, and Dependabot opens a fresh one if the folder still needs it. |
+| #40 (6 Oct) | Dependabot: Playwright bump in the old `e2e/` folder | **Close.** It is seven weeks old. |
+| #53, #55, #58, #61, #66 (26 Nov) | Dependabot: Playwright bumps in `e2e/bootstrap`, `e2e/sign-in`, `e2e/enrol`, `e2e/reset` and `e2e/console` | **Close.** |
 | #48 (20 Oct) | A user guide for the negotiations API | **Keep open** for the later step that publishes the API reference. |
 | #49 (20 Oct, draft) | Postman test hardening | **Keep open** for the later end-to-end run of the engine. |
 
+The recommendation to close all six Dependabot pull requests rests on one fact: Dependabot opens a fresh one for any folder that still needs the bump.
+
 ## Questions for the owner
 
-1. **The three open pull requests above.** Recommended: close #40; keep #48 and #49 for later steps.
+1. **The open pull requests above.** Recommended: close the Dependabot bumps #40, #53, #55, #58, #61 and #66; keep #48 and #49 for later steps.
 2. **The "You can't do that." page (S-D4) was never built.** Neither the Spec nor the Story says when it shows, and no signed-in page answers 403 today. A refused change already shows its sentence inside the page ("You can't do that. Nothing was changed."), which the test design allows (TD-ADM-UI-na-B13). **Recommended: do not build it.**
 3. **The audit log's four new words**, "Success", "Failure", "Denied" and "Reason" (record t07-audit-viewer), have no recorded approval. Recommended: approve them as they are on `main`.
+
+## Technical detail behind the guide
+
+The guide is written for the owner in plain words. The exact terms behind it:
+
+| Guide says | Precisely |
+|------------|-----------|
+| The console answers only on its own address (§1) | Host allow-list `AdminHost`; outside Development it must be exactly `admin.core.dealoware.com`. Admin routes answer 404 on the engine's host, and engine routes answer 404 on the admin host. |
+| The owner is the address set in the configuration (§1) | `CoreOwner:Email` |
+| Sign-in from one network is blocked (§3) | 20 failures from one IP within 15 minutes lock that IP's sign-in for 30 minutes (`AdminAuthService.IpFailureLimit`). The lock rows hold the raw IP for that window only, as Spec §8.6 allows. |
+| The console returns to the open page after sign-in (§5) | The page travels in the `dw_admin_return` cookie, which lasts 10 minutes (`AdminReturnCookie.Lifetime`). |
+| The browser keeps no copy of a signed-in page (§5) | `Cache-Control: no-store` on every signed-in page |
+| A short fingerprint of the network address (§6, §10) | The first 12 characters of a keyed HMAC-SHA256 of the client IP. The key is a deployment secret. The audit log never stores the raw IP. |
+| The entries of one delete are recorded as one delete (§10) | One `entity_delete` row per marked record, all with one correlation id; the id is in the audit API, not on the page |
+| Nothing can change or remove an entry (§10) | Every mutating method on the audit routes answers 405 |
+| The rules let the owner read an offer's amount, currency and terms only (§11) | `FieldPolicy`: `OfferAmount`, `OfferCurrency`, `OfferTerms` are Read and List for the Core owner, never Write |
+| The pages open without a session are on one fixed list (§11) | `AdminSignedOutExemptions.Rules`, which includes `/admin/link-expired` and the `/admin/auth/` scripts |
+| A change must come from the console's own pages (§11) | Every POST, PUT, PATCH and DELETE passes the Origin check and needs the anti-forgery token |
+| Very old browsers cannot sign out with JavaScript off (§12) | They send no `Sec-Fetch-*` headers, which the form sign-out needs |
+| No separate "You can't do that." page; the browser is not told to clear its data (§12) | S-D4 is not built; `Clear-Site-Data` (a SHOULD in TD-ADM-173) is not sent |
+| A delete request with anything added to its address is refused (§12) | Every DELETE refuses any query string (400) |
+| The data the pages read changed shape (§12) | The admin read API: default order, status parsing, no emails in participant list rows, `includeDeleted=true` for a deleted record's detail |
+| Smaller than the usual touch size; laptop width; narrow phone (§12) | Under 24 px (WCAG 2.5.8 inline exception); 1280 px; 320 px |
+| Back and Forward restoring a page (§12) | The browser's back/forward cache |
+| A test build of Safari's engine (§12) | Playwright's WebKit build |
 
 ## What this record does not cover
 
