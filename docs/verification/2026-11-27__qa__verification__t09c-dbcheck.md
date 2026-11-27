@@ -25,7 +25,7 @@
 | `DatabaseRolesPostgresTests.DbCheck_AsTheAppLogin_ReadsEveryTable_AndChangesNothing`: after `dbroles` and `migrate`, `dealoware_app` can run the check on every table | Same | passed (the class: 10 passed) |
 | `DatabaseCheckCommandTests` (22): the command name; the cutoff format; bad arguments refused before connecting; no PostgreSQL refused; an unreachable database fails in one line with no host or password; every model table listed, each listed column a non-null time of the model; the JSON's exact shape | Windows, no database | 22 passed |
 | The new-database rehearsal with the new step "4b. dbcheck, as dealoware_app": `Production`, TLS `VerifyFull`, one JSON line, exit 0, no password, host or connection string in its output | Windows, Docker, PostgreSQL 16 with TLS | Step 4b passed. Step 5 (the API start) stopped locally because the shell had no admin keys set; CI sets them. |
-| The full suite | Windows, SQLite | See below |
+| The full suite | Windows, SQLite, no filter | 2528 passed, 24 skipped, 6 failed: the five known local failures (`AdminTotpTests.SecSc6_NewServiceInstanceKeepsFactorLock` and four `PostmanCollectionHygieneTests.RunNewmanScript_*`), and `AdminAuditPostgresAppendOnlyTests.SecR2_...`, which needs PostgreSQL and which CI's SQLite job leaves out by its filter. None touches this work. |
 
 CI: the PostgreSQL job's filter now runs `DatabaseCheckPostgresTests` as well; the "New database rehearsal" job runs `dbcheck`.
 
