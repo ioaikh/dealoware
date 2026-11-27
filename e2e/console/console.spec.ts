@@ -528,6 +528,38 @@ test('no answer to Sign out, while still signed in: the retry sentence in the li
   await expectSignInWith(page, SIGNED_OUT);
 });
 
+test('Sign out overtaken by the session timer: its move to sign-in cancels the sign-out, and the page asks nothing more as it goes', async ({ page }) => {
+  // The timer's status read was sent before Sign out and reaches the server after it: the gate
+  // answers 401 and the timer loads the page anew, while the sign-out's own reply is still on its
+  // way. That reload cancels the sign-out. Its caller must not take the cancel for "no reply" and
+  // ask /admin/api/me from the page that is going: WebKit refuses such a request and reports it
+  // as a page error, which afterEach catches on WebKit; `asked` covers an engine that would send it.
+  await signIn(page);
+  let signedOut: () => void = () => {};
+  const serverSignedOut = new Promise<void>((resolve) => { signedOut = resolve; });
+  let replyHeld: () => void = () => {};
+  const signOutReply = new Promise<void>((resolve) => { replyHeld = resolve; });
+  await page.route((url) => url.pathname === '/admin/api/session', async (route) => {
+    await serverSignedOut;
+    await route.continue();
+  });
+  await page.route((url) => url.pathname === SIGN_OUT, async (route) => {
+    const response = await route.fetch();
+    signedOut();
+    await signOutReply;
+    await route.fulfill({ response }).catch(() => {});
+  });
+  const asked: string[] = [];
+  page.on('request', (r) => { if (new URL(r.url()).pathname === API_ME) asked.push(r.url()); });
+
+  await page.goto(HOME);
+  await expectShell(page, 'Stats · Dealoware admin', 'Stats', HOME);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expectSignInWith(page, SESSION_ENDED);
+  replyHeld();
+  expect(asked).toEqual([]);
+});
+
 test('a newer anti-forgery pair from another tab: Sign out here reloads once, then signs out', async ({ page }) => {
   await signIn(page);
   // Another tab opens the sign-in page, which hands this browser a new anti-forgery pair:
