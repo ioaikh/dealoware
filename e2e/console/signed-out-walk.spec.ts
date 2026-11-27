@@ -253,3 +253,38 @@ test('TD-ADM-UI-na-B13 steps 1 and 2: a session that ends while a list is open: 
   await expect.poll(() => new URL(page.url()).pathname).toBe(record);
   await expect(page.locator('main')).toContainText('Alex Rivera');
 });
+
+test('TD-ADM-UI-na-B13 step 3: a session that ends during an edit save goes to sign-in with no record data, and nothing is saved', async ({ page }) => {
+  await signIn(page);
+  const record = `/admin/participants/${seeded.participants['Alex Rivera'].id}`;
+  await page.goto(record);
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const name = page.getByLabel('Display name', { exact: true });
+  await expect(name).toHaveValue('Alex Rivera');
+  await name.fill('Alex Rivera, never saved');
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  await expect(save).toBeEnabled();
+
+  // The session ends on the server while the edit is open.
+  owner = seedOwner({ enrolled: true });
+
+  const replies = await repliesDuring(page, async () => {
+    await save.click();
+    await expectSignInWith(page, SESSION_ENDED);
+  });
+  const patch = replies.find((r) => new URL(r.url).pathname === `/admin/api/participants/${seeded.participants['Alex Rivera'].id}`);
+  // The gate's 401. Its body is gone once the page has left for sign-in; AdminRouteDenialTests holds it.
+  expect(patch?.status).toBe(401);
+  for (const reply of replies) expectNoRecordData(reply.text, `after the session ended mid-save: ${reply.url}`);
+  expectNoRecordData(await page.content(), 'after the session ended mid-save: the page');
+
+  // The unsaved edit is lost, as the Spec states. Signing in lands on Stats, not on the record: the edit's
+  // 401 is an API reply, and the gate keeps the page to return to only for a page GET. The test design
+  // asks for the same record; that gap is open for the owner (T08a verification record), so the landing
+  // page is not asserted here.
+  await signInHere(page);
+  await expect(page).not.toHaveURL(new RegExp(SIGN_IN));
+  await page.goto(record);
+  await expect(page.locator('main')).toContainText('Alex Rivera');
+  await expect(page.locator('main')).not.toContainText('never saved');
+});
