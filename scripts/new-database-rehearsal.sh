@@ -4,13 +4,14 @@
 #
 #   1. a new, empty database, owned by a master login WITHOUT superuser (as on RDS);
 #   2. dbroles, then dbroles again (it must be idempotent);
-#   3. migrate, as dealoware_migrate;
+#   3. migrate is refused on the master login; then migrate, as dealoware_migrate;
 #   4. dbroles --verify, as dealoware_app;
 #   5. the API starts on dealoware_app: its privilege check passes and /health answers 200;
 #   6. the API refuses to start on the master login.
 #
 # Also: dbroles is refused in Development, and no output of dbroles or migrate holds a
-# password, the host or a connection string.
+# password, the host or a connection string. Every log, the API's included, passes that leak
+# check before it is printed; in GitHub Actions the three passwords are masked as well.
 #
 # The commands run as in production: ASPNETCORE_ENVIRONMENT=Production, TLS VerifyFull
 # against the server certificate's CA. Every password and key is a throwaway value made
@@ -64,6 +65,30 @@ step() { echo; echo "== $*"; }
 MASTER_PW="$(openssl rand -hex 24)"
 APP_PW="$(openssl rand -hex 24)"
 MIGRATE_PW="$(openssl rand -hex 24)"
+# In GitHub Actions, mask them too: should one ever reach the log, the runner prints ***.
+# The ::add-mask:: line itself is not shown. Outside Actions, nothing is printed.
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  for value in "$MASTER_PW" "$APP_PW" "$MIGRATE_PW"; do echo "::add-mask::$value"; done
+fi
+
+# Fails if a log holds a password, the host or a connection-string key. Case-insensitive by
+# lower-casing both sides (grep -i -F aborts in some Git Bash builds). Any grep error counts as
+# a failure: a scan that cannot run must not pass. Never prints the log or the value found.
+leak_check() {
+  local log="$1" lower="$1.lower" value needle code
+  tr '[:upper:]' '[:lower:]' <"$log" >"$lower"
+  for value in "$MASTER_PW" "$APP_PW" "$MIGRATE_PW" "$PG_HOST" "Host=" "Password=" "Username=" "SSL Mode"; do
+    needle="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+    set +e
+    grep -qF -- "$needle" "$lower"
+    code=$?
+    set -e
+    [ "$code" -eq 1 ] || fail "$(basename "$log") holds a password, the host or a connection-string key (grep exit $code); not printed"
+  done
+}
+
+# Prints a log only after it passed the leak check.
+show_log() { leak_check "$1"; cat "$1"; }
 
 super_psql() {
   # Options first, the connection last (some psql builds stop reading options at the first argument).
@@ -135,54 +160,57 @@ set +e
 ( cd "$API_DIR" && env ASPNETCORE_ENVIRONMENT=Development dotnet Dealoware.Api.dll dbroles ) >"$WORK/dev.log" 2>&1
 code=$?
 set -e
-cat "$WORK/dev.log"
+show_log "$WORK/dev.log"
 [ "$code" -eq 2 ] || fail "dbroles in Development exited $code, expected 2"
 grep -q "refused" "$WORK/dev.log" || fail "dbroles in Development did not say refused"
 
 step "2. dbroles, as the master"
-run_api_command "$WORK/dbroles-1.log" "$MASTER" "$MASTER_PW" dbroles || { cat "$WORK/dbroles-1.log"; fail "dbroles exited non-zero"; }
-cat "$WORK/dbroles-1.log"
+run_api_command "$WORK/dbroles-1.log" "$MASTER" "$MASTER_PW" dbroles || { show_log "$WORK/dbroles-1.log"; fail "dbroles exited non-zero"; }
+show_log "$WORK/dbroles-1.log"
 
 step "2. dbroles again: idempotent"
-run_api_command "$WORK/dbroles-2.log" "$MASTER" "$MASTER_PW" dbroles || { cat "$WORK/dbroles-2.log"; fail "the second dbroles exited non-zero"; }
-cat "$WORK/dbroles-2.log"
+run_api_command "$WORK/dbroles-2.log" "$MASTER" "$MASTER_PW" dbroles || { show_log "$WORK/dbroles-2.log"; fail "the second dbroles exited non-zero"; }
+show_log "$WORK/dbroles-2.log"
+
+step "migrate is refused on the master login, before any migration"
+set +e
+run_api_command "$WORK/migrate-master.log" "$MASTER" "$MASTER_PW" migrate
+code=$?
+set -e
+show_log "$WORK/migrate-master.log"
+[ "$code" -eq 1 ] || fail "migrate on the master login exited $code, expected 1"
+grep -q "failed (refused: migrate runs as dealoware_migrate only" "$WORK/migrate-master.log" || fail "migrate on the master login did not say refused"
+tables="$(SUPER_DB="$DB_NAME" super_psql -At -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+[ "$tables" = "0" ] || fail "migrate on the master login created $tables table(s)"
+echo "ok: exited 1, no table created"
 
 step "3. migrate, as dealoware_migrate"
-run_api_command "$WORK/migrate.log" dealoware_migrate "$MIGRATE_PW" migrate || { cat "$WORK/migrate.log"; fail "migrate exited non-zero"; }
-cat "$WORK/migrate.log"
+run_api_command "$WORK/migrate.log" dealoware_migrate "$MIGRATE_PW" migrate || { show_log "$WORK/migrate.log"; fail "migrate exited non-zero"; }
+show_log "$WORK/migrate.log"
 grep -q "Database migrations applied." "$WORK/migrate.log" || fail "migrate did not apply the migrations"
 grep -q "^migrate: every step ok$" "$WORK/migrate.log" || fail "migrate did not apply the H3 rights"
 
 step "4. dbroles --verify, as dealoware_app"
-run_api_command "$WORK/verify.log" "$MASTER" "$MASTER_PW" dbroles --verify || { cat "$WORK/verify.log"; fail "dbroles --verify exited non-zero"; }
-cat "$WORK/verify.log"
+run_api_command "$WORK/verify.log" "$MASTER" "$MASTER_PW" dbroles --verify || { show_log "$WORK/verify.log"; fail "dbroles --verify exited non-zero"; }
+show_log "$WORK/verify.log"
 
 step "No password, host or connection string in the output of dbroles and migrate"
-# Case-insensitive by lower-casing both sides (grep -i -F aborts in some Git Bash builds).
-# Any grep error counts as a failure: a scan that cannot run must not pass.
-for f in dbroles-1 dbroles-2 migrate verify dev; do
-  tr '[:upper:]' '[:lower:]' <"$WORK/$f.log" >"$WORK/$f.lower"
-  for value in "$MASTER_PW" "$APP_PW" "$MIGRATE_PW" "$PG_HOST" "Host=" "Password=" "Username=" "SSL Mode"; do
-    needle="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
-    set +e
-    grep -qF -- "$needle" "$WORK/$f.lower"
-    code=$?
-    set -e
-    [ "$code" -eq 1 ] || fail "$f output holds a password, the host or a connection-string key (grep exit $code)"
-  done
+# Each log was checked before it was printed; checked again here, all together.
+for f in dbroles-1 dbroles-2 migrate-master migrate verify dev; do
+  leak_check "$WORK/$f.log"
 done
-echo "ok: none found in 5 outputs"
+echo "ok: none found in 6 outputs"
 
 step "5. The API starts on dealoware_app; its privilege check passes; /health answers 200"
 start_api "$WORK/api-app.log" dealoware_app "$APP_PW"
 status=""
 for _ in $(seq 1 60); do
-  if ! kill -0 "$API_PID" 2>/dev/null; then cat "$WORK/api-app.log"; fail "the API stopped on the dealoware_app login"; fi
+  if ! kill -0 "$API_PID" 2>/dev/null; then show_log "$WORK/api-app.log"; fail "the API stopped on the dealoware_app login"; fi
   status="$(curl -s -o "$WORK/health.json" -w '%{http_code}' "http://127.0.0.1:$API_PORT/health" || true)"
   [ "$status" = "200" ] && break
   sleep 1
 done
-[ "$status" = "200" ] || { cat "$WORK/api-app.log"; fail "/health did not answer 200 (last: $status)"; }
+[ "$status" = "200" ] || { show_log "$WORK/api-app.log"; fail "/health did not answer 200 (last: $status)"; }
 grep -q '"status":"ok"' "$WORK/health.json" || fail "/health body is not {\"status\":\"ok\"}"
 if grep -q "Refusing to start" "$WORK/api-app.log"; then fail "the API logged a refusal on dealoware_app"; fi
 echo "ok: /health 200 $(cat "$WORK/health.json")"
@@ -201,7 +229,7 @@ code=$?
 set -e
 API_PID=""
 [ "$code" -ne 0 ] || fail "the API exited 0 on the master login"
-grep -q "Refusing to start" "$WORK/api-master.log" || { cat "$WORK/api-master.log"; fail "no refusal message on the master login"; }
+grep -q "Refusing to start" "$WORK/api-master.log" || { show_log "$WORK/api-master.log"; fail "no refusal message on the master login"; }
 echo "ok: exited $code with the H3 refusal"
 
 echo
