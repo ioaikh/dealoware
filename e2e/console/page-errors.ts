@@ -10,7 +10,8 @@ import type { Page } from '@playwright/test';
  * refused before it is sent, so no request or requestfailed event names it),
  * and Playwright reports it as a page error. A request already out that the
  * navigation cancels is not reported. So the line means the page asked for
- * something as it was going, which admin-request.js no longer lets a caller do.
+ * something as it was going (console.js's sign-out did, when the session
+ * timer moved the page under it).
  */
 export function collectPageErrors(page: Page): () => string[] {
   const errors: string[] = [];
