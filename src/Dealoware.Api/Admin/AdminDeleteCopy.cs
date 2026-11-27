@@ -155,7 +155,7 @@ public static class AdminDeleteCopy
     /// connection, an answer the page does not know): it may have gone
     /// through. New copy.
     /// </summary>
-    public const string UnclearDelete = "We couldn't confirm the delete. Reload the page to see whether it went through.";
+    public const string UnclearDelete = "We couldn't confirm the delete. Try again to see whether it went through.";
 
     /// <summary>UXR-C07: said on the list after the delete, "Participant Alex Rivera deleted."</summary>
     public static string DeletedNote(string noun, string name)

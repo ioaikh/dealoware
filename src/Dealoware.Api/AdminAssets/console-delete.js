@@ -44,8 +44,8 @@
  *   403 -> the gate did not take this page's anti-forgery token: still
  *          signed in, the page loads itself anew once with #fresh.
  *   Anything else, or no reply -> ask GET /admin/api/me: the session gone ->
- *          sign-in; otherwise "We couldn't confirm the delete. Reload the
- *          page to see whether it went through.", and Retry.
+ *          sign-in; otherwise "We couldn't confirm the delete. Try again
+ *          to see whether it went through.", and Retry.
  * aria-busy is on the dialog only while a request is out.
  *
  * The dialog handles Escape itself, in a capture-phase keydown on the

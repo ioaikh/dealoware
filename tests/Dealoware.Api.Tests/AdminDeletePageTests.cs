@@ -432,7 +432,7 @@ public class AdminDeletePageTests
         Assert.Equal("This can't be restored from the admin.", AdminDeleteCopy.Undo);
         Assert.Equal("This confirmation is no longer valid. Review the details again.", AdminDeleteCopy.Expired);
         Assert.Equal("This record changed after this dialog opened. Nothing was deleted. Review the details again.", AdminDeleteCopy.ChangedReview);
-        Assert.Equal("We couldn't confirm the delete. Reload the page to see whether it went through.", AdminDeleteCopy.UnclearDelete);
+        Assert.Equal("We couldn't confirm the delete. Try again to see whether it went through.", AdminDeleteCopy.UnclearDelete);
         Assert.Equal("We can't find this record. It may have been deleted already.", AdminDeleteCopy.NotFound);
         Assert.Equal("This artifact can't be deleted", AdminDeleteCopy.BlockedTitle);
         Assert.Equal("It is used by these negotiations:", AdminDeleteCopy.BlockedLede);

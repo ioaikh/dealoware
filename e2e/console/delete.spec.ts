@@ -31,7 +31,7 @@ const UNDO = "This can't be restored from the admin.";
 const NOTHING_ELSE = 'Nothing else is deleted with it.';
 const EXPIRED = 'This confirmation is no longer valid. Review the details again.';
 const CHANGED = 'This record changed after this dialog opened. Nothing was deleted. Review the details again.';
-const UNCLEAR_DELETE = "We couldn't confirm the delete. Reload the page to see whether it went through.";
+const UNCLEAR_DELETE = "We couldn't confirm the delete. Try again to see whether it went through.";
 const NOT_FOUND = "We can't find this record. It may have been deleted already.";
 const NOTHING_DELETED = 'Nothing was deleted.';
 const SESSION_ENDED = 'Your session has ended. Sign in again to continue.';
@@ -813,7 +813,9 @@ test('answers to the DELETE: Blocked shows the negotiations, 404 goes to the lis
   expect(await busyMark(page)).toBe(false);
   await page.keyboard.press('Escape');
 
-  // 404: deleted elsewhere (or by a first try whose answer was lost) while the dialog was open.
+  // Deleted elsewhere in the same session while the dialog was open: that delete's own intent replaced the
+  // dialog's token, so this DELETE is refused as ConfirmTokenInvalid, the dialog asks again, and that intent's
+  // 404 sends the page to the list. A 404 on the DELETE itself is the route fake further down.
   const offer = seeded.offers.terms;
   await open(page, `/admin/offers/${offer}?sort=created`);
   await openDelete(page, detailDelete(page));

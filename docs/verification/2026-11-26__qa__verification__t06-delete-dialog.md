@@ -8,7 +8,7 @@
 | Server | The delete API of T06a (`AdminDeleteEndpoints`), unchanged |
 | Reference | Draft pull request #43, used as a checklist only. None of its code is used. |
 | Date | 2026-11-26 |
-| Result | **MERGE**, after the fixes listed below |
+| Result | **MERGE after the fixes listed below**, pending CI on the last commit |
 
 ## What was built
 
@@ -75,7 +75,7 @@ From the test design: "Delete", "Delete {type} {name}?", "Delete {type}", "Cance
 | `BlockedMore` | "And {n} more." | More than 100 negotiations use the artifact |
 | `ChangedReview` | "This record changed after this dialog opened. Nothing was deleted. Review the details again." | The delete API's `Conflict` |
 | `NotFound` | "We can't find this record. It may have been deleted already." | A 404, said on the list |
-| `UnclearDelete` | "We couldn't confirm the delete. Reload the page to see whether it went through." | No clear answer to the DELETE |
+| `UnclearDelete` | "We couldn't confirm the delete. Try again to see whether it went through." | No clear answer to the DELETE; the destructive button reads Retry |
 
 Changed during the review, old and new:
 
@@ -85,6 +85,7 @@ Changed during the review, old and new:
 | `ChangedReview` | "… after you opened the delete. …" | "… after this dialog opened. …" | Plainer |
 | open warnings | "… It will leave the active lists …" | "… will no longer show in the lists unless “Show deleted” is on." | Says what happens |
 | no clear answer to the DELETE | "That didn't go through. Wait a moment and try again." | `UnclearDelete` above | The delete may have gone through. The old sentence stays for the delete-intent, which changes nothing. |
+| `UnclearDelete` | "We couldn't confirm the delete. Reload the page to see whether it went through." | "We couldn't confirm the delete. Try again to see whether it went through." | Matches the Retry button the focus is on (re-review) |
 
 ## Limits to know about
 
