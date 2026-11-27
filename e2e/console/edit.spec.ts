@@ -445,8 +445,8 @@ test('Expire negotiation: the server\'s count, focus on Cancel, Escape and the b
   expect(patches).toHaveLength(1);
   expect(patches[0].postDataJSON()).toEqual({ status: 'Expired' });
   await expect(page.locator('.details .badge')).toHaveText(['Expired']);
-  // Final: no action left.
-  await expect(page.locator('main').getByRole('button')).toHaveCount(0);
+  // Final: no action left but Delete.
+  await expect(page.locator('main').getByRole('button')).toHaveText(['Delete']);
 
   for (const offer of ['expire-open-1', 'expire-open-2', 'expire-open-3'] as const) {
     await open(page, `/admin/offers/${seeded.offers[offer]}`);
@@ -512,7 +512,7 @@ test('negotiation: Ends at in ET, refused before Starts at with the server\'s se
   await expect(page.locator('.details .badge')).toHaveText(['Closed']);
 
   await open(page, `/admin/negotiations/${seeded.negotiations.lapsed}`);
-  await expect(page.locator('main').getByRole('button')).toHaveText(['Expire negotiation']);
+  await expect(page.locator('main').getByRole('button')).toHaveText(['Expire negotiation', 'Delete']);
 });
 
 test('offer: no field to change, only Cancel offer; Keep offer has the focus, Escape keeps it; cancelled, its amount and terms as sent', async ({ page }) => {
@@ -541,7 +541,7 @@ test('offer: no field to change, only Cancel offer; Keep offer has the focus, Es
   await expect(page.locator('.details .badge')).toHaveText(['Cancelled']);
   await expect(page.locator('.details')).toContainText('1,250.50 USD');
   await expect(page.locator('.details')).toContainText('Cash or bank transfer.');
-  await expect(page.locator('main').getByRole('button')).toHaveCount(0);
+  await expect(page.locator('main').getByRole('button')).toHaveText(['Delete']);
 });
 
 test('unsaved changes: nothing asked with nothing changed; a link, Back and Sign out ask "Discard your changes?"; Keep editing keeps them, Discard leaves; Cancel puts them back; axe', async ({ page }) => {

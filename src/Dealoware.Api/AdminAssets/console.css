@@ -1011,3 +1011,56 @@ time.ts:focus::after {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- Delete (T06b, AdminDeletePage and console-delete.js) ---- */
+
+/* The dialog's destructive button: white on dark red (8.9:1). */
+button.danger {
+  background: #8a1c1c;
+  border-color: #8a1c1c;
+  color: #ffffff;
+}
+
+/* A list row's Delete, under the time in its last cell. */
+.row-actions {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.delete-dialog p {
+  margin: 0 0 0.75rem;
+}
+
+.delete-dialog .delete-id,
+.delete-list a,
+#delete-dialog-field label {
+  overflow-wrap: anywhere;
+}
+
+.delete-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+/* The open warning: words, never colour alone. */
+.delete-warning {
+  font-weight: 600;
+}
+
+#delete-dialog-field label {
+  display: block;
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+#delete-dialog-field input {
+  width: 100%;
+  min-height: 2.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #767676;
+  border-radius: 0.3rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
