@@ -18,6 +18,12 @@ namespace Dealoware.Api.Observability;
 /// <c>Response.Clear()</c>, such as the admin host's own 500. Outside Development an exception that
 /// reaches this middleware (the engine host has no other handler; the admin host catches its own)
 /// becomes a bare 500 with no body, so the ID is still returned and nothing of the fault is shown.
+/// Two exceptions are not faults of the engine, and must not become a 500 or an Error line (any
+/// client could otherwise raise the server-error and log-error alarms): a bad request
+/// (<see cref="BadHttpRequestException"/>, such as a body over the limit) is answered with its own
+/// status code (413, 400), no body, and the ID, which the server's own answer would drop; a request
+/// the client gave up on (the cancellation of <c>RequestAborted</c>) goes on to the server, which
+/// logs nothing for it, as before.
 /// The exception is logged (its type and stack only: see <see cref="JsonLineConsoleFormatter"/>).
 /// In Development the developer exception page keeps it.
 /// </para>
@@ -64,7 +70,13 @@ public sealed class RequestIdMiddleware
             {
                 await _next(context);
             }
-            catch (Exception ex) when (!environment.IsDevelopment() && !context.Response.HasStarted)
+            catch (BadHttpRequestException bad) when (!environment.IsDevelopment() && !context.Response.HasStarted)
+            {
+                logger.LogDebug("Bad request: answered {StatusCode}", bad.StatusCode);
+                context.Response.Clear();
+                context.Response.StatusCode = bad.StatusCode;
+            }
+            catch (Exception ex) when (!environment.IsDevelopment() && !context.Response.HasStarted && !ClientGaveUp(ex, context))
             {
                 logger.LogError(ex, "Unhandled exception: answered 500 with no detail");
                 context.Response.Clear();
@@ -76,6 +88,10 @@ public sealed class RequestIdMiddleware
             own?.Stop();
         }
     }
+
+    /// <summary>The client gave up on the request: nobody is there to answer, and it is no fault.</summary>
+    private static bool ClientGaveUp(Exception ex, HttpContext context)
+        => ex is OperationCanceledException && context.RequestAborted.IsCancellationRequested;
 
     /// <summary>The current request's ID, or null outside a request.</summary>
     public static string? CurrentTraceId()
