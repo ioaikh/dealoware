@@ -23,25 +23,20 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Artifacts.Artifact", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<string>("Intent")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.Property<string>("OwnerParticipantId")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.Property<string>("_locations")
                         .IsRequired()
-                        .HasColumnType("TEXT")
                         .HasColumnName("Locations");
 
                     b.HasKey("Id");
@@ -54,20 +49,16 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Artifacts.ArtifactValue", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<decimal>("Amount")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("TEXT");
+                        .HasPrecision(18, 4);
 
-                    b.Property<Guid?>("ArtifactId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid?>("ArtifactId");
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(16);
 
                     b.HasKey("Id");
 
@@ -79,26 +70,21 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Artifacts.EntityProperty", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(1024);
 
-                    b.Property<Guid?>("SubjectEntityId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid?>("SubjectEntityId");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(1024);
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(1024);
 
                     b.HasKey("Id");
 
@@ -110,25 +96,20 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Artifacts.SubjectEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<Guid?>("ArtifactId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid?>("ArtifactId");
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(4096)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(4096);
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(4096)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(4096);
 
                     b.Property<string>("_facts")
                         .IsRequired()
-                        .HasColumnType("TEXT")
                         .HasColumnName("Facts");
 
                     b.HasKey("Id");
@@ -141,17 +122,13 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Artifacts.TimePeriod", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<Guid?>("ArtifactId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid?>("ArtifactId");
 
-                    b.Property<DateTimeOffset>("End")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("End");
 
-                    b.Property<DateTimeOffset>("Start")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("Start");
 
                     b.HasKey("Id");
 
@@ -163,25 +140,19 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Budget.ParticipantBudget", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
-                    b.Property<long>("LimitUnits")
-                        .HasColumnType("INTEGER");
+                    b.Property<long>("LimitUnits");
 
                     b.Property<string>("ParticipantSub")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("UpdatedAt");
 
-                    b.Property<long>("UsedUnits")
-                        .HasColumnType("INTEGER");
+                    b.Property<long>("UsedUnits");
 
                     b.HasKey("Id");
 
@@ -194,27 +165,21 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Negotiations.AcceptGrant", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<string>("GranteeSub")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("GrantorSub")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
-                    b.Property<Guid>("NegotiationId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid>("NegotiationId");
 
-                    b.Property<Guid>("OfferId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid>("OfferId");
 
                     b.HasKey("Id");
 
@@ -231,43 +196,33 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Negotiations.Negotiation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<Guid>("ArtifactId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid>("ArtifactId");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
-                    b.Property<DateTimeOffset?>("EndsAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("EndsAt");
 
                     b.Property<string>("PartyAIntent")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(50);
 
                     b.Property<string>("PartyAParticipantId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("PartyBIntent")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(50);
 
                     b.Property<string>("PartyBParticipantId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
-                    b.Property<DateTimeOffset?>("StartsAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("StartsAt");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<int>("Status");
 
                     b.HasKey("Id");
 
@@ -285,38 +240,30 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Negotiations.Offer", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<decimal?>("Amount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<string>("Currency")
-                        .HasMaxLength(3)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(3);
 
                     b.Property<string>("FromParticipantId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
-                    b.Property<Guid>("NegotiationId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid>("NegotiationId");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<int>("Status");
 
                     b.Property<string>("Terms")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(2000);
 
                     b.Property<string>("ToParticipantId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.HasKey("Id");
 
@@ -334,27 +281,21 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Participants.ApiKeyCredential", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<string>("KeyHash")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.Property<string>("KeyPrefix")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(16);
 
-                    b.Property<Guid>("ParticipantId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid>("ParticipantId");
 
-                    b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("RevokedAt");
 
                     b.HasKey("Id");
 
@@ -368,31 +309,24 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Participants.Participant", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<string>("ContactEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<string>("DisplayName")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("IsActive");
 
                     b.Property<string>("LoginEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.Property<string>("Sub")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.HasKey("Id");
 
@@ -405,19 +339,15 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Participants.RevokedToken", b =>
                 {
                     b.Property<string>("Jti")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("ExpiresAt");
 
-                    b.Property<DateTimeOffset>("RevokedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("RevokedAt");
 
                     b.Property<string>("Sub")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.HasKey("Jti");
 
@@ -429,32 +359,25 @@ namespace Dealoware.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dealoware.Domain.Strategies.Strategy", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd();
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CreatedAt");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
                     b.Property<string>("Name")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(500);
 
                     b.Property<string>("OwnerParticipantId")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(256);
 
                     b.Property<string>("StrategyBody")
-                        .HasMaxLength(10000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(10000);
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("UpdatedAt");
 
                     b.HasKey("Id");
 
