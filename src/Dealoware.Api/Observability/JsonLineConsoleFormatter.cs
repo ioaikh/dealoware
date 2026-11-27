@@ -10,11 +10,15 @@ namespace Dealoware.Api.Observability;
 /// <c>TraceId</c> (the request ID, see <see cref="RequestIdMiddleware"/>), plus
 /// <c>ExceptionType</c> and <c>StackTrace</c> when an exception is logged.
 /// <para>
-/// Field policy. Only the formatted message is written. The log entry's state (its named values),
-/// the scopes (which carry the request path and connection details) and the exception's message
-/// are never written: an exception message can carry a value from a request or a database. The
-/// message itself follows the engine's rule: no email address, name, token, password, code, key,
-/// IP address or request body is ever put in a log message. LogPrivacyTests checks this.
+/// Field policy. Only the formatted message is written. The log entry's state (its named values)
+/// and the scopes (which carry the request path and connection details) are never written, and a
+/// logged exception gives only its type and stack trace, never its message: an exception message
+/// can carry a value from a request or a database. EF Core is the one known logger that puts a
+/// whole exception's text (with the database's own words, which can quote a value) inside its
+/// message, after the first line; for its categories (<c>Microsoft.EntityFrameworkCore*</c>) the
+/// message is cut at its first line break. The engine's own messages follow its rule: no email
+/// address, name, token, password, code, key, IP address or request body is ever put in a log
+/// message. LogPrivacyTests checks this.
 /// </para>
 /// <para>
 /// Two safety nets on the message, for what the framework itself writes (its request lines, at
@@ -49,7 +53,7 @@ public sealed class JsonLineConsoleFormatter : ConsoleFormatter
             json.WriteString("Time", DateTimeOffset.UtcNow.ToString("O"));
             json.WriteString("Level", logEntry.LogLevel.ToString());
             json.WriteString("Category", logEntry.Category);
-            json.WriteString("Message", Redact(message ?? string.Empty));
+            json.WriteString("Message", Redact(FirstLineFor(logEntry.Category, message ?? string.Empty)));
             var traceId = RequestIdMiddleware.CurrentTraceId();
             if (traceId is not null)
             {
@@ -76,6 +80,20 @@ public sealed class JsonLineConsoleFormatter : ConsoleFormatter
     private static readonly Regex EmailShaped = new(
         @"[A-Za-z0-9._%+\-]+(@|%40)[A-Za-z0-9.\-]+\.[A-Za-z]{2,}",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+
+    public const string EfCoreCategoryPrefix = "Microsoft.EntityFrameworkCore";
+
+    /// <summary>For EF Core's categories, the message up to its first line break; others unchanged.</summary>
+    public static string FirstLineFor(string category, string message)
+    {
+        if (!category.StartsWith(EfCoreCategoryPrefix, StringComparison.Ordinal))
+        {
+            return message;
+        }
+
+        var end = message.IndexOfAny(['\r', '\n']);
+        return end < 0 ? message : message[..end];
+    }
 
     /// <summary>The message without query strings and email-shaped text (see the class notes).</summary>
     public static string Redact(string message)
