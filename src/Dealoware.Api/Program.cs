@@ -1,6 +1,7 @@
 using Dealoware.Api;
 using Dealoware.Api.Admin;
 using Dealoware.Api.Endpoints;
+using Dealoware.Api.Observability;
 using Dealoware.Infrastructure;
 using Dealoware.Infrastructure.Admin;
 using Dealoware.Infrastructure.Auth;
@@ -37,6 +38,9 @@ if (AdminBootstrapLinkCommand.IsBootstrapLinkArgs(args))
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs as one JSON object per line, each with the request ID (T09 spec §4.1).
+builder.AddDealowareObservability();
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -182,9 +186,6 @@ var rateLimitOptions = builder.Configuration
     .GetSection(AuthRateLimitOptions.SectionName)
     .Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
 
-// Log rate limit configuration at startup for diagnostics
-Console.WriteLine($"[RateLimiting] AuthRegister: {rateLimitOptions.AuthRegister.PermitLimit}/{rateLimitOptions.AuthRegister.WindowSeconds}s, " +
-                  $"AuthToken: {rateLimitOptions.AuthToken.PermitLimit}/{rateLimitOptions.AuthToken.WindowSeconds}s");
 
 // F3: Admin:ForwardedHeaders:KnownNetworks is one comma-separated CIDR string
 // (env Admin__ForwardedHeaders__KnownNetworks). ForwardLimit=1; no CIDRs
@@ -278,6 +279,12 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// The rate limits, said once at start-up (a JSON log line like every other).
+app.Logger.LogInformation(
+    "[RateLimiting] AuthRegister: {RegisterLimit}/{RegisterWindow}s, AuthToken: {TokenLimit}/{TokenWindow}s",
+    rateLimitOptions.AuthRegister.PermitLimit, rateLimitOptions.AuthRegister.WindowSeconds,
+    rateLimitOptions.AuthToken.PermitLimit, rateLimitOptions.AuthToken.WindowSeconds);
+
 // Said once at start-up: without the public site key the admin forms cannot be submitted.
 if (TurnstileOptionsValidator.SiteKeyWarning(
         app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<TurnstileOptions>>().Value,
@@ -296,7 +303,11 @@ if (TurnstileOptionsValidator.VerifierKeyWarning(
     app.Logger.LogWarning("{Warning}", verifierKeyWarning);
 }
 
-// First in the pipeline so RemoteIpAddress is the client IP before rate limiting and endpoints run.
+// The request ID first: every answer carries it, even one refused by a later gate.
+app.UseMiddleware<RequestIdMiddleware>();
+
+// Before everything else that reads the client: RemoteIpAddress is the client IP before rate
+// limiting and endpoints run.
 app.UseForwardedHeaders();
 
 // Admin-host-only headers wrap the host gate so 404s, errors, pages, APIs, and
