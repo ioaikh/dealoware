@@ -104,15 +104,18 @@ migrate() { # <build dir>
 jwt_key="$(rand_hex 32)"
 ip_key="$(rand_b64)"; totp_key="$(rand_b64)"; recovery_key="$(rand_b64)"
 start_api() { # <build dir> <log>
+  # From the build folder, as the image's WORKDIR: the app reads appsettings.json from there.
+  cd "$1"
   env "${common_env[@]}" DB_USERNAME=dealoware_app DB_PASSWORD="$app_pw" \
     ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS="http://127.0.0.1:$api_port" \
     DEALOWARE_JWT_SIGNING_KEY="$jwt_key" DEALOWARE_ADMIN_IP_HMAC_KEY="$ip_key" \
     DEALOWARE_ADMIN_TOTP_KEY="$totp_key" DEALOWARE_ADMIN_RECOVERY_HMAC_KEY="$recovery_key" \
-    Admin__ForwardedHeaders__KnownNetworks=127.0.0.1/32 \
+    Admin__ForwardedHeaders__KnownNetworks=10.0.0.0/24 \
     dotnet "$1/Dealoware.Api.dll" > "$2" 2>&1 &
   api_pid=$!
+  cd "$repo"
   for _ in $(seq 1 60); do
-    if curl --silent --output /dev/null http://127.0.0.1:$api_port/health; then return 0; fi
+    if curl --silent http://127.0.0.1:$api_port/health > /dev/null; then return 0; fi
     if ! kill -0 "$api_pid" 2>/dev/null; then echo "the API stopped:"; cat "$2"; return 1; fi
     sleep 1
   done
