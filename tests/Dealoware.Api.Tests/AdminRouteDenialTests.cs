@@ -18,6 +18,9 @@ public sealed class DenialWebApplicationFactory : IsolatedWebApplicationFactory
 
     protected override string? PostgresDatabaseName => "dealoware_ci_denial";
 
+    /// <summary>An engine access token, issued once for this host (registration is rate limited).</summary>
+    public string? EngineToken { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("CoreOwner:Email", OwnerEmail);
