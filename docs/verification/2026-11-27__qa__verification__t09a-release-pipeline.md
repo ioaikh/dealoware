@@ -6,7 +6,7 @@
 | Branch | `claude/t09a-release-pipeline`, from `main` at `f4c85dd`; pull request #84 (draft) |
 | The other part | The deployment side (the migration step, the release and smoke-test scripts, their offline tests and the release log) is in the private infrastructure repository, with its own record |
 | Date | 2026-11-27 |
-| Result | **Built and tested.** Not yet reviewed by an independent reviewer. |
+| Result | **Built and tested.** Independent review: merge after fixes; every item fixed, re-review pending. The rehearsal found a defect outside T09a (below). |
 
 ## What was built
 
@@ -38,7 +38,29 @@ The local Windows baseline has five known failures outside this work (`AdminTotp
 - On Windows, the check first reported two released migrations as changed: git's output was read in the console code page, which changed the dashes in their comments. It now reads UTF-8 (`714e44f`).
 - A Windows checkout with `core.autocrlf=true` cannot build the image: the `Dockerfile`'s checksum of `certs/rds-global-bundle.pem` fails on CRLF line endings. CI (Linux) is not affected. The release script builds from a worktree made with `core.autocrlf=false`.
 
+## Independent review: merge after fixes
+
+The review found, for the engine part, three medium items. Each is fixed, with tests.
+
+| Item | Finding | Fix | Commit |
+|------|---------|-----|--------|
+| M4 | A table dropped and made again under the same name counted as new, so its drop passed. | A table counts as new only if it is not in the last release's model (the tables its migrations made). | `9a3a453` |
+| M5 | A unique index, a unique constraint or a foreign key added to an existing table, a column made required with a default, and raw SQL with `SET NOT NULL`, `ADD CONSTRAINT`, `TRUNCATE` or `DELETE` all passed. | Each is now refused. | `9a3a453` |
+| M6 | The rehearsal had never run end to end, and only read after the upgrade. | `run.sh` takes a release tag or any commit to treat as one; CI's manual run takes it as `previous_ref`. After the upgrade the previous release now writes one record of each kind (participant, profile, artifact, negotiation, offer and its decline, strategy and its update) and reads each back. | `cd41fa5`, `73eed36` |
+
+`ReleaseMigrationRulesTests`: 38 passed (was 29).
+
+### The rehearsal, run end to end
+
+It was run on Windows with Docker (PostgreSQL 16 with TLS, Production, `VerifyFull`, a least-privilege API login), from `21dfc16` (the first commit with `/health/ready`) to this branch. The run fixed three things in `run.sh` (`73eed36`): the API now starts from its build folder, as in the image, so it reads `appsettings.json`; the forwarded-headers setting is a private range, because loopback is refused; and the readiness wait works with Git for Windows' `curl`.
+
+Then it found a real defect, **not in T09a's code**:
+
+- **On a fresh PostgreSQL database made by `migrate`, the API cannot register a participant** (HTTP 500: `column "IsActive" is of type integer but expression is of type boolean`). The baseline migration's model file, `20261005000000_Baseline.Designer.cs`, was scaffolded against SQLite and carries SQLite store types (6 columns `INTEGER`, 71 `TEXT`), and EF uses them for PostgreSQL too. The tests do not see it: they make their PostgreSQL schema with `EnsureCreated`, not with the migrations. The deleted production database was made before the migrations and stamped, so it did not see it either. The next deploy starts from an empty database, so its first release would.
+- With those store types removed from the baseline model, in a scratch copy only, the rehearsal passed every step: migrations, the data set, the new migrations, `/health/ready` 200, every record read back byte for byte, and one write of each kind read back.
+- The fix (remove the SQLite store types from the baseline's model file, and run a migration test on PostgreSQL in CI) is outside T09a and changes the database layer. It waits for a decision.
+
 ## Not done
 
-- The upgrade rehearsal has not run end to end: there is no `release-*` tag yet, and Docker on this machine stopped before a local run could be made. Its first real run is the first pull request after `release-1`. Its pieces were tried separately (the seed and read script above; the migrate command and the API's Production start-up are the ones the release uses).
-- No independent review yet.
+- The rehearsal's first run against a real `release-*` tag waits for `release-1`. Until then CI's manual run can point it at a commit.
+- No re-review yet.
