@@ -28,6 +28,14 @@ if (DatabaseRolesCommand.IsDbRolesArgs(args))
     return;
 }
 
+// One-shot dbcheck: read-only counts and hashes up to a cutoff, for the restore test. Runs in
+// a read-only transaction with the API's own login. Does not start the web host.
+if (DatabaseCheckCommand.IsDbCheckArgs(args))
+{
+    Environment.ExitCode = await DatabaseCheckCommand.RunAsync(args);
+    return;
+}
+
 // One-shot bootstrap-link: same image/binary, separate process. Does not start the web host.
 // The only production trigger for the Core admin first-time setup link.
 if (AdminBootstrapLinkCommand.IsBootstrapLinkArgs(args))

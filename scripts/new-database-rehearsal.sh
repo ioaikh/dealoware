@@ -5,7 +5,7 @@
 #   1. a new, empty database, owned by a master login WITHOUT superuser (as on RDS);
 #   2. dbroles, then dbroles again (it must be idempotent);
 #   3. migrate is refused on the master login; then migrate, as dealoware_migrate;
-#   4. dbroles --verify, as dealoware_app;
+#   4. dbroles --verify, as dealoware_app; then dbcheck (T09c), as dealoware_app;
 #   5. the API starts on dealoware_app: its privilege check passes and /health answers 200;
 #   6. the API refuses to start on the master login.
 #
@@ -194,12 +194,20 @@ step "4. dbroles --verify, as dealoware_app"
 run_api_command "$WORK/verify.log" "$MASTER" "$MASTER_PW" dbroles --verify || { show_log "$WORK/verify.log"; fail "dbroles --verify exited non-zero"; }
 show_log "$WORK/verify.log"
 
-step "No password, host or connection string in the output of dbroles and migrate"
+step "4b. dbcheck, as dealoware_app (T09c): one JSON line, read-only"
+run_api_command "$WORK/dbcheck.log" dealoware_app "$APP_PW" dbcheck --cutoff "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  || { show_log "$WORK/dbcheck.log"; fail "dbcheck exited non-zero"; }
+show_log "$WORK/dbcheck.log"
+[ "$(grep -c . "$WORK/dbcheck.log")" -eq 1 ] || fail "dbcheck printed more than one line"
+grep -q '^{"check":"dbcheck","cutoff":"[0-9T:.-]*Z","migration":"[0-9]\{14\}_[A-Za-z0-9]*","tables":\[' "$WORK/dbcheck.log" \
+  || fail "dbcheck did not print its JSON line"
+
+step "No password, host or connection string in the output of dbroles, migrate and dbcheck"
 # Each log was checked before it was printed; checked again here, all together.
-for f in dbroles-1 dbroles-2 migrate-master migrate verify dev; do
+for f in dbroles-1 dbroles-2 migrate-master migrate verify dbcheck dev; do
   leak_check "$WORK/$f.log"
 done
-echo "ok: none found in 6 outputs"
+echo "ok: none found in 7 outputs"
 
 step "5. The API starts on dealoware_app; its privilege check passes; /health answers 200"
 start_api "$WORK/api-app.log" dealoware_app "$APP_PW"

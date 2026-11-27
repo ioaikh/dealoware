@@ -140,6 +140,24 @@ public class DatabaseRolesPostgresTests
     }
 
     [PostgresOnlyFact]
+    public async Task DbCheck_AsTheAppLogin_ReadsEveryTable_AndChangesNothing()
+    {
+        // T09c: dbcheck runs with the API's own login (spec §5.2), so that login must be able
+        // to read every table it counts, the history table and the catalog.
+        var setup = await NewDatabaseAsync();
+        Assert.True((await ApplyAsync(setup)).Ok);
+        Assert.True((await MigrateAsync(setup)).Ok);
+
+        await using var app = new NpgsqlConnection(setup.ConnectionString(DatabaseRoles.AppRole, setup.AppPassword));
+        var result = await DatabaseCheck.RunAsync(app, DateTimeOffset.UtcNow);
+
+        Assert.Equal(DatabaseCheck.CreatedColumns.Count, result.Tables.Count);
+        Assert.NotNull(result.Migration);
+        Assert.All(result.Tables, t => Assert.Equal(0, t.Rows));
+        setup.AssertNothingSensitive(result.ToJson());
+    }
+
+    [PostgresOnlyFact]
     public async Task Verify_FailsWhenTheAppMayChangeTheAuditLog()
     {
         var setup = await NewDatabaseAsync();
