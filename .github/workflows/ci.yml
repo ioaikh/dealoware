@@ -142,3 +142,44 @@ jobs:
             **/TestResults/*.trx
             **/TestResults/**/Sequence_*.xml
           retention-days: 30
+
+  # T09 spec, deliverable 3: the image is built from the Dockerfile on every pull request and
+  # on main, with the commit as GIT_SHA. Nothing is pushed anywhere: a release builds its own
+  # image on the deploy machine. The built image is started once to show it answers its
+  # own version.
+  image-build:
+    name: Image build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build the image (no push)
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: docker build --build-arg "GIT_SHA=$GIT_SHA" --tag dealoware-engine:ci .
+
+      - name: The image answers the commit it was built from
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(docker inspect dealoware-engine:ci --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GIT_SHA"
+          docker run --detach --name engine --env ASPNETCORE_ENVIRONMENT=Development --publish 127.0.0.1:8080:8080 dealoware-engine:ci
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8080/health > health.json; then break; fi
+            sleep 2
+          done
+          cat health.json; echo
+          expected="${GIT_SHA:0:7}"
+          test "$(jq -r .version health.json)" = "$expected"
+          test "$(jq -r .status health.json)" = "ok"
+          curl --silent --fail http://127.0.0.1:8080/health/ready | tee ready.json; echo
+          test "$(jq -r .version ready.json)" = "$expected"
+
+      - name: Container log on failure
+        if: failure()
+        run: docker logs engine || true
