@@ -386,10 +386,9 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
-    .WithName("Health")
-    .WithTags("Health")
-    .Produces<object>(StatusCodes.Status200OK);
+// /health (the process is up) and /health/ready (and the database answers), both signed
+// out, both with the release's short commit hash. See HealthEndpoints.
+app.MapHealthEndpoints();
 
 app.MapAuthEndpoints();
 app.MapArtifactEndpoints();

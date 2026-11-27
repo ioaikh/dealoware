@@ -96,6 +96,9 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     protected virtual string? PostgresDatabaseName => null;
 
+    /// <summary>Extra EF interceptors for a fixture that has to make the database misbehave.</summary>
+    protected virtual IEnumerable<IInterceptor> ExtraDbInterceptors => [];
+
     /// <summary>
     /// CI postgres:16 has no TLS. Build a throwaway SSL Mode=Disable string from DB_*.
     /// </summary>
@@ -188,6 +191,7 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
             services.AddDbContext<DealowareDbContext>(options =>
             {
                 options.AddInterceptors(CommandCounter);
+                options.AddInterceptors(ExtraDbInterceptors);
                 if (_postgresConnectionString is not null)
                 {
                     options.UseNpgsql(_postgresConnectionString);

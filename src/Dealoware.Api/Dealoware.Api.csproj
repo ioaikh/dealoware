@@ -16,6 +16,15 @@
     <Content Include="AdminAssets\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The release's commit, built in (ReleaseVersion, the health answers). The image build
+       sets it from the Dockerfile's GIT_SHA build argument; any other build answers "dev". -->
+  <PropertyGroup>
+    <DealowareGitSha Condition="'$(DealowareGitSha)' == ''">dev</DealowareGitSha>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="DealowareGitSha" Value="$(DealowareGitSha)" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
