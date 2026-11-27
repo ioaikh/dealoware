@@ -148,6 +148,26 @@ public partial class AdminRouteDenialTests : IClassFixture<DenialWebApplicationF
         Assert.Empty(allowList);
     }
 
+    // The browser walk opens every signed-in page of the table, signed out, and nothing else (TD-ADM-131).
+    [Fact]
+    public void TdAdm131_TheSignedOutBrowserWalk_OpensEverySignedInPageOfTheTable()
+    {
+        var spec = File.ReadAllText(Path.Combine(RepoRoot(), "e2e", "console", "signed-out-walk.spec.ts"));
+        var block = System.Text.RegularExpressions.Regex.Match(
+            spec, @"const SIGNED_IN_PAGES = \[(?<list>[^\]]*)\];", System.Text.RegularExpressions.RegexOptions.Singleline);
+        Assert.True(block.Success, "signed-out-walk.spec.ts has no SIGNED_IN_PAGES list.");
+        var walked = System.Text.RegularExpressions.Regex.Matches(block.Groups["list"].Value, "'([^']+)'")
+            .Select(m => m.Groups[1].Value)
+            .ToList();
+        var pages = AdminRouteTable.Routes
+            .Where(r => r.Class == AdminRouteClass.SignedIn && r.IsPage && r.Methods.Contains("GET"))
+            .Select(r => r.Pattern)
+            .ToList();
+
+        Assert.Equal(pages.Order(StringComparer.Ordinal), walked.Order(StringComparer.Ordinal));
+        Assert.Equal(walked.Count, walked.Distinct().Count());
+    }
+
     // ---- helpers: the app's endpoints ----------------------------------------------
 
     private sealed record MappedEndpoint(string Pattern, string Method);
