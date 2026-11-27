@@ -6,7 +6,7 @@
 | Branch | `claude/t09b-monitoring`, from `main` at `ac883aa` |
 | The other part | The alerts, alarms, health check, budget and the release and smoke-test checks are in the private infrastructure repository, with its own record. The tracing spike's full answer, which names the hosting, is written there. |
 | Date | 2026-11-27 |
-| Result | **Built and tested.** Independent review not yet done. |
+| Result | **Built and tested.** Independent review: fix first; the two engine items are fixed with tests (below), re-review pending. |
 
 ## What was built
 
@@ -40,6 +40,17 @@ The local Windows baseline has five known failures outside this work (`AdminTotp
 
 - The framework's request line ("Request starting ... POST http://.../auth/register?email=...") carries the query string. The engine does not log it at its normal levels (`Microsoft.AspNetCore` is at Warning), but the privacy test captures Debug and up, and caught it. The formatter now removes query strings and email-shaped text from every message.
 - `Program.cs` is stored with CRLF line endings in the repository, unlike most files. The first commit of this branch rewrote it with LF; it was put back before anything was pushed, so the diff shows only the lines that changed.
+
+## Independent review: fix first
+
+The review found no risk to the live stack. Its two engine items are fixed; each new test fails on the code before the fix.
+
+| Item | Finding | Fix | Commit |
+|------|---------|-----|--------|
+| 1 | The `traceparent` header was missing on 500 answers: it was set before the rest of the pipeline ran, and a fault cleared it (the host's own 500 on the engine host; `Response.Clear()` in the admin host's 500). | The header is set when the answer starts (`Response.OnStarting`), so a clear does not remove it. Outside Development, a fault that reaches the request-ID middleware (the engine host has no other handler) is logged, type and stack only, and answered 500 with no body. Tests (`RequestIdOnFaultTests`, Production host): an endpoint throws on the engine host and on the admin host; each answer is 500, carries `traceparent`, and shows nothing of the fault; the engine's log line has the exception's type and not its message. | `a066b3e` |
+| 3 | The formatter's comment said exception messages are never written, but EF Core's error events put a whole exception's text, with the database's words (which can quote a value), inside their message. | For `Microsoft.EntityFrameworkCore*` categories the message is cut at its first line break; the comment now says exactly what is and is not written. Tests: `EfCoreMessageTests` (two EF categories cut, another category kept whole). | `8627b42` |
+
+Tests after the fixes: the new and related tests (request ID, logs, privacy, redaction, EF Core, tracing, admin security headers, admin host start-up, health) 81 passed; the full suite 2533 passed, 19 skipped, 6 failed: the same six as before (the five known ones and the one that needs PostgreSQL).
 
 ## What is not done here
 
