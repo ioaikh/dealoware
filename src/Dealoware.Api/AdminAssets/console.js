@@ -109,6 +109,21 @@
     }, sayRetry);
   }
 
+  // A page that starts to go while the sign-out is out (beforeunload: the session timer's reload
+  // after the gate's 401, or any other move) has given the sign-out up. Its cancel is not "no
+  // reply", and the page asks nothing more as it goes: WebKit refuses a request started by a page
+  // on its way out, and reports it as a page error. The listener is there only while the sign-out
+  // is out.
+  var leaving = false;
+
+  function onLeave() {
+    leaving = true;
+  }
+
+  function signOutSettled() {
+    window.removeEventListener("beforeunload", onLeave);
+  }
+
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     if (busy) return;
@@ -119,11 +134,21 @@
     }
     setBusy(true);
     say("");
+    leaving = false;
+    window.addEventListener("beforeunload", onLeave);
     AdminRequest.post(SIGN_OUT, {}).then(function (reply) {
+      signOutSettled();
       var body = reply.body || {};
       if (reply.status === 200 && body.signedOut === true) location.replace(SIGNED_OUT);
       else afterUnclearReply(reply.status === 403);
     }, function () {
+      signOutSettled();
+      // A page on its way out asks nothing more. If it stays after all (the owner stopped the
+      // move), saying "try again" sends nothing and gives the button back.
+      if (leaving) {
+        sayRetry();
+        return;
+      }
       afterUnclearReply(false);
     });
   });
