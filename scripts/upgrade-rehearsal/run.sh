@@ -16,8 +16,9 @@
 # 7. The previous release writes one record of each kind on the new schema, and reads it back.
 #
 # The database is a throwaway PostgreSQL container with TLS, so both releases run as in
-# production: Production environment, SSL Mode=VerifyFull, migrations under one login and
-# the API under a least-privilege login. Every key is made up for this run.
+# production: Production environment, SSL Mode=VerifyFull, a master login that is not a
+# superuser, the two limited logins made by the release's own dbroles command, migrations as
+# dealoware_migrate and the API as dealoware_app. Every key and password is made up for this run.
 set -euo pipefail
 
 prev_tag="${1:?usage: run.sh <previous release tag or commit>}"
@@ -62,44 +63,46 @@ printf 'subjectAltName=DNS:localhost\n' > "$work/san.ext"
 openssl x509 -req -in "$work/server.csr" -CA "$work/ca.crt" -CAkey "$work/ca.key" -CAcreateserial \
   -days 1 -extfile "$work/san.ext" -out "$work/server.crt" 2>/dev/null
 
+super_pw="$(rand_hex 16)"
+master_pw="$(rand_hex 16)"
 migrate_pw="$(rand_hex 16)"
 app_pw="$(rand_hex 16)"
 docker run --detach --name "$pg_name" --publish "127.0.0.1:$pg_port:5432" \
-  --env POSTGRES_USER=dealoware_migrate --env POSTGRES_PASSWORD="$migrate_pw" --env POSTGRES_DB=dealoware \
-  postgres:16 >/dev/null
+  --env POSTGRES_PASSWORD="$super_pw" postgres:16 >/dev/null
 for _ in $(seq 1 60); do
-  docker exec "$pg_name" pg_isready -U dealoware_migrate -d dealoware >/dev/null 2>&1 && break
+  docker exec "$pg_name" pg_isready -U postgres >/dev/null 2>&1 && break
   sleep 1
 done
 docker cp "$work/server.crt" "$pg_name:/var/lib/postgresql/server.crt"
 docker cp "$work/server.key" "$pg_name:/var/lib/postgresql/server.key"
 docker exec -u root "$pg_name" sh -c 'chown postgres:postgres /var/lib/postgresql/server.* && chmod 600 /var/lib/postgresql/server.key'
-psql_admin() { docker exec -i "$pg_name" psql -v ON_ERROR_STOP=1 -q -U dealoware_migrate -d dealoware "$@"; }
-psql_admin <<SQL
+psql_super() { docker exec -i "$pg_name" psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
+# As on RDS: the database belongs to a master login that is not a superuser. The two limited
+# logins (dealoware_migrate, dealoware_app) are made by the engine's own dbroles command below.
+psql_super <<SQL
 ALTER SYSTEM SET ssl = on;
 ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';
 ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';
 SELECT pg_reload_conf();
--- The API's own login: data only, as in production. Tables the migrations create later
--- are granted to it by default.
-CREATE ROLE dealoware_app LOGIN PASSWORD '$app_pw';
-GRANT CONNECT ON DATABASE dealoware TO dealoware_app;
-GRANT USAGE ON SCHEMA public TO dealoware_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE dealoware_migrate IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO dealoware_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE dealoware_migrate IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO dealoware_app;
+CREATE ROLE dealoware_master LOGIN CREATEROLE CREATEDB PASSWORD '$master_pw';
+CREATE DATABASE dealoware OWNER dealoware_master;
 SQL
 
 common_env=(
+  "ASPNETCORE_ENVIRONMENT=Production"
   "DB_HOST=localhost" "DB_PORT=$pg_port" "DB_NAME=dealoware"
   "DEALOWARE_RDS_CERT_PATH=$work/ca.crt"
 )
 
-migrate() { # <build dir>
-  env "${common_env[@]}" DB_USERNAME=dealoware_migrate DB_PASSWORD="$migrate_pw" \
-    dotnet "$1/Dealoware.Api.dll" migrate
+one_shot() { # <build dir> <login> <password> <command...>: as the stack runs it, from the build folder
+  local dir="$1" user="$2" password="$3"; shift 3
+  ( cd "$dir" && env "${common_env[@]}" DB_USERNAME="$user" DB_PASSWORD="$password" \
+      DEALOWARE_DB_APP_PASSWORD="$app_pw" DEALOWARE_DB_MIGRATE_PASSWORD="$migrate_pw" \
+      dotnet Dealoware.Api.dll "$@" )
 }
+
+dbroles() { one_shot "$1" dealoware_master "$master_pw" dbroles; }
+migrate() { one_shot "$1" dealoware_migrate "$migrate_pw" migrate; }
 
 jwt_key="$(rand_hex 32)"
 ip_key="$(rand_b64)"; totp_key="$(rand_b64)"; recovery_key="$(rand_b64)"
@@ -107,7 +110,7 @@ start_api() { # <build dir> <log>
   # From the build folder, as the image's WORKDIR: the app reads appsettings.json from there.
   cd "$1"
   env "${common_env[@]}" DB_USERNAME=dealoware_app DB_PASSWORD="$app_pw" \
-    ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS="http://127.0.0.1:$api_port" \
+    ASPNETCORE_URLS="http://127.0.0.1:$api_port" \
     DEALOWARE_JWT_SIGNING_KEY="$jwt_key" DEALOWARE_ADMIN_IP_HMAC_KEY="$ip_key" \
     DEALOWARE_ADMIN_TOTP_KEY="$totp_key" DEALOWARE_ADMIN_RECOVERY_HMAC_KEY="$recovery_key" \
     Admin__ForwardedHeaders__KnownNetworks=10.0.0.0/24 \
@@ -131,7 +134,8 @@ ready_is_200() {
 }
 
 # ---- 2. and 3. The previous release, with its data --------------------------------------
-say "$prev_tag: migrations"
+say "$prev_tag: the database logins (dbroles), then its migrations"
+dbroles "$work/prev"
 migrate "$work/prev"
 say "$prev_tag: the fixed data set, through its own API"
 start_api "$work/prev" "$work/prev-1.log"
