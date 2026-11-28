@@ -7,7 +7,7 @@
 **Brief:** Chief Dev Planner → Senior — DRAFT A5 Core admin dashboard Dev Plan (CPM formal unlock confirms A5). Executable plan only. As briefed then: Stories/code waited for Dev Plan QA + Test design PASS, and A7 waited for H4 live PASS (both of those gates have since closed; see Active holds). Do not invent password / AWS account IDs. Deploy waits for Ivan's OK. H1 harden redeploy is a separate track. PoC **$0**. App target .NET 10 — plan assumes TFM `net10.0`; do **not** schedule .NET 10 retarget as this Story's work.  
 **DOC-FLOW:** `plans/2026-10-05__devplan__plan__core-admin-dashboard.md`  
 **Host:** `admin.core.dealoware.com` only (Core admin — **not** `admin.platform.dealoware.com`)  
-**Principal:** **CoreOwner** = single system superadmin `io@aiknowhow.com`  
+**Principal:** **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`)  
 **Constraints:** Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip (A6 Test design gate closed: design tip `8df39255…` PASS) · A7 gate on H4 live closed (Chief QA H4 live retest PASS `4911b08…`; Debug-off redeploy `11c35ee7…` cited separately) · Do not invent password / AWS account IDs · Deploy waits for Ivan's OK · Do not invent process-global auth flood limiter until Chief Security explicitly approves · H1 harden redeploy is a separate track · PoC **$0** · No Cognito invent · No MM/DC4 · No password values anywhere · No AWS account / CDK / bot-platform internals in this plan · Cost/critical (LLM if any) → COO → CEO (do not provision)
 
 **Active holds** (refreshed per CPM 8:41pm ET; plain English):
@@ -74,7 +74,7 @@
 
 ## 2. Restated understanding (short)
 
-Executable plan for **SD only** (after holds lift): deliver Core owner admin dashboard at **`admin.core.dealoware.com`** inside the same Negotiation Core modular monolith (separate admin route surface; Option A). Single system superadmin **`io@aiknowhow.com`** → principal **`CoreOwner`**; auth = email + password + required TOTP; **Cloudflare Turnstile only**; bootstrap/reset mail via **SES behind mail interface** (no AWS SDK in Core app). Entities: **Participants / Artifacts / negotiations / offers** — list/view/edit/delete; all-status lists; sort/filter; server-side paging; name search; stats; confirm-before-delete; soft-delete + cascades; append-only audit (auth + edit/delete; hashed IP). FieldPolicy dual wall; **no** parallel admin ACL; **no** human users list. App assumes TFM **`net10.0`** — **do not** schedule .NET 10 retarget as this Story's work.
+Executable plan for **SD only** (after holds lift): deliver Core owner admin dashboard at **`admin.core.dealoware.com`** inside the same Negotiation Core modular monolith (separate admin route surface; Option A). Single system superadmin **at the owner address (`CoreOwner:Email`)** → principal **`CoreOwner`**; auth = email + password + required TOTP; **Cloudflare Turnstile only**; bootstrap/reset mail via **SES behind mail interface** (no AWS SDK in Core app). Entities: **Participants / Artifacts / negotiations / offers** — list/view/edit/delete; all-status lists; sort/filter; server-side paging; name search; stats; confirm-before-delete; soft-delete + cascades; append-only audit (auth + edit/delete; hashed IP). FieldPolicy dual wall; **no** parallel admin ACL; **no** human users list. App assumes TFM **`net10.0`** — **do not** schedule .NET 10 retarget as this Story's work.
 
 **This artifact is design planning only.** Do not invent Stories/code from this plan until Dev Plan QA PASS on this tip (A6 Test design gate closed). The A7 gate on H4 live is closed. Deploy waits for Ivan's OK. Do not invent password values and AWS account IDs. Do not invent process-global auth flood limiter until Chief Security explicitly approves. H1 harden redeploy is a separate track. PoC **$0**. Not a build unlock.
 
@@ -85,7 +85,7 @@ Executable plan for **SD only** (after holds lift): deliver Core owner admin das
 | # | Decision | Binding lock | Plan steps |
 |---|----------|--------------|------------|
 | 1 | Host | Core admin **only** at `admin.core.dealoware.com`. Platform admin / platform app hosts OUT | Steps 1, 12; Explicit OUT; Sec pt 1 |
-| 2 | Principal | One CoreOwner superadmin `io@aiknowhow.com`; email+password+TOTP; no multi-admin ACL | Steps 2–5, 12; Sec pts 1–5 |
+| 2 | Principal | One CoreOwner superadmin at the owner address (`CoreOwner:Email`); email+password+TOTP; no multi-admin ACL | Steps 2–5, 12; Sec pts 1–5 |
 | 3 | CAPTCHA | **Turnstile only**; WAF CAPTCHA / reCAPTCHA / other CAPTCHA OUT | Steps 2, 5; Sec pt 5 |
 | 4 | Mail | SES via **mail interface**; no AWS SDK in Core app; do not invent AWS account IDs | Steps 2, 6; Sec pt 7 |
 | 5 | IP / audit | Raw IP only in short-lived rate-limit counters; auth audit IP = keyed **HMAC-SHA256** only | Steps 5, 8; Sec pt 6 |
@@ -119,7 +119,7 @@ Executable plan for **SD only** (after holds lift): deliver Core owner admin das
 - Serve admin UI/API **only** as Core admin at `admin.core.dealoware.com` (Spec §3; SA §3.1).
 - Do not invent tasks for `admin.platform.dealoware.com`, `platform.dealoware.com`, or their APIs.
 - Same Core modular monolith; **separate** admin route surface (Option A — SA §2 pick A).
-- Bind principal **`CoreOwner`** to single superadmin login email `io@aiknowhow.com` (SA §3.2). Do not invent multi-admin / operator ACL / human-user list on Core / Participant UI-as-admin.
+- Bind principal **`CoreOwner`** to single superadmin login email: the owner address (`CoreOwner:Email`) (SA §3.2). Do not invent multi-admin / operator ACL / human-user list on Core / Participant UI-as-admin.
 - All admin reads/writes bind Domain FieldPolicy for CoreOwner (Option A §3a/§3b — cite; do not rewrite). Do not invent parallel admin ACL / second permission matrix.
 - Assume app TFM **`net10.0`**. Do not invent .NET 10 retarget Stories/tasks under this plan.
 - Do not invent AWS account IDs, CDK, bot-platform internals, App Runner, Cognito, MM/DC4.
@@ -139,7 +139,7 @@ Per Spec §8.1–§8.2, §8.5; SA §3.3; Sec pts 2, 5:
 
 | Item | Plan lock |
 |------|-----------|
-| Identity | One superadmin `io@aiknowhow.com`; email + password |
+| Identity | One superadmin at the owner address (`CoreOwner:Email`); email + password |
 | Bootstrap | Single-use timed out-of-band bootstrap link (≤ **24h**; SA may tighten); first password set **only** via that link |
 | TOTP gate | TOTP enrollment **required before** first interactive admin session |
 | Secrets | Do not invent password values in Stories, fixtures, README, chat, or commit history — env/placeholders for secrets only |
@@ -456,7 +456,7 @@ SD must **not** deliver or unlock any of:
 
 Before marking delivery ready for CQ / handoff (only after holds lift + unlocks):
 
-- [ ] Host only `admin.core.dealoware.com`; CoreOwner `io@aiknowhow.com`; FieldPolicy dual wall; no parallel ACL
+- [ ] Host only `admin.core.dealoware.com`; CoreOwner = the owner address (`CoreOwner:Email`); FieldPolicy dual wall; no parallel ACL
 - [ ] Bootstrap + TOTP + reset=link+2FA + Turnstile only + lockout/session per Spec
 - [ ] Raw IP counters only; audit IP keyed HMAC-SHA256; SES via mail interface; no AWS SDK in Core
 - [ ] Lists/search/paging/stats/edit/delete/confirm/soft-delete/cascades/audit per Spec
@@ -572,7 +572,7 @@ Before marking delivery ready for CQ / handoff (only after holds lift + unlocks)
 
 | # | Security point (Dev Plan checklist) | How plan addresses it | Plan section / SD step |
 |---|-------------------------------------|----------------------|------------------------|
-| 1 | **Host + single CoreOwner gate** — admin only `admin.core.dealoware.com`; `io@aiknowhow.com` → **CoreOwner**; do not invent platform-admin host / human-user list / Participant UI-as-admin / multi-admin ACL | Step 1 host + CoreOwner + FieldPolicy; Step 11 fail-closed; Step 12 OUT pack | Steps 1, 11, 12; Locked #1–#2; Explicit OUT |
+| 1 | **Host + single CoreOwner gate** — admin only `admin.core.dealoware.com`; the owner address (`CoreOwner:Email`) → **CoreOwner**; do not invent platform-admin host / human-user list / Participant UI-as-admin / multi-admin ACL | Step 1 host + CoreOwner + FieldPolicy; Step 11 fail-closed; Step 12 OUT pack | Steps 1, 11, 12; Locked #1–#2; Explicit OUT |
 | 2 | **Bootstrap + email/password (no invent password)** — single-use timed OOB bootstrap; password only via link; TOTP before first session; do not invent password values; do not invent SSO/IdP | Step 2 bootstrap + secrets hold; Step 12 password Forbidden | Steps 2, 12; Locked #2, #14 |
 | 3 | **TOTP required; no email OTP; hashed recovery** — TOTP every login; do not invent email OTP; recovery show-once hashed single-use; verify email OTP path absent | Step 3 TOTP + recovery; verify checklist includes email OTP absent | Step 3; Locked #2 |
 | 4 | **Password reset = email link + 2FA** — both factors; do not invent skip-2FA reset; mail link only | Step 4 reset locks + verify | Step 4 |
@@ -646,7 +646,7 @@ PoC **$0**. This plan schedules **no** AWS account create, CDK apply, SES provis
 - [x] Spec QA formal PASS + Spec Security SoR PASS 15/15 + Arch QA PASS + Product QA PASS + CFO estimate + Finance QA PASS cited
 - [x] SA SoR + SA Security SoR PASS 14/14 cited
 - [x] Itemized steps executable by SD without inventing requirements (holds explicit)
-- [x] Host only `admin.core.dealoware.com`; CoreOwner `io@aiknowhow.com`; Turnstile only; SES mail interface; FieldPolicy dual wall; entities + lists/search/paging/stats/confirm/audit/soft-delete
+- [x] Host only `admin.core.dealoware.com`; CoreOwner = the owner address (`CoreOwner:Email`); Turnstile only; SES mail interface; FieldPolicy dual wall; entities + lists/search/paging/stats/confirm/audit/soft-delete
 - [x] Do not invent Stories/build from this plan until Dev Plan QA PASS on this tip; A6 Test design gate and A7 gate on H4 live closed with cites (CPM 8:41pm ET); deploy waits for Ivan's OK; do not invent password / AWS IDs; do not invent process-global flood limiter; H1 harden redeploy is a separate track
 - [x] Assume `net10.0`; no retarget steps; no password values; no AWS account IDs; no platform-admin host
 - [x] **Security Dev Plan-step points 1–14 all woven** with cites (table §6) — Dev Plan QA waits until SoR qa-confirm CLEAR

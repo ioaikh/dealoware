@@ -29,7 +29,7 @@ Core admin at `admin.core.dealoware.com`: single system superadmin; list/view/ed
 
 ## Itemized security points (Spec must bind)
 
-1. **Host + single superadmin role** — Admin only at `admin.core.dealoware.com`. **One** system superadmin login email: `io@aiknowhow.com`. Distinct from Participant UI and `admin.platform.dealoware.com`. Human-user list on Core OUT. Multiple admin humans / operator ACL OUT.
+1. **Host + single superadmin role** — Admin only at `admin.core.dealoware.com`. **One** system superadmin login email: the owner address (`CoreOwner:Email`). Distinct from Participant UI and `admin.platform.dealoware.com`. Human-user list on Core OUT. Multiple admin humans / operator ACL OUT.
 
 2. **Email + password; secure one-time bootstrap** — Sign-in is email + password for that superadmin. Bootstrap via **single-use** out-of-band link. **No password** in code, docs, Spec text, chat, or commit history. Soft HOLD invent SSO/IdP as delivered.
 

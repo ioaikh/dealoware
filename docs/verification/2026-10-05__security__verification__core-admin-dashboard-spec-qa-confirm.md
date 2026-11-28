@@ -14,7 +14,7 @@
 | Prior Spec Soft HOLD SoR / v1 qa-confirm | **SUPERSEDED** — prior tip scored old 10/10 itemization (~1:15pm ET); prior PRE-SCORE Soft HOLD final (v2.1) superseded for this Soft HOLD SoR track; this overwrite is Soft HOLD SoR only for checklist **v2** pts 1–15 |
 | Sibling SA Soft HOLD SoR (cite only) | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` (PASS 14/14) — not re-scored here |
 | Host lock | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
+| Principal | **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | DOC-FLOW / Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-spec-qa-confirm.md` |
 
@@ -52,7 +52,7 @@ Score vs **checklist v2 pts 1–15** against Spec **body** §§3–12 (Locked de
 
 | # | Point | Senior | Security QA | Spec cites | Evidence |
 |---|-------|--------|-------------|------------|----------|
-| 1 | Host + single superadmin role | MET | **MET** | Locked #1–#2; §3; §12 OUT | Admin only at `admin.core.dealoware.com`. One system superadmin `io@aiknowhow.com` = **`CoreOwner`**. Distinct from Participant UI and `admin.platform.dealoware.com`. Human-user list OUT. Multiple admin humans / operator ACL OUT. |
+| 1 | Host + single superadmin role | MET | **MET** | Locked #1–#2; §3; §12 OUT | Admin only at `admin.core.dealoware.com`. One system superadmin at the owner address (`CoreOwner:Email`) = **`CoreOwner`**. Distinct from Participant UI and `admin.platform.dealoware.com`. Human-user list OUT. Multiple admin humans / operator ACL OUT. |
 | 2 | Email + password; secure one-time bootstrap | MET | **MET** | §8.1; §8.2; §8.10; §12 OUT | Email + password for that superadmin. Bootstrap = single-use timed out-of-band link; first password set only via link; TOTP enrollment before first session. **No password** in code/docs/Spec/chat/commit history. SSO/IdP as delivered OUT. |
 | 3 | TOTP 2FA required; no email OTP fallback | MET | **MET** | §8.3; §8.10; Locked #5 | TOTP required before first session and on every login after. Email OTP fallback **NOT allowed**. Recovery = one-time codes shown once, stored **hashed**; each single-use. |
 | 4 | Password reset = email link + 2FA | MET | **MET** | §8.4 | Reset requires **both** single-use timed email link **and** 2FA (TOTP or unused recovery code). No reset that skips 2FA. Reset email carries link only — never a password value. |

@@ -7,7 +7,7 @@
 | Revision | **r5** — prior tip sha256 `8df392554ed887322bd7dc3f6633933bca26209c3bcfbb29321bf055f89814c9` (r4; archived `/workspace/qa/archive/2026-10-05__qa__test-design__core-admin-dashboard__8df39255.md`; not yet Test-design-QA verified). Earlier: `31095cbb…` (r3), `110e075f…` (r2, Test design QA PASS), `870f348c…` (r1, A6 PASS) |
 | Status | **Revised r5 — awaiting Test design QA re-verify (Senior Product QA).** No earlier PASS covers this tip. Gates and holds: §0 Active holds (single list) |
 | Host | `admin.core.dealoware.com` **only** (Core admin). Platform hosts are not Core and are not positive test targets. |
-| Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
+| Principal | **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | DOC-FLOW | `qa/2026-10-05__qa__test-design__core-admin-dashboard.md` |
 | Constraints | Test design only. Do not invent Stories, code, PRs, CDK, spend, provision or deploy. Do not invent passwords, AWS account IDs, region, SES identity, Turnstile site keys or HMAC key values. A7 held until H4 live PASS. Deploy held until Ivan OK. Never MotorMarket buyer/seller sessions or Arctic Circle inventory. |
@@ -191,7 +191,7 @@ Server-side proof of lock / throttle is through the **audit log** (reason class 
 ### Test data rules
 
 - **Synthetic only** — no real customer data; no MotorMarket buyer/seller sessions; no Arctic Circle inventory.
-- CoreOwner login email under test is the Spec lock `io@aiknowhow.com`; **password / TOTP seed / recovery codes** live only in env or secret store, referenced **by name** (e.g. `COREOWNER_PASSWORD_ENV`, `TOTP_SEED_ENV`). **Never** write values into this design, fixtures committed to git, chat, or reports.
+- CoreOwner login email under test is the owner address (`CoreOwner:Email`), set by the test host; **password / TOTP seed / recovery codes** live only in env or secret store, referenced **by name** (e.g. `COREOWNER_PASSWORD_ENV`, `TOTP_SEED_ENV`). **Never** write values into this design, fixtures committed to git, chat, or reports.
 - Mail: fake/in-memory mail interface adapter in tests; do not invent SES account/region/identity.
 - CAPTCHA: Turnstile **test** keys via env; do not invent production site keys in docs.
 
@@ -553,7 +553,7 @@ Convention: secrets referenced by **env name only**. Host under test: `admin.cor
 - **Expected:** Admin routes respond for admin.core.dealoware.com. Platform host names are not used as targets in this design. If app-level Host binding is implemented, non-admin.core Host is denied (safe unauthorized / not-found) without leaking secrets.
 - **Negative / abuse variants:** Host spoof attempts must not grant CoreOwner. Do not target platform hosts as positive cases.
 
-#### TD-ADM-002 — CoreOwner principal binds only to io@aiknowhow.com
+#### TD-ADM-002 — CoreOwner principal binds only to the owner address
 
 - **Traces-to:** AC6, AC7, LOCK-2, SPEC-S3, SPEC-S8.1, SPEC-SEC-1, SPEC-SEC-7, STEP-1, STEP-11, PLAN-SEC-1, PLAN-SEC-9
 - **Layer:** integration

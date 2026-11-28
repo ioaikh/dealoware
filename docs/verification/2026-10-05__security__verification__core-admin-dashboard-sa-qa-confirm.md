@@ -12,7 +12,7 @@
 | Prior Soft HOLD SoR qa-confirm | **SUPERSEDED** — pre-expansion tip scored old 10/10 itemization; this overwrite is Soft HOLD SoR only for v2 |
 | Moment | SA-REV-CORE-ADMIN |
 | Host lock | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
+| Principal | **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | DOC-FLOW / Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` |
 
@@ -56,7 +56,7 @@ Score vs **Chief SA checklist ISSUED v2 pts 1–14 only**. Soft HOLD SoR surface
 
 | # | Point (Chief SA checklist v2) | Senior | Security QA | Soft HOLD SoR body evidence |
 |---|-------------------------------|--------|-------------|------------------------------|
-| 1 | Host + single superadmin CoreOwner | MET | **MET** | §3.1: admin only at `admin.core.dealoware.com`; platform hosts not this Soft HOLD SoR. §3.2: principal **CoreOwner** = single superadmin login email **`io@aiknowhow.com`**; no multi-admin operator ACL; CoreOwner ≠ Participant UI ≠ platform admin. §2 Option A pick / reject B·E·F. §3.10 / §4 OUT: O1 human users OUT |
+| 1 | Host + single superadmin CoreOwner | MET | **MET** | §3.1: admin only at `admin.core.dealoware.com`; platform hosts not this Soft HOLD SoR. §3.2: principal **CoreOwner** = single superadmin login email: **the owner address (`CoreOwner:Email`)**; no multi-admin operator ACL; CoreOwner ≠ Participant UI ≠ platform admin. §2 Option A pick / reject B·E·F. §3.10 / §4 OUT: O1 human users OUT |
 | 2 | Email + password + one-time bootstrap; Soft HOLD invent password | MET | **MET** | §3.3 Identity/Bootstrap: email + password for that superadmin; seed identity only; initial password via out-of-band **single-use** time-limited link (≤24h; SA may tighten). Soft HOLD invent password — **no password values** in Soft HOLD SoR/docs/Spec/chat/commit history; no embedded password or live link. Soft HOLD invent SSO/IdP as delivered (§2 C reject; §3.3 OUT; §4 OUT). Scan confirmed none |
 | 3 | TOTP required; no email OTP fallback; hashed recovery codes | MET | **MET** | §3.3: TOTP required before first interactive admin session and on every login after. Email OTP **NOT** a 2FA fallback (CEO). Recovery = one-time recovery codes stored **hashed** only. Auth secrets never in API bodies/audit/logs/metrics/traces. (Senior O6: one-time display + regen invalidate — Spec fold; not GAP) |
 | 4 | Password reset = email link + 2FA | MET | **MET** | §3.3 Password reset: email link **and** TOTP (or hashed recovery-code path under same 2FA rule). Soft HOLD invent password-only reset without 2FA. §3.5 audits reset request/completion |
@@ -81,7 +81,7 @@ Senior SA points-review scored **PASS 14/14** vs checklist ISSUED v2 on Soft HOL
 
 | Guardrail | Status |
 |-----------|--------|
-| Host `admin.core.dealoware.com` only; principal **CoreOwner** = `io@aiknowhow.com` | Held (§3.1–§3.2) |
+| Host `admin.core.dealoware.com` only; principal **CoreOwner** = the owner address (`CoreOwner:Email`) | Held (§3.1–§3.2) |
 | Email + password + one-time bootstrap; Soft HOLD invent password values | Held (§3.3; scan clean) |
 | TOTP required; no email OTP fallback; hashed recovery codes | Held (§3.3) |
 | Password reset = email link + 2FA | Held (§3.3) |

@@ -23,7 +23,7 @@ Replace `{{CEO}}` / `{{CEO_EMAIL}}` / `{{GITHUB_OWNER}}` / `{{GITHUB_REPO}}` as 
 | `{{PROJECT}}` | Dealoware | |
 | `{{project}}` | dealoware | |
 | `{{CEO}}` | Ivan Onuchin | |
-| `{{CEO_EMAIL}}` | io@aiknowhow.com | |
+| `{{CEO_EMAIL}}` | (the owner address; kept outside the repository) | |
 | `{{GITHUB_OWNER}}` | ioaikh | |
 | `{{GITHUB_REPO}}` | dealoware | |
 | KB path | `/workspace/dealoware-kb/` | `/workspace/{{project}}-kb/` |

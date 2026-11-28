@@ -89,7 +89,7 @@ Note: Chief Security still issues the formal Spec **Security** PASS/HOLD to Chie
 | AC4 | Negotiations/offers: all statuses (soft-deleted via toggle); sort/filter; server-side paging; name search per Product | §4.3–§4.6, §5, §9–§11 | **MET** |
 | AC5 | Counts: Participants, open negotiations, offers, accepts, declines; no charts; no warehouse | §6; Locked #4 | **MET** |
 | AC6 | Not Participant UI; FieldPolicy for Core owner; **one** system superadmin; no parallel multi-user ACL | §3, §5, §7, §8.1 | **MET** |
-| AC7 | Required designs: superadmin `io@aiknowhow.com` email+password; bootstrap; TOTP (Spec decides email OTP — Spec locks **OUT**); recovery codes; reset = link + 2FA; Turnstile only ($0); SES; lockout/session; auth + edit/delete audit; confirm-before-delete; delete semantics; lists/search/paging | §4.5–§4.6; §8–§11 | **MET** |
+| AC7 | Required designs: superadmin at the owner address (`CoreOwner:Email`) email+password; bootstrap; TOTP (Spec decides email OTP — Spec locks **OUT**); recovery codes; reset = link + 2FA; Turnstile only ($0); SES; lockout/session; auth + edit/delete audit; confirm-before-delete; delete semantics; lists/search/paging | §4.5–§4.6; §8–§11 | **MET** |
 | AC8 | No inbound connector, platform admin, human registration, payments, token allowance | §12 OUT | **MET** |
 | AC9 | Soft HOLD build/deploy until harden live QA PASS after app image bake; Soft HOLD invent AWS; PoC $0 | Header; Locked #7; §12 OUT | **MET** |
 
