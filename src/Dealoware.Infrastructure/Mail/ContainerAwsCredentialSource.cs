@@ -151,15 +151,40 @@ public sealed class ContainerCredentialsEndpoint
 }
 
 /// <summary>
-/// The credentials endpoint did not give usable credentials. The message says only what kind
-/// of failure it was: never the address, the token, the response body or a credential.
+/// The credentials endpoint did not give usable credentials. <see cref="Reason"/> is a fixed
+/// code for the kind of failure, safe to log; the message says the same in words. Neither
+/// ever holds the address, the token, the response body or a credential.
 /// </summary>
 public sealed class AwsContainerCredentialsException : InvalidOperationException
 {
-    public AwsContainerCredentialsException(string message)
+    /// <summary>The whole fetch, answer included, took longer than its deadline.</summary>
+    public const string Timeout = "timeout";
+
+    /// <summary>No answer: the connection failed or broke off.</summary>
+    public const string Unreachable = "unreachable";
+
+    /// <summary>The answer was not the expected JSON, or a field was missing or unusable.</summary>
+    public const string BadJson = "bad-json";
+
+    /// <summary>The answer was larger than any real credentials answer.</summary>
+    public const string TooLarge = "too-large";
+
+    /// <summary>The credentials in the answer had already expired.</summary>
+    public const string Expired = "expired";
+
+    /// <summary>The authorization token file could not be read, or its token is not a legal header value.</summary>
+    public const string TokenFile = "token-file";
+
+    public AwsContainerCredentialsException(string reason, string message)
         : base(message)
     {
+        Reason = reason;
     }
+
+    /// <summary>One of the fixed codes above, or <c>http-</c> and the status number.</summary>
+    public string Reason { get; }
+
+    public static string HttpReason(int statusCode) => "http-" + statusCode.ToString(CultureInfo.InvariantCulture);
 }
 
 /// <summary>
@@ -167,13 +192,18 @@ public sealed class AwsContainerCredentialsException : InvalidOperationException
 /// container credentials endpoint. They are temporary and carry a session token. They are kept
 /// in memory and fetched again before they expire: once inside
 /// <see cref="DefaultRefreshBeforeExpiry"/> of the expiry, the next send fetches new ones, and
-/// if that fetch fails while the old ones still work, the old ones are used. Nothing this class
-/// reads or sends is logged.
+/// if that fetch fails while the old ones still work, the old ones are used. One fetch, the
+/// whole answer included, is cut off after <see cref="DefaultFetchTimeout"/>, so a stalled
+/// endpoint never holds the other senders up for longer than that. Nothing this class reads or
+/// sends is logged.
 /// </summary>
 public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
 {
     /// <summary>How long before the expiry the next send fetches new credentials.</summary>
     public static readonly TimeSpan DefaultRefreshBeforeExpiry = TimeSpan.FromMinutes(5);
+
+    /// <summary>The most one fetch may take, from the request to the last byte of the answer.</summary>
+    public static readonly TimeSpan DefaultFetchTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>The largest credentials answer read; a real one is under 2 KB.</summary>
     internal const int MaxResponseBytes = 64 * 1024;
@@ -182,6 +212,7 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
     private readonly HttpClient _httpClient;
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _refreshBeforeExpiry;
+    private readonly TimeSpan _fetchTimeout;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AwsCredentials? _current;
 
@@ -189,7 +220,8 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
         ContainerCredentialsEndpoint endpoint,
         HttpClient httpClient,
         Func<DateTimeOffset>? clock = null,
-        TimeSpan? refreshBeforeExpiry = null)
+        TimeSpan? refreshBeforeExpiry = null,
+        TimeSpan? fetchTimeout = null)
     {
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -197,6 +229,9 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
         _refreshBeforeExpiry = refreshBeforeExpiry ?? DefaultRefreshBeforeExpiry;
         if (_refreshBeforeExpiry < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(refreshBeforeExpiry));
+        _fetchTimeout = fetchTimeout ?? DefaultFetchTimeout;
+        if (_fetchTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(fetchTimeout));
     }
 
     public async ValueTask<AwsCredentials> GetCredentialsAsync(CancellationToken cancellationToken)
@@ -240,53 +275,77 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
 
     private async Task<AwsCredentials> FetchAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, _endpoint.Uri);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         var token = ReadAuthorizationToken();
-        if (token is not null)
-            request.Headers.TryAddWithoutValidation("Authorization", token);
 
-        HttpResponseMessage response;
+        // One deadline for the request and the whole answer: HttpClient.Timeout stops at the
+        // headers when the answer is read as a stream.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_fetchTimeout);
         try
         {
-            response = await _httpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (HttpRequestException)
-        {
-            throw new AwsContainerCredentialsException("The container credentials request failed.");
-        }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new AwsContainerCredentialsException("The container credentials request timed out.");
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Get, _endpoint.Uri);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            if (token is not null)
+                request.Headers.TryAddWithoutValidation("Authorization", token);
 
-        using (response)
-        {
+            using var response = await SendAsync(request, deadline.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                var status = (int)response.StatusCode;
                 throw new AwsContainerCredentialsException(
+                    AwsContainerCredentialsException.HttpReason(status),
                     "The container credentials request failed with HTTP "
-                    + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + ".");
+                    + status.ToString(CultureInfo.InvariantCulture) + ".");
             }
 
-            byte[] body;
-            try
-            {
-                body = await ReadLimitedAsync(response.Content, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or IOException
-                                       || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
-            {
-                throw new AwsContainerCredentialsException("The container credentials answer could not be read.");
-            }
-
+            var body = await ReadLimitedAsync(response.Content, deadline.Token).ConfigureAwait(false);
             var credentials = Parse(body);
             if (credentials.Expiration is not { } expiry || expiry <= now)
-                throw new AwsContainerCredentialsException("The container credentials had already expired.");
+            {
+                throw new AwsContainerCredentialsException(
+                    AwsContainerCredentialsException.Expired,
+                    "The container credentials had already expired.");
+            }
 
             return credentials;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new AwsContainerCredentialsException(
+                AwsContainerCredentialsException.Timeout,
+                "The container credentials request timed out.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
+        {
+            throw new AwsContainerCredentialsException(
+                AwsContainerCredentialsException.Unreachable,
+                "The container credentials request failed.");
+        }
+    }
+
+    /// <summary>
+    /// Sends, and stops waiting at the deadline even if the handler does not. An answer that
+    /// arrives after that is disposed unread.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken deadline)
+    {
+        var sending = _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline);
+        try
+        {
+            return await sending.WaitAsync(deadline).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!sending.IsCompleted)
+        {
+            _ = sending.ContinueWith(
+                static t =>
+                {
+                    if (t.IsCompletedSuccessfully)
+                        t.Result.Dispose();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            throw;
         }
     }
 
@@ -301,11 +360,17 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
-                throw new AwsContainerCredentialsException("The container authorization token file could not be read.");
+                throw new AwsContainerCredentialsException(
+                    AwsContainerCredentialsException.TokenFile,
+                    "The container authorization token file could not be read.");
             }
 
             if (!ContainerCredentialsEndpoint.IsLegalHeaderValue(fromFile))
-                throw new AwsContainerCredentialsException("The container authorization token is not a legal header value.");
+            {
+                throw new AwsContainerCredentialsException(
+                    AwsContainerCredentialsException.TokenFile,
+                    "The container authorization token is not a legal header value.");
+            }
 
             return fromFile;
         }
@@ -313,24 +378,31 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
         return _endpoint.AuthorizationToken;
     }
 
-    private static async Task<byte[]> ReadLimitedAsync(HttpContent content, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads at most <see cref="MaxResponseBytes"/>. Every read also stops at the deadline, even
+    /// on a stream that does not watch its token.
+    /// </summary>
+    private static async Task<byte[]> ReadLimitedAsync(HttpContent content, CancellationToken deadline)
     {
         if (content.Headers.ContentLength is > MaxResponseBytes)
-            throw new AwsContainerCredentialsException("The container credentials answer was too large.");
+            throw TooLarge();
 
-        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using var stream = await content.ReadAsStreamAsync(deadline).WaitAsync(deadline).ConfigureAwait(false);
         using var buffer = new MemoryStream();
         var chunk = new byte[8192];
         int read;
-        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        while ((read = await stream.ReadAsync(chunk, deadline).AsTask().WaitAsync(deadline).ConfigureAwait(false)) > 0)
         {
             if (buffer.Length + read > MaxResponseBytes)
-                throw new AwsContainerCredentialsException("The container credentials answer was too large.");
+                throw TooLarge();
             buffer.Write(chunk, 0, read);
         }
 
         return buffer.ToArray();
     }
+
+    private static AwsContainerCredentialsException TooLarge()
+        => new(AwsContainerCredentialsException.TooLarge, "The container credentials answer was too large.");
 
     private static AwsCredentials Parse(byte[] body)
     {
@@ -375,5 +447,5 @@ public sealed class ContainerAwsCredentialSource : IAwsCredentialSource
             : throw Unusable();
 
     private static AwsContainerCredentialsException Unusable()
-        => new("The container credentials answer was not usable.");
+        => new(AwsContainerCredentialsException.BadJson, "The container credentials answer was not usable.");
 }

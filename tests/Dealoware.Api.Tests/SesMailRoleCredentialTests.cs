@@ -5,6 +5,8 @@ using Dealoware.Domain.Admin;
 using Dealoware.Infrastructure.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Dealoware.Api.Tests;
@@ -279,6 +281,7 @@ public class SesMailRoleCredentialTests
             async () => await source.GetCredentialsAsync(CancellationToken.None));
 
         Assert.Contains("403", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(AwsContainerCredentialsException.HttpReason(403), ex.Reason);
         Assert.DoesNotContain("sentinel", ex.ToString(), StringComparison.OrdinalIgnoreCase);
         Assert.Null(ex.InnerException);
         Assert.Equal(nameof(ContainerCredentialsEndpoint), endpoint.ToString());
@@ -299,8 +302,9 @@ public class SesMailRoleCredentialTests
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json(answer));
         var source = new ContainerAwsCredentialSource(RelativeEndpoint(), new HttpClient(handler), () => T0);
 
-        await Assert.ThrowsAsync<AwsContainerCredentialsException>(
+        var ex = await Assert.ThrowsAsync<AwsContainerCredentialsException>(
             async () => await source.GetCredentialsAsync(CancellationToken.None));
+        Assert.Contains(ex.Reason, new[] { AwsContainerCredentialsException.BadJson, AwsContainerCredentialsException.Expired });
     }
 
     [Fact]
@@ -310,8 +314,69 @@ public class SesMailRoleCredentialTests
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json("{\"Pad\":\"" + padding + "\"}"));
         var source = new ContainerAwsCredentialSource(RelativeEndpoint(), new HttpClient(handler), () => T0);
 
-        await Assert.ThrowsAsync<AwsContainerCredentialsException>(
+        var ex = await Assert.ThrowsAsync<AwsContainerCredentialsException>(
             async () => await source.GetCredentialsAsync(CancellationToken.None));
+        Assert.Equal(AwsContainerCredentialsException.TooLarge, ex.Reason);
+    }
+
+    [Fact]
+    public async Task ContainerFetch_AnswerThatStallsAfterItsHeaders_TimesOut_AndNeverHoldsTheNextCaller()
+    {
+        // Headers, then 10 of the 200 bytes promised, then nothing, and the stream does not even
+        // watch its cancellation token. HttpClient's own timeout covers only the headers here.
+        var handler = new StubHttpHandler(_ => StalledAnswer());
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
+        var source = new ContainerAwsCredentialSource(
+            RelativeEndpoint(), client, () => T0, fetchTimeout: TimeSpan.FromMilliseconds(400));
+
+        var first = source.GetCredentialsAsync(CancellationToken.None).AsTask();
+        var second = source.GetCredentialsAsync(CancellationToken.None).AsTask();
+        var all = Task.WhenAll(first, second);
+        await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        Assert.True(first.IsCompleted, "the first fetch was still waiting on a stalled answer");
+        Assert.True(second.IsCompleted, "the second caller was still blocked behind the first");
+        foreach (var call in new[] { first, second })
+        {
+            var ex = await Assert.ThrowsAsync<AwsContainerCredentialsException>(() => call);
+            Assert.Equal(AwsContainerCredentialsException.Timeout, ex.Reason);
+        }
+
+        // Each caller made its own bounded try; the source is free for the next one.
+        Assert.Equal(2, handler.Count);
+        handler.Respond = _ => StubHttpHandler.Json(CredentialsJson(RoleKeyId, RoleSessionToken, T0.AddHours(1)));
+        var later = await source.GetCredentialsAsync(CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(RoleKeyId, later.AccessKeyId);
+    }
+
+    [Fact]
+    public async Task ContainerFetch_HandlerThatNeverAnswers_TimesOut()
+    {
+        var never = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new HttpClient(new NeverAnsweringHandler(never.Task)) { Timeout = Timeout.InfiniteTimeSpan };
+        var source = new ContainerAwsCredentialSource(
+            RelativeEndpoint(), client, () => T0, fetchTimeout: TimeSpan.FromMilliseconds(300));
+
+        var call = source.GetCredentialsAsync(CancellationToken.None).AsTask();
+        await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        Assert.True(call.IsCompleted, "the fetch was still waiting on a handler that never answers");
+        var ex = await Assert.ThrowsAsync<AwsContainerCredentialsException>(() => call);
+        Assert.Equal(AwsContainerCredentialsException.Timeout, ex.Reason);
+        never.TrySetResult(new HttpResponseMessage(HttpStatusCode.OK));
+    }
+
+    [Fact]
+    public async Task ContainerFetch_CallerCancellation_IsNotReportedAsATimeout()
+    {
+        var handler = new StubHttpHandler(_ => StalledAnswer());
+        using var client = new HttpClient(handler);
+        var source = new ContainerAwsCredentialSource(
+            RelativeEndpoint(), client, () => T0, fetchTimeout: TimeSpan.FromSeconds(30));
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await source.GetCredentialsAsync(cancel.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     [Theory]
@@ -504,7 +569,11 @@ public class SesMailRoleCredentialTests
         CollectingLoggerProvider? logs = null)
     {
         var env = MailEnv(withRole, withStaticKeys);
-        var settings = new Dictionary<string, string?> { ["environment"] = environment };
+        // A stray "environment" setting must not decide it: the host environment does.
+        var settings = new Dictionary<string, string?>
+        {
+            ["environment"] = environment == "Development" ? "Production" : "Development"
+        };
         foreach (var name in new[]
                  {
                      SesMailOptions.FromEnvironmentVariable,
@@ -529,6 +598,7 @@ public class SesMailRoleCredentialTests
             if (logs is not null)
                 builder.AddProvider(logs);
         });
+        services.AddSingleton<IHostEnvironment>(new TestHostEnvironment(environment));
         services.AddAdminMail(configuration);
         services.AddHttpClient(AdminMailServiceCollectionExtensions.CredentialsHttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => credentialsHandler);
@@ -577,6 +647,75 @@ public class SesMailRoleCredentialTests
         };
         request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         return request;
+    }
+
+    private static HttpResponseMessage StalledAnswer()
+    {
+        var content = new StreamContent(new StalledStream("{\"AccessKe"u8.ToArray()));
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        content.Headers.ContentLength = 200;
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    }
+
+    /// <summary>Gives its first bytes, then never another one; it ignores cancellation until disposed.</summary>
+    private sealed class StalledStream(byte[] start) : Stream
+    {
+        private readonly TaskCompletionSource<int> _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_position < start.Length)
+            {
+                var count = Math.Min(buffer.Length, start.Length - _position);
+                start.AsMemory(_position, count).CopyTo(buffer);
+                _position += count;
+                return count;
+            }
+
+            return await _disposed.Task.ConfigureAwait(false);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count)
+            => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            _disposed.TrySetResult(0);
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>A handler that ignores cancellation and answers only when the test says so.</summary>
+    private sealed class NeverAnsweringHandler(Task<HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => answer;
+    }
+
+    private sealed class TestHostEnvironment(string environmentName) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = environmentName;
+        public string ApplicationName { get; set; } = "Dealoware.Api.Tests";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private static AdminMailMessage Message()

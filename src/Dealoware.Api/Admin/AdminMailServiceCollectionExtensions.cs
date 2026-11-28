@@ -38,10 +38,8 @@ public static class AdminMailServiceCollectionExtensions
         services.AddSingleton<IAdminMailSender>(sp =>
         {
             string? GetEnv(string name) => configuration[name] ?? Environment.GetEnvironmentVariable(name);
-            var environmentName = configuration[HostDefaults.EnvironmentKey]
-                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-                ?? Environments.Production;
-            var isDevelopment = string.Equals(environmentName, Environments.Development, StringComparison.OrdinalIgnoreCase);
+            // The host's own environment, the one every other Development-only rule reads.
+            var isDevelopment = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
 
             if (!isDevelopment && SesMailOptions.HasStaticKeys(GetEnv))
             {
