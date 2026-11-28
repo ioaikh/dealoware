@@ -12,7 +12,7 @@
 | Prior tips VOID | `bd814d401d31e8272473c1da64f1ffc22191a82e1ac299c0b452deec4fc9479d` (Steps 7/9 PASS; H4 primary cite was wrong) **VOID** for current tip; also VOID: `21535e66…`, `3385872a…`, `1c173e98…`, `970b453a…`, `abfa672a…`, `5fefb550…` |
 | Frozen / prior confirms (untouched) | (1) `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` — frozen sha256 `5d7e7fca8dca7fb4cef71a52b5cecd95b9bb400a1641ff16686851042d9923ac` (covers VOID tip `21535e66…` only). (2) `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-bd814d40-qa-confirm.md` — left untouched; sha256 `bed27d5740333185b7c63f3f31bc50c309f59d218782f11f36bab2068ba03d5c` (VOID for current tip). |
 | Host | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
+| Principal | **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | Handshake | **qa-confirm only** (this file). Points-review is not the gate. |
 | DOC-FLOW | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-41928cbe-qa-confirm.md` |

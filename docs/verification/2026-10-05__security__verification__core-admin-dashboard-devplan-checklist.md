@@ -22,7 +22,7 @@ Dev Plan must **schedule, gate, and verify** Spec Security locks for Core admin 
 
 ## Itemized security points (Dev Plan must weave)
 
-1. **Host + single CoreOwner gate** — Plan schedules admin UI/API only for `admin.core.dealoware.com`. Single superadmin login email `io@aiknowhow.com` → principal **`CoreOwner`**. Soft HOLD invent platform-admin host tasks, human-user list on Core, Participant UI-as-admin, or multi-admin / operator ACL Stories.
+1. **Host + single CoreOwner gate** — Plan schedules admin UI/API only for `admin.core.dealoware.com`. Single superadmin login email: the owner address (`CoreOwner:Email`) → principal **`CoreOwner`**. Soft HOLD invent platform-admin host tasks, human-user list on Core, Participant UI-as-admin, or multi-admin / operator ACL Stories.
 
 2. **Bootstrap + email/password (no invent password)** — Plan schedules single-use timed out-of-band bootstrap link; first password set only via that link; TOTP enrollment **before** first session. Plan Soft HOLD invent password values in Stories, fixtures, README, chat, or commit history (placeholders / env-only for secrets). Soft HOLD invent SSO/IdP as delivered.
 

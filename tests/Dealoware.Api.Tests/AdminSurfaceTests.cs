@@ -17,7 +17,7 @@ namespace Dealoware.Api.Tests;
 public class AdminSurfaceTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
 
     private readonly IsolatedWebApplicationFactory _factory;
 

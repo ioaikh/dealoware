@@ -33,7 +33,7 @@ namespace Dealoware.Api.Tests;
 public partial class AdminAuditPageTests
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
     private const string ClientIp = "203.0.113.64";
     private const string Changed = "<span class=\"badge badge-changed\">Changed</span>";
 
@@ -986,6 +986,7 @@ public partial class AdminAuditPageTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
             builder.UseSetting(IpHasher.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

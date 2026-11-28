@@ -44,7 +44,7 @@ Do not cite old public-repo issue or PR numbers from the pre-recreate history as
 | # | Decision | Spec lock |
 |---|----------|-----------|
 | 1 | Host | Core admin is only at `admin.core.dealoware.com`. Platform admin and platform app hosts are out of this Spec. |
-| 2 | Role | **One** system superadmin (`io@aiknowhow.com`) = principal **`CoreOwner`** (SA §3.2). Not the Participant UI. Fields follow FieldPolicy for that role. **No** operator list / multi-admin ACL. |
+| 2 | Role | **One** system superadmin (the owner address, `CoreOwner:Email`) = principal **`CoreOwner`** (SA §3.2). Not the Participant UI. Fields follow FieldPolicy for that role. **No** operator list / multi-admin ACL. |
 | 3 | Entity surface | List, view, edit, and delete Participants (not human users), Artifacts, negotiations, and offers — with all-status lists, sort/filter/paging, and name search (§4, §4.5–§4.6). |
 | 4 | Stats | Overall counts from Core data (§6): Participants, open negotiations, offers, accepts, declines. No charts product. No warehouse. |
 | 5 | Must-cover | Superadmin sign-in (§8 — locked, not open to SA mechanism pick); confirm before every delete (§9); audit log including login/reset/2FA events (§10); delete semantics soft vs hard + cascades (§11); lists/search/paging (§4.5–§4.6). |
@@ -85,7 +85,7 @@ Prior Step 3 named a platform-owner admin with human registered users (O1), Arti
 |---------|------------------|
 | Host | Admin UI and admin API for this Spec are served only as Core admin at `admin.core.dealoware.com`. |
 | Not this Spec | `admin.platform.dealoware.com`, `platform.dealoware.com`, and their APIs. |
-| Role | **One** system superadmin. Login email: `io@aiknowhow.com`. Maps to Core owner role. Separate from Participant principal and Participant UI. |
+| Role | **One** system superadmin. Login email: the owner address (`CoreOwner:Email`). Maps to Core owner role. Separate from Participant principal and Participant UI. |
 | Operator list | **None.** No multi-human admin ACL. Multiple admins are OUT (§12). |
 | Fields | Visibility and mutation follow FieldPolicy for the Core owner role (Option A §3a/§3b dual wall). No parallel admin access list that drifts from Domain FieldPolicy. |
 | Privacy | Core stays public. This Spec must not contain CDK details, bot-platform internals, AWS account information, or **any password value**. |
@@ -241,7 +241,7 @@ Product **13:31 (includes 1:27pm patch + 1:30pm CEO final)** locks identity and 
 
 | Requirement | Spec lock |
 |-------------|-----------|
-| Who | **One** system superadmin. Login email: `io@aiknowhow.com`. Email + password. |
+| Who | **One** system superadmin. Login email: the owner address (`CoreOwner:Email`). Email + password. |
 | Operator list | **None.** No multi-admin ACL. |
 | Role binding | Successful sign-in binds the verified superadmin identity to the Core owner principal/claim FieldPolicy uses. |
 | Fail-closed | If the signed-in principal is not Core owner / not this superadmin, admin routes deny (no entity list, no edit, no delete, no stats beyond a safe unauthorized response). |
@@ -444,7 +444,7 @@ Deleting an **open** negotiation (directly or via Participant cascade) must:
 - List, view, edit, delete Artifacts + name search (§4.6)
 - List, view, edit, delete negotiations and offers — **all statuses**, sort/filter, server-side paging (§4.5), name search (§4.6)
 - Overall Core stats: Participants, open negotiations, offers, accepts, declines
-- **One** system superadmin `io@aiknowhow.com` + FieldPolicy; no parallel admin ACL / no operator list
+- **One** system superadmin at the owner address (`CoreOwner:Email`) + FieldPolicy; no parallel admin ACL / no operator list
 - Locked admin auth/sign-in (§8): bootstrap, TOTP required, no email OTP fallback, reset = email link + 2FA, **Cloudflare Turnstile only** ($0), lockout/rate limit, session timers, auth audit events
 - Confirm before every delete (§9)
 - Audit log of admin edits/deletes **and** login/reset/2FA events; log not editable/deletable from admin (§10)
@@ -481,7 +481,7 @@ Deleting an **open** negotiation (directly or via Participant cascade) must:
 
 | # | Security point (checklist v2) | Spec answer | Spec section cites |
 |---|-------------------------------|-------------|--------------------|
-| 1 | Host + single superadmin role | **MET.** Admin only at `admin.core.dealoware.com`. One system superadmin `io@aiknowhow.com`. Distinct from Participant UI and `admin.platform`. Human-user list OUT. Multiple admin humans / operator ACL OUT. | Locked #1–#2; §3; §12 OUT |
+| 1 | Host + single superadmin role | **MET.** Admin only at `admin.core.dealoware.com`. One system superadmin at the owner address (`CoreOwner:Email`). Distinct from Participant UI and `admin.platform`. Human-user list OUT. Multiple admin humans / operator ACL OUT. | Locked #1–#2; §3; §12 OUT |
 | 2 | Email + password; secure one-time bootstrap | **MET.** Email + password for that superadmin. Single-use timed out-of-band bootstrap link; password set only via link. **No password** in code/docs/Spec/chat/commit history. SSO/IdP as delivered OUT. | §8.1; §8.2; §12 OUT |
 | 3 | TOTP 2FA required; no email OTP fallback | **MET.** TOTP required before first session and on every login after. Email OTP **NOT allowed**. Recovery = one-time codes shown once at enrollment, stored **hashed**. | §8.3; §8.10 |
 | 4 | Password reset = email link + 2FA | **MET.** Reset requires single-use timed email link **and** 2FA (TOTP or unused recovery code). No reset that skips 2FA. | §8.4 |
@@ -510,7 +510,7 @@ Binding: Product note AC1–AC9 — **13:31 (includes 1:27pm patch + 1:30pm CEO 
 | AC4 | List, open, edit, delete negotiations and offers; **all statuses** (soft-deleted via toggle); **sort/filter** on status, created/updated, participant, artifact, value/price, negotiation id; **server-side paging**; **search by name** per Product definitions | §4.3–§4.6, §5, §9–§11 |
 | AC5 | Overall stats: Participants, open negotiations, offers, accepts, declines; no charts; no warehouse | §6 |
 | AC6 | Not Participant UI; FieldPolicy for Core owner; **one** system superadmin; no parallel multi-user admin ACL | §3, §5, §7, §8.1 |
-| AC7 | Required designs: single superadmin `io@aiknowhow.com` email+password; secure one-time bootstrap (no password in code/docs/chat); required TOTP (email OTP **not** allowed per Spec); recovery codes; password reset via email link + 2FA; CAPTCHA on login/reset (**Cloudflare Turnstile only**, $0); mail via **SES** behind mail interface; lockout/rate limit; session lifetime; login/reset/2FA audit; confirm before delete; audit log of edits/deletes; delete semantics; all-status lists, sort/filter, paging, name search. No invented mail/CAPTCHA/AWS accounts. | §4.5–§4.6; §8; §9; §10; §11 |
+| AC7 | Required designs: single superadmin at the owner address (`CoreOwner:Email`) email+password; secure one-time bootstrap (no password in code/docs/chat); required TOTP (email OTP **not** allowed per Spec); recovery codes; password reset via email link + 2FA; CAPTCHA on login/reset (**Cloudflare Turnstile only**, $0); mail via **SES** behind mail interface; lockout/rate limit; session lifetime; login/reset/2FA audit; confirm before delete; audit log of edits/deletes; delete semantics; all-status lists, sort/filter, paging, name search. No invented mail/CAPTCHA/AWS accounts. | §4.5–§4.6; §8; §9; §10; §11 |
 | AC8 | Does not deliver inbound bot connector, platform admin, human registration, payments, or token allowance | §12 OUT |
 | AC9 | Build and deploy held until harden live QA PASS after app image bake; Soft HOLD invent AWS; PoC $0 until that gate and a separate spend unlock | Header; §12 OUT |
 
@@ -523,7 +523,7 @@ Binding: Product note AC1–AC9 — **13:31 (includes 1:27pm patch + 1:30pm CEO 
 - [x] Status was v2.1 CLEAR; **v2.2** reconciles to amended SA Soft HOLD SoR (draft → Chief Spec)
 - [x] Lists: all-status + soft-deleted toggle; sort/filter fields; server-side paging default **50** / max **200**; cursor vs offset → SA; tied to §11 (§4.5)
 - [x] Name search: Product definitions word-for-word; case-insensitive; combines with filters + paging (§4.6)
-- [x] §8 rewrite: single superadmin `io@aiknowhow.com`; bootstrap; TOTP required; email OTP **not** allowed; recovery codes; reset = link + 2FA; CAPTCHA (**Turnstile only**, $0); lockout + session timers; auth audit; **SES** behind mail interface (dependency + cost; no account/region/identity); **no password values**
+- [x] §8 rewrite: single superadmin at the owner address (`CoreOwner:Email`); bootstrap; TOTP required; email OTP **not** allowed; recovery codes; reset = link + 2FA; CAPTCHA (**Turnstile only**, $0); lockout + session timers; auth audit; **SES** behind mail interface (dependency + cost; no account/region/identity); **no password values**
 - [x] v2.1: CEO 1:29pm SES behind mail interface + CEO 1:30pm Turnstile-only CAPTCHA ($0); no other CAPTCHA provider
 - [x] §10 audit: + login/reset/2FA events; still non-editable/non-deletable from admin; fail-closed on audit write
 - [x] §12 IN/OUT: multiple admins OUT; SSO/IdP OUT; password values forbidden

@@ -13,7 +13,7 @@
 | Delta area | Prior Soft HOLD SoR / prior formal PASS | Amended Soft HOLD SoR (13:35 ET) |
 |------------|----------------------------------------|----------------------------------|
 | Lists / search / paging | Pre-expansion (edit/delete + confirm/audit/soft-delete; no §3.9 all-status / name search / offset-limit paging lock) | **§3.9** all-status (incl. Withdrawn) + sort/filter + offset/limit paging (default 50 / max 200) + name search per Product |
-| Superadmin / 2FA | Password non-SSO + session timers; TOTP/email-OTP not CEO-locked in prior Security-cleared surface the same way | **Single** superadmin `io@aiknowhow.com`; **required TOTP**; email OTP **NOT** 2FA fallback; recovery codes hashed |
+| Superadmin / 2FA | Password non-SSO + session timers; TOTP/email-OTP not CEO-locked in prior Security-cleared surface the same way | **Single** superadmin at the owner address (`CoreOwner:Email`); **required TOTP**; email OTP **NOT** 2FA fallback; recovery codes hashed |
 | CAPTCHA | Not Turnstile-locked in prior Security-cleared pts | **Cloudflare Turnstile only**; AWS WAF CAPTCHA OUT; reCAPTCHA OUT |
 | Mail | Not SES-behind-mail-interface lock in prior Security-cleared surface | **SES** via **mail interface** (port/adapter); no direct SES SDK types in Core app code |
 | Cost cite | Not present | CFO Soft HOLD cost note + Finance QA **PASS** cite |
@@ -37,7 +37,7 @@
 | # | CEO delta | Result | Soft HOLD SoR cite (short) |
 |---|-----------|--------|----------------------------|
 | 1 | All-status lists + name search + server-side paging | **MET** | §3.9: every status incl. **Withdrawn**; sort/filter fields; offset/limit paging default **50** / max **200**; name search Participants/Artifacts/Negotiations/Offers per Product meanings |
-| 2 | Single superadmin + TOTP (no email OTP fallback) | **MET** | §3.3: one superadmin `io@aiknowhow.com`; required authenticator TOTP; email OTP **NOT** 2FA fallback; recovery codes hashed |
+| 2 | Single superadmin + TOTP (no email OTP fallback) | **MET** | §3.3: one superadmin at the owner address (`CoreOwner:Email`); required authenticator TOTP; email OTP **NOT** 2FA fallback; recovery codes hashed |
 | 3 | Turnstile only (WAF CAPTCHA OUT) | **MET** | §3.3 CAPTCHA Turnstile only ($0/mo); Option G reject WAF CAPTCHA/reCAPTCHA; §4 OUT |
 | 4 | SES behind mail interface | **MET** | §3.3 Mail: SES through mail interface (port/adapter); Core must not depend on AWS SES SDK types directly |
 | 5 | Soft HOLD invent password / AWS | **MET** | Header locks; §3.3 Soft HOLD invent password / Soft HOLD invent AWS account IDs, region, SES identity, from-address; §4 OUT |

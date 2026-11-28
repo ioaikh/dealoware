@@ -312,6 +312,15 @@ if (TurnstileOptionsValidator.VerifierKeyWarning(
     app.Logger.LogWarning("{Warning}", verifierKeyWarning);
 }
 
+// Said once at start-up: the owner address comes only from the environment (the stack binds it
+// from a secret). Without it nobody can sign in and bootstrap-link issues nothing. Never names it.
+if (CoreOwnerOptions.MissingEmailWarning(
+        app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<CoreOwnerOptions>>().Value.Email,
+        app.Environment.EnvironmentName) is { } ownerWarning)
+{
+    app.Logger.LogWarning("{Warning}", ownerWarning);
+}
+
 // The request ID first: every answer carries it, even one refused by a later gate.
 app.UseMiddleware<RequestIdMiddleware>();
 

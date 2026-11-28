@@ -13,8 +13,8 @@ namespace Dealoware.Api.Tests;
 /// </summary>
 public class AdminMailInterfaceTests
 {
-    private const string TestRecipient = "recipient@test.local";
-    private const string TestFrom = "sender@test.local";
+    private const string TestRecipient = "recipient@example.test";
+    private const string TestFrom = "sender@example.test";
     private const string TestRegion = "test-region";
     private const string TestAccessKey = "TESTACCESSKEYID";
     private const string TestSecret = "test-secret-not-a-real-key";
@@ -173,9 +173,10 @@ public class AdminMailInterfaceTests
         var body = "Use this one-time link to finish Core admin bootstrap.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<SesMailSendException>(() =>
             sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
 
+        Assert.Equal(403, ex.StatusCode);
         Assert.Contains("403", ex.Message);
         Assert.DoesNotContain(TestSecret, ex.Message);
         Assert.DoesNotContain(TestAccessKey, ex.Message);
@@ -185,7 +186,8 @@ public class AdminMailInterfaceTests
     [Fact]
     public async Task TD_ADM_110_MissingMailConfig_UsesDisabledSender()
     {
-        Assert.Null(SesMailOptions.TryCreate(_ => null));
+        Assert.Null(SesMailOptions.TryCreate(_ => null, allowStaticKeys: true));
+        Assert.Null(SesMailOptions.TryCreate(_ => null, allowStaticKeys: false));
         var sender = new DisabledMailSender();
         var body = "Use this one-time link to finish Core admin bootstrap.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
@@ -193,6 +195,8 @@ public class AdminMailInterfaceTests
             sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
         Assert.Contains(SesMailOptions.FromEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.RegionEnvironmentVariable, ex.Message);
+        Assert.Contains(ContainerCredentialsEndpoint.RelativeUriEnvironmentVariable, ex.Message);
+        Assert.Contains(ContainerCredentialsEndpoint.FullUriEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.AccessKeyEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.SecretKeyEnvironmentVariable, ex.Message);
         Assert.DoesNotContain(TestSecret, ex.Message);
@@ -257,13 +261,13 @@ public class AdminMailInterfaceTests
     }
 
     [Theory]
-    [InlineData("sender@test.local\r")]
-    [InlineData("sender@test.local\n")]
-    [InlineData("sender@test.local\t")]
-    [InlineData("sender@test.local\0")]
-    [InlineData("sender@test.local\u007f")]
-    [InlineData("sender@test.local\u200b")]
-    [InlineData("sender@test.local\u202e")]
+    [InlineData("sender@example.test\r")]
+    [InlineData("sender@example.test\n")]
+    [InlineData("sender@example.test\t")]
+    [InlineData("sender@example.test\0")]
+    [InlineData("sender@example.test\u007f")]
+    [InlineData("sender@example.test\u200b")]
+    [InlineData("sender@example.test\u202e")]
     [InlineData("a@b,c@d")]
     [InlineData("a@b;c@d")]
     [InlineData("Friends: a@b;")]

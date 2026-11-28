@@ -24,7 +24,7 @@ namespace Dealoware.Api.Tests;
 public partial class AdminConsoleShellTests
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private readonly IsolatedWebApplicationFactory _factory;
 

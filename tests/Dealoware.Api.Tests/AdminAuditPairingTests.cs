@@ -42,7 +42,7 @@ public class AdminAuditPairingTests
         var uow = new AdminAuditUnitOfWork(db, new ThrowingAdminAuditRepository());
         var audit = recorder.Entity(
             AdminAuditActions.EntityEdit,
-            "io@aiknowhow.com",
+            TestCoreOwner.Email,
             "198.51.100.9",
             "Participant",
             participant.Id,
@@ -88,7 +88,7 @@ public class AdminAuditPairingTests
         });
         var audit = recorder.Entity(
             AdminAuditActions.EntityEdit,
-            "io@aiknowhow.com",
+            TestCoreOwner.Email,
             "198.51.100.9",
             "Participant",
             participant.Id,
@@ -117,7 +117,7 @@ public class AdminAuditPairingTests
     public async Task TdAdm080_SnapshotsAreFieldPolicyOnly_NoSecrets()
     {
         var policy = new FieldPolicy();
-        var owner = FieldPrincipal.CoreOwner("io@aiknowhow.com");
+        var owner = FieldPrincipal.CoreOwner(TestCoreOwner.Email);
         var json = AdminAuditSnapshots.FromAllowedFields(
             policy,
             owner,
@@ -183,8 +183,8 @@ public class AdminAuditPairingTests
         var childId = Guid.NewGuid();
         var rows = new[]
         {
-            recorder.Entity(AdminAuditActions.EntityDelete, "io@aiknowhow.com", "192.0.2.8", "Negotiation", parentId, correlationId: correlation),
-            recorder.Entity(AdminAuditActions.EntityDelete, "io@aiknowhow.com", "192.0.2.8", "Offer", childId, correlationId: correlation)
+            recorder.Entity(AdminAuditActions.EntityDelete, TestCoreOwner.Email, "192.0.2.8", "Negotiation", parentId, correlationId: correlation),
+            recorder.Entity(AdminAuditActions.EntityDelete, TestCoreOwner.Email, "192.0.2.8", "Offer", childId, correlationId: correlation)
         };
 
         await uow.ExecutePairedAsync(_ => Task.CompletedTask, rows);

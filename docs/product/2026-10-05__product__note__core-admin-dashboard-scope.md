@@ -35,7 +35,7 @@ Core functionality stays public and may run somewhere other than AWS. CDK deploy
 - Two-part requirements: `product/2026-10-03__product__note__two-part-platform-requirements-delta.md` — on the core, the owner view counts Participants, negotiations, and offers; human users are not listed inside the core.
 - CEO host standing rule (COO relay): Core admin is `admin.core.dealoware.com`; platform hosts are not Core.
 - CEO OK 1:06pm ET via BM/CPM: expand from view-only to **edit and delete** on Participants, Artifacts, negotiations, and offers.
-- CEO via BM 1:27pm ET / CPM: all-status negotiation and offer lists with sort/filter/paging; search by name on every table; single system superadmin `io@aiknowhow.com` with secure bootstrap (no password in code, docs, or chat).
+- CEO via BM 1:27pm ET / CPM: all-status negotiation and offer lists with sort/filter/paging; search by name on every table; single system superadmin at the owner address (`CoreOwner:Email`) with secure bootstrap (no password in code, docs, or chat).
 
 ## Reconcile vs prior Step 3
 
@@ -76,7 +76,7 @@ Product locks these as in-scope for Spec and SA. Exact design is theirs except w
 
 | Topic | Product requirement |
 |-------|---------------------|
-| Superadmin identity | **One** system superadmin. Login email: `io@aiknowhow.com`. Email + password. |
+| Superadmin identity | **One** system superadmin. Login email: the owner address (`CoreOwner:Email`). Email + password. |
 | Bootstrap / password | Seeded via secure **one-time** bootstrap. **No password in code, docs, Spec text, chat, or commit history.** Initial password is set only via a reset / bootstrap link delivered out-of-band. |
 | 2FA | **Required.** TOTP authenticator app. Spec decides whether email OTP is an allowed fallback. |
 | Password reset | Email link **plus** 2FA code. |
@@ -106,7 +106,7 @@ Product locks these as in-scope for Spec and SA. Exact design is theirs except w
 | MotorMarket / DC4 | OUT |
 | Marketing publish | Soft HOLD |
 | AWS WAF CAPTCHA / reCAPTCHA | OUT — Turnstile only |
-| Invent password for `io@aiknowhow.com` | Soft HOLD invent password — bootstrap via reset link only |
+| Invent password for the owner address (`CoreOwner:Email`) | Soft HOLD invent password — bootstrap via reset link only |
 | Stories, code, CDK, spend from this note alone | Soft HOLD Stories until Spec/SA CLEAR + docs push. Soft HOLD build until harden live QA PASS after app image bake. |
 | Password values in Spec, docs, or chat | **Forbidden** |
 
@@ -124,7 +124,7 @@ AC5. He can see **overall stats**: counts of Participants, open negotiations, of
 
 AC6. Admin screens are not the Participant UI. Field visibility follows FieldPolicy for the Core owner role. No parallel multi-user admin ACL — **one** system superadmin.
 
-AC7. Spec/SA deliver (required): single superadmin `io@aiknowhow.com` with email+password, secure one-time bootstrap (no password in code/docs/chat), required TOTP 2FA (Spec decides email OTP fallback), password reset via email link + 2FA, CAPTCHA on login/reset via **Cloudflare Turnstile only** (cost noted; AWS WAF CAPTCHA and reCAPTCHA OUT), lockout/rate limit, session lifetime, login/reset audit; confirm before delete; audit log of admin edits and deletes; delete semantics (soft vs hard and cascades); all-status lists, sort/filter, server-side paging, and name search. Product does not invent SES/Turnstile account secrets, passwords, or AWS details in this note. Soft HOLD invent password.
+AC7. Spec/SA deliver (required): single superadmin at the owner address (`CoreOwner:Email`) with email+password, secure one-time bootstrap (no password in code/docs/chat), required TOTP 2FA (Spec decides email OTP fallback), password reset via email link + 2FA, CAPTCHA on login/reset via **Cloudflare Turnstile only** (cost noted; AWS WAF CAPTCHA and reCAPTCHA OUT), lockout/rate limit, session lifetime, login/reset audit; confirm before delete; audit log of admin edits and deletes; delete semantics (soft vs hard and cascades); all-status lists, sort/filter, server-side paging, and name search. Product does not invent SES/Turnstile account secrets, passwords, or AWS details in this note. Soft HOLD invent password.
 
 AC8. This scope does not deliver the inbound bot connector, platform admin, human registration, payments, or token allowance.
 

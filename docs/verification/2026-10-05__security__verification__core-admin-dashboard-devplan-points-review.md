@@ -11,7 +11,7 @@
 | Plan tip sha256 | `5fefb550e0c6565820d552dabe60356493d54474fd0871083884cee643bd4eaf` — **MATCH** (`sha256sum` before score) |
 | Spec cite | `specs/2026-10-05__spec__spec__core-admin-dashboard.md` v2.2 — sha256 `25f2647767efe91b3638a90309e92451e0ae60bc861fce8177d5ed9bc4cf2e51` **MATCH**; Spec Security Soft HOLD SoR PASS 15/15 (`…-spec-qa-confirm.md`) |
 | SA cite | `architecture/2026-10-05__sa__architecture__core-admin-dashboard.md` + SA Security Soft HOLD SoR PASS 14/14 (`…-sa-qa-confirm.md`) |
-| Host | `admin.core.dealoware.com` only · Principal **CoreOwner** = `io@aiknowhow.com` |
+| Host | `admin.core.dealoware.com` only · Principal **CoreOwner** = the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | DOC-FLOW | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-points-review.md` |
 
@@ -25,7 +25,7 @@ Leak scan of plan tip: no password values, no AWS account IDs / region / SES ide
 
 | # | Point | Result | Body evidence (plan cites) |
 |---|-------|--------|----------------------------|
-| 1 | Host + single CoreOwner gate | **MET** | Step 1 (serve only `admin.core.dealoware.com`; Soft HOLD platform hosts; CoreOwner→`io@aiknowhow.com`; Soft HOLD multi-admin / operator ACL / human-user list / Participant UI-as-admin) + verify; Step 11 deny non-CoreOwner; Step 12 + §7 OUT; Locked #1–#2 |
+| 1 | Host + single CoreOwner gate | **MET** | Step 1 (serve only `admin.core.dealoware.com`; Soft HOLD platform hosts; CoreOwner→the owner address (`CoreOwner:Email`); Soft HOLD multi-admin / operator ACL / human-user list / Participant UI-as-admin) + verify; Step 11 deny non-CoreOwner; Step 12 + §7 OUT; Locked #1–#2 |
 | 2 | Bootstrap + email/password (no invent password) | **MET** | Step 2 table (single-use OOB link ≤24h; password set only via link; TOTP before first session; Soft HOLD password values in Stories/fixtures/README/chat/commit history — env/placeholders only; SSO/IdP OUT) + verify; Step 12 "password Forbidden"; Locked #14 |
 | 3 | TOTP required; no email OTP; hashed recovery | **MET** | Step 3 (TOTP every post-enrollment login; email OTP fallback NOT allowed; recovery shown once / hashed / single-use) + verify item "email OTP path absent" + no plaintext recovery/TOTP secret in logs/UI/audit; §7 OUT |
 | 4 | Password reset = email link + 2FA | **MET** | Step 4 (single-use 1h link **and** TOTP or unused recovery code; mail link only; Soft HOLD skip-2FA reset) + verify (blind/password-only reset absent; no password in mail; reset_complete audited) |

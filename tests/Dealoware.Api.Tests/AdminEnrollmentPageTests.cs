@@ -25,7 +25,7 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
     private const string Cloudflare = "challenges.cloudflare.com";
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private const string Authenticator = AdminSignedOutExemptions.SetupAuthenticator;
     private const string RecoveryCodes = AdminSignedOutExemptions.SetupRecoveryCodes;
@@ -293,7 +293,7 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         Assert.Equal(AdminEnrollmentPages.GroupedKey(owner.Base32Key), string.Join("<wbr>", groups.Select(g => $"<span>{g}</span>")));
 
         // What the QR code must hold: the address authenticator apps read, with this owner and this key.
-        var otpAuth = "otpauth://totp/Dealoware%3Aio%40aiknowhow.com?secret=" + owner.Base32Key
+        var otpAuth = "otpauth://totp/Dealoware%3Acore-owner%40example.test?secret=" + owner.Base32Key
                       + "&issuer=Dealoware&digits=6&period=30&algorithm=SHA1";
         Assert.Equal(otpAuth, Rfc6238Totp.BuildOtpAuthUri(OwnerEmail, owner.Base32Key));
 
@@ -322,9 +322,9 @@ public class AdminEnrollmentPageTests : IClassFixture<TurnstileSiteKeyWebApplica
         Assert.Single(Regex.Matches(html, "<svg"));
 
         // The name the app will list it under: the label of that same address.
-        Assert.Equal("Dealoware:io@aiknowhow.com", AdminEnrollmentPages.AccountName(otpAuth));
+        Assert.Equal("Dealoware:" + TestCoreOwner.Email, AdminEnrollmentPages.AccountName(otpAuth));
         Assert.Contains(
-            $"<dt>{AdminEnrollmentCopy.AccountNameLabel}</dt><dd id=\"account-name\" translate=\"no\">Dealoware:io@aiknowhow.com</dd></dl>",
+            $"<dt>{AdminEnrollmentCopy.AccountNameLabel}</dt><dd id=\"account-name\" translate=\"no\">Dealoware:{TestCoreOwner.Email}</dd></dl>",
             html,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, AdminEnrollmentPages.AccountName("https://example.test/?x=1"));

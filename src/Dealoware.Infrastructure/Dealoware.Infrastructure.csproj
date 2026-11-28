@@ -23,4 +23,9 @@
     <ProjectReference Include="..\Dealoware.Domain\Dealoware.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The SigV4 signer stays internal; its tests check it against AWS's published test suite. -->
+    <InternalsVisibleTo Include="Dealoware.Api.Tests" />
+  </ItemGroup>
+
 </Project>

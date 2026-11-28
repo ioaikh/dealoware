@@ -22,7 +22,7 @@ namespace Dealoware.Api.Tests;
 public class AdminAuditSecretStripTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
     private const string ClientIp = "198.51.100.44";
     private const string VisibleMarker = "visible-audit-field";
     private const string EmbeddedSecret = "LEAK-embedded-json-v1";

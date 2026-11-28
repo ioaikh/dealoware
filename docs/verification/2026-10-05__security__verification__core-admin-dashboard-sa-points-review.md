@@ -13,7 +13,7 @@
 | Expected handshake Soft HOLD SoR | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-qa-confirm.md` (Security QA writes; **qa-confirm only**) |
 | CFO Soft HOLD cost (cited by SoR) | `2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md`: Turnstile $0/mo; SES under $0.01/mo assumed; Finance QA PASS. Estimate only, Soft HOLD invent spend |
 | Host | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** = `io@aiknowhow.com` (single system superadmin) |
+| Principal | **CoreOwner** = the owner address (`CoreOwner:Email`) (single system superadmin) |
 | PoC | **$0** |
 | DOC-FLOW | `verification/2026-10-05__security__verification__core-admin-dashboard-sa-points-review.md` |
 
@@ -45,7 +45,7 @@ There are six non-blocking observations below (O1–O6). None is a GAP.
 
 | # | Point (exact checklist title) | Result | Soft HOLD SoR body cites | Evidence note |
 |---|-------------------------------|--------|--------------------------|---------------|
-| 1 | Host + single superadmin CoreOwner | **MET** | header Host; §2 Option A (reject B/E/F); §3.1; §3.2; §3.10; §4 IN/OUT | Admin only at `admin.core.dealoware.com`. `admin.platform` / `platform` / `api.platform` are not this SoR (§3.1). **CoreOwner** = single superadmin `io@aiknowhow.com`, no multi-admin operator ACL (§3.2). CoreOwner ≠ Participant UI ≠ platform admin (§3.2, §3.10). O1 human users dropped (§2 reconcile; §4 OUT) |
+| 1 | Host + single superadmin CoreOwner | **MET** | header Host; §2 Option A (reject B/E/F); §3.1; §3.2; §3.10; §4 IN/OUT | Admin only at `admin.core.dealoware.com`. `admin.platform` / `platform` / `api.platform` are not this SoR (§3.1). **CoreOwner** = single superadmin at the owner address (`CoreOwner:Email`), no multi-admin operator ACL (§3.2). CoreOwner ≠ Participant UI ≠ platform admin (§3.2, §3.10). O1 human users dropped (§2 reconcile; §4 OUT) |
 | 2 | Email + password + one-time bootstrap; Soft HOLD invent password | **MET** | §3.3 Identity/Bootstrap; §3.10; §4 OUT/HOLD | Email + password for one superadmin. Seed identity only. Initial password set only via out-of-band **single-use**, time-limited link (≤24h; SA may tighten). No password values in SoR/docs/Spec/chat/commit history, and no embedded password or live link. SSO/IdP/Cognito as delivered OUT (§2 C reject; §3.3 OUT; §4 OUT). Scan: no password values present |
 | 3 | TOTP required; no email OTP fallback; hashed recovery codes | **MET** | §3.3 TOTP/Email OTP/Recovery/Credential storage | TOTP is required on every login after enrollment, and the first interactive admin session cannot start until TOTP is enrolled. Email OTP is **NOT** a 2FA fallback (CEO). This resolves Product's "Spec decides" in favor of no fallback. Recovery = one-time codes **hashed at rest**. Auth secrets never appear in API bodies, audit, logs, metrics, or traces. TOTP secret is encrypted/protected. (O6) |
 | 4 | Password reset = email link + 2FA | **MET** | §3.3 Password reset; §3.5 auth events | Reset requires email link **plus** TOTP, or the recovery-code path under the same 2FA rule. Password-only reset without 2FA is forbidden. Reset request and completion are audited (§3.5) |

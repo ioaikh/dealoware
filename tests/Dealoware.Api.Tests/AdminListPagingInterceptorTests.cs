@@ -39,7 +39,7 @@ public class AdminListPagingInterceptorTests
             var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
             for (var i = 0; i < 120; i++)
                 db.Participants.Add(Participant.Create($"{prefix}-{i:D3}"));
-            var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+            var session = AdminSession.Create(TestCoreOwner.Email, ipHmac: "testhmac-not-an-ip");
             session.MarkTotpVerified();
             db.AdminSessions.Add(session);
             await db.SaveChangesAsync();
@@ -84,6 +84,7 @@ public class AdminListPagingInterceptorTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
             builder.UseSetting(
                 IpHasher.KeyEnvironmentVariable,
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

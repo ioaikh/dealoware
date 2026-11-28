@@ -20,7 +20,7 @@ namespace Dealoware.Api.Tests;
 public class SqliteDateTimeOffsetRewriteTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
 
     [Theory]
     [InlineData("2030-06-01 10:30:00+00:00", "2030-06-01T10:30:00.0000000Z")]
@@ -240,6 +240,7 @@ public class SqliteDateTimeOffsetRewriteTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
             builder.UseSetting(
                 IpHasher.KeyEnvironmentVariable,
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

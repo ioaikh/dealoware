@@ -315,13 +315,18 @@ What the owner accepted, piece by piece:
 
 ## 13. To do once before the console goes live
 
-The console is built, not live. Turning it on is a deployment and waits for the owner's OK. Before the first real use:
+The console is built, not live. Turning it on is a deployment and waits for the owner's OK. It is done once, in the steps of T59, "The admin console's first use", in this order:
 
 1. Run the database migrations before starting the new version.
-2. Configure the security check's two keys, load the real check once, and confirm that it appears and that the page's own security settings do not block it.
-3. Set up the mail sending identity, so setup and reset links arrive.
-4. Scan the QR code once with a real phone and sign in with its code.
-5. Do one screen-reader pass over the sign-in pages and the console.
-6. Do one pass in Safari on a Mac.
-7. Set up a rate limit at the network edge for refused security checks.
-8. Run `bootstrap-link` only once all of the above is done and the console's address is live.
+2. Put the owner address into its secret, in the AWS console. The engine reads it from there; it is not in the code or the repository. Without it, nobody can sign in and `bootstrap-link` issues nothing.
+3. Configure the security check's two keys.
+4. Set up the mail sending identity, so setup and reset links arrive. The engine sends with its own credentials; there is no mail key.
+5. Once the console's address is live, load the real security check once and confirm that it appears and that the page's own security settings do not block it.
+6. Run `bootstrap-link` only after step 5, and only once.
+7. During first-time setup, scan the QR code with a real phone and sign in with its code.
+
+Three checks wait until before the invite beta. The owner accepted them on 27 Nov 2026 as limits while the owner is the only person who signs in, each with a dated follow-up:
+
+- There is no rate limit at the network edge for refused security checks.
+- No screen-reader pass has been done over the sign-in pages and the console.
+- No pass has been done in Safari on a Mac; the Safari-type tests use a test build of Safari's engine.

@@ -1,14 +1,29 @@
+using System.Globalization;
 using System.Threading.Channels;
 using Dealoware.Application.Admin;
+using Dealoware.Infrastructure.Mail;
 
 namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// SC-9: <see cref="AdminMailDispatcher"/> runs after the HTTP request returns.
-/// N4: dispatch failures log exception type and trace id only.
+/// N4: dispatch failures log exception type, SES's HTTP status and a fixed reason code
+/// (T59 spec §2.8), and trace id only.
 /// </summary>
 public sealed class AdminMailSendQueue : IHostedService
 {
+    /// <summary>Logged as the status when the failure was not an answer from SES.</summary>
+    public const string NoStatus = "none";
+
+    /// <summary>Logged as the reason when the failure has no fixed reason code.</summary>
+    public const string NoReason = "none";
+
+    /// <summary>Logged as the reason when SES answered with a refusal.</summary>
+    public const string SesRefusedReason = "ses-refused";
+
+    /// <summary>Put before the credentials source's own code (timeout, http-500, bad-json, ...).</summary>
+    public const string CredentialsReasonPrefix = "credentials-";
+
     private readonly Channel<QueuedMail> _channel =
         Channel.CreateUnbounded<QueuedMail>(new UnboundedChannelOptions
         {
@@ -99,9 +114,14 @@ public sealed class AdminMailSendQueue : IHostedService
                 }
                 catch (Exception ex)
                 {
+                    // The error type, SES's HTTP status when it refused the send, and a fixed
+                    // reason code. Never the address, the subject, the body or the exception's message.
+                    var (httpStatus, reason) = DescribeFailure(ex);
                     _log.LogError(
-                        "Admin mail dispatch failed. ExceptionType={ExceptionType} TraceId={TraceId}",
+                        "Admin mail dispatch failed. ExceptionType={ExceptionType} HttpStatus={HttpStatus} Reason={Reason} TraceId={TraceId}",
                         ex.GetType().FullName,
+                        httpStatus,
+                        reason,
                         queued.TraceId);
                     queued.Sent.TrySetResult(false);
                 }
@@ -111,6 +131,17 @@ public sealed class AdminMailSendQueue : IHostedService
         {
         }
     }
+
+    /// <summary>
+    /// The status and reason a failed dispatch is logged with: always two strings, each either a
+    /// number or code, or "none". Nothing in them comes from the message or from an answer body.
+    /// </summary>
+    internal static (string HttpStatus, string Reason) DescribeFailure(Exception ex) => ex switch
+    {
+        SesMailSendException refused => (refused.StatusCode.ToString(CultureInfo.InvariantCulture), SesRefusedReason),
+        AwsContainerCredentialsException credentials => (NoStatus, CredentialsReasonPrefix + credentials.Reason),
+        _ => (NoStatus, NoReason)
+    };
 
     /// <summary>A class, not a record: no generated ToString that would print the token.</summary>
     private sealed class QueuedMail(

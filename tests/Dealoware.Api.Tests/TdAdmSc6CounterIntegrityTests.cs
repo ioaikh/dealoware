@@ -19,7 +19,7 @@ namespace Dealoware.Api.Tests;
 public sealed class TdAdmSc6CounterIntegrityTests : IDisposable
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
@@ -200,6 +200,7 @@ internal sealed class SharedFileSqliteFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, _hasherKey);
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, _hasherKey);
         builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, _hasherKey);

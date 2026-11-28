@@ -22,7 +22,7 @@
 | CFO Soft HOLD cost note | `2026-10-05__finance__estimate__core-admin-soft-hold-ses-turnstile.md` — Turnstile **$0/mo**; SES **under $0.01/mo** at assumed 5 emails/mo; Soft HOLD invent spend; Finance QA **PASS** (`finance-out/2026-10-05__finance__qa__core-admin-soft-hold-ses-turnstile.md`) |
 | Host shape | Same Core modular monolith; separate admin route surface at `admin.core.dealoware.com`. App Runner OUT. Provision HOLD |
 | Cost | PoC **$0** · Soft HOLD invent spend · Soft HOLD invent provision · Soft HOLD build |
-| Principal name | **CoreOwner** (single system superadmin `io@aiknowhow.com`) |
+| Principal name | **CoreOwner** (single system superadmin at the owner address (`CoreOwner:Email`)) |
 | Security | Architecture always Security-critical · SA checklist ISSUED v2 · answers 1–14 MET · Soft HOLD Arch QA until Security Soft HOLD SoR CLEAR + qa-confirm Soft HOLD SoR only |
 
 ## Sources
@@ -92,7 +92,7 @@ This deliverable is **design Spec only**. It does not unlock build or deploy. So
 | Concern | Design |
 |---------|--------|
 | Principal class name in code | **`CoreOwner`** — Product meaning: owner of Core. Not a Participant principal |
-| Single system superadmin | Login email **`io@aiknowhow.com` only**. No multi-admin operator ACL |
+| Single system superadmin | Login email **the owner address (`CoreOwner:Email`) only**. No multi-admin operator ACL |
 | Distinct from | Participant UI; Participant principal; platform human-user admin |
 | FieldPolicy | All admin reads and writes bind Domain `IFieldPolicy.Evaluate` for principal **CoreOwner** (Option A §3a/§3b dual wall). **Cite; do not rewrite.** No parallel admin ACL |
 | Dual wall on admin | API/DB fail-closed for admin routes (§3a). Soft HOLD invent admin agents in this Soft HOLD SoR |
@@ -102,7 +102,7 @@ This deliverable is **design Spec only**. It does not unlock build or deploy. So
 
 | Pick | Decision |
 |------|----------|
-| Identity | **One** system superadmin. Login email: `io@aiknowhow.com`. Email + password. Soft HOLD invent password — **no password values** in Soft HOLD SoR, docs, Spec text, chat, or commit history |
+| Identity | **One** system superadmin. Login email: the owner address (`CoreOwner:Email`). Email + password. Soft HOLD invent password — **no password values** in Soft HOLD SoR, docs, Spec text, chat, or commit history |
 | Bootstrap | Seed CoreOwner identity only. Initial password set **only** via out-of-band **one-time** bootstrap/reset link (time-limited; Spec draft: expire ≤ **24h**, single-use; SA may tighten). Soft HOLD invent embedding any password or live link in Soft HOLD SoR |
 | TOTP 2FA | **Required** authenticator-app TOTP for every login after enrollment. First interactive admin session cannot start until TOTP is enrolled |
 | Email OTP | **NOT** a 2FA fallback (CEO). Soft HOLD invent standing email OTP as 2FA |
@@ -220,7 +220,7 @@ All writes are fail-closed through FieldPolicy for **CoreOwner**. This Soft HOLD
 
 - Core admin at `admin.core.dealoware.com`
 - Option A shape: same Core modular monolith; separate admin route surface; **CoreOwner** principal; FieldPolicy dual wall; no parallel admin ACL
-- Single system superadmin `io@aiknowhow.com`; email + password + required TOTP; recovery codes hashed; bootstrap via one-time link; Turnstile only; SES behind mail interface; lockout + session timers; login/reset/2FA audit (§3.3, §3.5)
+- Single system superadmin at the owner address (`CoreOwner:Email`); email + password + required TOTP; recovery codes hashed; bootstrap via one-time link; Turnstile only; SES behind mail interface; lockout + session timers; login/reset/2FA audit (§3.3, §3.5)
 - List / view / edit / delete Participants (not human users), Artifacts, negotiations, offers
 - All-status lists + sort/filter + offset/limit paging (default 50 / max 200) + name search (§3.9)
 - Overall Core stats: Participants, open negotiations, offers, accepts, declines (soft-deleted excluded)
@@ -290,7 +290,7 @@ All writes are fail-closed through FieldPolicy for **CoreOwner**. This Soft HOLD
 
 | # | Security point | Architecture answer | Cite |
 |---|----------------|---------------------|------|
-| 1 | Host + single superadmin CoreOwner | **MET.** Admin only at `admin.core.dealoware.com`. Principal **CoreOwner** = single system superadmin login email **`io@aiknowhow.com`**. CoreOwner ≠ Participant UI ≠ platform admin. O1 human users OUT. Multi-admin operator ACL rejected. | §2 Option A; §3.1; §3.2; §3.10; §4 OUT |
+| 1 | Host + single superadmin CoreOwner | **MET.** Admin only at `admin.core.dealoware.com`. Principal **CoreOwner** = single system superadmin login email: **the owner address (`CoreOwner:Email`)**. CoreOwner ≠ Participant UI ≠ platform admin. O1 human users OUT. Multi-admin operator ACL rejected. | §2 Option A; §3.1; §3.2; §3.10; §4 OUT |
 | 2 | Email + password + one-time bootstrap; Soft HOLD invent password | **MET.** Email + password for that superadmin. Bootstrap via single-use out-of-band link (≤24h; SA may tighten). Soft HOLD invent password — **no password values** in Soft HOLD SoR/docs/chat. Soft HOLD invent SSO/IdP as delivered. | §3.3; §4 OUT/HOLD |
 | 3 | TOTP required; no email OTP fallback; hashed recovery codes | **MET.** TOTP required before first interactive admin session and on every login after. Email OTP **not** a 2FA fallback (CEO). Recovery = one-time recovery codes stored **hashed** only (never plaintext in Soft HOLD SoR/logs/UI dump). | §3.3 |
 | 4 | Password reset = email link + 2FA | **MET.** Reset requires email link **and** TOTP (or hashed recovery-code path under the same 2FA rule). Soft HOLD invent password-only reset without 2FA. | §3.3 |
@@ -310,7 +310,7 @@ All writes are fail-closed through FieldPolicy for **CoreOwner**. This Soft HOLD
 ## 7. Done-list → Architecture QA
 
 - [x] Options cover CA brief + Product scope (Option A pick; Step 3 reconciled)
-- [x] Host locked to `admin.core.dealoware.com`; principal named **CoreOwner**; single superadmin `io@aiknowhow.com`
+- [x] Host locked to `admin.core.dealoware.com`; principal named **CoreOwner**; single superadmin at the owner address (`CoreOwner:Email`)
 - [x] Option A §3a/§3b dual wall cited — no parallel admin ACL
 - [x] Auth amended: TOTP required; no email OTP fallback; recovery codes hashed; Turnstile only; SES behind mail interface; lockout; session; Soft HOLD invent password (§3.3)
 - [x] Lists/search/paging concrete (§3.9); Withdrawn mapped; offset/limit 50/200
@@ -340,4 +340,4 @@ All writes are fail-closed through FieldPolicy for **CoreOwner**. This Soft HOLD
 
 ## 9. Disposition
 
-Soft HOLD SoR §6 rebound to SA Security checklist **ISSUED v2** points 1–14 **MET**. Soft HOLD Spec invent until Soft HOLD SoR CLEAR. Soft HOLD Architecture QA formal PASS until Security Soft HOLD SoR CLEAR + Security QA qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR; prior pre-expansion Soft HOLD SoR qa-confirm superseded). Design Spec only. Soft HOLD invent Stories, code, CDK, spend, provision, deploy, password values, and AWS account IDs. Soft HOLD build. PoC **$0**. Principal **CoreOwner** (`io@aiknowhow.com`) at `admin.core.dealoware.com`. Ready for Senior Security score.
+Soft HOLD SoR §6 rebound to SA Security checklist **ISSUED v2** points 1–14 **MET**. Soft HOLD Spec invent until Soft HOLD SoR CLEAR. Soft HOLD Architecture QA formal PASS until Security Soft HOLD SoR CLEAR + Security QA qa-confirm Soft HOLD SoR only (**no** invent points-review Soft HOLD SoR; prior pre-expansion Soft HOLD SoR qa-confirm superseded). Design Spec only. Soft HOLD invent Stories, code, CDK, spend, provision, deploy, password values, and AWS account IDs. Soft HOLD build. PoC **$0**. Principal **CoreOwner** (the owner address (`CoreOwner:Email`)) at `admin.core.dealoware.com`. Ready for Senior Security score.

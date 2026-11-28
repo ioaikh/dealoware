@@ -8,7 +8,7 @@
 | Moment | SA-REV-CORE-ADMIN |
 | Disposition | Soft HOLD SoR CLEAR for Spec reconcile / CPM Stage 2 Spec open / BM routing. Soft HOLD invent Stories / build / code / CDK / spend / provision / deploy. Soft HOLD invent password. Soft HOLD invent AWS account IDs. Soft HOLD invent spend. |
 | Host | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** (single system superadmin `io@aiknowhow.com`) |
+| Principal | **CoreOwner** (single system superadmin at the owner address (`CoreOwner:Email`)) |
 | PoC | **$0** |
 | DOC-FLOW | `verification/2026-10-05__ca__verification__core-admin-dashboard-design-grounding-pass.md` |
 
@@ -16,7 +16,7 @@
 
 ## Option A pick (binding)
 
-Same Core modular monolith; separate Core admin route surface at `admin.core.dealoware.com`; distinct **CoreOwner** principal = single system superadmin `io@aiknowhow.com`; FieldPolicy dual wall (Option A §3a/§3b; cite, do not rewrite); no parallel admin ACL. O1 human users dropped. Platform-admin host replaced.
+Same Core modular monolith; separate Core admin route surface at `admin.core.dealoware.com`; distinct **CoreOwner** principal = single system superadmin at the owner address (`CoreOwner:Email`); FieldPolicy dual wall (Option A §3a/§3b; cite, do not rewrite); no parallel admin ACL. O1 human users dropped. Platform-admin host replaced.
 
 CEO expansion bound: all-status lists + sort/filter + offset/limit paging (default 50 / max 200) + name search; email + password + required TOTP (no email OTP fallback; recovery codes hashed); one-time bootstrap; Turnstile only (WAF CAPTCHA OUT); SES behind mail interface; lockout 5/15m→30m account + 20/15m IP; session 8h absolute / 30m idle; login/reset/2FA + edit/delete audit; confirm-before-delete; soft-delete + cascades; Soft HOLD invent password/AWS.
 

@@ -20,7 +20,7 @@ namespace Dealoware.Api.Tests;
 public class AdminTotpTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
     private const string SignInPath = AdminSignedOutExemptions.ApiSignIn;
     private const string CodePath = AdminSignedOutExemptions.ApiSignInCode;
     private const string RecoveryPath = AdminSignedOutExemptions.ApiSignInRecovery;

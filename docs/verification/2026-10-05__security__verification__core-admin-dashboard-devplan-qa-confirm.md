@@ -11,7 +11,7 @@
 | Plan tip sha256 | `21535e6684ec347361a3f4fd0521a7928392428b7e9c2ce7c8355c2553808cd8` — **MATCH** (re-hashed with `sha256sum` before scoring and again immediately before this write) |
 | Prior tips VOID | `3385872a881095b8b44a90a4148f5faf87594c39fd742897f089e1425b93caff` (prior PASS) **VOID**; also VOID: `1c173e98…`, `970b453a…`, `abfa672a…`, `5fefb550…` |
 | Host | `admin.core.dealoware.com` only |
-| Principal | **CoreOwner** = single system superadmin `io@aiknowhow.com` |
+| Principal | **CoreOwner** = single system superadmin at the owner address (`CoreOwner:Email`) |
 | PoC | **$0** |
 | Handshake | **qa-confirm only** (this file). Points-review is not the gate. |
 | DOC-FLOW | `verification/2026-10-05__security__verification__core-admin-dashboard-devplan-qa-confirm.md` |

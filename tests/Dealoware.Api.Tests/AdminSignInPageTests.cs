@@ -23,7 +23,7 @@ public class AdminSignInPageTests : IClassFixture<TurnstileSiteKeyWebApplication
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
     private const string Cloudflare = "challenges.cloudflare.com";
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private const string SignIn = AdminSignedOutExemptions.SignIn;
     private const string Code = AdminSignedOutExemptions.SignInCode;

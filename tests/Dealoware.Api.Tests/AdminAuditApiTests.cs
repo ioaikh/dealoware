@@ -17,7 +17,7 @@ namespace Dealoware.Api.Tests;
 public class AdminAuditApiTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
     private const string ClientIp = "203.0.113.77";
 
     private readonly IsolatedWebApplicationFactory _factory;

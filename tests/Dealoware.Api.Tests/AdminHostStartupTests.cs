@@ -104,7 +104,7 @@ public class AdminHostStartupTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.Database.EnsureCreated();
-        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        var session = AdminSession.Create(TestCoreOwner.Email, ipHmac: "testhmac-not-an-ip");
         session.MarkTotpVerified();
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();
@@ -127,7 +127,7 @@ public class AdminHostStartupTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
         db.Database.EnsureCreated();
-        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        var session = AdminSession.Create(TestCoreOwner.Email, ipHmac: "testhmac-not-an-ip");
         session.MarkTotpVerified();
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();

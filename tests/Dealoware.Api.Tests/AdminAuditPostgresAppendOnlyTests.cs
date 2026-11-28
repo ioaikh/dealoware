@@ -49,7 +49,7 @@ public class AdminAuditPostgresAppendOnlyTests
         {
             var entry = AdminAuditEntry.CreateAuthEvent(
                 AdminAuditActions.LoginSuccess,
-                "io@aiknowhow.com",
+                TestCoreOwner.Email,
                 "hmac-not-an-ip");
             db.AdminAuditLog.Add(entry);
             await db.SaveChangesAsync();

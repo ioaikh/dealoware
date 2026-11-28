@@ -127,7 +127,7 @@ public class AdminSecurityHeadersTests
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        var session = AdminSession.Create(TestCoreOwner.Email, ipHmac: "testhmac-not-an-ip");
         session.MarkTotpVerified();
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();
@@ -254,7 +254,7 @@ public class AdminUnhandledExceptionHeaderTests
         using var factory = new AdminTestExceptionWebApplicationFactory();
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DealowareDbContext>();
-        var session = AdminSession.Create("io@aiknowhow.com", ipHmac: "testhmac-not-an-ip");
+        var session = AdminSession.Create(TestCoreOwner.Email, ipHmac: "testhmac-not-an-ip");
         session.MarkTotpVerified();
         db.AdminSessions.Add(session);
         await db.SaveChangesAsync();
@@ -273,7 +273,7 @@ public class AdminUnhandledExceptionHeaderTests
         Assert.DoesNotContain(AdminTestExceptionEndpoint.ProbeExceptionMessage, body);
         Assert.DoesNotContain("InvalidOperationException", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stack", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("io@aiknowhow.com", body);
+        Assert.DoesNotContain(TestCoreOwner.Email, body);
         Assert.DoesNotContain("at Dealoware", body, StringComparison.Ordinal);
         AdminSecurityHeadersTests.AssertAdminHardeningHeaders(response, expectHsts: true);
         Assert.False(response.Headers.Contains("Server"));

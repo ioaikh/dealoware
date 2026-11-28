@@ -8,7 +8,7 @@ namespace Dealoware.Api.Tests;
 public class CoreOwnerFieldPolicyTests
 {
     private readonly FieldPolicy _policy = new();
-    private readonly FieldPrincipal _owner = FieldPrincipal.CoreOwner("io@aiknowhow.com");
+    private readonly FieldPrincipal _owner = FieldPrincipal.CoreOwner(TestCoreOwner.Email);
     private readonly FieldResourceContext _ctx = FieldResourceContext.ForSelfProfile("participant:someone");
 
     [Fact]
@@ -104,8 +104,8 @@ public class CoreOwnerFieldPolicyTests
     [Fact]
     public void TdAdm007_NoParallelAcl_UserEmailIsNotCoreOwner()
     {
-        var lookalike = FieldPrincipal.User("io@aiknowhow.com");
-        var ctx = FieldResourceContext.ForSelfProfile("io@aiknowhow.com");
+        var lookalike = FieldPrincipal.User(TestCoreOwner.Email);
+        var ctx = FieldResourceContext.ForSelfProfile(TestCoreOwner.Email);
         Assert.Equal(PrincipalType.User, lookalike.GetTypeForContext(ctx));
         Assert.False(_policy.Evaluate(lookalike, FieldClass.ArtifactName, FieldAction.Read, ctx));
     }

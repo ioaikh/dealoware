@@ -33,18 +33,18 @@ public class AdminAuditAuthEventTests
 
         var events = new[]
         {
-            recorder.Auth(AdminAuditActions.LoginSuccess, "io@aiknowhow.com", ip),
-            recorder.Auth(AdminAuditActions.LoginFailure, "io@aiknowhow.com", ip, AdminAuditActions.ReasonBadPassword),
-            recorder.Auth(AdminAuditActions.LoginFailure, "io@aiknowhow.com", ip, AdminAuditActions.ReasonBad2Fa),
+            recorder.Auth(AdminAuditActions.LoginSuccess, TestCoreOwner.Email, ip),
+            recorder.Auth(AdminAuditActions.LoginFailure, TestCoreOwner.Email, ip, AdminAuditActions.ReasonBadPassword),
+            recorder.Auth(AdminAuditActions.LoginFailure, TestCoreOwner.Email, ip, AdminAuditActions.ReasonBad2Fa),
             recorder.Auth(AdminAuditActions.LoginFailure, "anonymous", ip, AdminAuditActions.ReasonCaptchaFailed),
-            recorder.Auth(AdminAuditActions.LoginFailure, "io@aiknowhow.com", ip, AdminAuditActions.ReasonLocked),
-            recorder.Auth(AdminAuditActions.LoginFailure, "io@aiknowhow.com", ip, AdminAuditActions.ReasonRateLimited),
-            recorder.Auth(AdminAuditActions.SecondFactorFailed, "io@aiknowhow.com", ip, AdminAuditActions.ReasonBad2Fa),
-            recorder.Auth(AdminAuditActions.ResetRequest, "io@aiknowhow.com", ip),
-            recorder.Auth(AdminAuditActions.ResetComplete, "io@aiknowhow.com", ip),
-            recorder.Auth(AdminAuditActions.TotpEnroll, "io@aiknowhow.com", ip),
-            recorder.Auth(AdminAuditActions.TotpChange, "io@aiknowhow.com", ip),
-            recorder.Auth(AdminAuditActions.RecoveryCodeUse, "io@aiknowhow.com", ip)
+            recorder.Auth(AdminAuditActions.LoginFailure, TestCoreOwner.Email, ip, AdminAuditActions.ReasonLocked),
+            recorder.Auth(AdminAuditActions.LoginFailure, TestCoreOwner.Email, ip, AdminAuditActions.ReasonRateLimited),
+            recorder.Auth(AdminAuditActions.SecondFactorFailed, TestCoreOwner.Email, ip, AdminAuditActions.ReasonBad2Fa),
+            recorder.Auth(AdminAuditActions.ResetRequest, TestCoreOwner.Email, ip),
+            recorder.Auth(AdminAuditActions.ResetComplete, TestCoreOwner.Email, ip),
+            recorder.Auth(AdminAuditActions.TotpEnroll, TestCoreOwner.Email, ip),
+            recorder.Auth(AdminAuditActions.TotpChange, TestCoreOwner.Email, ip),
+            recorder.Auth(AdminAuditActions.RecoveryCodeUse, TestCoreOwner.Email, ip)
         };
 
         await uow.ExecutePairedAsync(_ => Task.CompletedTask, events);
@@ -105,7 +105,7 @@ public class AdminAuditAuthEventTests
         {
             db.AdminAuditLog.Add(recorder.Auth(
                 i % 2 == 0 ? AdminAuditActions.LoginSuccess : AdminAuditActions.LoginFailure,
-                "io@aiknowhow.com",
+                TestCoreOwner.Email,
                 "198.51.100.20",
                 i % 2 == 0 ? null : AdminAuditActions.ReasonBadPassword,
                 DateTimeOffset.UtcNow.AddMinutes(-i)));

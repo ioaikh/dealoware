@@ -23,7 +23,7 @@ Score amended Architecture Soft HOLD SoR Option A for Core admin (design only). 
 
 ## Itemized security points (Architecture design must bind)
 
-1. **Host + single superadmin CoreOwner** — Admin only at `admin.core.dealoware.com`. Principal **CoreOwner** = single system superadmin login email **`io@aiknowhow.com`**. CoreOwner ≠ Participant UI ≠ platform admin. O1 human users OUT. Reject multi-admin operator ACL.
+1. **Host + single superadmin CoreOwner** — Admin only at `admin.core.dealoware.com`. Principal **CoreOwner** = single system superadmin login email: **the owner address (`CoreOwner:Email`)**. CoreOwner ≠ Participant UI ≠ platform admin. O1 human users OUT. Reject multi-admin operator ACL.
 
 2. **Email + password + one-time bootstrap; Soft HOLD invent password** — Email + password for that superadmin. Bootstrap via **single-use** out-of-band link. **No password values** in Soft HOLD SoR, docs, Spec text, chat, or commit history. Soft HOLD invent SSO/IdP as delivered.
 
