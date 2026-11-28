@@ -185,7 +185,8 @@ public class AdminMailInterfaceTests
     [Fact]
     public async Task TD_ADM_110_MissingMailConfig_UsesDisabledSender()
     {
-        Assert.Null(SesMailOptions.TryCreate(_ => null));
+        Assert.Null(SesMailOptions.TryCreate(_ => null, allowStaticKeys: true));
+        Assert.Null(SesMailOptions.TryCreate(_ => null, allowStaticKeys: false));
         var sender = new DisabledMailSender();
         var body = "Use this one-time link to finish Core admin bootstrap.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
@@ -193,6 +194,8 @@ public class AdminMailInterfaceTests
             sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
         Assert.Contains(SesMailOptions.FromEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.RegionEnvironmentVariable, ex.Message);
+        Assert.Contains(ContainerCredentialsEndpoint.RelativeUriEnvironmentVariable, ex.Message);
+        Assert.Contains(ContainerCredentialsEndpoint.FullUriEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.AccessKeyEnvironmentVariable, ex.Message);
         Assert.Contains(SesMailOptions.SecretKeyEnvironmentVariable, ex.Message);
         Assert.DoesNotContain(TestSecret, ex.Message);

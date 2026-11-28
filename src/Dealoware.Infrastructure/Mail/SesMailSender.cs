@@ -7,7 +7,8 @@ namespace Dealoware.Infrastructure.Mail;
 
 /// <summary>
 /// SES adapter behind <see cref="IAdminMailSender"/>. Talks HTTP only — no AWS SDK package or SES SDK types.
-/// Region, from-address, and keys come from environment at runtime and are never logged.
+/// Region and from-address come from environment at runtime. It signs with the service's own
+/// role credentials (or, in Development only, fixed keys); no credential is ever logged.
 /// </summary>
 public sealed class SesMailSender : IAdminMailSender
 {
@@ -18,12 +19,31 @@ public sealed class SesMailSender : IAdminMailSender
 
     private readonly SesMailOptions _options;
     private readonly HttpClient _httpClient;
+    private readonly IAwsCredentialSource _credentials;
     private readonly Func<DateTimeOffset> _clock;
 
+    /// <summary>
+    /// Takes the credentials the options name. For the role credentials, the same client also
+    /// fetches them; the service registration gives them a client of their own instead.
+    /// </summary>
     public SesMailSender(SesMailOptions options, HttpClient httpClient, Func<DateTimeOffset>? clock = null)
+        : this(
+            options,
+            httpClient,
+            (options ?? throw new ArgumentNullException(nameof(options))).CreateCredentialSource(httpClient, clock),
+            clock)
+    {
+    }
+
+    public SesMailSender(
+        SesMailOptions options,
+        HttpClient httpClient,
+        IAwsCredentialSource credentials,
+        Func<DateTimeOffset>? clock = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
@@ -58,11 +78,11 @@ public sealed class SesMailSender : IAdminMailSender
         request.Content = new ByteArrayContent(payload);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
+        var credentials = await _credentials.GetCredentialsAsync(cancellationToken).ConfigureAwait(false);
         AwsSigV4Signer.SignPost(
             request,
             payload,
-            _options.AccessKeyId,
-            _options.SecretAccessKey,
+            credentials,
             _options.Region,
             service: "ses",
             nowUtc: _clock());

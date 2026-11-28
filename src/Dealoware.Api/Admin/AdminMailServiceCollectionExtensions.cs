@@ -7,43 +7,63 @@ namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// Registers the admin mail port, SES HTTP adapter (factory HttpClient), and dispatcher.
+/// The sender signs with the running service's own role credentials, fetched from the
+/// container credentials endpoint (T59 answer 4). The fixed keys are read only in Development.
+/// With neither source, mail stays off.
 /// </summary>
 public static class AdminMailServiceCollectionExtensions
 {
+    /// <summary>The client that talks to SES.</summary>
+    public const string SesHttpClientName = "ses-mail";
+
+    /// <summary>The client that fetches the role credentials. It keeps no request log.</summary>
+    public const string CredentialsHttpClientName = "ses-mail-credentials";
+
     public static IServiceCollection AddAdminMail(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        services.AddHttpClient("ses-mail", client =>
+        services.AddHttpClient(SesHttpClientName, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });
 
+        // The default request log would name the credentials address, so this client has none.
+        services.AddHttpClient(CredentialsHttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+        }).RemoveAllLoggers();
+
         services.AddSingleton<IAdminMailSender>(sp =>
         {
             string? GetEnv(string name) => configuration[name] ?? Environment.GetEnvironmentVariable(name);
-            var mailOptions = SesMailOptions.TryCreate(GetEnv);
+            var environmentName = configuration[HostDefaults.EnvironmentKey]
+                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? Environments.Production;
+            var isDevelopment = string.Equals(environmentName, Environments.Development, StringComparison.OrdinalIgnoreCase);
+
+            if (!isDevelopment && SesMailOptions.HasStaticKeys(GetEnv))
+            {
+                Console.Error.WriteLine(SesMailOptions.StaticKeysIgnoredMessage);
+            }
+
+            var mailOptions = SesMailOptions.TryCreate(GetEnv, allowStaticKeys: isDevelopment);
             if (mailOptions is null)
             {
-                var environmentName = configuration[HostDefaults.EnvironmentKey]
-                    ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-                    ?? Environments.Production;
-                if (!string.Equals(environmentName, Environments.Development, StringComparison.OrdinalIgnoreCase))
+                if (!isDevelopment)
                 {
-                    Console.Error.WriteLine(
-                        "Mail sender is disabled outside Development. Set "
-                        + SesMailOptions.FromEnvironmentVariable + ", "
-                        + SesMailOptions.RegionEnvironmentVariable + ", "
-                        + SesMailOptions.AccessKeyEnvironmentVariable + ", and "
-                        + SesMailOptions.SecretKeyEnvironmentVariable + ".");
+                    Console.Error.WriteLine(SesMailOptions.NotConfiguredMessage);
                 }
 
                 return new DisabledMailSender();
             }
 
-            var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ses-mail");
-            return new SesMailSender(mailOptions, client);
+            var clients = sp.GetRequiredService<IHttpClientFactory>();
+            return new SesMailSender(
+                mailOptions,
+                clients.CreateClient(SesHttpClientName),
+                mailOptions.CreateCredentialSource(clients.CreateClient(CredentialsHttpClientName)));
         });
 
         services.AddSingleton<AdminMailDispatcher>();
