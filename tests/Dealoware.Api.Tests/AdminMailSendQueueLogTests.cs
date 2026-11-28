@@ -33,20 +33,49 @@ public class AdminMailSendQueueLogTests
 
         Assert.Contains("|Error|", line, StringComparison.Ordinal);
         Assert.Contains("ExceptionType=" + typeof(SesMailSendException).FullName, line, StringComparison.Ordinal);
-        Assert.Contains("HttpStatus=400", line, StringComparison.Ordinal);
+        Assert.Contains("HttpStatus=400 ", line, StringComparison.Ordinal);
+        Assert.Contains("Reason=" + AdminMailSendQueue.SesRefusedReason + " ", line, StringComparison.Ordinal);
         Assert.Contains("TraceId=trace-queue-1", line, StringComparison.Ordinal);
         AssertNothingOfTheMessage(line);
         Assert.Single(handler.Requests);
     }
 
     [Fact]
-    public async Task FailureBeforeSes_LogsNoStatus()
+    public async Task FailureBeforeSes_LogsNoStatusAndNoReason()
     {
         var line = await DispatchAndReadTheLogLineAsync(new DisabledMailSender(), "trace-queue-2");
 
         Assert.Contains("ExceptionType=System.InvalidOperationException", line, StringComparison.Ordinal);
         Assert.Contains("HttpStatus=" + AdminMailSendQueue.NoStatus + " ", line, StringComparison.Ordinal);
+        Assert.Contains("Reason=" + AdminMailSendQueue.NoReason + " ", line, StringComparison.Ordinal);
         AssertNothingOfTheMessage(line);
+    }
+
+    [Fact]
+    public async Task CredentialsFailure_LogsItsReasonCode_AndNothingElseOfIt()
+    {
+        // The credentials endpoint refuses, and its answer names things that must not be logged.
+        var credentials = new StubHttpHandler(_ => StubHttpHandler.Json(
+            "{\"message\":\"sentinel-credentials-answer\"}", HttpStatusCode.InternalServerError));
+        var ses = new StubHttpHandler(_ => StubHttpHandler.Json("{}"));
+        var endpoint = ContainerCredentialsEndpoint.Create(
+            new Uri("http://169.254.170.2/v2/credentials/sentinel-credentials-path"),
+            authorizationToken: "sentinel-credentials-token");
+        var options = SesMailOptions.ForContainerRole("sender@example.test", "test-region", endpoint);
+        var sender = new SesMailSender(options, new HttpClient(ses), options.CreateCredentialSource(new HttpClient(credentials)));
+
+        var line = await DispatchAndReadTheLogLineAsync(sender, "trace-queue-3");
+
+        Assert.Contains("ExceptionType=" + typeof(AwsContainerCredentialsException).FullName, line, StringComparison.Ordinal);
+        Assert.Contains("HttpStatus=" + AdminMailSendQueue.NoStatus + " ", line, StringComparison.Ordinal);
+        Assert.Contains(
+            "Reason=" + AdminMailSendQueue.CredentialsReasonPrefix + AwsContainerCredentialsException.HttpReason(500) + " ",
+            line,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("sentinel", line, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("169.254", line, StringComparison.Ordinal);
+        AssertNothingOfTheMessage(line);
+        Assert.Equal(0, ses.Count);
     }
 
     [Fact]
