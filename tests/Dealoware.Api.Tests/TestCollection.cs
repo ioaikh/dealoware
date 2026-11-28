@@ -163,6 +163,13 @@ public class IsolatedWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // The shipped settings hold no owner address, so every test host names one: the
+        // placeholder, unless a subclass set its own before calling this.
+        if (builder.GetSetting(TestCoreOwner.ConfigurationKey) is null)
+        {
+            builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
+        }
+
         // Runtime-generated key so Production test hosts pass IIpHasher fail-closed.
         builder.UseSetting(IpHasher.KeyEnvironmentVariable, IpHmacKey);
         builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, TotpKey);

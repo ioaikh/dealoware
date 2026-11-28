@@ -32,7 +32,7 @@ namespace Dealoware.Api.Tests;
 public partial class AdminListPageTests
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private readonly IsolatedWebApplicationFactory _factory;
 
@@ -881,6 +881,7 @@ public partial class AdminListPageTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            builder.UseSetting(TestCoreOwner.ConfigurationKey, TestCoreOwner.Email);
             builder.UseSetting(IpHasher.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting(TotpSecretProtector.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting(AdminRecoveryCodeHasher.KeyEnvironmentVariable, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

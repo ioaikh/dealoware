@@ -219,7 +219,7 @@ public class ForwardedHeadersTrustTests
     private static void SeedOwner(ForwardedHeadersPeerFactory factory)
     {
         var directory = factory.Services.GetRequiredService<InMemoryAdminCredentialDirectory>();
-        directory.SetPasswordAsync("io@aiknowhow.com", "Pw-f3-known-networks-xx", CancellationToken.None)
+        directory.SetPasswordAsync(TestCoreOwner.Email, "Pw-f3-known-networks-xx", CancellationToken.None)
             .GetAwaiter()
             .GetResult();
     }
@@ -257,7 +257,7 @@ public class ForwardedHeadersTrustTests
         request.Headers.TryAddWithoutValidation("Cookie", $"{AdminAntiForgery.CookieName}={cookie}");
         request.Content = JsonContent.Create(new
         {
-            email = "io@aiknowhow.com",
+            email = TestCoreOwner.Email,
             password = "wrong",
             turnstileToken = FakeTurnstileVerifier.ValidToken
         });

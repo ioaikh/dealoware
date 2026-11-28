@@ -18,7 +18,7 @@ namespace Dealoware.Api.Tests;
 public class AdminLockoutReserveTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
 
     private readonly IsolatedWebApplicationFactory _factory;
     private readonly string _password;

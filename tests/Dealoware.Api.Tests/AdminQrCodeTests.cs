@@ -293,7 +293,7 @@ public class AdminQrCodeTests
     public void AnOtpAuthAddress_HasEveryFixedPatternInPlace()
     {
         // What the set-up page encodes for an owner with an ordinary address: 136 bytes, version 8.
-        var text = "otpauth://totp/Dealoware%3Aio%40aiknowhow.com?secret=" + new string('A', 32)
+        var text = "otpauth://totp/Dealoware%3Aown%40example.test?secret=" + new string('A', 32)
                    + "&issuer=Dealoware&digits=6&period=30&algorithm=SHA1";
         var code = AdminQrCode.Encode(text);
         var size = code.Size;

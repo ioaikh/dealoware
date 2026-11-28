@@ -18,7 +18,7 @@ namespace Dealoware.Api.Tests;
 public class AdminAuditSecurityRecheckTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string CoreOwnerEmail = "io@aiknowhow.com";
+    private const string CoreOwnerEmail = TestCoreOwner.Email;
     private const string SampleJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtaWQifQ.dGVzdHNpZ25hdHVyZQ";
     private const string SampleJwe = "eyJhbGciOiJSU0EtT0FFUCJ9.LEAK-key.iv-123.LEAKcipher.tag_12";
     private const string DirJwe = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..iv12345.LEAKcipher.tag12";

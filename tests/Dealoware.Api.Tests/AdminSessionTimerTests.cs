@@ -24,7 +24,7 @@ namespace Dealoware.Api.Tests;
 public sealed class AdminSessionTimerTests : IDisposable
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
     private const string Status = AdminSessionEndpoints.StatusPath;
     private const string StaySignedIn = AdminSessionEndpoints.StaySignedInPath;
 

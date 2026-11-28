@@ -17,7 +17,7 @@ namespace Dealoware.Api.Tests;
 public class TdAdm040AuthLockoutSessionTests
 {
     private const string AdminHost = "admin.core.dealoware.com";
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
     private const string SignInBody = AdminAuthCopy.SignInFailure;
     private const string CaptchaBody = AdminAuthCopy.VerificationFailed;
 

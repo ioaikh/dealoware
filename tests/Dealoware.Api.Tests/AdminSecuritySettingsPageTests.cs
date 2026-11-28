@@ -24,7 +24,7 @@ namespace Dealoware.Api.Tests;
 public partial class AdminSecuritySettingsPageTests
 {
     private const string AdminHost = AdminHostOptions.ProductionAdminHost;
-    private const string OwnerEmail = "io@aiknowhow.com";
+    private const string OwnerEmail = TestCoreOwner.Email;
     private const string PagePath = "/admin/settings/security";
 
     private readonly IsolatedWebApplicationFactory _factory;
