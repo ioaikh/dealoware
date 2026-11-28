@@ -27,7 +27,7 @@ Replace `{{CEO}}` / `{{CEO_EMAIL}}` / `{{GITHUB_OWNER}}` / `{{GITHUB_REPO}}` as 
 | `{{GITHUB_OWNER}}` | ioaikh | |
 | `{{GITHUB_REPO}}` | dealoware | |
 | KB path | `/workspace/dealoware-kb/` | `/workspace/{{project}}-kb/` |
-| Local Windows clone (optional) | `D:\AIKnowHow\Projects\Dealoware` | |
+| Local Windows clone (optional) | a local folder of your choice | |
 | Host shape lock | Amazon ECS Express Mode (Fargate) | copy or re-decide with SA+CEO |
 | Bot Manager agent | this chat | keep or create project-specific manager |
 
@@ -334,7 +334,7 @@ Grant the **Cursor GitHub App** access to `{{GITHUB_OWNER}}/{{GITHUB_REPO}}` (Co
 
 ### Local clone (optional)
 
-e.g. `D:\AIKnowHow\Projects\{{PROJECT}}` — clone after GitHub seed; agents still treat `/workspace/{{project}}-kb/` as canonical ops KB unless CEO says otherwise.
+e.g. a `{{PROJECT}}` folder in a local folder of your choice — clone after GitHub seed; agents still treat `/workspace/{{project}}-kb/` as canonical ops KB unless CEO says otherwise.
 
 ---
 
