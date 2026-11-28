@@ -13,8 +13,8 @@ namespace Dealoware.Api.Tests;
 /// </summary>
 public class AdminMailInterfaceTests
 {
-    private const string TestRecipient = "recipient@test.local";
-    private const string TestFrom = "sender@test.local";
+    private const string TestRecipient = "recipient@example.test";
+    private const string TestFrom = "sender@example.test";
     private const string TestRegion = "test-region";
     private const string TestAccessKey = "TESTACCESSKEYID";
     private const string TestSecret = "test-secret-not-a-real-key";
@@ -261,13 +261,13 @@ public class AdminMailInterfaceTests
     }
 
     [Theory]
-    [InlineData("sender@test.local\r")]
-    [InlineData("sender@test.local\n")]
-    [InlineData("sender@test.local\t")]
-    [InlineData("sender@test.local\0")]
-    [InlineData("sender@test.local\u007f")]
-    [InlineData("sender@test.local\u200b")]
-    [InlineData("sender@test.local\u202e")]
+    [InlineData("sender@example.test\r")]
+    [InlineData("sender@example.test\n")]
+    [InlineData("sender@example.test\t")]
+    [InlineData("sender@example.test\0")]
+    [InlineData("sender@example.test\u007f")]
+    [InlineData("sender@example.test\u200b")]
+    [InlineData("sender@example.test\u202e")]
     [InlineData("a@b,c@d")]
     [InlineData("a@b;c@d")]
     [InlineData("Friends: a@b;")]
