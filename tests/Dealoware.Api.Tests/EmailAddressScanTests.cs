@@ -92,11 +92,79 @@ public class EmailAddressScanTests
     [InlineData("contact", "example.com.nowhere-real.net")]
     [InlineData("person", "testing.net")]
     [InlineData("person", "nowhere-real.org")]
+    // A real address with a reserved name stuck on the end still shows the address.
+    [InlineData("person", "nowhere-real.com.invalid")]
+    [InlineData("person", "nowhere-real.com.test")]
+    [InlineData("person", "nowhere-real.net.example")]
+    [InlineData("person", "nowhere-real.com.example.test")]
+    [InlineData("person", "mail.nowhere-real.io.example.test")]
+    [InlineData("person", "elsewhere.invalid")]
+    [InlineData("person", "elsewhere.test")]
+    [InlineData("person", "other.example")]
+    [InlineData("person", "sub.example.com")]
+    // A real address squeezed into the local part of an allowed one.
+    [InlineData("person.nowhere-real.com", "example.test")]
     public void TD_ADM_150_AddressScan_RefusesLookalikes(string local, string domain)
     {
         var address = local + "@" + domain;
         Assert.False(EmailAddressScan.IsAllowed(address));
         Assert.Single(EmailAddressScan.FindDisallowed("x " + address + " y"));
+    }
+
+    [Theory]
+    [InlineData("%40")]
+    [InlineData("%2540")]
+    [InlineData("&#64;")]
+    [InlineData("&#064;")]
+    [InlineData("&#x40;")]
+    [InlineData("&#X40;")]
+    [InlineData("&commat;")]
+    [InlineData("\\u0040")]
+    [InlineData("\\x40")]
+    [InlineData("＠")]
+    [InlineData("﹫")]
+    public void TD_ADM_150_AddressScan_RefusesAnEncodedAt(string at)
+    {
+        // Upper and lower case of the same form count the same.
+        foreach (var form in new[] { at, at.ToUpperInvariant(), at.ToLowerInvariant() })
+        {
+            var text = "line one\nwrite to person" + form + "nowhere-real.net soon\n";
+
+            var finding = Assert.Single(EmailAddressScan.FindDisallowed(text));
+            Assert.Equal(2, finding.Line);
+        }
+    }
+
+    [Fact]
+    public void TD_ADM_150_AddressScan_RefusesTheOwnerShapeOfATotpKeyUri()
+    {
+        // The form an owner address takes inside the QR code's otpauth address.
+        var uri = "otpauth://totp/Dealoware%3Aperson" + "%40" + "nowhere-real.net?secret=" + new string('A', 32)
+                  + "&issuer=Dealoware";
+
+        Assert.Single(EmailAddressScan.FindDisallowed(uri));
+
+        var placeholder = "otpauth://totp/Dealoware%3Acore-owner" + "%40" + "example.test?secret=" + new string('A', 32);
+        Assert.Empty(EmailAddressScan.FindDisallowed(placeholder));
+    }
+
+    [Fact]
+    public void TD_ADM_150_AddressScan_FindsAnEncodedAddressInAFile()
+    {
+        var dir = Directory.CreateTempSubdirectory("dealoware-scan-");
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dir.FullName, "page.html"),
+                "<p>one</p>\n<p>mail person" + "&#64;" + "nowhere-real.net</p>\n");
+
+            var finding = Assert.Single(EmailAddressScan.Scan(dir.FullName, ["page.html"]));
+            Assert.Equal(2, finding.Line);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
     }
 
     private static string RepoRoot()
