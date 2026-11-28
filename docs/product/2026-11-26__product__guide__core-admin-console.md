@@ -237,8 +237,6 @@ What the owner accepted, piece by piece:
 
 ### Checks not yet done in a real setting
 
-- The real Cloudflare widget has never been loaded; every test uses a stand-in.
-- No phone has scanned the QR code.
 - No screen-reader pass has been done on any page.
 - The Safari-type tests use a test build of Safari's engine, not Safari on a Mac.
 - How the browser restores a page from memory on Back and Forward has not been tested in a real setting.
@@ -306,6 +304,7 @@ What the owner accepted, piece by piece:
 
 ### Removed by a later piece
 
+- The real Cloudflare widget never loaded, and no phone had scanned the QR code: both were checked live on 28 Nov 2026 during the console's first use.
 - "Do not run `bootstrap-link` yet" and "do not put the console in front of the owner yet": the setup, sign-in, authenticator, reset and console pages are now built.
 - "Audit log" missing from the menu: added with the audit log viewer.
 - Browser tests not run on every change: every suite now runs in Chrome-type, Firefox and Safari-type browsers on each pull request.
