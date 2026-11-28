@@ -173,9 +173,10 @@ public class AdminMailInterfaceTests
         var body = "Use this one-time link to finish Core admin bootstrap.\n\n"
             + AdminMailPagePaths.Build(MailLinkKind.Bootstrap, FixtureToken) + "\n";
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<SesMailSendException>(() =>
             sender.SendAsync(new AdminMailMessage(TestRecipient, "Core admin bootstrap", body)));
 
+        Assert.Equal(403, ex.StatusCode);
         Assert.Contains("403", ex.Message);
         Assert.DoesNotContain(TestSecret, ex.Message);
         Assert.DoesNotContain(TestAccessKey, ex.Message);

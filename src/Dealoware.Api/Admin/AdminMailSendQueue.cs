@@ -1,14 +1,18 @@
 using System.Threading.Channels;
 using Dealoware.Application.Admin;
+using Dealoware.Infrastructure.Mail;
 
 namespace Dealoware.Api.Admin;
 
 /// <summary>
 /// SC-9: <see cref="AdminMailDispatcher"/> runs after the HTTP request returns.
-/// N4: dispatch failures log exception type and trace id only.
+/// N4: dispatch failures log exception type, SES's HTTP status (T59 spec §2.8) and trace id only.
 /// </summary>
 public sealed class AdminMailSendQueue : IHostedService
 {
+    /// <summary>Logged as the status when the failure was not an answer from SES.</summary>
+    public const string NoStatus = "-";
+
     private readonly Channel<QueuedMail> _channel =
         Channel.CreateUnbounded<QueuedMail>(new UnboundedChannelOptions
         {
@@ -99,9 +103,12 @@ public sealed class AdminMailSendQueue : IHostedService
                 }
                 catch (Exception ex)
                 {
+                    // The error type and, when SES refused the send, its HTTP status. Never the
+                    // address, the subject, the body or the exception's message.
                     _log.LogError(
-                        "Admin mail dispatch failed. ExceptionType={ExceptionType} TraceId={TraceId}",
+                        "Admin mail dispatch failed. ExceptionType={ExceptionType} HttpStatus={HttpStatus} TraceId={TraceId}",
                         ex.GetType().FullName,
+                        ex is SesMailSendException refused ? refused.StatusCode : (object)NoStatus,
                         queued.TraceId);
                     queued.Sent.TrySetResult(false);
                 }

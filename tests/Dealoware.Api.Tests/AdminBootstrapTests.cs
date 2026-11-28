@@ -567,6 +567,8 @@ public class AdminBootstrapTests : IClassFixture<BootstrapWebApplicationFactory>
             _factory.LogCollector.Lines,
             l => l.Contains("Admin mail dispatch failed", StringComparison.Ordinal));
         Assert.Contains("ExceptionType=System.InvalidOperationException", dispatch, StringComparison.Ordinal);
+        // Not an answer from SES, so no status.
+        Assert.Contains("HttpStatus=" + AdminMailSendQueue.NoStatus + " ", dispatch, StringComparison.Ordinal);
         Assert.Contains("TraceId=", dispatch, StringComparison.Ordinal);
 
         string storedHash;

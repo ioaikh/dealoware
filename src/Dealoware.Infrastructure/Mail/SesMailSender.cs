@@ -90,7 +90,7 @@ public sealed class SesMailSender : IAdminMailSender
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException("Mail send failed with HTTP " + (int)response.StatusCode + ".");
+            throw new SesMailSendException((int)response.StatusCode);
         }
     }
 
